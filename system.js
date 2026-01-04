@@ -230,6 +230,508 @@ function debounce(fn, delay) {
     };
 }
 
+// ==================== DETAILED MATCH LOG SYSTEM ====================
+// For debugging and verifying card mechanics work correctly
+const MatchLog = {
+    entries: [],
+    turnNumber: 0,
+    currentOwner: null,
+    gameStartTime: null,
+    isEnabled: true, // Set to false to disable logging
+    
+    init() {
+        this.entries = [];
+        this.turnNumber = 0;
+        this.currentOwner = null;
+        this.gameStartTime = Date.now();
+        this.log('SYSTEM', 'Match started');
+    },
+    
+    /**
+     * Add a detailed log entry
+     */
+    log(category, action, details = {}) {
+        if (!this.isEnabled) return;
+        
+        const timestamp = Date.now() - (this.gameStartTime || Date.now());
+        const entry = {
+            timestamp,
+            turn: this.turnNumber,
+            owner: this.currentOwner,
+            category,
+            action,
+            details,
+            formatted: this.formatEntry(category, action, details)
+        };
+        
+        this.entries.push(entry);
+        
+        // Also log to console in debug mode
+        if (window.DEBUG_MATCH_LOG) {
+            console.log(`[MatchLog T${this.turnNumber}] ${entry.formatted}`);
+        }
+    },
+    
+    /**
+     * Format entry for display
+     */
+    formatEntry(category, action, details) {
+        const d = details;
+        let text = '';
+        
+        switch (category) {
+            case 'TURN':
+                text = `═══ TURN ${this.turnNumber} - ${action.toUpperCase()} ═══`;
+                break;
+                
+            case 'SUMMON':
+                text = `SUMMON: ${d.cardName} → ${d.position || 'field'}`;
+                if (d.col !== undefined) text += ` [col=${d.col}, row=${d.row}]`;
+                if (d.cost !== undefined) text += ` | Cost: ${d.cost} Pyre`;
+                if (d.stats) text += ` | Stats: ${d.stats.atk}/${d.stats.hp}`;
+                if (d.isKindling) text += ' (Kindling)';
+                if (d.isSupport) text += ' [SUPPORT]';
+                if (d.isCombat) text += ' [COMBAT]';
+                break;
+                
+            case 'ATTACK':
+                text = `ATTACK: ${d.attackerName} → ${d.defenderName}`;
+                text += ` | Attacker: ${d.attackerStats?.atk}/${d.attackerStats?.hp} [col=${d.attackerCol}, row=${d.attackerRow}]`;
+                text += ` | Defender: ${d.defenderStats?.hp} HP [col=${d.defenderCol}, row=${d.defenderRow}]`;
+                text += ` | Damage: ${d.damageDealt}`;
+                if (d.overkill) text += ` (${d.overkill} overkill)`;
+                if (d.defenderDied) text += ' → KILLED';
+                if (d.attackerTapped) text += ' | Attacker tapped';
+                break;
+                
+            case 'DAMAGE':
+                text = `DAMAGE: ${d.targetName} takes ${d.amount} damage`;
+                text += ` [col=${d.col}, row=${d.row}]`;
+                text += ` | HP: ${d.hpBefore} → ${d.hpAfter}`;
+                if (d.source) text += ` | Source: ${d.source}`;
+                if (d.died) text += ' → DIED';
+                break;
+                
+            case 'HEAL':
+                text = `HEAL: ${d.targetName} healed for ${d.amount}`;
+                text += ` | HP: ${d.hpBefore} → ${d.hpAfter}`;
+                if (d.source) text += ` | Source: ${d.source}`;
+                break;
+                
+            case 'DEATH':
+                text = `DEATH: ${d.cardName} died`;
+                text += ` [col=${d.col}, row=${d.row}]`;
+                if (d.killedBy) text += ` | Killed by: ${d.killedBy}`;
+                if (d.evolved) text += ' → Evolved instead';
+                break;
+                
+            case 'EVOLVE':
+                text = `EVOLVE: ${d.baseName} → ${d.evolvedName}`;
+                text += ` [col=${d.col}, row=${d.row}]`;
+                text += ` | Stats: ${d.oldStats?.atk}/${d.oldStats?.hp} → ${d.newStats?.atk}/${d.newStats?.hp}`;
+                break;
+                
+            case 'ABILITY':
+                text = `ABILITY: ${d.cardName} - ${d.abilityName}`;
+                if (d.col !== undefined) text += ` [col=${d.col}, row=${d.row}]`;
+                if (d.target) text += ` | Target: ${d.target}`;
+                if (d.effect) text += ` | Effect: ${d.effect}`;
+                break;
+                
+            case 'BUFF':
+                text = `BUFF: ${d.targetName} received ${d.buffType}`;
+                if (d.amount) text += ` +${d.amount}`;
+                if (d.source) text += ` | From: ${d.source}`;
+                if (d.newStats) text += ` | New stats: ${d.newStats.atk}/${d.newStats.hp}`;
+                break;
+                
+            case 'DEBUFF':
+                text = `DEBUFF: ${d.targetName} received ${d.debuffType}`;
+                if (d.amount) text += ` -${d.amount}`;
+                if (d.source) text += ` | From: ${d.source}`;
+                break;
+                
+            case 'STATUS':
+                text = `STATUS: ${d.targetName} - ${d.status}`;
+                if (d.duration) text += ` (${d.duration} turns)`;
+                if (d.stacks) text += ` (${d.stacks} stacks)`;
+                if (d.removed) text += ' REMOVED';
+                break;
+                
+            case 'SPELL':
+                text = `SPELL: ${d.cardName} cast`;
+                if (d.cost !== undefined) text += ` | Cost: ${d.cost} Pyre`;
+                if (d.target) text += ` | Target: ${d.target}`;
+                if (d.effect) text += ` | Effect: ${d.effect}`;
+                break;
+                
+            case 'TRAP':
+                text = `TRAP: ${d.trapName}`;
+                if (d.placed) text += ` placed [row=${d.row}]`;
+                if (d.triggered) text += ` TRIGGERED on ${d.triggeredBy}`;
+                if (d.effect) text += ` | Effect: ${d.effect}`;
+                break;
+                
+            case 'AURA':
+                text = `AURA: ${d.auraName}`;
+                if (d.attached) text += ` attached to ${d.targetName}`;
+                if (d.effect) text += ` | Effect: ${d.effect}`;
+                break;
+                
+            case 'PYRE':
+                text = `PYRE: ${d.action}`;
+                if (d.cardName) text += ` - ${d.cardName}`;
+                if (d.amount !== undefined) text += ` | +${d.amount} Pyre`;
+                if (d.total !== undefined) text += ` (Total: ${d.total})`;
+                break;
+                
+            case 'DRAW':
+                text = `DRAW: ${d.owner} drew ${d.count || 1} card(s)`;
+                if (d.handSize !== undefined) text += ` | Hand: ${d.handSize}`;
+                break;
+                
+            case 'PROMOTE':
+                text = `PROMOTE: ${d.cardName} moved to Combat`;
+                text += ` [row=${d.row}]`;
+                if (d.fromSupport) text += ' (from Support)';
+                break;
+                
+            case 'SUPPORT':
+                text = `SUPPORT EFFECT: ${d.supportName} → ${d.targetName}`;
+                if (d.effect) text += ` | ${d.effect}`;
+                if (d.col !== undefined) text += ` [Support col=${d.supportCol}, row=${d.row}]`;
+                break;
+                
+            case 'GAME_STATE':
+                text = `STATE: ${action}`;
+                if (d.playerPyre !== undefined) text += ` | Player Pyre: ${d.playerPyre}`;
+                if (d.enemyPyre !== undefined) text += ` | Enemy Pyre: ${d.enemyPyre}`;
+                if (d.playerField) text += ` | Player Field: ${d.playerField}`;
+                if (d.enemyField) text += ` | Enemy Field: ${d.enemyField}`;
+                break;
+                
+            default:
+                text = `${category}: ${action}`;
+                if (Object.keys(details).length > 0) {
+                    text += ' | ' + JSON.stringify(details);
+                }
+        }
+        
+        return text;
+    },
+    
+    /**
+     * Log turn start
+     */
+    logTurnStart(owner) {
+        this.turnNumber++;
+        this.currentOwner = owner;
+        this.log('TURN', owner === 'player' ? 'Player Turn' : 'Enemy Turn', { owner });
+    },
+    
+    /**
+     * Log turn end
+     */
+    logTurnEnd(owner) {
+        this.log('TURN', 'End', { owner });
+    },
+    
+    /**
+     * Get full log as formatted text
+     */
+    getFullLog() {
+        let output = '════════════════════════════════════════════════════════════\n';
+        output += '                    CRYPTID FATES - MATCH LOG\n';
+        output += `                    ${new Date(this.gameStartTime).toLocaleString()}\n`;
+        output += '════════════════════════════════════════════════════════════\n\n';
+        
+        let lastTurn = -1;
+        for (const entry of this.entries) {
+            if (entry.turn !== lastTurn && entry.category === 'TURN') {
+                output += '\n';
+                lastTurn = entry.turn;
+            }
+            
+            const time = `[${(entry.timestamp / 1000).toFixed(1)}s]`;
+            const owner = entry.owner ? `[${entry.owner.toUpperCase()}]` : '';
+            output += `${time} ${owner} ${entry.formatted}\n`;
+        }
+        
+        output += '\n════════════════════════════════════════════════════════════\n';
+        output += `                    END OF LOG - ${this.entries.length} entries\n`;
+        output += '════════════════════════════════════════════════════════════\n';
+        
+        return output;
+    },
+    
+    /**
+     * Get log entries for display
+     */
+    getEntries() {
+        return this.entries;
+    },
+    
+    /**
+     * Copy log to clipboard
+     */
+    async copyToClipboard() {
+        const log = this.getFullLog();
+        try {
+            await navigator.clipboard.writeText(log);
+            showMessage('Match log copied to clipboard!', 2000);
+            return true;
+        } catch (err) {
+            console.error('Failed to copy log:', err);
+            // Fallback - create textarea and copy
+            const ta = document.createElement('textarea');
+            ta.value = log;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            showMessage('Match log copied to clipboard!', 2000);
+            return true;
+        }
+    },
+    
+    /**
+     * Subscribe to all game events for logging
+     */
+    subscribeToEvents() {
+        // Turn events
+        GameEvents.on('onTurnStart', (data) => {
+            this.logTurnStart(data.owner);
+            this.log('GAME_STATE', 'Turn Start State', {
+                playerPyre: window.game?.playerPyre,
+                enemyPyre: window.game?.enemyPyre
+            });
+        });
+        
+        GameEvents.on('onTurnEnd', (data) => {
+            this.logTurnEnd(data.owner);
+        });
+        
+        // Summon events
+        GameEvents.on('onSummon', (data) => {
+            const cryptid = data.cryptid;
+            const supportCol = window.game?.getSupportCol?.(data.owner);
+            this.log('SUMMON', data.cryptid?.name || 'Unknown', {
+                cardName: cryptid?.name,
+                col: cryptid?.col,
+                row: cryptid?.row,
+                cost: data.cost,
+                stats: { atk: cryptid?.currentAtk || cryptid?.atk, hp: cryptid?.currentHp || cryptid?.hp },
+                isKindling: data.isKindling || cryptid?.isKindling,
+                isSupport: cryptid?.col === supportCol,
+                isCombat: cryptid?.col !== supportCol
+            });
+        });
+        
+        // Attack events
+        GameEvents.on('onAttack', (data) => {
+            this.log('ATTACK', 'Attack', {
+                attackerName: data.attacker?.name,
+                attackerCol: data.attacker?.col,
+                attackerRow: data.attacker?.row,
+                attackerStats: { atk: data.attacker?.currentAtk, hp: data.attacker?.currentHp },
+                defenderName: data.defender?.name,
+                defenderCol: data.defender?.col,
+                defenderRow: data.defender?.row,
+                defenderStats: { hp: data.defender?.currentHp },
+                damageDealt: data.damage,
+                defenderDied: data.defenderDied,
+                attackerTapped: data.attacker?.tapped
+            });
+        });
+        
+        // Damage events
+        GameEvents.on('onDamage', (data) => {
+            this.log('DAMAGE', 'Damage Dealt', {
+                targetName: data.cryptid?.name,
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
+                amount: data.damage,
+                hpBefore: (data.cryptid?.currentHp || 0) + data.damage,
+                hpAfter: data.cryptid?.currentHp,
+                source: data.source,
+                died: data.cryptid?.currentHp <= 0
+            });
+        });
+        
+        // Heal events
+        GameEvents.on('onHeal', (data) => {
+            this.log('HEAL', 'Healed', {
+                targetName: data.cryptid?.name,
+                amount: data.amount,
+                hpBefore: (data.cryptid?.currentHp || 0) - data.amount,
+                hpAfter: data.cryptid?.currentHp,
+                source: data.source
+            });
+        });
+        
+        // Death events
+        GameEvents.on('onDeath', (data) => {
+            this.log('DEATH', 'Death', {
+                cardName: data.cryptid?.name,
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
+                killedBy: data.killedBy || data.cryptid?.killedBy,
+                evolved: data.evolved
+            });
+        });
+        
+        // Evolution events
+        GameEvents.on('onEvolve', (data) => {
+            this.log('EVOLVE', 'Evolution', {
+                baseName: data.base?.name,
+                evolvedName: data.evolved?.name,
+                col: data.evolved?.col,
+                row: data.evolved?.row,
+                oldStats: { atk: data.base?.currentAtk, hp: data.base?.currentHp },
+                newStats: { atk: data.evolved?.currentAtk, hp: data.evolved?.currentHp }
+            });
+        });
+        
+        // Spell/Burst events
+        GameEvents.on('onBurstPlayed', (data) => {
+            this.log('SPELL', 'Burst Cast', {
+                cardName: data.card?.name,
+                cost: data.cost,
+                target: data.target?.name,
+                effect: data.effect
+            });
+        });
+        
+        // Trap events
+        GameEvents.on('onTrapPlaced', (data) => {
+            this.log('TRAP', 'Trap Placed', {
+                trapName: data.trap?.name,
+                row: data.row,
+                placed: true
+            });
+        });
+        
+        GameEvents.on('onTrapTriggered', (data) => {
+            this.log('TRAP', 'Trap Triggered', {
+                trapName: data.trap?.name,
+                row: data.row,
+                triggeredBy: data.triggeredBy?.name,
+                triggered: true,
+                effect: data.effect
+            });
+        });
+        
+        // Aura events
+        GameEvents.on('onAuraAttached', (data) => {
+            this.log('AURA', 'Aura Attached', {
+                auraName: data.aura?.name,
+                targetName: data.target?.name,
+                attached: true,
+                effect: data.effect
+            });
+        });
+        
+        // Pyre events
+        GameEvents.on('onPyreGained', (data) => {
+            this.log('PYRE', 'Gained', {
+                action: 'Pyre Gained',
+                amount: data.amount,
+                total: data.newValue,
+                source: data.source
+            });
+        });
+        
+        GameEvents.on('onPyreCardPlayed', (data) => {
+            this.log('PYRE', 'Card Played', {
+                action: 'Pyre Card',
+                cardName: data.card?.name,
+                amount: data.pyreGained,
+                total: data.owner === 'player' ? window.game?.playerPyre : window.game?.enemyPyre
+            });
+        });
+        
+        // Draw events
+        GameEvents.on('onCardDrawn', (data) => {
+            const hand = data.owner === 'player' ? window.game?.playerHand : window.game?.enemyHand;
+            this.log('DRAW', 'Card Drawn', {
+                owner: data.owner,
+                count: 1,
+                handSize: hand?.length
+            });
+        });
+        
+        // Promotion events
+        GameEvents.on('onPromote', (data) => {
+            this.log('PROMOTE', 'Promotion', {
+                cardName: data.cryptid?.name,
+                row: data.row,
+                fromSupport: true
+            });
+        });
+        
+        // Status effects
+        GameEvents.on('onStatusApplied', (data) => {
+            this.log('STATUS', 'Status Applied', {
+                targetName: data.cryptid?.name,
+                status: data.status,
+                duration: data.duration,
+                stacks: data.stacks
+            });
+        });
+        
+        GameEvents.on('onStatusWearOff', (data) => {
+            this.log('STATUS', 'Status Removed', {
+                targetName: data.cryptid?.name,
+                status: data.status,
+                removed: true
+            });
+        });
+        
+        // Buff/Debuff events
+        GameEvents.on('onBuffApplied', (data) => {
+            this.log('BUFF', 'Buff Applied', {
+                targetName: data.cryptid?.name,
+                buffType: data.type,
+                amount: data.amount,
+                source: data.source?.name,
+                newStats: { atk: data.cryptid?.currentAtk, hp: data.cryptid?.currentHp }
+            });
+        });
+        
+        // Support ability triggers
+        GameEvents.on('onSupportAbility', (data) => {
+            this.log('SUPPORT', 'Support Effect', {
+                supportName: data.support?.name,
+                targetName: data.target?.name,
+                supportCol: data.support?.col,
+                row: data.support?.row,
+                effect: data.effect
+            });
+        });
+        
+        // Tap/Untap events
+        GameEvents.on('onTap', (data) => {
+            this.log('STATUS', 'Tapped', {
+                targetName: data.cryptid?.name,
+                status: 'TAPPED',
+                reason: data.reason
+            });
+        });
+        
+        GameEvents.on('onUntap', (data) => {
+            this.log('STATUS', 'Untapped', {
+                targetName: data.cryptid?.name,
+                status: 'UNTAPPED',
+                removed: true
+            });
+        });
+        
+        console.log('[MatchLog] Subscribed to game events');
+    }
+};
+
+window.MatchLog = MatchLog;
+
 // ==================== EVENT LOG SYSTEM ====================
 const EventLog = {
     entries: [],
@@ -3540,6 +4042,7 @@ function initGame() {
     window.processingTraps = false;
     window.animatingTraps = new Set();
     EventLog.init();
+    MatchLog.init(); // Initialize detailed match logging
     
     ui = {
         selectedCard: null, attackingCryptid: null, targetingBurst: null,
@@ -6950,6 +7453,7 @@ window.initMultiplayerGame = function() {
     window.processingTraps = false;
     window.animatingTraps = new Set();
     EventLog.init();
+    MatchLog.init(); // Initialize detailed match logging
     
     ui = {
         selectedCard: null, attackingCryptid: null, targetingBurst: null,
@@ -6990,6 +7494,9 @@ function setupGameEventListeners() {
     EventLog.subscribed = false;
     EventLog.subscribeToEvents();
     EventLog.subscribed = true;
+    
+    // Subscribe MatchLog to all game events for detailed logging
+    MatchLog.subscribeToEvents();
     
     console.log('[Setup] Listeners cleared and EventLog re-subscribed, setting up game listeners');
     

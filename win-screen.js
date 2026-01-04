@@ -387,6 +387,145 @@ window.WinScreen = {
                 font-weight: bold;
             }
             
+            /* ==================== MATCH LOG PANEL ==================== */
+            .matchlog-panel {
+                background: rgba(0, 0, 0, 0.7);
+                border: 1px solid rgba(232, 169, 62, 0.3);
+                border-radius: 12px;
+                margin-bottom: 15px;
+                width: 100%;
+                max-width: 550px;
+                backdrop-filter: blur(5px);
+                overflow: hidden;
+            }
+            
+            .matchlog-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 12px 15px;
+                cursor: pointer;
+                transition: background 0.2s ease;
+            }
+            
+            .matchlog-header:hover {
+                background: rgba(232, 169, 62, 0.1);
+            }
+            
+            .matchlog-title {
+                font-family: 'Cinzel', serif;
+                font-size: 14px;
+                color: var(--candlelight, #e8a93e);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            
+            .matchlog-toggle {
+                color: var(--bone, #e8e0d5);
+                font-size: 12px;
+                transition: transform 0.3s ease;
+            }
+            
+            .matchlog-panel.open .matchlog-toggle {
+                transform: rotate(180deg);
+            }
+            
+            .matchlog-content {
+                max-height: 0;
+                overflow: hidden;
+                transition: max-height 0.4s ease;
+            }
+            
+            .matchlog-panel.open .matchlog-content {
+                max-height: 400px;
+            }
+            
+            .matchlog-entries {
+                max-height: 300px;
+                overflow-y: auto;
+                padding: 10px 15px;
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 11px;
+                line-height: 1.5;
+                color: var(--bone, #e8e0d5);
+                border-top: 1px solid rgba(232, 169, 62, 0.15);
+            }
+            
+            .matchlog-entries::-webkit-scrollbar {
+                width: 6px;
+            }
+            
+            .matchlog-entries::-webkit-scrollbar-track {
+                background: rgba(0, 0, 0, 0.3);
+            }
+            
+            .matchlog-entries::-webkit-scrollbar-thumb {
+                background: rgba(232, 169, 62, 0.4);
+                border-radius: 3px;
+            }
+            
+            .matchlog-entry {
+                padding: 2px 0;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            }
+            
+            .matchlog-entry.turn-header {
+                color: var(--candlelight, #e8a93e);
+                font-weight: bold;
+                margin-top: 8px;
+                padding-top: 8px;
+                border-top: 1px solid rgba(232, 169, 62, 0.2);
+            }
+            
+            .matchlog-entry .timestamp {
+                color: #888;
+                margin-right: 5px;
+            }
+            
+            .matchlog-entry .owner-player {
+                color: #7eb89e;
+            }
+            
+            .matchlog-entry .owner-enemy {
+                color: #e57373;
+            }
+            
+            .matchlog-actions {
+                display: flex;
+                justify-content: center;
+                gap: 10px;
+                padding: 10px 15px;
+                border-top: 1px solid rgba(232, 169, 62, 0.15);
+            }
+            
+            .matchlog-btn {
+                background: rgba(232, 169, 62, 0.2);
+                border: 1px solid rgba(232, 169, 62, 0.4);
+                color: var(--bone, #e8e0d5);
+                padding: 8px 16px;
+                border-radius: 6px;
+                font-size: 12px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+            
+            .matchlog-btn:hover {
+                background: rgba(232, 169, 62, 0.3);
+                border-color: rgba(232, 169, 62, 0.6);
+            }
+            
+            .matchlog-btn.primary {
+                background: rgba(232, 169, 62, 0.4);
+            }
+            
+            .matchlog-stats {
+                font-size: 11px;
+                color: #888;
+                text-align: center;
+                padding-bottom: 5px;
+            }
+            
             /* ==================== RESPONSIVE ==================== */
             @media (max-width: 500px) {
                 .winscreen-container {
@@ -478,6 +617,25 @@ window.WinScreen = {
                     <div class="rewards-grid" id="rewards-grid"></div>
                 </div>
                 
+                <!-- Match Log Panel (Collapsible) -->
+                <div class="matchlog-panel" id="matchlog-panel">
+                    <div class="matchlog-header" onclick="WinScreen.toggleMatchLog()">
+                        <div class="matchlog-title">
+                            <span>📜</span>
+                            <span>Match Log</span>
+                        </div>
+                        <div class="matchlog-toggle">▼</div>
+                    </div>
+                    <div class="matchlog-content">
+                        <div class="matchlog-stats" id="matchlog-stats"></div>
+                        <div class="matchlog-entries" id="matchlog-entries"></div>
+                        <div class="matchlog-actions">
+                            <button class="matchlog-btn primary" onclick="WinScreen.copyMatchLog()">📋 Copy Full Log</button>
+                            <button class="matchlog-btn" onclick="WinScreen.toggleMatchLog()">Close</button>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Actions (Image Buttons) -->
                 <div class="winscreen-actions">
                     <button class="winscreen-img-btn" id="btn-home">
@@ -544,6 +702,10 @@ window.WinScreen = {
         this.renderStats(data.stats || {});
         this.renderMatchDetails(data);
         this.renderRewards(rewards);
+        
+        // Populate match log
+        this.populateMatchLog();
+        document.getElementById('matchlog-panel').classList.remove('open'); // Start collapsed
         
         // XP Animation
         if (typeof PlayerData !== 'undefined' && PlayerData.level !== undefined) {
@@ -915,6 +1077,58 @@ window.WinScreen = {
         
         rewardsEl.innerHTML = rewardText.join(' ');
         banner.classList.add('show');
+    },
+    
+    // ==================== MATCH LOG ====================
+    
+    toggleMatchLog() {
+        const panel = document.getElementById('matchlog-panel');
+        panel.classList.toggle('open');
+    },
+    
+    populateMatchLog() {
+        const entriesEl = document.getElementById('matchlog-entries');
+        const statsEl = document.getElementById('matchlog-stats');
+        
+        if (typeof MatchLog === 'undefined' || !MatchLog.entries) {
+            entriesEl.innerHTML = '<div class="matchlog-entry">No log data available</div>';
+            statsEl.textContent = '';
+            return;
+        }
+        
+        const entries = MatchLog.entries;
+        statsEl.textContent = `${entries.length} events recorded over ${MatchLog.turnNumber} turns`;
+        
+        let html = '';
+        let lastTurn = -1;
+        
+        for (const entry of entries) {
+            // Add turn header
+            if (entry.category === 'TURN' && entry.turn !== lastTurn) {
+                lastTurn = entry.turn;
+                html += `<div class="matchlog-entry turn-header">${entry.formatted}</div>`;
+                continue;
+            }
+            
+            const time = `<span class="timestamp">[${(entry.timestamp / 1000).toFixed(1)}s]</span>`;
+            const ownerClass = entry.owner ? `owner-${entry.owner}` : '';
+            const ownerTag = entry.owner ? `<span class="${ownerClass}">[${entry.owner.toUpperCase()}]</span> ` : '';
+            
+            html += `<div class="matchlog-entry">${time} ${ownerTag}${entry.formatted}</div>`;
+        }
+        
+        entriesEl.innerHTML = html || '<div class="matchlog-entry">No events recorded</div>';
+        
+        // Scroll to bottom
+        entriesEl.scrollTop = entriesEl.scrollHeight;
+    },
+    
+    copyMatchLog() {
+        if (typeof MatchLog !== 'undefined' && MatchLog.copyToClipboard) {
+            MatchLog.copyToClipboard();
+        } else {
+            console.error('MatchLog not available');
+        }
     },
     
     // ==================== QUOTES ====================
