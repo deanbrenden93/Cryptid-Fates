@@ -7036,9 +7036,25 @@ div.menu-btn#tile-collection {
     align-items: center;
     z-index: 5;
     overflow: hidden;
+    /* CSS variable for custom background - default black */
+    --art-bg: #000;
+}
+
+/* Background layer behind card art */
+.game-card .gc-art::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    /* Use CSS variable - can be color or url() */
+    background: var(--art-bg);
+    background-size: cover;
+    background-position: center;
 }
 
 .game-card .gc-art .sprite-img {
+    position: relative;
+    z-index: 2; /* Above the background */
     max-width: 85%;
     max-height: 85%;
     object-fit: contain;
@@ -7163,6 +7179,37 @@ div.menu-btn#tile-collection {
    HOLOGRAPHIC / FOIL CARD EFFECT - CSS Only
    ============================================================ */
 
+/* Metallic sheen on card frame */
+.game-card.foil::before {
+    filter: saturate(0.85) brightness(1.1) contrast(1.05);
+}
+
+/* Metallic overlay on entire card frame */
+.game-card.foil::after {
+    content: '';
+    display: block; /* Override the display:none from base .game-card::after */
+    position: absolute;
+    inset: 0;
+    border-radius: var(--gc-border-radius);
+    pointer-events: none;
+    z-index: 11;
+    background: linear-gradient(
+        135deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.08) 25%,
+        rgba(200, 220, 255, 0.12) 50%,
+        rgba(255, 255, 255, 0.08) 75%,
+        transparent 100%
+    );
+    background-size: 200% 200%;
+    animation: metallicSheen 4s ease-in-out infinite;
+}
+
+@keyframes metallicSheen {
+    0%, 100% { background-position: 0% 0%; }
+    50% { background-position: 100% 100%; }
+}
+
 /* Holographic shimmer on art area */
 .game-card.foil .gc-art::after {
     content: '';
@@ -7170,7 +7217,7 @@ div.menu-btn#tile-collection {
     inset: 0;
     border-radius: 2px;
     pointer-events: none;
-    z-index: 5;
+    z-index: 3; /* Above background (1) and sprite (2) */
     /* Layered holographic effect */
     background: 
         /* Fine diagonal line texture */
