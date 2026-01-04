@@ -771,6 +771,53 @@ window.MainMenu = {
         document.body.appendChild(turnOrder);
     },
     
+    /**
+     * Create just the turn order overlay (for cases where MainMenu.init() wasn't called)
+     */
+    createTurnOrderOverlay() {
+        if (document.getElementById('turn-order-overlay')) return; // Already exists
+        
+        // Inject required styles if not already present
+        if (!document.getElementById('main-menu-styles')) {
+            this.injectStyles();
+        }
+        
+        const turnOrder = document.createElement('div');
+        turnOrder.id = 'turn-order-overlay';
+        turnOrder.innerHTML = `
+            <div class="turn-order-content">
+                <div class="turn-order-title">Fate Decides...</div>
+                
+                <div class="turn-order-contestants">
+                    <div class="contestant player">
+                        <div class="contestant-icon">🌿</div>
+                        <div class="contestant-label contestant-name">Seeker</div>
+                    </div>
+                    
+                    <div class="turn-order-vs">⚡</div>
+                    
+                    <div class="contestant enemy">
+                        <div class="contestant-icon">💀</div>
+                        <div class="contestant-label contestant-name">Warden</div>
+                    </div>
+                </div>
+                
+                <div class="fate-decider">
+                    <div class="fate-coin">
+                        <div class="coin-face player-side">🌿</div>
+                        <div class="coin-face enemy-side">💀</div>
+                    </div>
+                </div>
+                
+                <div class="turn-order-result">
+                    <span class="winner-name"></span>
+                    <span class="goes-first">Goes First</span>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(turnOrder);
+    },
+    
     bindEvents() {
         // VS AI Button
         document.getElementById('vs-ai-btn').addEventListener('click', () => {
@@ -908,7 +955,20 @@ window.MainMenu = {
     },
     
     showTurnOrderAnimation(onComplete) {
-        const overlay = document.getElementById('turn-order-overlay');
+        // Ensure the turn order overlay exists (may not exist if MainMenu.init() was never called)
+        let overlay = document.getElementById('turn-order-overlay');
+        if (!overlay) {
+            this.createTurnOrderOverlay();
+            overlay = document.getElementById('turn-order-overlay');
+        }
+        
+        // If still no overlay (shouldn't happen), skip animation
+        if (!overlay) {
+            console.warn('[MainMenu] Could not create turn order overlay, skipping animation');
+            onComplete?.();
+            return;
+        }
+        
         const contestants = overlay.querySelectorAll('.contestant');
         const fateDecider = overlay.querySelector('.fate-decider');
         const fateCoin = overlay.querySelector('.fate-coin');
