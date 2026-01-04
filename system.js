@@ -514,58 +514,72 @@ const MatchLog = {
         // Summon events
         GameEvents.on('onSummon', (data) => {
             const cryptid = data.cryptid;
-            const supportCol = window.game?.getSupportCol?.(data.owner);
-            this.log('SUMMON', data.cryptid?.name || 'Unknown', {
+            this.log('SUMMON', cryptid?.name || 'Unknown', {
                 cardName: cryptid?.name,
-                col: cryptid?.col,
-                row: cryptid?.row,
-                cost: data.cost,
+                col: data.col,
+                row: data.row,
                 stats: { atk: cryptid?.currentAtk || cryptid?.atk, hp: cryptid?.currentHp || cryptid?.hp },
-                isKindling: data.isKindling || cryptid?.isKindling,
-                isSupport: cryptid?.col === supportCol,
-                isCombat: cryptid?.col !== supportCol
+                isKindling: data.isKindling,
+                isSupport: data.isSupport
             });
         });
         
-        // Attack events
-        GameEvents.on('onAttack', (data) => {
-            this.log('ATTACK', 'Attack', {
+        // Attack events (use onAttackDeclared for when attack starts)
+        GameEvents.on('onAttackDeclared', (data) => {
+            this.log('ATTACK', 'Attack Declared', {
                 attackerName: data.attacker?.name,
                 attackerCol: data.attacker?.col,
                 attackerRow: data.attacker?.row,
                 attackerStats: { atk: data.attacker?.currentAtk, hp: data.attacker?.currentHp },
-                defenderName: data.defender?.name,
-                defenderCol: data.defender?.col,
-                defenderRow: data.defender?.row,
-                defenderStats: { hp: data.defender?.currentHp },
-                damageDealt: data.damage,
-                defenderDied: data.defenderDied,
-                attackerTapped: data.attacker?.tapped
+                defenderName: data.target?.name,
+                defenderCol: data.target?.col,
+                defenderRow: data.target?.row,
+                defenderStats: { hp: data.target?.currentHp }
             });
         });
         
-        // Damage events
-        GameEvents.on('onDamage', (data) => {
-            this.log('DAMAGE', 'Damage Dealt', {
-                targetName: data.cryptid?.name,
-                col: data.cryptid?.col,
-                row: data.cryptid?.row,
-                amount: data.damage,
-                hpBefore: (data.cryptid?.currentHp || 0) + data.damage,
-                hpAfter: data.cryptid?.currentHp,
-                source: data.source,
-                died: data.cryptid?.currentHp <= 0
+        // Hit/Damage events
+        GameEvents.on('onHit', (data) => {
+            this.log('DAMAGE', 'Hit Connected', {
+                attackerName: data.attacker?.name,
+                targetName: data.target?.name,
+                damage: data.damage,
+                hpBefore: data.hpBefore,
+                hpAfter: data.hpAfter
+            });
+        });
+        
+        GameEvents.on('onDamageTaken', (data) => {
+            this.log('DAMAGE', 'Damage Taken', {
+                targetName: data.target?.name,
+                col: data.target?.col,
+                row: data.target?.row,
+                damage: data.damage,
+                hpBefore: data.hpBefore,
+                hpAfter: data.hpAfter,
+                source: data.source?.name || data.sourceType
+            });
+        });
+        
+        // Kill events
+        GameEvents.on('onKill', (data) => {
+            this.log('DEATH', 'Kill', {
+                killerName: data.killer?.name,
+                victimName: data.victim?.name,
+                victimCol: data.victim?.col,
+                victimRow: data.victim?.row,
+                killerOwner: data.killerOwner,
+                victimOwner: data.victimOwner
             });
         });
         
         // Heal events
         GameEvents.on('onHeal', (data) => {
+            const target = data.cryptid || data.target;
             this.log('HEAL', 'Healed', {
-                targetName: data.cryptid?.name,
+                targetName: target?.name,
                 amount: data.amount,
-                hpBefore: (data.cryptid?.currentHp || 0) - data.amount,
-                hpAfter: data.cryptid?.currentHp,
-                source: data.source
+                source: data.source?.name || data.sourceType || data.source
             });
         });
         
@@ -573,99 +587,139 @@ const MatchLog = {
         GameEvents.on('onDeath', (data) => {
             this.log('DEATH', 'Death', {
                 cardName: data.cryptid?.name,
-                col: data.cryptid?.col,
-                row: data.cryptid?.row,
-                killedBy: data.killedBy || data.cryptid?.killedBy,
-                evolved: data.evolved
+                col: data.col,
+                row: data.row,
+                owner: data.owner,
+                killerOwner: data.killerOwner
             });
         });
         
-        // Evolution events
-        GameEvents.on('onEvolve', (data) => {
+        // Evolution events (correct event name is onEvolution)
+        GameEvents.on('onEvolution', (data) => {
             this.log('EVOLVE', 'Evolution', {
-                baseName: data.base?.name,
+                baseName: data.baseCryptid?.name,
                 evolvedName: data.evolved?.name,
-                col: data.evolved?.col,
-                row: data.evolved?.row,
-                oldStats: { atk: data.base?.currentAtk, hp: data.base?.currentHp },
+                col: data.col,
+                row: data.row,
+                owner: data.owner,
                 newStats: { atk: data.evolved?.currentAtk, hp: data.evolved?.currentHp }
             });
         });
         
         // Spell/Burst events
-        GameEvents.on('onBurstPlayed', (data) => {
-            this.log('SPELL', 'Burst Cast', {
+        GameEvents.on('onSpellCast', (data) => {
+            this.log('SPELL', 'Spell Cast', {
                 cardName: data.card?.name,
-                cost: data.cost,
-                target: data.target?.name,
-                effect: data.effect
+                caster: data.caster,
+                targetName: data.target?.name,
+                targetOwner: data.targetOwner
             });
         });
         
-        // Trap events
-        GameEvents.on('onTrapPlaced', (data) => {
-            this.log('TRAP', 'Trap Placed', {
-                trapName: data.trap?.name,
-                row: data.row,
-                placed: true
+        GameEvents.on('onBurstPlayed', (data) => {
+            this.log('SPELL', 'Burst Played', {
+                cardName: data.card?.name,
+                owner: data.owner,
+                targetName: data.target?.name,
+                targetOwner: data.targetOwner,
+                targetCol: data.targetCol,
+                targetRow: data.targetRow
+            });
+        });
+        
+        // Trap events (correct event name is onTrapSet)
+        GameEvents.on('onTrapSet', (data) => {
+            this.log('TRAP', 'Trap Set', {
+                trapName: data.trap?.name || data.trap?.key,
+                owner: data.owner,
+                row: data.row
             });
         });
         
         GameEvents.on('onTrapTriggered', (data) => {
             this.log('TRAP', 'Trap Triggered', {
-                trapName: data.trap?.name,
-                row: data.row,
-                triggeredBy: data.triggeredBy?.name,
-                triggered: true,
-                effect: data.effect
+                trapName: data.trap?.name || data.trap?.key,
+                owner: data.owner,
+                row: data.row
             });
         });
         
-        // Aura events
-        GameEvents.on('onAuraAttached', (data) => {
-            this.log('AURA', 'Aura Attached', {
+        // Aura events (correct event name is onAuraApplied)
+        GameEvents.on('onAuraApplied', (data) => {
+            this.log('AURA', 'Aura Applied', {
                 auraName: data.aura?.name,
-                targetName: data.target?.name,
-                attached: true,
-                effect: data.effect
+                targetName: data.cryptid?.name,
+                targetCol: data.cryptid?.col,
+                targetRow: data.cryptid?.row,
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onAuraRemoved', (data) => {
+            this.log('AURA', 'Aura Removed', {
+                auraName: data.aura?.name,
+                targetName: data.cryptid?.name,
+                owner: data.owner
             });
         });
         
         // Pyre events
         GameEvents.on('onPyreGained', (data) => {
             this.log('PYRE', 'Gained', {
-                action: 'Pyre Gained',
                 amount: data.amount,
-                total: data.newValue,
-                source: data.source
+                oldValue: data.oldValue,
+                newValue: data.newValue,
+                source: data.source,
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onPyreSpent', (data) => {
+            this.log('PYRE', 'Spent', {
+                amount: data.amount,
+                oldValue: data.oldValue,
+                newValue: data.newValue,
+                source: data.source,
+                cardName: data.card?.name,
+                owner: data.owner
             });
         });
         
         GameEvents.on('onPyreCardPlayed', (data) => {
-            this.log('PYRE', 'Card Played', {
-                action: 'Pyre Card',
+            this.log('PYRE', 'Pyre Card Played', {
                 cardName: data.card?.name,
-                amount: data.pyreGained,
-                total: data.owner === 'player' ? window.game?.playerPyre : window.game?.enemyPyre
+                pyreGained: data.pyreGained,
+                owner: data.owner
             });
         });
         
         // Draw events
         GameEvents.on('onCardDrawn', (data) => {
-            const hand = data.owner === 'player' ? window.game?.playerHand : window.game?.enemyHand;
             this.log('DRAW', 'Card Drawn', {
                 owner: data.owner,
-                count: 1,
-                handSize: hand?.length
+                handSize: data.handSize,
+                deckSize: data.deckSize,
+                source: data.source
             });
         });
         
-        // Promotion events
-        GameEvents.on('onPromote', (data) => {
-            this.log('PROMOTE', 'Promotion', {
+        // Promotion events (correct event name is onPromotion)
+        GameEvents.on('onPromotion', (data) => {
+            this.log('PROMOTE', 'Promoted to Combat', {
                 cardName: data.cryptid?.name,
+                owner: data.owner,
                 row: data.row,
-                fromSupport: true
+                fromCol: data.fromCol,
+                toCol: data.toCol
+            });
+        });
+        
+        GameEvents.on('onEnterCombat', (data) => {
+            this.log('ABILITY', 'Entered Combat', {
+                cardName: data.cryptid?.name,
+                owner: data.owner,
+                row: data.row,
+                source: data.source
             });
         });
         
@@ -675,37 +729,152 @@ const MatchLog = {
                 targetName: data.cryptid?.name,
                 status: data.status,
                 duration: data.duration,
-                stacks: data.stacks
+                stacks: data.count || data.tokens || data.charges,
+                refreshed: data.refreshed
             });
         });
         
         GameEvents.on('onStatusWearOff', (data) => {
             this.log('STATUS', 'Status Removed', {
                 targetName: data.cryptid?.name,
-                status: data.status,
-                removed: true
+                status: data.status
             });
         });
         
-        // Buff/Debuff events
-        GameEvents.on('onBuffApplied', (data) => {
-            this.log('BUFF', 'Buff Applied', {
+        // Burn damage
+        GameEvents.on('onBurnDamage', (data) => {
+            this.log('DAMAGE', 'Burn Damage', {
                 targetName: data.cryptid?.name,
-                buffType: data.type,
-                amount: data.amount,
-                source: data.source?.name,
-                newStats: { atk: data.cryptid?.currentAtk, hp: data.cryptid?.currentHp }
+                damage: data.damage,
+                turnsRemaining: data.turnsRemaining,
+                owner: data.owner
             });
         });
         
-        // Support ability triggers
-        GameEvents.on('onSupportAbility', (data) => {
-            this.log('SUPPORT', 'Support Effect', {
-                supportName: data.support?.name,
+        // Bleed damage
+        GameEvents.on('onBleedDamage', (data) => {
+            this.log('DAMAGE', 'Bleed Damage', {
                 targetName: data.target?.name,
-                supportCol: data.support?.col,
-                row: data.support?.row,
-                effect: data.effect
+                attackerName: data.attacker?.name,
+                owner: data.owner
+            });
+        });
+        
+        // Calamity
+        GameEvents.on('onCalamityTick', (data) => {
+            this.log('STATUS', 'Calamity Tick', {
+                targetName: data.cryptid?.name,
+                countersRemaining: data.countersRemaining,
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onCalamityDeath', (data) => {
+            this.log('DEATH', 'Calamity Death', {
+                targetName: data.cryptid?.name,
+                owner: data.owner
+            });
+        });
+        
+        // Protection
+        GameEvents.on('onProtectionBlock', (data) => {
+            this.log('ABILITY', 'Protection Blocked', {
+                targetName: data.target?.name,
+                attackerName: data.attacker?.name,
+                owner: data.owner
+            });
+        });
+        
+        // Damage reduction
+        GameEvents.on('onDamageReduced', (data) => {
+            this.log('ABILITY', 'Damage Reduced', {
+                targetName: data.target?.name,
+                originalDamage: data.originalDamage,
+                reducedTo: data.reducedTo,
+                source: data.source
+            });
+        });
+        
+        // Terrify (from trap)
+        GameEvents.on('onTerrify', (data) => {
+            this.log('TRAP', 'Terrify Triggered', {
+                trapName: data.trap?.name,
+                targetName: data.attacker?.name,
+                effect: 'ATK reduced to 0',
+                owner: data.owner
+            });
+        });
+        
+        // Latch
+        GameEvents.on('onLatch', (data) => {
+            this.log('ABILITY', 'Latch Applied', {
+                attackerName: data.attacker?.name,
+                targetName: data.target?.name,
+                attackerOwner: data.attackerOwner,
+                targetOwner: data.targetOwner
+            });
+        });
+        
+        // Cleave damage
+        GameEvents.on('onCleaveDamage', (data) => {
+            this.log('ABILITY', 'Cleave Damage', {
+                attackerName: data.attacker?.name,
+                targetName: data.target?.name,
+                damage: data.damage
+            });
+        });
+        
+        // Destroyer damage
+        GameEvents.on('onDestroyerDamage', (data) => {
+            this.log('ABILITY', 'Destroyer Damage', {
+                sourceName: data.source?.name,
+                targetName: data.target?.name,
+                damage: data.damage,
+                sourceOwner: data.sourceOwner,
+                targetOwner: data.targetOwner
+            });
+        });
+        
+        // Multi-attack
+        GameEvents.on('onMultiAttackDamage', (data) => {
+            this.log('ABILITY', 'Multi-Attack Damage', {
+                attackerName: data.attacker?.name,
+                targetName: data.target?.name,
+                damage: data.damage
+            });
+        });
+        
+        // Cleanse
+        GameEvents.on('onCleanse', (data) => {
+            this.log('ABILITY', 'Cleanse', {
+                targetName: data.cryptid?.name,
+                statusesRemoved: data.count,
+                owner: data.owner
+            });
+        });
+        
+        // Snipe
+        GameEvents.on('onSnipeReveal', (data) => {
+            this.log('ABILITY', 'Snipe Revealed', {
+                cardName: data.cryptid?.name,
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onSnipeDamage', (data) => {
+            this.log('ABILITY', 'Snipe Damage', {
+                sourceName: data.source?.name,
+                targetName: data.target?.name,
+                damage: data.damage
+            });
+        });
+        
+        // Pyre Burn
+        GameEvents.on('onPyreBurn', (data) => {
+            this.log('ABILITY', 'Pyre Burn', {
+                owner: data.owner,
+                pyreGained: data.pyreGained,
+                cardsDrawn: data.cardsDrawn
             });
         });
         
@@ -713,17 +882,165 @@ const MatchLog = {
         GameEvents.on('onTap', (data) => {
             this.log('STATUS', 'Tapped', {
                 targetName: data.cryptid?.name,
-                status: 'TAPPED',
-                reason: data.reason
+                reason: data.reason,
+                owner: data.owner
             });
         });
         
         GameEvents.on('onUntap', (data) => {
             this.log('STATUS', 'Untapped', {
                 targetName: data.cryptid?.name,
-                status: 'UNTAPPED',
-                removed: true
+                reason: data.reason,
+                owner: data.owner
             });
+        });
+        
+        // Targeted (for spells/attacks)
+        GameEvents.on('onTargeted', (data) => {
+            this.log('ABILITY', 'Targeted', {
+                targetName: data.target?.name,
+                sourceName: data.source?.name,
+                sourceType: data.sourceType,
+                targetOwner: data.targetOwner
+            });
+        });
+        
+        // Card callbacks (ability triggers)
+        GameEvents.on('onCardCallback', (data) => {
+            const card = data.card;
+            const owner = data.owner;
+            const type = data.type;
+            const col = data.col;
+            const row = data.row;
+            const reason = data.reason || '';
+            const combatant = data.combatant;
+            
+            let details = {
+                cardName: card?.name,
+                owner: owner,
+                col: col,
+                row: row,
+                callbackType: type
+            };
+            
+            if (reason) details.reason = reason;
+            if (combatant) details.combatant = combatant?.name;
+            if (data.target) details.target = data.target?.name;
+            if (data.isKindling) details.isKindling = true;
+            
+            // Create descriptive text based on callback type
+            let description = '';
+            switch(type) {
+                case 'onSummon':
+                    description = `Summon Callback`;
+                    break;
+                case 'onSupport':
+                    description = reason ? `Support Ability (${reason})` : 'Support Ability Activated';
+                    break;
+                case 'onCombat':
+                    description = reason ? `Combat Ability (${reason})` : 'Combat Ability Activated';
+                    break;
+                case 'onEnterCombat':
+                    description = reason ? `Enter Combat Ability (${reason})` : 'Enter Combat Ability';
+                    break;
+                case 'onCombatAttack':
+                    description = 'Combat Attack Ability';
+                    break;
+                case 'onCombatantBeforeAttack':
+                    description = `Before Attack Ability`;
+                    break;
+                case 'onCombatantAttacked':
+                    description = `Combatant Attacked Ability`;
+                    break;
+                case 'onCombatantDeath':
+                    description = `Combatant Death Ability`;
+                    break;
+                case 'onCombatantRest':
+                    description = `Combatant Rest Ability`;
+                    break;
+                case 'onTurnStart':
+                    description = 'Turn Start Ability';
+                    break;
+                case 'onTurnStartSupport':
+                    description = 'Support Turn Start Ability';
+                    break;
+                case 'onTurnEnd':
+                    description = 'Turn End Ability';
+                    break;
+                case 'onDeath':
+                    description = 'Death Ability';
+                    break;
+                case 'onKill':
+                    description = 'Kill Ability';
+                    if (data.victim) details.victim = data.victim?.name;
+                    if (data.isMultiAttack) details.isMultiAttack = true;
+                    break;
+                case 'onEnemySummonedAcross':
+                    description = 'Enemy Summoned Across Ability';
+                    if (data.triggerCryptid) details.triggerCryptid = data.triggerCryptid?.name;
+                    break;
+                case 'onBeforeAttack':
+                    description = 'Before Attack Ability';
+                    if (data.target) details.target = data.target?.name;
+                    break;
+                case 'onBeforeDefend':
+                    description = 'Before Defend Ability';
+                    if (data.attacker) details.attacker = data.attacker?.name;
+                    break;
+                case 'onTakeDamage':
+                    description = 'Take Damage Ability';
+                    if (data.attacker) details.attacker = data.attacker?.name;
+                    if (data.damage !== undefined) details.damage = data.damage;
+                    break;
+                case 'onApply':
+                    description = 'Aura Apply Callback';
+                    if (data.target) details.target = data.target?.name;
+                    break;
+                default:
+                    description = type;
+            }
+            
+            this.log('CALLBACK', description, details);
+        });
+        
+        // Activated abilities (player-triggered)
+        GameEvents.on('onActivatedAbility', (data) => {
+            const card = data.card;
+            const ability = data.ability;
+            const owner = data.owner;
+            
+            let details = {
+                cardName: card?.name,
+                owner: owner,
+                ability: ability,
+                col: data.col,
+                row: data.row
+            };
+            
+            if (data.target) details.target = data.target?.name;
+            if (data.targetRow !== undefined) details.targetRow = data.targetRow;
+            if (data.swapTarget) details.swapTarget = data.swapTarget?.name;
+            if (data.willKill) details.willKill = true;
+            
+            let description = '';
+            switch(ability) {
+                case 'bloodPact':
+                    description = 'Blood Pact Activated';
+                    break;
+                case 'sacrifice':
+                    description = 'Sacrifice Activated';
+                    break;
+                case 'thermalSwap':
+                    description = 'Thermal Swap Activated';
+                    break;
+                case 'rageHeal':
+                    description = 'Rage Heal Activated';
+                    break;
+                default:
+                    description = `${ability} Activated`;
+            }
+            
+            this.log('ACTIVATED', description, details);
         });
         
         console.log('[MatchLog] Subscribed to game events');
@@ -2485,6 +2802,7 @@ class Game {
         }
         // Call onApply callback if it exists
         if (auraCard.onApply) {
+            GameEvents.emit('onCardCallback', { type: 'onApply', card: auraCard, owner: cryptid.owner, target: cryptid, col: cryptid.col, row: cryptid.row });
             auraCard.onApply(auraCard, cryptid, this);
         }
         GameEvents.emit('onAuraApplied', { cryptid, aura: auraCard, owner: cryptid.owner });
@@ -2640,19 +2958,32 @@ class Game {
         };
         field[col][row] = cryptid;
         
-        if (cryptid.onSummon) cryptid.onSummon(cryptid, owner, this);
-        if (col === supportCol && cryptid.onSupport) cryptid.onSupport(cryptid, owner, this);
+        if (cryptid.onSummon) {
+            GameEvents.emit('onCardCallback', { type: 'onSummon', card: cryptid, owner, col, row });
+            cryptid.onSummon(cryptid, owner, this);
+        }
+        if (col === supportCol && cryptid.onSupport) {
+            GameEvents.emit('onCardCallback', { type: 'onSupport', card: cryptid, owner, col, row });
+            cryptid.onSupport(cryptid, owner, this);
+        }
         GameEvents.emit('onSummon', { owner, cryptid, col, row, isSupport: col === supportCol, isKindling: cardData.isKindling || false });
         
         // Trigger onEnterCombat if summoned to combat position
         if (col === combatCol) {
-            if (cryptid.onCombat) cryptid.onCombat(cryptid, owner, this);
-            if (cryptid.onEnterCombat) cryptid.onEnterCombat(cryptid, owner, this);
+            if (cryptid.onCombat) {
+                GameEvents.emit('onCardCallback', { type: 'onCombat', card: cryptid, owner, col, row });
+                cryptid.onCombat(cryptid, owner, this);
+            }
+            if (cryptid.onEnterCombat) {
+                GameEvents.emit('onCardCallback', { type: 'onEnterCombat', card: cryptid, owner, col, row });
+                cryptid.onEnterCombat(cryptid, owner, this);
+            }
             GameEvents.emit('onEnterCombat', { cryptid, owner, row, source: 'summon' });
             
             // Re-apply support abilities from support in same row (e.g., Shadow Person's noTapOnAttack)
             const existingSupport = this.getFieldCryptid(owner, supportCol, row);
             if (existingSupport?.onSupport && !this.isSupportNegated(existingSupport)) {
+                GameEvents.emit('onCardCallback', { type: 'onSupport', card: existingSupport, owner, col: supportCol, row, reason: 'combatantSummoned', combatant: cryptid });
                 existingSupport.onSupport(existingSupport, owner, this);
             }
             
@@ -2662,6 +2993,7 @@ class Game {
             const enemyField = enemyOwner === 'player' ? this.playerField : this.enemyField;
             const enemyAcross = enemyField[enemyCombatCol][row];
             if (enemyAcross?.onEnemySummonedAcross) {
+                GameEvents.emit('onCardCallback', { type: 'onEnemySummonedAcross', card: enemyAcross, owner: enemy, col: enemyCombatCol, row, triggerCryptid: cryptid });
                 enemyAcross.onEnemySummonedAcross(enemyAcross, cryptid, this);
             }
         }
@@ -2707,12 +3039,14 @@ class Game {
         
         // onBeforeAttack hook - can modify attacker or remove target's protection/auras
         if (attacker.onBeforeAttack) {
+            GameEvents.emit('onCardCallback', { type: 'onBeforeAttack', card: attacker, owner: attacker.owner, target, col: attacker.col, row: attacker.row });
             attacker.onBeforeAttack(attacker, target, this);
         }
         
         // Check if support has onCombatantBeforeAttack (for effects like Mothman's calamity)
         const support = this.getSupport(attacker);
         if (support?.onCombatantBeforeAttack && !this.isSupportNegated(support)) {
+            GameEvents.emit('onCardCallback', { type: 'onCombatantBeforeAttack', card: support, owner: attacker.owner, combatant: attacker, target, col: support.col, row: support.row });
             support.onCombatantBeforeAttack(support, attacker, target, this);
         }
         
@@ -2737,6 +3071,7 @@ class Game {
         
         // onBeforeDefend callback - triggers before damage (e.g., Deer Woman pyre generation)
         if (target.onBeforeDefend) {
+            GameEvents.emit('onCardCallback', { type: 'onBeforeDefend', card: target, owner: target.owner, attacker, col: target.col, row: target.row });
             target.onBeforeDefend(target, attacker, this);
         }
         
@@ -2770,6 +3105,7 @@ class Game {
         // Check if target's support has onCombatantAttacked callback
         const targetSupport = this.getSupport(target);
         if (targetSupport?.onCombatantAttacked && !this.isSupportNegated(targetSupport)) {
+            GameEvents.emit('onCardCallback', { type: 'onCombatantAttacked', card: targetSupport, owner: target.owner, combatant: target, attacker, col: targetSupport.col, row: targetSupport.row });
             targetSupport.onCombatantAttacked(targetSupport, target, attacker, this);
         }
         
@@ -2777,7 +3113,10 @@ class Game {
         // This prevents double-buffing while keeping the effect timing correct
         
         let damage = this.calculateAttackDamage(attacker);
-        if (attacker.onCombatAttack) damage += attacker.onCombatAttack(attacker, target, this) || 0;
+        if (attacker.onCombatAttack) {
+            GameEvents.emit('onCardCallback', { type: 'onCombatAttack', card: attacker, owner: attacker.owner, target, col: attacker.col, row: attacker.row });
+            damage += attacker.onCombatAttack(attacker, target, this) || 0;
+        }
         damage += this.getAuraAttackBonus(attacker, target);
         if (target.paralyzed && attacker.bonusVsParalyzed) damage += attacker.bonusVsParalyzed;
         if (attacker.bonusVsAilment && this.hasStatusAilment(target)) damage += attacker.bonusVsAilment;
@@ -2845,6 +3184,7 @@ class Game {
             
             // onTakeDamage callback on target
             if (target.onTakeDamage) {
+                GameEvents.emit('onCardCallback', { type: 'onTakeDamage', card: target, owner: target.owner, attacker, damage, col: target.col, row: target.row });
                 target.onTakeDamage(target, attacker, damage, this);
             }
             
@@ -2891,7 +3231,10 @@ class Game {
                         supportTarget.killedBy = 'cleave';
                         supportTarget.killedBySource = attacker;
                         this.killCryptid(supportTarget, attacker.owner);
-                        if (attacker.onKill) attacker.onKill(attacker, supportTarget, this);
+                        if (attacker.onKill) {
+                            GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: supportTarget, col: attacker.col, row: attacker.row });
+                            attacker.onKill(attacker, supportTarget, this);
+                        }
                         GameEvents.emit('onKill', { killer: attacker, victim: supportTarget, killerOwner: attacker.owner, victimOwner: targetOwner });
                     }
                 }
@@ -2916,7 +3259,10 @@ class Game {
                         combatTarget.killedBy = 'cleave';
                         combatTarget.killedBySource = attacker;
                         this.killCryptid(combatTarget, attacker.owner);
-                        if (attacker.onKill) attacker.onKill(combatTarget, this);
+                        if (attacker.onKill) {
+                            GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: combatTarget, col: attacker.col, row: attacker.row });
+                            attacker.onKill(combatTarget, this);
+                        }
                         GameEvents.emit('onKill', { killer: attacker, victim: combatTarget, killerOwner: attacker.owner, victimOwner: targetOwner });
                     }
                 }
@@ -2936,7 +3282,10 @@ class Game {
             const overkillDamage = Math.abs(target.currentHp);
             
             this.killCryptid(target, attacker.owner);
-            if (attacker.onKill) attacker.onKill(attacker, target, this);
+            if (attacker.onKill) {
+                GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: target, col: attacker.col, row: attacker.row });
+                attacker.onKill(attacker, target, this);
+            }
             GameEvents.emit('onKill', { killer: attacker, victim: target, killerOwner: attacker.owner, victimOwner: targetOwner });
             
             // Heal on kill (Zombie support, etc.)
@@ -3042,7 +3391,10 @@ class Game {
                     if (otherTarget.currentHp <= 0) {
                         otherTarget.killedBy = 'multiAttack';
                         this.killCryptid(otherTarget, attacker.owner);
-                        if (attacker.onKill) attacker.onKill(attacker, otherTarget, this);
+                        if (attacker.onKill) {
+                            GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: otherTarget, col: attacker.col, row: attacker.row, isMultiAttack: true });
+                            attacker.onKill(attacker, otherTarget, this);
+                        }
                     }
                 }
             }
@@ -3058,7 +3410,10 @@ class Game {
         if (owner === 'player') this.playerDeathCount = (this.playerDeathCount || 0);
         else this.enemyDeathCount = (this.enemyDeathCount || 0);
         
-        if (cryptid.onDeath) cryptid.onDeath(cryptid, this);
+        if (cryptid.onDeath) {
+            GameEvents.emit('onCardCallback', { type: 'onDeath', card: cryptid, owner, col, row });
+            cryptid.onDeath(cryptid, this);
+        }
         
         // Check if death was prevented (e.g., Wendigo ascension)
         if (cryptid.preventDeath) {
@@ -3144,6 +3499,7 @@ class Game {
             if (support) {
                 // Call onCombatantDeath hook on support BEFORE promotion (for Sewer Alligator, etc.)
                 if (support.onCombatantDeath) {
+                    GameEvents.emit('onCardCallback', { type: 'onCombatantDeath', card: support, owner, combatant: cryptid, col: support.col, row });
                     support.onCombatantDeath(support, cryptid, this);
                 }
                 GameEvents.emit('onCombatantDeath', { combatant: cryptid, support, owner, row });
@@ -3156,9 +3512,11 @@ class Game {
                 
                 // Trigger onCombat and onEnterCombat callbacks
                 if (support.onCombat) {
+                    GameEvents.emit('onCardCallback', { type: 'onCombat', card: support, owner, col: combatCol, row, reason: 'promotion' });
                     support.onCombat(support, owner, this);
                 }
                 if (support.onEnterCombat) {
+                    GameEvents.emit('onCardCallback', { type: 'onEnterCombat', card: support, owner, col: combatCol, row, reason: 'promotion' });
                     support.onEnterCombat(support, owner, this);
                 }
                 GameEvents.emit('onEnterCombat', { cryptid: support, owner, row, source: 'promotion' });
@@ -3240,19 +3598,29 @@ class Game {
         this.setFieldCryptid(owner, col, row, evolved);
         
         // Call onSummon and position callbacks
-        if (evolved.onSummon) evolved.onSummon(evolved, owner, this);
+        if (evolved.onSummon) {
+            GameEvents.emit('onCardCallback', { type: 'onSummon', card: evolved, owner, col, row, reason: 'evolution' });
+            evolved.onSummon(evolved, owner, this);
+        }
         const combatCol = this.getCombatCol(owner);
         const supportCol = this.getSupportCol(owner);
         if (col === combatCol) {
-            if (evolved.onCombat) evolved.onCombat(evolved, owner, this);
+            if (evolved.onCombat) {
+                GameEvents.emit('onCardCallback', { type: 'onCombat', card: evolved, owner, col, row, reason: 'evolution' });
+                evolved.onCombat(evolved, owner, this);
+            }
             
             // Re-apply support abilities from support in same row (e.g., Shadow Person's noTapOnAttack)
             const existingSupport = this.getFieldCryptid(owner, supportCol, row);
             if (existingSupport?.onSupport && !this.isSupportNegated(existingSupport)) {
+                GameEvents.emit('onCardCallback', { type: 'onSupport', card: existingSupport, owner, col: supportCol, row, reason: 'combatantEvolved', combatant: evolved });
                 existingSupport.onSupport(existingSupport, owner, this);
             }
         }
-        if (col === supportCol && evolved.onSupport) evolved.onSupport(evolved, owner, this);
+        if (col === supportCol && evolved.onSupport) {
+            GameEvents.emit('onCardCallback', { type: 'onSupport', card: evolved, owner, col, row, reason: 'evolution' });
+            evolved.onSupport(evolved, owner, this);
+        }
         
         GameEvents.emit('onEvolution', { 
             cryptid: evolved, 
@@ -3343,16 +3711,26 @@ class Game {
         };
         this.setFieldCryptid(owner, col, row, cryptid);
         
-        if (cryptid.onSummon) cryptid.onSummon(cryptid, owner, this);
-        if (col === supportCol && cryptid.onSupport) cryptid.onSupport(cryptid, owner, this);
+        if (cryptid.onSummon) {
+            GameEvents.emit('onCardCallback', { type: 'onSummon', card: cryptid, owner, col, row, isKindling: true });
+            cryptid.onSummon(cryptid, owner, this);
+        }
+        if (col === supportCol && cryptid.onSupport) {
+            GameEvents.emit('onCardCallback', { type: 'onSupport', card: cryptid, owner, col, row, isKindling: true });
+            cryptid.onSupport(cryptid, owner, this);
+        }
         // Trigger onCombat when entering combat position
         if (col === combatCol) {
-            if (cryptid.onCombat) cryptid.onCombat(cryptid, owner, this);
+            if (cryptid.onCombat) {
+                GameEvents.emit('onCardCallback', { type: 'onCombat', card: cryptid, owner, col, row, isKindling: true });
+                cryptid.onCombat(cryptid, owner, this);
+            }
             GameEvents.emit('onEnterCombat', { cryptid, owner, row, source: 'summon' });
             
             // Re-apply support abilities from support in same row (e.g., Shadow Person's noTapOnAttack)
             const existingSupport = this.getFieldCryptid(owner, supportCol, row);
             if (existingSupport?.onSupport && !this.isSupportNegated(existingSupport)) {
+                GameEvents.emit('onCardCallback', { type: 'onSupport', card: existingSupport, owner, col: supportCol, row, reason: 'kindlingSummoned', combatant: cryptid });
                 existingSupport.onSupport(existingSupport, owner, this);
             }
         }
@@ -3514,12 +3892,16 @@ class Game {
         const supportCol = this.getSupportCol(owner);
         const combatCol = this.getCombatCol(owner);
         
-        if (col === supportCol && evolved.onSupport) evolved.onSupport(evolved, owner, this);
+        if (col === supportCol && evolved.onSupport) {
+            GameEvents.emit('onCardCallback', { type: 'onSupport', card: evolved, owner, col, row, reason: 'kindlingEvolution' });
+            evolved.onSupport(evolved, owner, this);
+        }
         
         // Re-apply support abilities if evolved cryptid is in combat
         if (col === combatCol) {
             const existingSupport = this.getFieldCryptid(owner, supportCol, row);
             if (existingSupport?.onSupport && !this.isSupportNegated(existingSupport)) {
+                GameEvents.emit('onCardCallback', { type: 'onSupport', card: existingSupport, owner, col: supportCol, row, reason: 'kindlingEvolved', combatant: evolved });
                 existingSupport.onSupport(existingSupport, owner, this);
             }
         }
@@ -3622,6 +4004,7 @@ class Game {
                         cryptid.rested = true;
                         const support = field[supportCol][r];
                         if (support?.onCombatantRest) {
+                            GameEvents.emit('onCardCallback', { type: 'onCombatantRest', card: support, owner, combatant: cryptid, col: supportCol, row: r });
                             support.onCombatantRest(support, cryptid, this);
                         }
                     } else {
@@ -3679,12 +4062,14 @@ class Game {
                     
                     // Call cryptid's onTurnStart callback (Elder Vampire Undying, etc.)
                     if (cryptid.onTurnStart) {
+                        GameEvents.emit('onCardCallback', { type: 'onTurnStart', card: cryptid, owner, col: c, row: r });
                         cryptid.onTurnStart(cryptid, owner, this);
                     }
                     
                     // Call onTurnStartSupport for supports (Hellhound Pup regen, etc.)
                     // Note: supportCol is already defined in outer scope (line 3109)
                     if (c === supportCol && cryptid.onTurnStartSupport) {
+                        GameEvents.emit('onCardCallback', { type: 'onTurnStartSupport', card: cryptid, owner, col: c, row: r });
                         cryptid.onTurnStartSupport(cryptid, owner, this);
                     }
                 }
@@ -3784,6 +4169,7 @@ class Game {
             const support = field[supportCol][r];
             if (support?.onSupport && !this.isSupportNegated(support)) {
                 console.log('[applyAllSupportAbilities] Calling onSupport for', support.name, 'row:', r);
+                GameEvents.emit('onCardCallback', { type: 'onSupport', card: support, owner, col: supportCol, row: r, reason: 'applyAllSupportAbilities' });
                 support.onSupport(support, owner, this);
             }
         }
@@ -3851,6 +4237,7 @@ class Game {
             for (let r = 0; r < 3; r++) {
                 const cryptid = currentPlayerField[c][r];
                 if (cryptid?.onTurnEnd) {
+                    GameEvents.emit('onCardCallback', { type: 'onTurnEnd', card: cryptid, owner: currentPlayer, col: c, row: r });
                     cryptid.onTurnEnd(cryptid, currentPlayer, this);
                 }
             }
@@ -7164,6 +7551,8 @@ function showCryptidTooltip(cryptid, col, row, owner) {
         sacrificeBtn.onclick = (e) => {
             e.stopPropagation();
             if (cryptid.activateSacrifice) {
+                const combatant = game.getCombatant(cryptid);
+                GameEvents.emit('onActivatedAbility', { ability: 'sacrifice', card: cryptid, owner, col: cryptid.col, row: cryptid.row, target: combatant });
                 cryptid.activateSacrifice(cryptid, game);
                 hideTooltip();
                 // Delay renderAll for death animation + promotion animation + buffer
@@ -7201,6 +7590,7 @@ function showCryptidTooltip(cryptid, col, row, owner) {
                     window.Multiplayer.actionActivateAbility('bloodPact', cryptid.col, cryptid.row);
                 }
                 
+                GameEvents.emit('onActivatedAbility', { ability: 'bloodPact', card: cryptid, owner, col: cryptid.col, row: cryptid.row, target: combatant, willKill });
                 cryptid.activateBloodPact(cryptid, game);
                 hideTooltip();
                 
@@ -7253,6 +7643,8 @@ function showCryptidTooltip(cryptid, col, row, owner) {
                     if (game.isMultiplayer && typeof window.Multiplayer !== 'undefined' && !window.Multiplayer.processingOpponentAction) {
                         window.Multiplayer.actionActivateAbility('thermalSwap', cryptid.col, cryptid.row, { targetRow });
                     }
+                    const swapTarget = field[supportCol][targetRow];
+                    GameEvents.emit('onActivatedAbility', { ability: 'thermalSwap', card: cryptid, owner, col: cryptid.col, row: cryptid.row, targetRow, swapTarget });
                     cryptid.activateThermal(cryptid, game, targetRow);
                     hideTooltip();
                     renderAll();
@@ -7284,6 +7676,7 @@ function showCryptidTooltip(cryptid, col, row, owner) {
                     if (game.isMultiplayer && typeof window.Multiplayer !== 'undefined' && !window.Multiplayer.processingOpponentAction) {
                         window.Multiplayer.actionActivateAbility('rageHeal', cryptid.col, cryptid.row);
                     }
+                    GameEvents.emit('onActivatedAbility', { ability: 'rageHeal', card: cryptid, owner, col: cryptid.col, row: cryptid.row });
                     cryptid.activateRageHeal(cryptid, game);
                     hideTooltip();
                     renderAll();
