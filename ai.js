@@ -335,13 +335,20 @@ function aiCombat(onComplete) {
             target.col = playerCombatCol;
             target.owner = 'player';
         } else {
-            // Position is empty
+            // Position is empty - check if we should skip to another target or force summon
+            // ONLY force kindling summon if the ENTIRE field is empty
+            if (!game.isFieldEmpty('player')) {
+                // Player still has cryptids elsewhere - skip this attack and find another target
+                processNextAttack(index + 1);
+                return;
+            }
             target.cryptid = null;
             target.isEmptyTarget = true;
         }
         
         // Now determine if we need auto-summon based on CURRENT state
-        let needsAutoSummon = target.isEmptyTarget && game.playerKindling.length > 0;
+        // Only auto-summon if field is completely empty
+        let needsAutoSummon = target.isEmptyTarget && game.isFieldEmpty('player') && game.playerKindling.length > 0;
         
         // Apply pre-attack buffs (like Insatiable Hunger) before attack animation
         const applyPreAttackBuffs = (callback) => {
@@ -440,16 +447,16 @@ function aiCombat(onComplete) {
             const damage = result.damage || 0;
             const isCrit = damage >= 5;
             
-            // Screen shake scales with damage
-            CombatEffects.heavyImpact(damage);
+            // Screen shake scales with damage (still some feedback even for 0 damage)
+            CombatEffects.heavyImpact(Math.max(damage, 1));
             
             // Impact flash and particles
             CombatEffects.createImpactFlash(impactX, impactY, 80 + damage * 10);
             CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
             CombatEffects.createImpactParticles(impactX, impactY, result.killed ? '#ff2222' : '#ff6666', 8 + damage);
             
-            // Show damage number
-            if (result.target && damage > 0) {
+            // Show damage number (show 0 for 0-damage attacks too)
+            if (result.target) {
                 CombatEffects.showDamageNumber(result.target, damage, isCrit);
             }
         }

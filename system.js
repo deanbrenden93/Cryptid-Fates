@@ -2720,7 +2720,7 @@ async function playAbilityAnimation(effect) {
 
 // Show floating damage number
 function showFloatingDamage(target, damage) {
-    if (!target || !damage) return;
+    if (!target || damage === undefined || damage === null) return;
     
     const key = `${target.owner}-${target.col}-${target.row}`;
     const pos = window.tilePositions?.[key];
@@ -2779,17 +2779,22 @@ function getElementIcon(element) {
     return icons[element] || '';
 }
 
-function renderSprite(sprite, isFieldSprite = false, spriteScale = null, cardSpriteScale = null) {
+function renderSprite(sprite, isFieldSprite = false, spriteScale = null, cardSpriteScale = null, spriteFlip = false) {
     if (sprite && (sprite.startsWith('sprites/') || sprite.startsWith('http'))) {
         const sizeClass = isFieldSprite ? 'sprite-img field-sprite-img' : 'sprite-img';
         // Use spriteScale for field, cardSpriteScale for card art (both default to 1.0)
-        let scaleStyle = '';
+        // spriteFlip applies horizontal flip via scaleX(-1)
+        const transforms = [];
         if (isFieldSprite && spriteScale && spriteScale !== 1) {
-            scaleStyle = ` style="transform: scale(${spriteScale})"`;
+            transforms.push(`scale(${spriteScale})`);
         } else if (!isFieldSprite && cardSpriteScale && cardSpriteScale !== 1) {
-            scaleStyle = ` style="transform: scale(${cardSpriteScale})"`;
+            transforms.push(`scale(${cardSpriteScale})`);
         }
-        return `<img src="${sprite}" class="${sizeClass}"${scaleStyle} alt="" draggable="false">`;
+        if (spriteFlip) {
+            transforms.push('scaleX(-1)');
+        }
+        const styleAttr = transforms.length > 0 ? ` style="transform: ${transforms.join(' ')}"` : '';
+        return `<img src="${sprite}" class="${sizeClass}"${styleAttr} alt="" draggable="false">`;
     }
     return sprite || '?';
 }
@@ -4308,6 +4313,7 @@ class Game {
         // Track deaths this turn for Rat King pyre card
         this.deathsThisTurn[owner] += deathCount;
         
+        console.log('[Death] Emitting onDeath for', cryptid.name, 'killedBy:', cryptid.killedBy);
         GameEvents.emit('onDeath', { cryptid, owner, col, row, killerOwner, deathCount });
         
         // Skinwalker inherit - if combatant dies, check if support has hasInherit
@@ -4848,6 +4854,7 @@ class Game {
             }
             const calamityDeaths = this.processCalamity(owner);
             for (const death of calamityDeaths) {
+                console.log('[Calamity] Killing', death.cryptid.name, 'due to calamity');
                 death.cryptid.killedBy = 'calamity';
                 this.killCryptid(death.cryptid, null);
             }
@@ -5016,6 +5023,8 @@ class Game {
                 GameEvents.emit('onCalamityTick', { cryptid, owner: effect.owner, countersRemaining: cryptid.calamityCounters });
                 if (cryptid.calamityCounters <= 0) {
                     GameEvents.emit('onCalamityDeath', { cryptid, owner: effect.owner });
+                    // Set killedBy BEFORE calling killCryptid so Mothman's Harbinger can detect it
+                    cryptid.killedBy = 'calamity';
                     const killResult = this.killCryptid(cryptid, null);
                     if (killResult !== null) {
                         return { died: true, cryptid };
@@ -5652,10 +5661,10 @@ function renderSprites() {
                         }
                     }
                     
-                    let html = `<span class="sprite">${renderSprite(cryptid.sprite, true, cryptid.spriteScale)}</span>`;
+                    let html = `<span class="sprite">${renderSprite(cryptid.sprite, true, cryptid.spriteScale, null, cryptid.spriteFlip)}</span>`;
                     // Show hidden indicator for own hidden cryptids
                     if (cryptid.isHidden && owner === 'player') {
-                        html = `<span class="sprite hidden-own">${renderSprite(cryptid.sprite, true, cryptid.spriteScale)}<span class="hidden-badge">👁️</span></span>`;
+                        html = `<span class="sprite hidden-own">${renderSprite(cryptid.sprite, true, cryptid.spriteScale, null, cryptid.spriteFlip)}<span class="hidden-badge">👁️</span></span>`;
                     }
                     
                     // Calculate HP percentage for the arc
@@ -5954,7 +5963,7 @@ function renderHand() {
         cardEl.innerHTML = `
             <span class="gc-cost">${card.cost}</span>
             <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-            <div class="gc-art">${renderSprite(card.sprite, false, null, card.cardSpriteScale)}</div>
+            <div class="gc-art">${renderSprite(card.sprite, false, null, card.cardSpriteScale, card.spriteFlip)}</div>
             <div class="gc-stats">${statsHTML}</div>
             <div class="gc-card-type">${cardTypeLabel}</div>
             ${abilityBoxes}
@@ -6091,7 +6100,7 @@ function renderHandAnimated() {
         cardEl.innerHTML = `
             <span class="gc-cost">${card.cost}</span>
             <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-            <div class="gc-art">${renderSprite(card.sprite, false, null, card.cardSpriteScale)}</div>
+            <div class="gc-art">${renderSprite(card.sprite, false, null, card.cardSpriteScale, card.spriteFlip)}</div>
             <div class="gc-stats">${statsHTML}</div>
             <div class="gc-card-type">${cardTypeLabel}</div>
             ${abilityBoxes}
@@ -6368,6 +6377,21 @@ function updateHandIndicators() {
     if (discardEl) {
         discardEl.textContent = discardCount;
     }
+    
+    // Update hand centering based on scroll need
+    updateHandCentering();
+}
+
+// Toggle centered class based on whether hand needs scrolling
+function updateHandCentering() {
+    const container = document.getElementById('hand-container');
+    if (!container) return;
+    
+    // Use requestAnimationFrame to ensure layout is calculated
+    requestAnimationFrame(() => {
+        const needsScroll = container.scrollWidth > container.clientWidth;
+        container.classList.toggle('centered', !needsScroll);
+    });
 }
 
 function updateKindlingButton() {
@@ -7474,16 +7498,16 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         const damage = result.damage || 0;
         const isCrit = damage >= 5;
         
-        // Screen shake scales with damage
-        CombatEffects.heavyImpact(damage);
+        // Screen shake scales with damage (still some feedback even for 0 damage)
+        CombatEffects.heavyImpact(Math.max(damage, 1));
         
         // Impact flash and particles
         CombatEffects.createImpactFlash(impactX, impactY, 80 + damage * 10);
         CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
         CombatEffects.createImpactParticles(impactX, impactY, result.killed ? '#ff2222' : '#ff6666', 8 + damage);
         
-        // Show damage number
-        if (result.target && damage > 0) {
+        // Show damage number (show 0 for 0-damage attacks too)
+        if (result.target) {
             CombatEffects.showDamageNumber(result.target, damage, isCrit);
         }
     }

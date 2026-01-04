@@ -541,16 +541,17 @@ window.CheatMode = {
     
     // ==================== CARD MANAGEMENT ====================
     
+    // Card series mappings - use actual registered card keys
     cardSeries: {
         'city-of-flesh': {
-            cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'vampireInitiate', 'elderVampire', 
-                       'sewerAlligator', 'kuchisakeOnna', 'hellhound', 'mothman', 'bogeyman', 
-                       'theFlayer', 'mutatedRat'],
+            cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'sewerAlligator', 'kuchisakeOnna', 
+                       'hellhound', 'mothman', 'bogeyman', 'theFlayer', 'mutatedRat',
+                       'vampireInitiate', 'elderVampire'],
             kindling: ['myling', 'shadowPerson', 'hellhoundPup', 'elDuende', 'boggart'],
-            pyres: ['ratKing', 'bloodMoon', 'infernalRitual'],
-            traps: ['soulSnare', 'mirrorTrap', 'faceOff'],
-            bursts: ['exsanguinate', 'mindShatter', 'corpseExplosion'],
-            auras: ['bloodPact', 'darkAura', 'chainedSoul']
+            pyres: ['pyre', 'freshKill', 'ratKing', 'nightfall'],
+            traps: ['crossroads', 'bloodCovenant', 'turnToStone'],
+            bursts: ['wakingNightmare', 'faceOff'],
+            auras: ['antiVampiricBlade']
         },
         'forests-of-fear': {
             cryptids: ['matureWendigo', 'primalWendigo', 'thunderbird', 'snipe', 'adultBigfoot', 
@@ -563,23 +564,23 @@ window.CheatMode = {
             auras: ['dauntingPresence', 'sproutWings', 'weaponizedTree', 'insatiableHunger']
         },
         'putrid-swamp': {
-            cryptids: ['swampRat', 'plagueRat', 'bayouSprite', 'haint', 'letiche', 
-                       'ignisFatuus', 'swampHag', 'effigy', 'booHag', 'revenant',
-                       'rougarou', 'swampStalker', 'mamaBrigitte', 'draugrLord', 'baronSamedi'],
-            kindling: ['voodooDoll', 'spiritFire', 'willOWisp'],
-            pyres: ['swampGas', 'ritualSacrifice', 'toxicMiasma'],
-            traps: ['quicksand', 'venomTrap', 'curseWard'],
-            bursts: ['hexBolt', 'soulDrain', 'plagueCloud'],
-            auras: ['toxicAura', 'spiritLink', 'deathMark']
+            cryptids: ['zombie', 'crawfishHorror', 'letiche', 'haint', 'ignisFatuus', 'plagueRat',
+                       'swampHag', 'effigy', 'platEye', 'spiritFire', 'booHag', 'revenant',
+                       'rougarou', 'swampStalker', 'mamaBrigitte', 'loupGarou', 'draugrLord', 
+                       'baronSamedi', 'honeyIslandMonster'],
+            kindling: ['feuFollet', 'swampRat', 'bayouSprite', 'voodooDoll', 'platEyePup'],
+            pyres: ['grisGrisBag', 'swampGas'],
+            traps: ['hungryGround'],
+            bursts: ['hexCurse'],
+            auras: ['curseVessel']
         },
         'abhorrent-armory': {
-            cryptids: ['hauntedArmor', 'cursedBlade', 'phantomKnight', 'wraith',
-                       'soulForge', 'darksmith', 'ironGolem'],
-            kindling: ['armorFragment', 'soulShard'],
-            pyres: ['forgeFlame', 'ancientRelic'],
-            traps: ['bearTrap', 'spikeWall'],
-            bursts: ['armorPierce', 'soulStrike'],
-            auras: ['steelSkin', 'bladeEnchant']
+            cryptids: [],
+            kindling: [],
+            pyres: [],
+            traps: [],
+            bursts: ['rockSlide'],
+            auras: []
         }
     },
     
@@ -588,93 +589,78 @@ window.CheatMode = {
         const typeSelect = document.getElementById('cheat-card-type');
         const cardSelect = document.getElementById('cheat-card-select');
         
-        if (!seriesSelect || !cardSelect) return;
+        if (!seriesSelect || !typeSelect || !cardSelect) return;
         
         const series = seriesSelect.value;
         const type = typeSelect.value;
         
         let cards = [];
         
-        // Get cards based on series filter
-        if (series === 'all') {
-            // Get all cards from registry
-            if (type === 'all' || type === 'cryptid') {
-                CardRegistry.getAllCryptidKeys().forEach(key => {
-                    const card = CardRegistry.getCryptid(key);
-                    if (card) cards.push({ key, name: card.name, type: 'cryptid' });
-                });
-            }
-            if (type === 'all' || type === 'kindling') {
-                CardRegistry.getAllKindlingKeys().forEach(key => {
-                    const card = CardRegistry.getKindling(key);
-                    if (card) cards.push({ key, name: card.name, type: 'kindling' });
-                });
-            }
-            if (type === 'all' || type === 'pyre') {
-                CardRegistry.getAllPyreKeys().forEach(key => {
-                    const card = CardRegistry.getPyre(key);
-                    if (card) cards.push({ key, name: card.name, type: 'pyre' });
-                });
-            }
-            if (type === 'all' || type === 'trap') {
-                CardRegistry.getAllTrapKeys().forEach(key => {
-                    const card = CardRegistry.getTrap(key);
-                    if (card) cards.push({ key, name: card.name, type: 'trap' });
-                });
-            }
-            if (type === 'all' || type === 'burst') {
-                CardRegistry.getAllBurstKeys().forEach(key => {
-                    const card = CardRegistry.getBurst(key);
-                    if (card) cards.push({ key, name: card.name, type: 'burst' });
-                });
-            }
-            if (type === 'all' || type === 'aura') {
-                CardRegistry.getAllAuraKeys().forEach(key => {
-                    const card = CardRegistry.getAura(key);
-                    if (card) cards.push({ key, name: card.name, type: 'aura' });
-                });
-            }
-        } else {
-            // Get cards from specific series
+        // Helper to check if card matches series filter
+        const matchesSeries = (card, cardKey) => {
+            if (series === 'all') return true;
+            // Check card's series property if it exists
+            if (card.series) return card.series === series;
+            // Fallback: check key prefix patterns or known lists
             const seriesData = this.cardSeries[series];
-            if (seriesData) {
-                if (type === 'all' || type === 'cryptid') {
-                    seriesData.cryptids?.forEach(key => {
-                        const card = CardRegistry.getCryptid(key);
-                        if (card) cards.push({ key, name: card.name, type: 'cryptid' });
-                    });
+            if (!seriesData) return false;
+            // Check all arrays in series data
+            return (seriesData.cryptids?.includes(cardKey) ||
+                    seriesData.kindling?.includes(cardKey) ||
+                    seriesData.pyres?.includes(cardKey) ||
+                    seriesData.traps?.includes(cardKey) ||
+                    seriesData.bursts?.includes(cardKey) ||
+                    seriesData.auras?.includes(cardKey));
+        };
+        
+        // Always pull cards from registry (series filter is advisory)
+        if (type === 'all' || type === 'cryptid') {
+            CardRegistry.getAllCryptidKeys().forEach(key => {
+                const card = CardRegistry.getCryptid(key);
+                if (card && matchesSeries(card, key)) {
+                    cards.push({ key, name: card.name, type: 'cryptid' });
                 }
-                if (type === 'all' || type === 'kindling') {
-                    seriesData.kindling?.forEach(key => {
-                        const card = CardRegistry.getKindling(key);
-                        if (card) cards.push({ key, name: card.name, type: 'kindling' });
-                    });
+            });
+        }
+        if (type === 'all' || type === 'kindling') {
+            CardRegistry.getAllKindlingKeys().forEach(key => {
+                const card = CardRegistry.getKindling(key);
+                if (card && matchesSeries(card, key)) {
+                    cards.push({ key, name: card.name, type: 'kindling' });
                 }
-                if (type === 'all' || type === 'pyre') {
-                    seriesData.pyres?.forEach(key => {
-                        const card = CardRegistry.getPyre(key);
-                        if (card) cards.push({ key, name: card.name, type: 'pyre' });
-                    });
+            });
+        }
+        if (type === 'all' || type === 'pyre') {
+            CardRegistry.getAllPyreKeys().forEach(key => {
+                const card = CardRegistry.getPyre(key);
+                if (card && matchesSeries(card, key)) {
+                    cards.push({ key, name: card.name, type: 'pyre' });
                 }
-                if (type === 'all' || type === 'trap') {
-                    seriesData.traps?.forEach(key => {
-                        const card = CardRegistry.getTrap(key);
-                        if (card) cards.push({ key, name: card.name, type: 'trap' });
-                    });
+            });
+        }
+        if (type === 'all' || type === 'trap') {
+            CardRegistry.getAllTrapKeys().forEach(key => {
+                const card = CardRegistry.getTrap(key);
+                if (card && matchesSeries(card, key)) {
+                    cards.push({ key, name: card.name, type: 'trap' });
                 }
-                if (type === 'all' || type === 'burst') {
-                    seriesData.bursts?.forEach(key => {
-                        const card = CardRegistry.getBurst(key);
-                        if (card) cards.push({ key, name: card.name, type: 'burst' });
-                    });
+            });
+        }
+        if (type === 'all' || type === 'burst') {
+            CardRegistry.getAllBurstKeys().forEach(key => {
+                const card = CardRegistry.getBurst(key);
+                if (card && matchesSeries(card, key)) {
+                    cards.push({ key, name: card.name, type: 'burst' });
                 }
-                if (type === 'all' || type === 'aura') {
-                    seriesData.auras?.forEach(key => {
-                        const card = CardRegistry.getAura(key);
-                        if (card) cards.push({ key, name: card.name, type: 'aura' });
-                    });
+            });
+        }
+        if (type === 'all' || type === 'aura') {
+            CardRegistry.getAllAuraKeys().forEach(key => {
+                const card = CardRegistry.getAura(key);
+                if (card && matchesSeries(card, key)) {
+                    cards.push({ key, name: card.name, type: 'aura' });
                 }
-            }
+            });
         }
         
         // Sort alphabetically

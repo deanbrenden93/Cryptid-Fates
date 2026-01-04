@@ -467,7 +467,9 @@ CardRegistry.registerCryptid('rooftopGargoyle', {
 CardRegistry.registerCryptid('libraryGargoyle', {
     name: "Library Gargoyle",
     sprite: "https://f.playcode.io/p-2633929/v-1/019b3d25-b581-7759-9bb3-53f15ec1cb37/library-gargoylealt2.png",
-    spriteScale: 1.0,
+    spriteScale: 1.3,
+    cardSpriteScale: 1.0,
+    spriteFlip: true,
     element: "steel",
     cost: 3,
     hp: 4,
@@ -731,10 +733,13 @@ CardRegistry.registerCryptid('mothman', {
     },
     // Set up calamity death listener on summon (regardless of position)
     onSummon: (cryptid, owner, game) => {
+        console.log('[Mothman] Setting up Harbinger listener for', cryptid.name, 'owned by', owner);
         // Use the unsubscribe function returned by GameEvents.on() for clean cleanup
         cryptid._unsubscribeCalamityDeath = GameEvents.on('onDeath', (data) => {
+            console.log('[Mothman] onDeath event received:', data.cryptid?.name, 'killedBy:', data.cryptid?.killedBy);
             // Check if the dead cryptid died from calamity
             if (data.cryptid?.killedBy === 'calamity') {
+                console.log('[Mothman] Harbinger triggers! +1 ATK');
                 // Mothman gains +1 ATK permanently
                 cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + 1;
                 cryptid.baseAtk = (cryptid.baseAtk || cryptid.atk) + 1;
@@ -746,6 +751,11 @@ CardRegistry.registerCryptid('mothman', {
                         target: cryptid,
                         message: `🦋 Mothman Harbinger: +1 ATK!`
                     });
+                }
+                
+                // Force render to show updated stats
+                if (typeof renderSprites === 'function') {
+                    renderSprites();
                 }
                 
                 GameEvents.emit('onBuffApplied', { 

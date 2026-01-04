@@ -1571,13 +1571,14 @@ body {
 #hand-container {
     display: flex;
     align-items: flex-end;
-    justify-content: center;
+    /* Use flex-start to allow proper scrolling - centering via auto margins instead */
+    justify-content: flex-start;
     gap: var(--card-gap);
     width: 100%;
     overflow-x: auto;
     overflow-y: visible;
     /* Padding must be larger than fade zone so cards can scroll into full view */
-    padding: 0 6%;
+    padding: 0 8%;
     /* Extra top padding inside scroll container for hover lift */
     padding-top: 30px;
     scroll-behavior: smooth;
@@ -1585,9 +1586,9 @@ body {
     scrollbar-width: none;
     -ms-overflow-style: none;
     
-    /* Fade edges - 5% fade zone, padding is 6% so cards can scroll fully into view */
-    mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
-    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+    /* Fade edges - 3% fade zone, padding is 8% so cards can easily scroll fully into view */
+    mask-image: linear-gradient(to right, transparent 0%, black 3%, black 97%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 3%, black 97%, transparent 100%);
 }
 
 /* Scroll wrapper just needs to allow overflow */
@@ -1607,9 +1608,22 @@ body {
     display: none;
 }
 
-/* Center cards when they fit */
+/* Center cards when they fit - use auto margins on pseudo-elements */
+#hand-container::before,
+#hand-container::after {
+    content: '';
+    flex: 1 0 0;
+    min-width: 0;
+}
+
+/* When explicitly centered (few cards), ensure proper centering */
 #hand-container.centered {
     justify-content: center;
+}
+
+#hand-container.centered::before,
+#hand-container.centered::after {
+    display: none;
 }
 
 #hand-container.not-turn {
