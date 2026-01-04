@@ -1121,16 +1121,8 @@ window.Shop = {
                 // Toggle foil class on card
                 if (variant === 'holo') {
                     card.classList.add('foil');
-                    // Trigger holo effect
-                    if (typeof HoloEffect !== 'undefined') {
-                        requestAnimationFrame(() => HoloEffect.scanForFoilCards(modal));
-                    }
                 } else {
                     card.classList.remove('foil');
-                    // Remove holo effect
-                    if (typeof HoloEffect !== 'undefined') {
-                        HoloEffect.unregisterCard(card);
-                    }
                 }
             });
         });

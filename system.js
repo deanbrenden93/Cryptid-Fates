@@ -5976,8 +5976,6 @@ function renderHand() {
         applyCardFanLayout();
         ensureFanHoverEffects();
         detectCardNameOverflow(container);
-        // Scan for foil cards to apply WebGL holo effect
-        if (typeof HoloEffect !== 'undefined') HoloEffect.scanForFoilCards(container);
     });
     
     updateKindlingButton();
@@ -6115,8 +6113,6 @@ function renderHandAnimated() {
         applyCardFanLayout();
         ensureFanHoverEffects();
         detectCardNameOverflow(container);
-        // Scan for foil cards to apply WebGL holo effect
-        if (typeof HoloEffect !== 'undefined') HoloEffect.scanForFoilCards(container);
     });
     
     updateKindlingButton();

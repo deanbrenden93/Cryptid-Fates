@@ -556,11 +556,8 @@ window.Collection = {
         
         container.innerHTML = html;
         
-        // Detect card name overflow and scan for foil cards
-        requestAnimationFrame(() => {
-            detectCardNameOverflow(container);
-            if (typeof HoloEffect !== 'undefined') HoloEffect.scanForFoilCards(container);
-        });
+        // Detect card name overflow for scroll animation
+        requestAnimationFrame(() => detectCardNameOverflow(container));
     },
     
     filterCards(cards) {
@@ -891,16 +888,8 @@ window.Collection = {
                 // Toggle foil class on card
                 if (variant === 'holo') {
                     card.classList.add('foil');
-                    // Trigger holo effect
-                    if (typeof HoloEffect !== 'undefined') {
-                        requestAnimationFrame(() => HoloEffect.scanForFoilCards(content));
-                    }
                 } else {
                     card.classList.remove('foil');
-                    // Remove holo effect
-                    if (typeof HoloEffect !== 'undefined') {
-                        HoloEffect.unregisterCard(card);
-                    }
                 }
             });
         });

@@ -7160,11 +7160,10 @@ div.menu-btn#tile-collection {
 .game-card .gc-owned.none { background: rgba(80, 60, 60, 0.8); color: #a08080; }
 
 /* ============================================================
-   HOLOGRAPHIC / FOIL CARD EFFECT
-   WebGL shader effect is primary, CSS is fallback
+   HOLOGRAPHIC / FOIL CARD EFFECT - CSS Only
    ============================================================ */
 
-/* When WebGL is available, hide CSS effect (shader handles it) */
+/* Holographic shimmer on art area */
 .game-card.foil .gc-art::after {
     content: '';
     position: absolute;
@@ -7172,12 +7171,6 @@ div.menu-btn#tile-collection {
     border-radius: 2px;
     pointer-events: none;
     z-index: 5;
-    opacity: 0; /* Hidden by default when WebGL is active */
-}
-
-/* CSS Fallback - Only shows when WebGL isn't available */
-.holo-css-fallback .game-card.foil .gc-art::after {
-    opacity: 1;
     /* Layered holographic effect */
     background: 
         /* Fine diagonal line texture */
@@ -7206,8 +7199,8 @@ div.menu-btn#tile-collection {
     mix-blend-mode: color-dodge;
 }
 
-/* Hover intensifies the CSS fallback effect */
-.holo-css-fallback .game-card.foil:hover .gc-art::after {
+/* Hover intensifies the effect */
+.game-card.foil:hover .gc-art::after {
     animation-duration: 3s;
 }
 
