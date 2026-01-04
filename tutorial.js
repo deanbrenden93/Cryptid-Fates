@@ -2166,29 +2166,34 @@ const TutorialRewards = {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: clamp(16px, 4vw, 40px);
+        padding: min(3vh, 20px) min(3vw, 20px);
         opacity: 0;
         transition: opacity 0.8s ease;
-        overflow-y: auto;
-        overflow-x: hidden;
+        overflow: hidden;
+        box-sizing: border-box;
       }
       .tutorial-rewards-screen.visible { opacity: 1; }
       
       .rewards-content {
         width: 100%;
-        max-width: 1000px;
+        max-width: min(1000px, 95vw);
+        height: 100%;
+        max-height: 100%;
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: clamp(12px, 3vh, 24px);
+        justify-content: center;
+        gap: min(2vh, 16px);
+        box-sizing: border-box;
       }
       
       /* Celebration Header */
       .rewards-header {
         text-align: center;
         opacity: 0;
-        transform: translateY(-30px);
+        transform: translateY(-20px);
         transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+        flex-shrink: 0;
       }
       .rewards-header.show {
         opacity: 1;
@@ -2197,7 +2202,7 @@ const TutorialRewards = {
       
       .rewards-title {
         font-family: 'Cinzel Decorative', serif;
-        font-size: clamp(20px, 5vw, 36px);
+        font-size: min(5vw, 32px);
         background: linear-gradient(135deg, #ffd700, #f0c040, #ffe066, #ffd700);
         background-size: 200% 200%;
         -webkit-background-clip: text;
@@ -2205,7 +2210,7 @@ const TutorialRewards = {
         background-clip: text;
         animation: goldShimmer 3s ease infinite;
         text-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
-        margin-bottom: clamp(6px, 1.5vh, 12px);
+        margin-bottom: min(1vh, 8px);
       }
       @keyframes goldShimmer {
         0%, 100% { background-position: 0% 50%; }
@@ -2214,29 +2219,28 @@ const TutorialRewards = {
       
       .rewards-subtitle {
         font-family: 'EB Garamond', Georgia, serif;
-        font-size: clamp(12px, 2.5vw, 16px);
+        font-size: min(2.5vw, 14px);
         color: rgba(220, 210, 190, 0.8);
         letter-spacing: 1px;
       }
       
-      /* Rewards Display */
+      /* Rewards Display - Horizontal layout */
       .rewards-container {
         display: flex;
-        gap: clamp(12px, 3vw, 24px);
+        gap: min(3vw, 20px);
         justify-content: center;
-        flex-wrap: wrap;
-        margin: clamp(8px, 2vh, 16px) 0;
+        flex-shrink: 0;
       }
       
       .reward-item {
         background: linear-gradient(145deg, rgba(50, 45, 60, 0.9), rgba(30, 25, 40, 0.95));
         border: 2px solid rgba(255, 215, 0, 0.3);
-        border-radius: clamp(8px, 2vw, 16px);
-        padding: clamp(12px, 3vw, 24px) clamp(16px, 4vw, 32px);
+        border-radius: min(2vw, 12px);
+        padding: min(2vh, 16px) min(3vw, 24px);
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: clamp(6px, 1.5vh, 12px);
+        gap: min(1vh, 8px);
         opacity: 0;
         transform: scale(0.8) translateY(20px);
         transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -2259,7 +2263,7 @@ const TutorialRewards = {
       }
       
       .reward-icon {
-        font-size: clamp(32px, 8vw, 56px);
+        font-size: min(8vh, 48px);
         filter: drop-shadow(0 4px 12px rgba(255, 215, 0, 0.4));
         position: relative;
         z-index: 1;
@@ -2267,22 +2271,22 @@ const TutorialRewards = {
       }
       @keyframes iconBounce {
         0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-5px); }
+        50% { transform: translateY(-3px); }
       }
       
       .reward-name {
         font-family: 'Cinzel', serif;
-        font-size: clamp(11px, 2.5vw, 14px);
+        font-size: min(2vw, 12px);
         color: #ffd700;
         text-transform: uppercase;
-        letter-spacing: clamp(1px, 0.3vw, 2px);
+        letter-spacing: 1px;
         position: relative;
         z-index: 1;
       }
       
       .reward-value {
         font-family: 'EB Garamond', Georgia, serif;
-        font-size: clamp(18px, 4vw, 28px);
+        font-size: min(4vw, 24px);
         color: #fff;
         font-weight: bold;
         position: relative;
@@ -2292,44 +2296,47 @@ const TutorialRewards = {
       /* Deck Selection */
       .deck-selection-header {
         font-family: 'Cinzel', serif;
-        font-size: clamp(14px, 3vw, 18px);
+        font-size: min(2.5vw, 16px);
         color: rgba(220, 210, 190, 0.9);
         text-transform: uppercase;
-        letter-spacing: clamp(2px, 0.5vw, 4px);
-        margin-top: clamp(8px, 2vh, 16px);
+        letter-spacing: 2px;
         opacity: 0;
         transition: opacity 0.6s ease;
+        flex-shrink: 0;
       }
       .deck-selection-header.show { opacity: 1; }
       
       .rewards-deck-selection {
         display: flex;
-        gap: clamp(10px, 2vw, 20px);
+        gap: min(2vw, 16px);
         justify-content: center;
         width: 100%;
-        max-width: 900px;
+        max-width: min(900px, 95vw);
+        flex: 1;
+        min-height: 0;
+        align-items: stretch;
       }
       
       .rewards-deck {
         flex: 1;
-        max-width: clamp(160px, 28vw, 280px);
-        min-width: clamp(120px, 22vw, 180px);
-        aspect-ratio: 3 / 4;
+        max-width: min(280px, 30vw);
+        min-width: min(140px, 25vw);
         background: linear-gradient(160deg, rgba(40, 35, 50, 0.95), rgba(20, 15, 30, 0.98));
         border: 2px solid rgba(140, 130, 160, 0.3);
-        border-radius: clamp(8px, 2vw, 16px);
-        padding: clamp(12px, 2.5vw, 24px);
+        border-radius: min(2vw, 12px);
+        padding: min(2vh, 16px) min(1.5vw, 16px);
         cursor: pointer;
         transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
         opacity: 0;
-        transform: translateY(40px) scale(0.9);
+        transform: translateY(30px) scale(0.9);
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: space-between;
+        justify-content: center;
         text-align: center;
         position: relative;
         overflow: hidden;
+        gap: min(1vh, 8px);
       }
       .rewards-deck::before {
         content: '';
@@ -2344,24 +2351,24 @@ const TutorialRewards = {
         transform: translateY(0) scale(1);
       }
       .rewards-deck:hover {
-        transform: translateY(-8px) scale(1.02);
+        transform: translateY(-5px) scale(1.02);
         border-color: rgba(200, 180, 220, 0.6);
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(180, 160, 200, 0.2);
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5), 0 0 30px rgba(180, 160, 200, 0.2);
       }
       .rewards-deck:hover::before { opacity: 1; }
       
       .rewards-deck.selected {
         border-color: #ffd700;
-        box-shadow: 0 0 50px rgba(255, 215, 0, 0.3), inset 0 0 30px rgba(255, 215, 0, 0.1);
-        transform: translateY(-10px) scale(1.03);
+        box-shadow: 0 0 40px rgba(255, 215, 0, 0.3), inset 0 0 20px rgba(255, 215, 0, 0.1);
+        transform: translateY(-6px) scale(1.03);
       }
       .rewards-deck.selected::after {
         content: '✓';
         position: absolute;
-        top: clamp(8px, 2vw, 16px);
-        right: clamp(8px, 2vw, 16px);
-        width: clamp(24px, 5vw, 32px);
-        height: clamp(24px, 5vw, 32px);
+        top: min(1.5vh, 10px);
+        right: min(1.5vw, 10px);
+        width: min(4vh, 28px);
+        height: min(4vh, 28px);
         background: linear-gradient(135deg, #ffd700, #f0a000);
         border-radius: 50%;
         display: flex;
@@ -2369,7 +2376,7 @@ const TutorialRewards = {
         justify-content: center;
         color: #1a1520;
         font-weight: bold;
-        font-size: clamp(12px, 3vw, 18px);
+        font-size: min(2vh, 14px);
       }
       
       .rewards-deck.disabled {
@@ -2384,32 +2391,29 @@ const TutorialRewards = {
       }
       
       .deck-icon {
-        font-size: clamp(36px, 10vw, 72px);
-        filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.5));
-        margin-bottom: clamp(6px, 1.5vh, 12px);
+        font-size: min(10vh, 56px);
+        filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5));
       }
       
       .deck-name {
         font-family: 'Cinzel Decorative', serif;
-        font-size: clamp(12px, 2.8vw, 18px);
+        font-size: min(2.5vw, 16px);
         color: #e0d8f0;
-        margin-bottom: clamp(4px, 1vh, 8px);
       }
       
       .deck-desc {
         font-family: 'EB Garamond', Georgia, serif;
-        font-size: clamp(10px, 2vw, 13px);
+        font-size: min(1.8vw, 12px);
         color: rgba(180, 170, 200, 0.8);
-        line-height: 1.4;
-        flex-grow: 1;
+        line-height: 1.3;
       }
       
       .deck-theme {
-        font-size: clamp(8px, 1.8vw, 11px);
+        font-size: min(1.5vw, 10px);
         color: rgba(255, 215, 0, 0.7);
         text-transform: uppercase;
-        letter-spacing: clamp(0.5px, 0.2vw, 1.5px);
-        padding-top: clamp(6px, 1.5vh, 12px);
+        letter-spacing: 1px;
+        padding-top: min(1vh, 8px);
         border-top: 1px solid rgba(140, 130, 160, 0.2);
         width: 100%;
       }
@@ -2422,7 +2426,7 @@ const TutorialRewards = {
         align-items: center;
         justify-content: center;
         font-family: 'Cinzel', serif;
-        font-size: clamp(10px, 2.5vw, 14px);
+        font-size: min(2vw, 12px);
         color: rgba(200, 190, 210, 0.8);
         text-transform: uppercase;
         letter-spacing: 2px;
@@ -2430,29 +2434,30 @@ const TutorialRewards = {
       
       /* Claim Button */
       .rewards-claim-btn {
-        margin-top: clamp(12px, 3vh, 24px);
-        padding: clamp(12px, 2.5vh, 18px) clamp(32px, 8vw, 64px);
+        margin-top: min(2vh, 16px);
+        padding: min(2vh, 14px) min(6vw, 48px);
         font-family: 'Cinzel', serif;
-        font-size: clamp(12px, 2.5vw, 16px);
+        font-size: min(2.5vw, 14px);
         text-transform: uppercase;
-        letter-spacing: clamp(2px, 0.5vw, 4px);
+        letter-spacing: 2px;
         background: linear-gradient(135deg, #ffd700, #f0a000);
         color: #1a1520;
         border: none;
-        border-radius: clamp(6px, 1.5vw, 12px);
+        border-radius: min(1.5vw, 10px);
         cursor: pointer;
         transition: all 0.3s ease;
         opacity: 0;
         transform: translateY(20px);
-        box-shadow: 0 6px 30px rgba(255, 215, 0, 0.3);
+        box-shadow: 0 4px 20px rgba(255, 215, 0, 0.3);
+        flex-shrink: 0;
       }
       .rewards-claim-btn.show {
         opacity: 1;
         transform: translateY(0);
       }
       .rewards-claim-btn:hover:not(:disabled) {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 40px rgba(255, 215, 0, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 30px rgba(255, 215, 0, 0.5);
       }
       .rewards-claim-btn:disabled {
         background: linear-gradient(135deg, #555, #444);
@@ -2464,8 +2469,8 @@ const TutorialRewards = {
       /* Particle effects */
       .reward-particle {
         position: absolute;
-        width: 8px;
-        height: 8px;
+        width: 6px;
+        height: 6px;
         background: #ffd700;
         border-radius: 50%;
         pointer-events: none;
@@ -2476,17 +2481,153 @@ const TutorialRewards = {
         100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
       }
       
-      /* Responsive */
+      /* ==================== RESPONSIVE ADJUSTMENTS ==================== */
+      
+      /* Short landscape (mobile landscape) */
       @media (max-height: 500px) {
-        .rewards-deck { aspect-ratio: 4 / 3; }
-        .deck-desc { display: none; }
+        .tutorial-rewards-screen {
+          padding: min(2vh, 10px) min(2vw, 15px);
+        }
+        .rewards-content {
+          gap: min(1.5vh, 10px);
+          flex-direction: row;
+          flex-wrap: wrap;
+          justify-content: center;
+          align-content: center;
+        }
+        .rewards-header {
+          width: 100%;
+          flex-shrink: 0;
+        }
+        .rewards-title {
+          font-size: min(4vh, 24px);
+          margin-bottom: 2px;
+        }
+        .rewards-subtitle {
+          font-size: min(2vh, 11px);
+        }
+        .rewards-container {
+          gap: min(2vw, 12px);
+        }
+        .reward-item {
+          padding: min(1.5vh, 10px) min(2vw, 16px);
+          gap: min(0.5vh, 4px);
+        }
+        .reward-icon {
+          font-size: min(5vh, 32px);
+        }
+        .reward-name {
+          font-size: min(1.5vh, 10px);
+        }
+        .reward-value {
+          font-size: min(3vh, 18px);
+        }
+        .deck-selection-header {
+          font-size: min(2vh, 12px);
+          margin: 0;
+        }
+        .rewards-deck-selection {
+          gap: min(1.5vw, 12px);
+          flex: none;
+          height: auto;
+        }
+        .rewards-deck {
+          padding: min(1.5vh, 10px) min(1vw, 10px);
+          gap: min(0.5vh, 4px);
+          max-width: min(200px, 28vw);
+          min-width: min(120px, 22vw);
+        }
+        .deck-icon {
+          font-size: min(6vh, 36px);
+        }
+        .deck-name {
+          font-size: min(2vh, 13px);
+        }
+        .deck-desc {
+          display: none;
+        }
+        .deck-theme {
+          font-size: min(1.5vh, 9px);
+          padding-top: min(0.5vh, 4px);
+        }
+        .rewards-claim-btn {
+          margin-top: min(1vh, 8px);
+          padding: min(1.5vh, 10px) min(4vw, 32px);
+          font-size: min(2vh, 12px);
+        }
       }
-      @media (max-width: 500px) {
-        .rewards-deck-selection { flex-wrap: wrap; }
-        .rewards-deck { 
-          max-width: calc(50% - 8px);
-          min-width: calc(50% - 8px);
-          aspect-ratio: 3 / 4;
+      
+      /* Very short landscape */
+      @media (max-height: 380px) {
+        .rewards-title {
+          font-size: min(3.5vh, 20px);
+        }
+        .rewards-subtitle {
+          display: none;
+        }
+        .reward-icon {
+          font-size: min(4vh, 28px);
+        }
+        .deck-icon {
+          font-size: min(5vh, 32px);
+        }
+        .deck-theme {
+          display: none;
+        }
+      }
+      
+      /* Portrait mode */
+      @media (orientation: portrait) {
+        .rewards-content {
+          justify-content: space-evenly;
+        }
+        .rewards-deck-selection {
+          flex-direction: column;
+          gap: min(2vh, 12px);
+          max-width: min(350px, 90vw);
+        }
+        .rewards-deck {
+          max-width: 100%;
+          min-width: 100%;
+          flex-direction: row;
+          padding: min(2vh, 12px) min(4vw, 16px);
+          gap: min(3vw, 12px);
+        }
+        .deck-icon {
+          font-size: min(12vw, 48px);
+        }
+        .deck-name {
+          font-size: min(4vw, 16px);
+        }
+        .deck-desc {
+          font-size: min(3vw, 11px);
+          text-align: left;
+        }
+        .deck-theme {
+          border-top: none;
+          padding-top: 0;
+          border-left: 1px solid rgba(140, 130, 160, 0.2);
+          padding-left: min(2vw, 10px);
+          text-align: left;
+          width: auto;
+        }
+        .rewards-deck.selected::after {
+          top: 50%;
+          right: min(2vw, 12px);
+          transform: translateY(-50%);
+        }
+      }
+      
+      /* Narrow portrait */
+      @media (max-width: 400px) and (orientation: portrait) {
+        .rewards-title {
+          font-size: min(7vw, 24px);
+        }
+        .reward-icon {
+          font-size: min(12vw, 40px);
+        }
+        .deck-desc {
+          display: none;
         }
       }
     `;
