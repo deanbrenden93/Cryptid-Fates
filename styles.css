@@ -1,0 +1,2778 @@
+/**
+ * Cryptid Fates - Styles
+ * Folk horror tactical card game
+ * UI Rework v2 - Chronicle in HUD, improved mobile experience
+ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom cursor for desktop only */
+/* NOTE: CSS cursors use native image size. Image should be ~32x32px for standard cursor size */
+/* Current image is 78x119 - will appear large. Provide a smaller version for proper sizing */
+@media (pointer: fine) {
+    *, *::before, *::after {
+        cursor: url('https://f.playcode.io/p-2633929/v-1/019b56a3-41e8-70aa-855b-1dcad20b4228/monster-hand-cursor.png') 0 0, auto !important;
+    }
+}
+
+:root {
+    --bone: #e8e0d5;
+    --parchment: #d4c4a8;
+    --dried-blood: #6b1c1c;
+    --old-blood: #4a1515;
+    --moss: #3d4a3a;
+    --deep-moss: #2a332a;
+    --bark: #3d2b1f;
+    --dark-bark: #261a12;
+    --candlelight: #e8a93e;
+    --ember: #c45c26;
+    --night-sky: #0a0d12;
+    --rune-glow: #7eb89e;
+    --spirit-blue: #6b8fa3;
+    --ui-font: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+    
+    /* Base sizes - desktop (scale with viewport) */
+    --tile-size: clamp(70px, min(14vh, 12vw), 140px);
+    --card-width: clamp(80px, min(11vw, 13vh), 160px);
+    --card-height: calc(var(--card-width) * 1.375);
+    --sprite-size: clamp(32px, min(6vh, 5vw), 60px);
+    
+    /* Element colors */
+    --element-void: #9b59b6;
+    --element-blaze: #c0392b;
+    --element-blood: #c0392b; /* Legacy alias for blaze */
+    --element-water: #3498db;
+    --element-steel: #95a5a6;
+    --element-nature: #27ae60;
+}
+
+/* Landscape mobile/tablet */
+@media (max-width: 1000px) and (orientation: landscape), (max-height: 550px) {
+    :root {
+        --tile-size: clamp(50px, min(17vh, 10vw), 90px);
+        --card-width: clamp(55px, min(9vw, 11vh), 100px);
+        --card-height: calc(var(--card-width) * 1.375);
+        --sprite-size: clamp(24px, min(9vh, 5.5vw), 40px);
+    }
+}
+
+/* Portrait mobile */
+@media (max-width: 600px) and (orientation: portrait) {
+    :root {
+        --tile-size: clamp(40px, min(13vw, 8vh), 70px);
+        --card-width: clamp(58px, calc((100vw - 48px) / 5), 85px);
+        --card-height: calc(var(--card-width) * 1.375);
+        --sprite-size: clamp(20px, min(7vw, 5vh), 35px);
+    }
+}
+
+/* Large desktop */
+@media (min-width: 1400px) and (min-height: 900px) {
+    :root {
+        --tile-size: clamp(100px, 12vh, 150px);
+        --card-width: clamp(110px, 10vh, 160px);
+        --card-height: calc(var(--card-width) * 1.375);
+        --sprite-size: clamp(45px, 5vh, 70px);
+    }
+}
+
+body {
+    font-family: var(--ui-font);
+    background: var(--night-sky);
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    user-select: none;
+}
+
+/* ==================== FULLSCREEN PROMPT ==================== */
+#fullscreen-prompt {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, rgba(60, 45, 30, 0.6) 0%, transparent 50%), rgba(10, 13, 18, 0.98);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    padding: 24px;
+    text-align: center;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+}
+
+#fullscreen-prompt.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.prompt-icon {
+    font-size: clamp(48px, 15vw, 80px);
+    margin-bottom: 20px;
+    animation: flameFlicker 2s infinite;
+}
+
+@keyframes flameFlicker {
+    0%, 100% { opacity: 1; filter: drop-shadow(0 0 20px var(--candlelight)); transform: scale(1); }
+    25% { opacity: 0.9; transform: scale(1.02); }
+    50% { opacity: 1; filter: drop-shadow(0 0 30px var(--candlelight)); transform: scale(1.01); }
+    75% { opacity: 0.95; transform: scale(0.99); }
+}
+
+.prompt-title {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(24px, 8vw, 42px);
+    color: var(--candlelight);
+    text-shadow: 0 0 30px rgba(232, 169, 62, 0.5);
+    margin-bottom: 12px;
+    letter-spacing: 4px;
+}
+
+.prompt-subtitle {
+    color: var(--parchment);
+    font-size: clamp(13px, 4vw, 16px);
+    margin-bottom: 28px;
+    opacity: 0.85;
+    max-width: 320px;
+    line-height: 1.5;
+}
+
+.prompt-btn {
+    padding: 14px 36px;
+    font-family: 'Cinzel', serif;
+    font-size: clamp(14px, 4vw, 16px);
+    font-weight: 700;
+    border: 2px solid var(--candlelight);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    background: linear-gradient(180deg, rgba(232, 169, 62, 0.2), rgba(196, 92, 38, 0.3));
+    color: var(--candlelight);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    margin-bottom: 12px;
+}
+
+.prompt-btn:hover, .prompt-btn:active {
+    transform: scale(1.05);
+    box-shadow: 0 0 40px rgba(232, 169, 62, 0.6);
+}
+
+.prompt-btn.secondary {
+    background: linear-gradient(180deg, var(--bark), var(--dark-bark));
+    border-color: rgba(100, 80, 60, 0.6);
+    color: var(--parchment);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.prompt-btn.secondary:hover {
+    box-shadow: 0 0 25px rgba(100, 80, 60, 0.5);
+}
+
+.prompt-note {
+    font-size: 11px;
+    color: var(--bone);
+    opacity: 0.4;
+    margin-top: 16px;
+}
+
+/* ==================== GAME CONTAINER - Silver/Grunge Aesthetic ==================== */
+#game-container {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    position: fixed;
+    inset: 0;
+    background: 
+        radial-gradient(ellipse at 50% 30%, rgba(180, 180, 200, 0.04) 0%, transparent 50%),
+        radial-gradient(ellipse at 20% 80%, rgba(40, 20, 20, 0.2) 0%, transparent 40%),
+        radial-gradient(ellipse at 80% 70%, rgba(50, 30, 30, 0.15) 0%, transparent 40%),
+        linear-gradient(180deg, #05050a 0%, #0a0a10 40%, #0d0a0a 100%);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Grunge overlay texture */
+#game-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1;
+    mix-blend-mode: overlay;
+}
+
+#game-container::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.7) 100%);
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* ==================== HUD (Top Bar) - Silver/Grunge ==================== */
+#hud {
+    height: 52px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px;
+    background: linear-gradient(180deg, rgba(30, 28, 35, 0.95) 0%, rgba(20, 18, 25, 0.92) 100%);
+    border-bottom: 1px solid rgba(200, 200, 210, 0.12);
+    position: relative;
+    z-index: 100;
+    flex-shrink: 0;
+    gap: 10px;
+}
+
+@media (max-height: 500px) {
+    #hud { height: 44px; padding: 0 10px; }
+}
+
+#hud::before {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 5%;
+    right: 5%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(200, 200, 210, 0.2), transparent);
+}
+
+.player-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+
+.player-info.enemy {
+    justify-content: flex-end;
+}
+
+.player-name {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+@media (max-width: 500px) {
+    .player-name { font-size: 10px; letter-spacing: 0; }
+    .player-info { gap: 5px; }
+}
+
+.player-info.player .player-name { 
+    color: #80c0a0;
+    text-shadow: 0 0 12px rgba(100, 180, 130, 0.5);
+}
+
+.player-info.enemy .player-name { 
+    color: #c08080;
+    text-shadow: 0 0 12px rgba(180, 80, 80, 0.5);
+}
+
+.pyre-display {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0,0,0,0.35);
+    padding: 5px 10px;
+    border-radius: 16px;
+    border: 1px solid rgba(232, 169, 62, 0.25);
+}
+
+@media (max-width: 400px) {
+    .pyre-display { padding: 4px 8px; }
+}
+
+.pyre-icon {
+    width: 14px;
+    height: 14px;
+    background: radial-gradient(circle, #e8a93e 20%, #c45c26 60%, transparent 70%);
+    border-radius: 50%;
+    animation: pyreGlow 2s infinite;
+}
+
+@keyframes pyreGlow {
+    0%, 100% { box-shadow: 0 0 8px rgba(232, 169, 62, 0.6); transform: scale(1); }
+    50% { box-shadow: 0 0 14px rgba(232, 169, 62, 0.8); transform: scale(1.1); }
+}
+
+.pyre-count {
+    font-family: 'Cinzel', serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: #e8a93e;
+    min-width: 14px;
+    text-align: center;
+    text-shadow: 0 0 10px rgba(232, 169, 62, 0.5);
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.pyre-count.pyre-flash-gain {
+    animation: pyreGain 0.4s ease-out;
+    color: #4ade80;
+    text-shadow: 0 0 15px rgba(74, 222, 128, 0.8);
+}
+
+.pyre-count.pyre-flash-spend {
+    animation: pyreSpend 0.4s ease-out;
+    color: #f87171;
+    text-shadow: 0 0 15px rgba(248, 113, 113, 0.8);
+}
+
+@keyframes pyreGain {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.4); }
+    100% { transform: scale(1); }
+}
+
+@keyframes pyreSpend {
+    0% { transform: scale(1); }
+    30% { transform: scale(0.7); }
+    100% { transform: scale(1); }
+}
+
+.death-counter {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 12px;
+    color: #a0a0a8;
+    opacity: 0.85;
+}
+
+.death-counter .skull-icon {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.death-counter.player { color: #80c0a0; }
+
+/* Hand Header with Toggle */
+#hand-header {
+    display: flex;
+    justify-content: center;
+    padding: 4px 0 0 0;
+}
+
+@media (max-width: 400px) {
+    .death-counter { font-size: 10px; }
+    .pyre-count { font-size: 13px; }
+}
+
+/* ==================== PHASE HEADER - Silver/Grunge ==================== */
+#phase-header {
+    text-align: center;
+    padding: 8px 16px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 50;
+    background: linear-gradient(180deg, rgba(20, 18, 25, 0.6), transparent);
+}
+
+@media (max-height: 500px) {
+    #phase-header { padding: 4px 12px; }
+}
+
+#phase-text {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(12px, 2.5vw, 16px);
+    font-weight: 700;
+    color: #c0c0c8;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), 0 0 20px rgba(200, 200, 210, 0.15);
+}
+
+#phase-text::before,
+#phase-text::after {
+    content: '◆';
+    margin: 0 12px;
+    opacity: 0.4;
+    font-size: 0.7em;
+    color: #808088;
+}
+
+#hint {
+    font-size: 11px;
+    color: #707078;
+    margin-top: 4px;
+}
+
+/* Resource Counters - below phase header */
+#resource-counters {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    padding: 4px 14px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(200, 200, 210, 0.08);
+    border-radius: 16px;
+    display: inline-flex;
+}
+
+.resource-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #a0a0a8;
+}
+
+.resource-item .resource-icon {
+    font-size: 10px;
+}
+
+.resource-item.burn {
+    color: #e8a93e;
+}
+
+.resource-item.enemy {
+    opacity: 0.5;
+}
+
+.resource-divider {
+    color: #505058;
+    font-size: 10px;
+}
+
+@media (max-height: 550px) {
+    #hint { display: none; }
+    #resource-counters { margin-top: 2px; gap: 6px; padding: 2px 8px; }
+    .resource-item { font-size: 9px; }
+}
+
+@media (max-width: 400px) {
+    #resource-counters { gap: 5px; padding: 2px 6px; }
+    .resource-item { font-size: 9px; gap: 2px; }
+    .resource-icon { font-size: 8px; }
+}
+
+/* ==================== BATTLEFIELD AREA - Silver/Grunge ==================== */
+#battlefield-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    min-height: 0;
+    padding: 12px;
+    cursor: default;
+}
+
+@media (max-height: 500px) {
+    #battlefield-area {
+        padding: 8px;
+    }
+}
+
+#battlefield-area.has-targets { cursor: pointer; }
+
+/* Pyre drop zone highlight when dragging pyre cards */
+#battlefield-area.pyre-drop-zone {
+    cursor: pointer;
+}
+
+#battlefield-area.pyre-drop-zone::after {
+    content: '';
+    position: absolute;
+    inset: 20px;
+    border: 2px dashed rgba(200, 200, 210, 0.4);
+    border-radius: 16px;
+    background: radial-gradient(ellipse at center, rgba(200, 200, 210, 0.08) 0%, transparent 70%);
+    pointer-events: none;
+    animation: pyreZonePulse 1s ease-in-out infinite;
+}
+
+@keyframes pyreZonePulse {
+    0%, 100% { opacity: 0.6; border-color: rgba(200, 200, 210, 0.3); }
+    50% { opacity: 1; border-color: rgba(200, 200, 210, 0.5); }
+}
+
+#battlefield-area::before {
+    content: '';
+    position: absolute;
+    width: min(95%, 600px);
+    height: min(85%, 400px);
+    border: 1px solid rgba(200, 200, 210, 0.06);
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(200, 200, 210, 0.02) 0%, transparent 70%);
+}
+
+#grid-wrapper {
+    position: relative;
+    perspective: 800px;
+}
+
+.battle-grid {
+    display: flex;
+    gap: 8px;
+    transform: rotateX(45deg) rotateZ(0deg);
+    transform-style: preserve-3d;
+}
+
+@media (max-height: 500px) {
+    .battle-grid { gap: 5px; }
+}
+
+.grid-column {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Trap columns - only 2 tiles, centered vertically */
+.grid-column.trap-column {
+    justify-content: center;
+}
+
+@media (max-height: 500px) {
+    .grid-column { gap: 4px; }
+}
+
+/* ==================== TILES - Silver/Grunge ==================== */
+.tile {
+    width: var(--tile-size);
+    height: calc(var(--tile-size) * 0.7);
+    position: relative;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.tile-base {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+}
+
+.tile.player .tile-base {
+    background: linear-gradient(145deg, rgba(50, 55, 60, 0.9) 0%, rgba(35, 40, 45, 0.95) 50%, rgba(25, 30, 35, 1) 100%);
+    border: 2px solid rgba(100, 180, 130, 0.4);
+    box-shadow: 0 4px 0 rgba(15, 18, 20, 0.9), 0 6px 15px rgba(0,0,0,0.5), inset 0 1px 0 rgba(200, 200, 210, 0.08), inset 0 -2px 4px rgba(0,0,0,0.3);
+}
+
+.tile.player.combat .tile-base { border-color: rgba(100, 180, 130, 0.5); }
+.tile.player.support .tile-base { opacity: 0.8; }
+
+.tile.player.trap .tile-base {
+    background: linear-gradient(145deg, rgba(45, 40, 55, 0.9) 0%, rgba(30, 28, 40, 0.95) 50%, rgba(22, 20, 30, 1) 100%);
+    border: 2px solid rgba(155, 89, 182, 0.4);
+    box-shadow: 0 4px 0 rgba(12, 10, 18, 0.9), 0 6px 15px rgba(0,0,0,0.5), inset 0 1px 0 rgba(155, 89, 182, 0.1), inset 0 -2px 4px rgba(0,0,0,0.3);
+    opacity: 0.75;
+}
+
+.tile.player.trap.has-trap .tile-base {
+    border-color: rgba(155, 89, 182, 0.6);
+    box-shadow: 0 4px 0 rgba(12, 10, 18, 0.9), 0 0 15px rgba(155, 89, 182, 0.3), inset 0 1px 0 rgba(155, 89, 182, 0.2), inset 0 -2px 4px rgba(0,0,0,0.3);
+    opacity: 1;
+}
+
+.tile.enemy .tile-base {
+    background: linear-gradient(145deg, rgba(60, 45, 45, 0.9) 0%, rgba(45, 32, 32, 0.95) 50%, rgba(35, 22, 22, 1) 100%);
+    border: 2px solid rgba(180, 80, 80, 0.4);
+    box-shadow: 0 4px 0 rgba(18, 10, 10, 0.9), 0 6px 15px rgba(0,0,0,0.5), inset 0 1px 0 rgba(200, 200, 210, 0.05), inset 0 -2px 4px rgba(0,0,0,0.3);
+}
+
+.tile.enemy.combat .tile-base { border-color: rgba(180, 80, 80, 0.5); }
+
+.tile.enemy.trap .tile-base {
+    background: linear-gradient(145deg, rgba(55, 40, 45, 0.9) 0%, rgba(40, 28, 32, 0.95) 50%, rgba(30, 20, 22, 1) 100%);
+    border: 2px solid rgba(180, 100, 120, 0.4);
+    box-shadow: 0 4px 0 rgba(18, 10, 12, 0.9), 0 6px 15px rgba(0,0,0,0.5), inset 0 1px 0 rgba(180, 100, 120, 0.1), inset 0 -2px 4px rgba(0,0,0,0.3);
+    opacity: 0.75;
+}
+
+.tile.enemy.trap.has-trap .tile-base {
+    border-color: rgba(180, 100, 120, 0.6);
+    box-shadow: 0 4px 0 rgba(18, 10, 12, 0.9), 0 0 15px rgba(180, 100, 120, 0.3), inset 0 1px 0 rgba(180, 100, 120, 0.2), inset 0 -2px 4px rgba(0,0,0,0.3);
+    opacity: 1;
+}
+
+.tile::after {
+    content: '';
+    position: absolute;
+    inset: 15%;
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 3px;
+    pointer-events: none;
+}
+
+.tile:hover .tile-base { filter: brightness(1.15); }
+
+.tile.valid-target .tile-base {
+    border-color: rgba(100, 180, 130, 0.8) !important;
+    box-shadow: 0 4px 0 rgba(15, 25, 18, 0.9), 0 0 25px rgba(100, 180, 130, 0.5), inset 0 0 20px rgba(100, 180, 130, 0.3);
+    animation: tileGlow 1.5s infinite ease-in-out;
+}
+
+@keyframes tileGlow {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.25); }
+}
+
+.tile.attack-target .tile-base {
+    border-color: rgba(180, 80, 80, 0.8) !important;
+    box-shadow: 0 4px 0 rgba(25, 12, 12, 0.9), 0 0 25px rgba(180, 80, 80, 0.5), inset 0 0 20px rgba(180, 80, 80, 0.3);
+    animation: tileGlow 1.5s infinite ease-in-out;
+}
+
+.tile.instant-target .tile-base {
+    border-color: rgba(200, 200, 210, 0.8) !important;
+    box-shadow: 0 4px 0 rgba(25, 25, 28, 0.9), 0 0 25px rgba(200, 200, 210, 0.4), inset 0 0 20px rgba(200, 200, 210, 0.2);
+    animation: tileGlow 1.5s infinite ease-in-out;
+}
+
+.tile.evolution-target .tile-base {
+    border-color: var(--spirit-blue) !important;
+    box-shadow: 0 4px 0 rgba(20, 30, 35, 0.9), 0 0 20px rgba(107, 143, 163, 0.5), inset 0 0 15px rgba(107, 143, 163, 0.3);
+    animation: runeGlow 1.5s infinite ease-in-out;
+}
+
+.tile.trap-target .tile-base {
+    border-color: #9070b0 !important;
+    box-shadow: 0 4px 0 rgba(30, 20, 40, 0.9), 0 0 20px rgba(150, 120, 180, 0.5), inset 0 0 15px rgba(150, 120, 180, 0.3);
+    animation: runeGlow 1.5s infinite ease-in-out;
+}
+
+.tile.aura-target .tile-base {
+    border-color: #60b0e0 !important;
+    box-shadow: 0 4px 0 rgba(20, 40, 50, 0.9), 0 0 20px rgba(96, 176, 224, 0.5), inset 0 0 15px rgba(96, 176, 224, 0.3);
+    animation: runeGlow 1.5s infinite ease-in-out;
+}
+
+/* Trap Activation Animation */
+@keyframes trapActivate {
+    0% { transform: scale(1); filter: brightness(1); }
+    15% { transform: scale(1.15); filter: brightness(2) saturate(1.5); }
+    30% { transform: scale(0.95); filter: brightness(1.5); }
+    50% { transform: scale(1.1); filter: brightness(2.5) saturate(2); }
+    70% { transform: scale(1); filter: brightness(1.2); }
+    100% { transform: scale(1); filter: brightness(1); opacity: 0.5; }
+}
+
+.tile.trap.trap-activating .tile-base {
+    animation: trapActivate 0.8s ease-out forwards !important;
+}
+
+/* Trap Sprite Trigger Animation */
+@keyframes trapTrigger {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    20% { transform: translate(-50%, -50%) scale(1.4); filter: brightness(2) drop-shadow(0 0 15px rgba(255, 200, 0, 0.8)); }
+    40% { transform: translate(-50%, -50%) scale(1.2); }
+    60% { transform: translate(-50%, -50%) scale(1.5); filter: brightness(3) drop-shadow(0 0 25px rgba(255, 100, 0, 1)); }
+    100% { transform: translate(-50%, -50%) scale(0.3) translateY(-30px); opacity: 0; filter: blur(4px); }
+}
+
+.trap-sprite.trap-triggering {
+    animation: trapTrigger 0.8s ease-out forwards !important;
+}
+
+.tile.can-attack .tile-base {
+    border-color: rgba(180, 200, 160, 0.6) !important;
+    box-shadow: 0 4px 0 rgba(30, 40, 25, 0.9), 0 0 15px rgba(180, 200, 160, 0.3);
+}
+
+.tile.drag-over .tile-base {
+    transform: scale(1.05);
+    border-color: var(--rune-glow) !important;
+}
+
+.tile-label {
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--ui-font);
+    font-size: 8px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.25);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+}
+
+/* ==================== GRID DIVIDER ==================== */
+.grid-divider {
+    width: clamp(24px, 4vw, 40px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+}
+
+.divider-line {
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(180deg, transparent 0%, rgba(232, 169, 62, 0.3) 20%, rgba(232, 169, 62, 0.6) 50%, rgba(232, 169, 62, 0.3) 80%, transparent 100%);
+    position: relative;
+}
+
+.divider-line::before {
+    content: '⬥';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--candlelight);
+    font-size: 14px;
+    text-shadow: 0 0 10px var(--candlelight);
+}
+
+/* ==================== CRYPTID SPRITES ==================== */
+#sprite-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 20;
+}
+
+.cryptid-sprite {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+}
+
+.cryptid-sprite .sprite {
+    font-size: var(--sprite-size);
+    line-height: 1;
+    transition: transform 0.3s ease;
+}
+
+.cryptid-sprite .sprite { transform: scaleX(-1); } /* PNGs face left, flip for player */
+.cryptid-sprite.enemy .sprite { transform: scaleX(1); } /* Enemy faces left (toward player) */
+
+/* Image sprites on battlefield */
+.cryptid-sprite .sprite .sprite-img,
+.cryptid-sprite .sprite .field-sprite-img {
+    width: calc(var(--sprite-size) * 1.2);
+    height: calc(var(--sprite-size) * 1.2);
+    object-fit: contain;
+    image-rendering: auto;
+}
+
+/* Ultimate rarity - subtle electric sparks */
+.cryptid-sprite.rarity-ultimate .sprite {
+    animation: subtleSpark 0.4s steps(4) infinite;
+}
+
+@keyframes subtleSpark {
+    0% { filter: drop-shadow(3px -2px 1px rgba(255,255,255,0.9)); }
+    25% { filter: drop-shadow(-2px 3px 1px rgba(255,255,255,0.9)); }
+    50% { filter: drop-shadow(2px 2px 1px rgba(200,220,255,0.9)); }
+    75% { filter: drop-shadow(-3px -1px 1px rgba(255,255,200,0.9)); }
+    100% { filter: none; }
+}
+
+.cryptid-sprite.tapped {
+    /* Only dim/gray the sprite itself, not the stat bars */
+}
+
+.cryptid-sprite.tapped > .sprite {
+    opacity: 0.5;
+    filter: grayscale(0.5) drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+}
+
+/* Hidden cryptid (Snipe ambush) */
+.cryptid-sprite.hidden-cryptid {
+    animation: hiddenPulse 2s ease-in-out infinite;
+}
+
+.cryptid-sprite .hidden-sprite {
+    font-size: calc(var(--sprite-size) * 0.8);
+    filter: drop-shadow(0 0 8px rgba(100, 50, 150, 0.8));
+}
+
+.cryptid-sprite .hidden-own {
+    position: relative;
+}
+
+.cryptid-sprite .hidden-own .hidden-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    font-size: 12px;
+    animation: hiddenBadgePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes hiddenPulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+}
+
+@keyframes hiddenBadgePulse {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.2); opacity: 1; }
+}
+
+.cryptid-sprite.evolved .sprite {
+    filter: drop-shadow(0 0 6px rgba(107, 143, 163, 0.8));
+}
+
+/* Element glow on battlefield sprites */
+.cryptid-sprite.element-void .sprite { filter: drop-shadow(0 0 5px rgba(155, 89, 182, 0.6)); }
+.cryptid-sprite.element-blaze .sprite { filter: drop-shadow(0 0 5px rgba(192, 57, 43, 0.6)); }
+.cryptid-sprite.element-blood .sprite { filter: drop-shadow(0 0 5px rgba(192, 57, 43, 0.6)); }
+.cryptid-sprite.element-water .sprite { filter: drop-shadow(0 0 5px rgba(52, 152, 219, 0.6)); }
+.cryptid-sprite.element-steel .sprite { filter: drop-shadow(0 0 5px rgba(149, 165, 166, 0.6)); }
+.cryptid-sprite.element-nature .sprite { filter: drop-shadow(0 0 5px rgba(39, 174, 96, 0.6)); }
+
+.cryptid-sprite .stat-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+    background: linear-gradient(180deg, rgba(38, 26, 18, 0.95), rgba(20, 14, 10, 0.95));
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid rgba(100, 80, 60, 0.5);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.cryptid-sprite .atk-val, .cryptid-sprite .hp-val {
+    font-family: var(--ui-font);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.cryptid-sprite .atk-val { color: #e88; }
+.cryptid-sprite .atk-val::before { content: '⚔'; font-size: 9px; margin-right: 1px; }
+.cryptid-sprite .hp-val { color: var(--rune-glow); }
+.cryptid-sprite .hp-val::before { content: '♥'; font-size: 9px; margin-right: 1px; }
+
+.cryptid-sprite .evo-pip {
+    width: 6px;
+    height: 6px;
+    background: var(--spirit-blue);
+    border-radius: 50%;
+    box-shadow: 0 0 4px var(--spirit-blue);
+}
+
+/* Status Effect Icons */
+.cryptid-sprite .status-icons {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    display: flex;
+    gap: 2px;
+    font-size: 12px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8));
+    animation: statusPulse 2s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Toxic tile indicator on cryptid */
+.cryptid-sprite.on-toxic {
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.6)) drop-shadow(0 0 8px rgba(80, 200, 80, 0.4));
+}
+
+/* Toxic tile background effect - simple green border */
+.tile.toxic-active .tile-base {
+    border-color: rgba(80, 200, 80, 0.7) !important;
+    box-shadow: 0 4px 0 rgba(20, 40, 20, 0.9), inset 0 0 12px rgba(80, 200, 80, 0.25);
+}
+
+/* Trap Sprites */
+.trap-sprite {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+    opacity: 0.85;
+}
+
+.trap-sprite .sprite {
+    font-size: calc(var(--sprite-size) * 0.8);
+    line-height: 1;
+}
+
+.trap-sprite.face-down .sprite {
+    filter: brightness(0.3) blur(2px);
+}
+
+.trap-sprite .trap-indicator {
+    font-size: 10px;
+    color: #b090d0;
+    text-shadow: 0 0 6px rgba(150, 120, 180, 0.8);
+}
+
+.trap-sprite.triggering {
+    animation: trapTrigger 0.8s ease-out forwards;
+}
+
+.trap-sprite.spawning {
+    animation: trapSpawn 0.4s ease-out forwards;
+}
+
+@keyframes trapSpawn {
+    0% { 
+        opacity: 0; 
+        transform: translate(-50%, -50%) scale(0.3);
+    }
+    50% {
+        opacity: 0.9;
+        transform: translate(-50%, -50%) scale(1.2);
+    }
+    100% { 
+        opacity: 0.85; 
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+/* ==================== COMBAT ANIMATIONS ==================== */
+@keyframes attackRight {
+    0%, 100% { transform: translate(-50%, -50%); }
+    15% { transform: translate(-50%, -50%) scale(1.2); }
+    50% { transform: translate(calc(-50% + 50px), -50%); }
+    75% { transform: translate(calc(-50% + 15px), -50%); }
+}
+
+@keyframes attackLeft {
+    0%, 100% { transform: translate(-50%, -50%); }
+    15% { transform: translate(-50%, -50%) scale(1.2); }
+    50% { transform: translate(calc(-50% - 50px), -50%); }
+    75% { transform: translate(calc(-50% - 15px), -50%); }
+}
+
+@keyframes takeDamage {
+    0%, 100% { filter: brightness(1) drop-shadow(0 2px 6px rgba(0,0,0,0.8)); transform: translate(-50%, -50%); }
+    10% { filter: brightness(3) saturate(0) drop-shadow(0 0 15px red); transform: translate(-50%, -50%) scale(1.1); }
+    25% { filter: brightness(0.3); transform: translate(calc(-50% - 6px), -50%); }
+    40% { filter: brightness(2); transform: translate(calc(-50% + 6px), -50%); }
+    55% { filter: brightness(0.5); transform: translate(calc(-50% - 3px), -50%); }
+    70% { filter: brightness(1.5); transform: translate(calc(-50% + 3px), -50%); }
+}
+
+@keyframes deathRight {
+    0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    15% { transform: translate(-50%, -50%) scale(1.15); filter: brightness(2) saturate(0); }
+    40% { opacity: 0.8; transform: translate(calc(-50% + 60px), calc(-50% - 15px)) scale(0.9) rotate(15deg); }
+    70% { opacity: 0.4; transform: translate(calc(-50% + 100px), calc(-50% + 8px)) scale(0.5) rotate(25deg); filter: blur(2px); }
+    100% { opacity: 0; transform: translate(calc(-50% + 120px), calc(-50% + 20px)) scale(0.1) rotate(35deg); filter: blur(5px); }
+}
+
+@keyframes deathLeft {
+    0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    15% { transform: translate(-50%, -50%) scale(1.15); filter: brightness(2) saturate(0); }
+    40% { opacity: 0.8; transform: translate(calc(-50% - 60px), calc(-50% - 15px)) scale(0.9) rotate(-15deg); }
+    70% { opacity: 0.4; transform: translate(calc(-50% - 100px), calc(-50% + 8px)) scale(0.5) rotate(-25deg); filter: blur(2px); }
+    100% { opacity: 0; transform: translate(calc(-50% - 120px), calc(-50% + 20px)) scale(0.1) rotate(-35deg); filter: blur(5px); }
+}
+
+@keyframes promoteRight {
+    0% { transform: translate(-50%, -50%); }
+    30% { transform: translate(-50%, -50%) scale(1.1); }
+    100% { transform: translate(calc(-50% + var(--promote-distance)), -50%); }
+}
+
+@keyframes promoteLeft {
+    0% { transform: translate(-50%, -50%); }
+    30% { transform: translate(-50%, -50%) scale(1.1); }
+    100% { transform: translate(calc(-50% - var(--promote-distance)), -50%); }
+}
+
+@keyframes summonAnim {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) translateY(30px); filter: blur(8px); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.15) translateY(-6px); filter: blur(0); }
+    75% { transform: translate(-50%, -50%) scale(0.95) translateY(2px); }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1) translateY(0); }
+}
+
+@keyframes evolveAnim {
+    0% { transform: translate(-50%, -50%) scale(1); }
+    25% { transform: translate(-50%, -50%) scale(1.3); filter: brightness(2) hue-rotate(60deg); }
+    50% { transform: translate(-50%, -50%) scale(0.8); filter: brightness(3) hue-rotate(120deg); }
+    75% { transform: translate(-50%, -50%) scale(1.2); filter: brightness(2) hue-rotate(180deg); }
+    100% { transform: translate(-50%, -50%) scale(1); filter: brightness(1) hue-rotate(0deg); }
+}
+
+.cryptid-sprite.attacking-right { animation: attackRight 0.6s ease; }
+.cryptid-sprite.attacking-left { animation: attackLeft 0.6s ease; }
+.cryptid-sprite.taking-damage { animation: takeDamage 0.65s ease; }
+.cryptid-sprite.dying-right { animation: deathRight 0.7s ease-out forwards; }
+.cryptid-sprite.dying-left { animation: deathLeft 0.7s ease-out forwards; }
+.cryptid-sprite.promoting-right { animation: promoteRight 0.5s ease-out forwards; }
+.cryptid-sprite.promoting-left { animation: promoteLeft 0.5s ease-out forwards; }
+.cryptid-sprite.summoning { animation: summonAnim 0.6s ease-out; }
+.cryptid-sprite.evolving { animation: evolveAnim 0.8s ease-out; }
+.cryptid-sprite.protection-block { 
+    animation: protectionBlock 0.75s ease-out !important;
+    z-index: 100;
+}
+
+@keyframes protectionBlock {
+    0% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+        transform: translate(-50%, -50%) scale(1);
+    }
+    10% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 30px rgba(100, 200, 255, 1)) drop-shadow(0 0 60px rgba(100, 200, 255, 0.5)) brightness(2);
+        transform: translate(-50%, -50%) scale(1.2);
+    }
+    25% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 50px rgba(150, 220, 255, 1)) drop-shadow(0 0 80px rgba(100, 200, 255, 0.7)) brightness(2.5);
+        transform: translate(-50%, -50%) scale(1.15);
+    }
+    50% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 40px rgba(100, 200, 255, 0.9)) brightness(1.8);
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+    75% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 20px rgba(100, 180, 255, 0.5)) brightness(1.3);
+        transform: translate(-50%, -50%) scale(1.05);
+    }
+    100% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+/* ==================== SPELL/AURA/INSTANT EFFECT ANIMATIONS ==================== */
+/* Spell target effect - purple magical flash */
+@keyframes spellTargetPulse {
+    0% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 0 rgba(150, 100, 200, 0));
+        transform: translate(-50%, -50%) scale(1);
+    }
+    25% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 25px rgba(150, 100, 200, 1)) brightness(1.5);
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+    50% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 35px rgba(200, 150, 255, 1)) brightness(2);
+        transform: translate(-50%, -50%) scale(1.05);
+    }
+    75% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 20px rgba(150, 100, 200, 0.8)) brightness(1.3);
+        transform: translate(-50%, -50%) scale(1.08);
+    }
+    100% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.cryptid-sprite.spell-target {
+    animation: spellTargetPulse 0.8s ease-out !important;
+    z-index: 100;
+}
+
+/* Aura target effect - golden shimmer */
+@keyframes auraTargetShimmer {
+    0% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+        transform: translate(-50%, -50%) scale(1);
+    }
+    20% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 20px rgba(232, 169, 62, 0.8)) brightness(1.3);
+        transform: translate(-50%, -50%) scale(1.05);
+    }
+    40% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 30px rgba(255, 215, 100, 1)) brightness(1.6);
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+    60% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 25px rgba(232, 169, 62, 0.9)) brightness(1.4);
+        transform: translate(-50%, -50%) scale(1.08);
+    }
+    80% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 15px rgba(232, 169, 62, 0.5)) brightness(1.2);
+        transform: translate(-50%, -50%) scale(1.03);
+    }
+    100% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.cryptid-sprite.aura-target {
+    animation: auraTargetShimmer 0.8s ease-out !important;
+    z-index: 100;
+}
+
+/* Spell target tile effect */
+@keyframes spellTilePulse {
+    0%, 100% { 
+        box-shadow: 0 4px 0 rgba(30, 20, 40, 0.9), 0 6px 12px rgba(0,0,0,0.5);
+    }
+    25% { 
+        box-shadow: 0 4px 0 rgba(30, 20, 40, 0.9), 0 0 30px rgba(150, 100, 200, 0.8), inset 0 0 20px rgba(150, 100, 200, 0.4);
+    }
+    50% { 
+        box-shadow: 0 4px 0 rgba(30, 20, 40, 0.9), 0 0 40px rgba(200, 150, 255, 1), inset 0 0 30px rgba(200, 150, 255, 0.5);
+    }
+    75% { 
+        box-shadow: 0 4px 0 rgba(30, 20, 40, 0.9), 0 0 25px rgba(150, 100, 200, 0.6), inset 0 0 15px rgba(150, 100, 200, 0.3);
+    }
+}
+
+.tile.spell-target-tile .tile-base {
+    animation: spellTilePulse 0.8s ease-out !important;
+}
+
+/* Battlefield flash for trap activation */
+@keyframes trapFlash {
+    0% { background-color: transparent; }
+    15% { background-color: rgba(255, 165, 0, 0.15); }
+    30% { background-color: rgba(255, 100, 50, 0.1); }
+    50% { background-color: rgba(255, 200, 100, 0.12); }
+    100% { background-color: transparent; }
+}
+
+#battlefield-area.trap-flash {
+    animation: trapFlash 0.4s ease-out;
+}
+
+/* Burn damage animation */
+@keyframes burnDamage {
+    0% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+    }
+    20% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 15px rgba(255, 100, 0, 0.9)) brightness(1.4);
+    }
+    40% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 25px rgba(255, 50, 0, 1)) brightness(1.6);
+    }
+    60% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 20px rgba(255, 80, 0, 0.8)) brightness(1.3);
+    }
+    80% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 10px rgba(255, 100, 0, 0.5)) brightness(1.1);
+    }
+    100% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+    }
+}
+
+.cryptid-sprite.burn-damage {
+    animation: burnDamage 0.7s ease-out !important;
+}
+
+/* Toxic damage animation */
+@keyframes toxicDamage {
+    0% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+    }
+    25% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 15px rgba(100, 200, 50, 0.9)) brightness(1.2);
+    }
+    50% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 20px rgba(50, 180, 50, 1)) brightness(1.4);
+    }
+    75% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 12px rgba(80, 200, 50, 0.7)) brightness(1.2);
+    }
+    100% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+    }
+}
+
+.cryptid-sprite.toxic-damage {
+    animation: toxicDamage 0.6s ease-out !important;
+}
+
+/* Heal animation */
+@keyframes healPulse {
+    0% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+    }
+    30% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 20px rgba(100, 255, 150, 0.8)) brightness(1.3);
+    }
+    60% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 15px rgba(150, 255, 180, 0.6)) brightness(1.2);
+    }
+    100% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+    }
+}
+
+.cryptid-sprite.healing {
+    animation: healPulse 0.6s ease-out !important;
+}
+
+/* Calamity tick animation */
+@keyframes calamityTick {
+    0% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+        transform: translate(-50%, -50%) scale(1);
+    }
+    25% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 15px rgba(200, 50, 200, 0.8));
+        transform: translate(-50%, -50%) scale(1.05);
+    }
+    50% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 25px rgba(255, 0, 255, 1)) brightness(1.3);
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+    75% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 15px rgba(200, 50, 200, 0.6));
+        transform: translate(-50%, -50%) scale(1.05);
+    }
+    100% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.cryptid-sprite.calamity-tick {
+    animation: calamityTick 0.8s ease-out !important;
+}
+
+/* Stun recovery animation */
+@keyframes stunRecover {
+    0% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) grayscale(0.5) brightness(0.8);
+    }
+    50% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) drop-shadow(0 0 15px rgba(255, 255, 100, 0.8)) brightness(1.3);
+    }
+    100% { 
+        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+    }
+}
+
+.cryptid-sprite.stun-recover {
+    animation: stunRecover 0.5s ease-out !important;
+}
+
+/* ==================== PYRE BURN EFFECTS ==================== */
+@keyframes pyreBurnFlash {
+    0% { opacity: 0; }
+    15% { opacity: 0.8; }
+    30% { opacity: 0.3; }
+    50% { opacity: 0.7; }
+    100% { opacity: 0; }
+}
+
+@keyframes pyreBurnShake {
+    0%, 100% { transform: translateX(0); }
+    10% { transform: translateX(-6px) rotate(-0.3deg); }
+    20% { transform: translateX(6px) rotate(0.3deg); }
+    30% { transform: translateX(-5px); }
+    40% { transform: translateX(5px); }
+    50% { transform: translateX(-3px); }
+    60% { transform: translateX(3px); }
+}
+
+@keyframes pyreBurnText {
+    0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+    20% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+    40% { transform: translate(-50%, -50%) scale(1); }
+    70% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1.1); opacity: 0; }
+}
+
+#pyre-burn-overlay {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(196, 92, 38, 0.7) 0%, rgba(107, 28, 28, 0.4) 40%, transparent 70%);
+    pointer-events: none;
+    opacity: 0;
+    z-index: 250;
+}
+
+#pyre-burn-overlay.active { animation: pyreBurnFlash 0.8s ease-out forwards; }
+#game-container.shaking { animation: pyreBurnShake 0.5s ease-out; }
+
+#pyre-burn-text {
+    position: absolute;
+    top: 35%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Cinzel', serif;
+    font-size: clamp(20px, 5vw, 32px);
+    font-weight: 700;
+    color: var(--candlelight);
+    text-shadow: 0 0 20px var(--ember), 0 0 40px var(--dried-blood), 2px 2px 4px rgba(0,0,0,0.8);
+    pointer-events: none;
+    opacity: 0;
+    z-index: 260;
+    white-space: nowrap;
+    letter-spacing: 3px;
+}
+
+#pyre-burn-text.active { animation: pyreBurnText 1.2s ease-out forwards; }
+
+/* ==================== HAND AREA - Grid-Based Proportional Layout ==================== */
+/* VERSION: 6.2 - Centered layout, no clipping, better desktop scaling */
+
+/* 
+ * Design principles:
+ * 1. --hand-h is the single source of truth for all dimensions
+ * 2. Cards fill ~80% of hand height with room for hover lift
+ * 3. Buttons scale with cards and stay adjacent to card area
+ * 4. Content is centered as a group (buttons + cards together)
+ * 5. Overflow visible to prevent card clipping on hover
+ */
+#hand-area {
+    /* Height: 22% of viewport, min 130px, max 240px */
+    --hand-h: clamp(130px, 22vh, 240px);
+    
+    /* Card dimensions - 80% of hand height, room for hover */
+    --card-h: calc(var(--hand-h) * 0.80);
+    --card-w: calc(var(--card-h) / 1.4);
+    --card-gap: calc(var(--card-h) * 0.06);
+    
+    /* Button size scales with cards - no cap */
+    --btn-size: calc(var(--card-h) * 0.85);
+    
+    /* Info bar height */
+    --info-h: 24px;
+    
+    height: var(--hand-h);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0;
+    background: linear-gradient(0deg, rgba(10, 8, 15, 0.95) 0%, rgba(10, 8, 15, 0.8) 70%, transparent 100%);
+    position: relative;
+    z-index: 50;
+    flex-shrink: 0;
+    overflow: visible; /* CRITICAL: Allow cards to pop up on hover without clipping */
+}
+
+/* Very short screens (phones in landscape) */
+@media (max-height: 400px) {
+    #hand-area {
+        --hand-h: 150px;
+    }
+}
+
+/* Mobile screens - for 140px cards */
+@media (max-height: 500px) {
+    #hand-area {
+        --hand-h: 155px;
+    }
+}
+
+/* Medium screens */
+@media (min-height: 501px) and (max-height: 699px) {
+    #hand-area {
+        --hand-h: 125px;
+    }
+}
+
+/* Tall screens (tablets, desktops) - scale up more */
+@media (min-height: 700px) {
+    #hand-area {
+        --hand-h: clamp(180px, 24vh, 280px);
+        --info-h: 28px;
+    }
+}
+
+/* Very tall screens - even larger cards */
+@media (min-height: 900px) {
+    #hand-area {
+        --hand-h: clamp(220px, 22vh, 340px);
+    }
+}
+
+/* ===== INFO BAR - Timeline + Card Count ===== */
+.hand-info-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3vw;
+    height: var(--info-h);
+    width: 100%;
+    flex-shrink: 0;
+    margin-bottom: 4px;
+}
+
+/* Hide info bar on mobile - MUST come after base definition */
+@media (max-height: 500px) {
+    .hand-info-bar {
+        display: none !important;
+    }
+}
+
+/* ===== MAIN CONTENT - Buttons + Cards grouped together ===== */
+.hand-main-content {
+    display: flex;
+    align-items: center; /* VERTICALLY CENTER buttons with cards */
+    justify-content: center;
+    gap: calc(var(--card-gap) * 2);
+    flex: 1;
+    width: 100%;
+    max-width: 1400px; /* Keep everything grouped on wide screens */
+    padding: 0 2vw 6px 2vw;
+    overflow: visible;
+}
+
+/* ===== CARDS AREA - Contains scroll wrapper ===== */
+.hand-cards-area {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    max-width: 1000px;
+    overflow: visible;
+}
+
+.hand-scroll-fade {
+    display: none;
+}
+
+/* Phase Timeline */
+.phase-timeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.phase-timeline .phase-node {
+    font-size: 9px;
+    color: #4a4a55;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.02);
+    transition: all 0.3s ease;
+    font-family: 'Cinzel', serif;
+    white-space: nowrap;
+}
+
+.phase-timeline .phase-node.completed {
+    color: #65645a;
+}
+
+.phase-timeline .phase-node.active {
+    color: #c9a227;
+    background: rgba(200, 160, 40, 0.15);
+    box-shadow: 0 0 8px rgba(200, 160, 40, 0.2);
+}
+
+.phase-timeline .phase-connector {
+    width: 10px;
+    height: 2px;
+    background: #303038;
+    flex-shrink: 0;
+}
+
+.phase-timeline .phase-connector.completed {
+    background: #505048;
+}
+
+/* Very short screens - compact timeline */
+@media (max-height: 400px) {
+    .phase-timeline .phase-node { 
+        font-size: 7px;
+        padding: 2px 4px; 
+    }
+    .phase-timeline .phase-connector { width: 6px; }
+}
+
+/* Larger screens - slightly bigger timeline */
+@media (min-height: 700px) {
+    .phase-timeline .phase-node { 
+        font-size: 10px;
+        padding: 4px 8px; 
+    }
+    .phase-timeline .phase-connector { width: 12px; }
+}
+
+/* Card count */
+.hand-card-count {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    color: #9a8a70;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+@media (min-height: 700px) {
+    .hand-card-count {
+        font-size: 11px;
+    }
+}
+
+/* ===== SIDE BUTTONS - Vertically centered with cards ===== */
+.hand-side-btn {
+    width: var(--btn-size);
+    height: var(--btn-size);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.15s ease, filter 0.15s ease;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5));
+    background-color: transparent;
+    background-size: 80%;
+    background-position: center;
+    background-repeat: no-repeat;
+    flex-shrink: 0;
+    /* Vertically centered via parent's align-items: center */
+}
+
+.hand-side-btn:hover {
+    transform: scale(1.06);
+    filter: drop-shadow(0 6px 16px rgba(0,0,0,0.6)) brightness(1.15);
+}
+
+.hand-side-btn:active {
+    transform: scale(0.95);
+}
+
+.hand-side-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(50%);
+}
+
+/* Left button */
+.hand-menu-btn {
+    background-image: url('https://f.playcode.io/p-2633929/v-1/019b7085-a87a-7548-b4b5-10ddbd1ebab8/battle-burger.png');
+}
+
+.hand-menu-btn.menu-open {
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5)) brightness(1.4);
+}
+
+/* Right button */
+.advance-phase-btn {
+    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6c7a-04c0-727f-ac08-b2339084de6c/turn-button.png');
+}
+
+/* ===== CARD CONTAINER ===== */
+#hand-container {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: var(--card-gap);
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+    /* Padding must be larger than fade zone so cards can scroll into full view */
+    padding: 0 6%;
+    /* Extra top padding inside scroll container for hover lift */
+    padding-top: 30px;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    
+    /* Fade edges - 5% fade zone, padding is 6% so cards can scroll fully into view */
+    mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+}
+
+/* Scroll wrapper just needs to allow overflow */
+.hand-scroll-wrapper {
+    display: flex;
+    width: 100%;
+    overflow: visible;
+    /* Negative margin to offset the extra padding in hand-container */
+    margin-top: -30px;
+}
+
+.hand-scroll-wrapper::-webkit-scrollbar {
+    display: none;
+}
+
+#hand-container::-webkit-scrollbar {
+    display: none;
+}
+
+/* Center cards when they fit */
+#hand-container.centered {
+    justify-content: center;
+}
+
+#hand-container.not-turn {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* ===== CARD WRAPPER - Uses hand area variables ===== */
+.card-wrapper {
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: transform 0.15s ease-out;
+    position: relative;
+    /* No padding-top needed - hand-container has space */
+}
+
+.card-wrapper:hover {
+    transform: translateY(-15px) scale(1.06);
+    z-index: 10;
+}
+
+.card-wrapper.inspecting {
+    transform: translateY(-20px) scale(1.12);
+    z-index: 20;
+}
+
+/* ===== GAME CARD BASE - Proportional scaling ===== */
+.game-card {
+    /* Base card dimensions - these cascade to all children */
+    --gc-width: 86px;
+    --gc-height: 120px;
+    position: relative;
+}
+
+/* ===== BATTLE CARDS - Use hand area derived dimensions ===== */
+.battle-card {
+    /* Set gc-width to match card dimensions from hand area */
+    --gc-width: var(--card-w, 86px);
+    --gc-height: var(--card-h, 120px);
+    --gc-badge-size: calc(var(--gc-width) * 0.225);
+    --gc-badge-font: calc(var(--gc-width) * 0.15);
+    --gc-stat-font: calc(var(--gc-width) * 0.15);
+    --gc-name-font: calc(var(--gc-width) * 0.1125);
+    --gc-padding: calc(var(--gc-width) * 0.0375);
+    --gc-border-radius: calc(var(--gc-width) * 0.05);
+    
+    width: var(--gc-width) !important;
+    height: var(--gc-height) !important;
+    cursor: grab;
+    transition: transform 0.12s ease-out, filter 0.12s ease-out;
+    transform-origin: center bottom;
+    box-shadow: none;
+    border-radius: 0;
+    border: none;
+    background: transparent;
+}
+
+/* Hide ability boxes in hand cards - not needed at this size */
+.battle-card .gc-abilities {
+    display: none !important;
+}
+
+.battle-card:not(.unplayable) {
+    /* No effects - clean card */
+}
+
+.card-wrapper:hover .battle-card:not(.unplayable) {
+    /* No effects - clean card */
+}
+
+.battle-card.selected {
+    /* No effects - clean card */
+}
+
+.card-wrapper.inspecting .battle-card {
+    /* No effects - clean card */
+}
+
+.battle-card.unplayable {
+    filter: saturate(0.4) brightness(0.7);
+    cursor: not-allowed;
+}
+
+.card-wrapper:hover .battle-card.unplayable {
+    transform: none;
+}
+
+.battle-card.evolution-card:not(.unplayable) {
+    /* No effects - clean card */
+}
+
+/* Mobile: Explicitly set smaller card dimensions */
+@media (max-height: 500px) {
+    #hand-area .battle-card {
+        --gc-width: 95px !important;
+        --gc-height: 140px !important;
+        width: 95px !important;
+        height: 140px !important;
+    }
+    
+    #hand-area .hand-side-btn {
+        width: 70px !important;
+        height: 70px !important;
+    }
+    
+    #hand-area .card-wrapper:hover {
+        transform: translateY(-12px) scale(1.05);
+    }
+}
+
+/* Medium screens */
+@media (min-height: 501px) and (max-height: 699px) {
+    #hand-area .battle-card {
+        --gc-width: 72px !important;
+        --gc-height: 100px !important;
+        width: 72px !important;
+        height: 100px !important;
+    }
+    
+    #hand-area .hand-side-btn {
+        width: 85px !important;
+        height: 85px !important;
+    }
+}
+
+/* Card enter animation */
+.battle-card.card-entering {
+    animation: cardSlideIn 0.2s ease-out both;
+}
+
+@keyframes cardSlideIn {
+    from { 
+        opacity: 0; 
+        transform: translateX(16px) scale(0.9); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateX(0) scale(1); 
+    }
+}
+
+/* ===== MENU PANEL ===== */
+.hand-menu-panel {
+    position: fixed;
+    left: -200px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(30, 25, 20, 0.97), rgba(20, 15, 12, 0.99));
+    border: 2px solid #4a4035;
+    border-left: none;
+    border-radius: 0 16px 16px 0;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.6);
+    transition: left 0.3s ease;
+    z-index: 200;
+}
+
+.hand-menu-panel.open {
+    left: 0 !important;
+}
+
+.hand-menu-panel .menu-action-btn {
+    width: 140px;
+    height: 50px;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.15s ease, filter 0.15s ease;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5));
+}
+
+.hand-menu-panel .menu-action-btn:hover:not(:disabled) {
+    transform: scale(1.08);
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6)) brightness(1.2);
+}
+
+.hand-menu-panel .menu-action-btn:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.hand-menu-panel .menu-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(50%);
+}
+
+.hand-menu-panel #menu-kindling-btn {
+    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-9ce1-75de-a600-0f10ab445aab/kindling-button.png');
+}
+
+.hand-menu-panel #menu-kindling-btn.active {
+    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-9ce2-746b-b089-a7d1b68f8009/grimoire-button.png');
+    filter: brightness(1.2) drop-shadow(0 0 8px rgba(232, 169, 62, 0.5));
+}
+
+.hand-menu-panel #menu-burn-btn {
+    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-a0ff-704c-9742-51c58f289adb/burn-button.png');
+}
+
+.hand-menu-panel #menu-end-btn {
+    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-9ce3-7587-8afd-c7067a9f965c/end-button.png');
+}
+
+#action-bar {
+    display: none;
+}
+
+/* Staggered card entry */
+.card-wrapper:nth-child(1) .battle-card.card-entering { animation-delay: 0s; }
+.card-wrapper:nth-child(2) .battle-card.card-entering { animation-delay: 0.05s; }
+.card-wrapper:nth-child(3) .battle-card.card-entering { animation-delay: 0.1s; }
+.card-wrapper:nth-child(4) .battle-card.card-entering { animation-delay: 0.15s; }
+.card-wrapper:nth-child(5) .battle-card.card-entering { animation-delay: 0.2s; }
+.card-wrapper:nth-child(6) .battle-card.card-entering { animation-delay: 0.25s; }
+.card-wrapper:nth-child(7) .battle-card.card-entering { animation-delay: 0.3s; }
+.card-wrapper:nth-child(8) .battle-card.card-entering { animation-delay: 0.35s; }
+.card-wrapper:nth-child(9) .battle-card.card-entering { animation-delay: 0.4s; }
+.card-wrapper:nth-child(10) .battle-card.card-entering { animation-delay: 0.45s; }
+
+/* Card play animation - flying to board */
+.battle-card.card-playing {
+    animation: cardPlay 0.4s ease-in forwards;
+    pointer-events: none;
+}
+
+@keyframes cardPlay {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-100px) scale(0.5);
+        opacity: 0;
+    }
+}
+
+/* LEGACY - Keep old .card class for any remaining compatibility */
+/* New cards should use .game-card .battle-card instead */
+.card {
+    width: var(--card-width);
+    height: var(--card-height);
+    position: relative;
+    cursor: grab;
+    border-radius: 6px;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    background: transparent;
+}
+
+/* Card template overlay - same system as .game-card */
+.card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Default to steel cryptid template */
+.card::before {
+    background-image: url('https://f.playcode.io/p-2633929/v-1/019b76e0-eb8f-7209-b2b7-a4a16bd15a45/steel-element.png');
+}
+
+.card::after {
+    display: none;
+}
+
+.card-wrapper:hover .card,
+.card-wrapper:active .card {
+    transform: translateY(-20px) scale(1.05);
+    box-shadow: 0 16px 32px rgba(0,0,0,0.5);
+}
+
+.card.selected {
+    transform: translateY(-24px) scale(1.05);
+    box-shadow: 0 16px 32px rgba(0,0,0,0.5);
+}
+
+.card.unplayable {
+    filter: grayscale(50%) brightness(0.6);
+    cursor: not-allowed;
+}
+
+.card.unplayable:hover {
+    transform: translateY(0) scale(1);
+}
+
+.card.evolution-card {
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5), 0 0 12px rgba(155, 89, 182, 0.3);
+}
+
+/* Card header - hidden, name is now absolutely positioned */
+.card-header {
+    display: none;
+}
+
+/* ===========================================
+   CARD ELEMENT POSITIONING
+   All .gc-* styles are defined in progression-styles.css
+   with .game-card .gc-* selectors for proper specificity.
+   Do NOT add duplicate styles here.
+   =========================================== */
+
+/* Element icon - hidden since card frame indicates element */
+.element-icon {
+    display: none;
+}
+
+/* Rarity indicator - hidden since frame indicates rarity */
+.gc-rarity {
+    display: none;
+}
+
+/* Mythical marker - hidden for now, frame indicates mythical */
+.gc-mythical,
+.card-mythical {
+    display: none;
+}
+
+/* Card animations */
+.card.card-entering { animation: cardEnter 0.4s ease-out both; }
+
+@keyframes cardEnter {
+    from { opacity: 0; transform: translateY(30px) scale(0.8); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Drag ghost */
+#drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 99999;
+    opacity: 0.9;
+    transform: rotate(-5deg) scale(1.1);
+}
+
+/* Override game-card defaults for drag ghost - use inline style values */
+#drag-ghost.game-card {
+    /* Width/height are set directly via JS inline styles */
+    /* Derived variables recalculate from the inline --gc-width */
+    --gc-badge-size: calc(var(--gc-width) * 0.225);
+    --gc-badge-font: calc(var(--gc-width) * 0.15);
+    --gc-stat-font: calc(var(--gc-width) * 0.15);
+    --gc-name-font: calc(var(--gc-width) * 0.1125);
+    --gc-padding: calc(var(--gc-width) * 0.0375);
+    --gc-border-radius: calc(var(--gc-width) * 0.05);
+    /* Disable transitions and hover effects */
+    transition: none;
+}
+
+#drag-ghost.game-card:hover {
+    transform: rotate(-5deg) scale(1.1); /* Keep drag transform, not hover */
+}
+
+#drag-ghost .gc-abilities {
+    display: none !important;
+}
+
+/* Pyre card drop zone */
+#battlefield-area.pyre-drop-zone::after {
+    content: '🔥 Release to gain Pyre';
+    position: absolute;
+    inset: 0;
+    background: rgba(232, 169, 62, 0.15);
+    border: 2px dashed var(--candlelight);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    color: var(--candlelight);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    z-index: 100;
+    pointer-events: none;
+}
+
+/* Pyre burst effect */
+.pyre-burst-effect {
+    position: fixed;
+    pointer-events: none;
+    z-index: 99998;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.pyre-burst-effect.active { opacity: 1; }
+
+.pyre-burst-effect .pyre-icon {
+    font-size: 48px;
+    animation: pyreBurstIcon 0.8s ease-out forwards;
+}
+
+@keyframes pyreBurstIcon {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.8; }
+    100% { transform: scale(0.5); opacity: 0; }
+}
+
+.pyre-burst-effect .pyre-glow {
+    position: absolute;
+    font-size: 80px;
+    opacity: 0;
+    animation: pyreGlowBurst 0.8s ease-out forwards;
+}
+
+@keyframes pyreGlowBurst {
+    0% { transform: scale(0.5); opacity: 0.8; }
+    50% { transform: scale(1.5); opacity: 0.5; }
+    100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* ==================== CANCEL BUTTON ==================== */
+#cancel-target {
+    position: fixed;
+    bottom: 160px;
+    right: 16px;
+    width: 46px;
+    height: 46px;
+    background: linear-gradient(135deg, var(--dried-blood), var(--old-blood));
+    border: 2px solid rgba(139, 80, 80, 0.6);
+    border-radius: 50%;
+    color: var(--parchment);
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    transition: all 0.3s ease;
+}
+
+#cancel-target.show {
+    display: flex;
+    animation: popIn 0.3s ease-out;
+}
+
+@keyframes popIn {
+    from { transform: scale(0); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+#cancel-target:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 20px rgba(139, 50, 50, 0.5);
+}
+
+@media (max-width: 600px) and (orientation: portrait) {
+    #cancel-target {
+        bottom: auto;
+        top: 55%;
+        right: 8px;
+        width: 42px;
+        height: 42px;
+    }
+}
+
+@media (max-height: 550px) {
+    #cancel-target {
+        bottom: 100px;
+        width: 38px;
+        height: 38px;
+        font-size: 16px;
+    }
+}
+
+/* ==================== MESSAGE OVERLAY ==================== */
+#message-overlay {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, rgba(38, 26, 18, 0.95), rgba(26, 18, 12, 0.98));
+    border: 2px solid var(--candlelight);
+    border-radius: 8px;
+    padding: 12px 28px;
+    z-index: 600;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    box-shadow: 0 4px 20px rgba(232, 169, 62, 0.3), 0 8px 32px rgba(0,0,0,0.6);
+}
+
+@media (max-height: 500px) {
+    #message-overlay {
+        top: 50px;
+        padding: 8px 20px;
+    }
+}
+
+#message-overlay.show {
+    opacity: 1;
+    animation: messageIn 0.3s ease-out;
+}
+
+@keyframes messageIn {
+    from { transform: translateX(-50%) scale(0.8) translateY(-10px); opacity: 0; }
+    to { transform: translateX(-50%) scale(1) translateY(0); opacity: 1; }
+}
+
+#message-text {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(14px, 4vw, 18px);
+    color: var(--candlelight);
+    text-align: center;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    white-space: nowrap;
+}
+
+/* ==================== GAME OVER ==================== */
+#game-over {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 13, 18, 0.95);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 900;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+}
+
+#game-over.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#game-over-text {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(36px, 12vw, 72px);
+    font-weight: 700;
+    margin-bottom: 16px;
+    letter-spacing: 8px;
+    animation: gameOverText 1s ease-out;
+}
+
+@keyframes gameOverText {
+    from { transform: scale(2); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+#game-over.victory #game-over-text {
+    color: var(--rune-glow);
+    text-shadow: 0 0 40px rgba(126, 184, 158, 0.6);
+}
+
+#game-over.defeat #game-over-text {
+    color: var(--dried-blood);
+    text-shadow: 0 0 40px rgba(107, 28, 28, 0.6);
+}
+
+#game-over-sub {
+    font-size: clamp(14px, 4vw, 18px);
+    color: var(--parchment);
+    margin-bottom: 32px;
+    opacity: 0.8;
+}
+
+#game-over button {
+    padding: 14px 36px;
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    font-weight: 700;
+    background: linear-gradient(180deg, var(--bark), var(--dark-bark));
+    border: 2px solid var(--candlelight);
+    border-radius: 4px;
+    color: var(--candlelight);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+#game-over button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(232, 169, 62, 0.4);
+}
+
+/* ==================== TOOLTIP ==================== */
+#tooltip {
+    position: fixed;
+    width: 180px;
+    background: linear-gradient(165deg, rgba(38, 30, 24, 0.98), rgba(26, 20, 16, 0.99));
+    border: 1px solid var(--bark);
+    border-radius: 6px;
+    padding: 10px;
+    z-index: 700;
+    pointer-events: none;
+    opacity: 0;
+    /* No transition - appears instantly */
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+}
+
+#tooltip.show { opacity: 1; }
+
+#tooltip-name {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--candlelight);
+    margin-bottom: 6px;
+    border-bottom: 1px solid rgba(232, 169, 62, 0.3);
+    padding-bottom: 4px;
+}
+
+#tooltip-desc {
+    font-size: 10px;
+    color: var(--parchment);
+    margin-bottom: 6px;
+    line-height: 1.4;
+}
+
+.combat-ability, .support-ability {
+    font-size: 10px;
+    line-height: 1.3;
+    margin-bottom: 4px;
+    padding: 3px 0;
+}
+
+.combat-ability {
+    color: var(--ember);
+    border-left: 2px solid var(--ember);
+    padding-left: 6px;
+}
+
+.support-ability {
+    color: var(--rune-glow);
+    border-left: 2px solid var(--rune-glow);
+    padding-left: 6px;
+}
+
+.other-ability {
+    color: #9b59b6;
+    border-left: 2px solid #9b59b6;
+    padding-left: 6px;
+    font-size: 10px;
+    line-height: 1.3;
+    margin-bottom: 4px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+
+.evolution-info {
+    font-size: 9px;
+    color: #9b59b6;
+    font-style: italic;
+    margin-top: 4px;
+    opacity: 0.9;
+}
+
+/* Sacrifice button in tooltip */
+.sacrifice-btn {
+    width: 100%;
+    margin-top: 8px;
+    padding: 6px 10px;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(180deg, #8b0000 0%, #4a0000 100%);
+    border: 1px solid #c00;
+    border-radius: 4px;
+    cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    box-shadow: 0 2px 6px rgba(139, 0, 0, 0.4);
+    transition: all 0.2s ease;
+}
+
+.sacrifice-btn:hover {
+    background: linear-gradient(180deg, #a00000 0%, #600000 100%);
+    box-shadow: 0 3px 10px rgba(139, 0, 0, 0.6);
+    transform: scale(1.02);
+}
+
+.sacrifice-btn:active {
+    transform: scale(0.98);
+}
+
+/* Blood Pact button in tooltip */
+.bloodpact-btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px 10px;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(180deg, #660033 0%, #330019 100%);
+    border: 1px solid #990052;
+    border-radius: 4px;
+    cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    box-shadow: 0 2px 6px rgba(102, 0, 51, 0.4);
+    transition: all 0.2s ease;
+}
+
+.bloodpact-btn:hover {
+    background: linear-gradient(180deg, #800040 0%, #400020 100%);
+    box-shadow: 0 3px 10px rgba(102, 0, 51, 0.6);
+    transform: scale(1.02);
+}
+
+.bloodpact-btn:active {
+    transform: scale(0.98);
+}
+
+/* Thermal Swap button (Stormhawk) */
+.thermal-btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px 10px;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(180deg, #2d5a27 0%, #1a3318 100%);
+    border: 1px solid #4a8c3f;
+    border-radius: 4px;
+    cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    box-shadow: 0 2px 6px rgba(45, 90, 39, 0.4);
+    transition: all 0.2s ease;
+}
+
+.thermal-btn:hover {
+    background: linear-gradient(180deg, #3d7a34 0%, #254422 100%);
+    box-shadow: 0 3px 10px rgba(45, 90, 39, 0.6);
+    transform: scale(1.02);
+}
+
+.thermal-btn:active {
+    transform: scale(0.98);
+}
+
+/* Rage Heal button (Adolescent Bigfoot) */
+.rageheal-btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px 10px;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(180deg, #8b4513 0%, #5c2e0d 100%);
+    border: 1px solid #cd853f;
+    border-radius: 4px;
+    cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    box-shadow: 0 2px 6px rgba(139, 69, 19, 0.4);
+    transition: all 0.2s ease;
+}
+
+.rageheal-btn:hover {
+    background: linear-gradient(180deg, #a0522d 0%, #6b3710 100%);
+    box-shadow: 0 3px 10px rgba(139, 69, 19, 0.6);
+    transform: scale(1.02);
+}
+
+.rageheal-btn:active {
+    transform: scale(0.98);
+}
+
+/* Blood Frenzy button (Werewolf) */
+.bloodfrenzy-btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px 10px;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(180deg, #8b0000 0%, #4a0000 100%);
+    border: 1px solid #cc0000;
+    border-radius: 4px;
+    cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    box-shadow: 0 2px 6px rgba(139, 0, 0, 0.4);
+    transition: all 0.2s ease;
+}
+
+.bloodfrenzy-btn:hover {
+    background: linear-gradient(180deg, #aa0000 0%, #600000 100%);
+    box-shadow: 0 3px 10px rgba(139, 0, 0, 0.6);
+    transform: scale(1.02);
+}
+
+.bloodfrenzy-btn:active {
+    transform: scale(0.98);
+}
+
+#tooltip.show.has-sacrifice {
+    pointer-events: auto;
+}
+
+/* ==================== CHRONICLE (Event Log) - Silver/Grunge ==================== */
+#event-log {
+    position: fixed;
+    z-index: 10001; /* Above multiplayer header */
+    transition: all 0.3s ease;
+}
+
+/* Collapsed: Icon button in center of HUD area */
+#event-log.collapsed {
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(40, 38, 45, 0.9), rgba(25, 23, 30, 0.95));
+    border: 2px solid rgba(200, 200, 210, 0.25);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    overflow: hidden;
+}
+
+@media (max-height: 500px) {
+    #event-log.collapsed {
+        top: 2px;
+        width: 32px;
+        height: 32px;
+    }
+}
+
+#event-log.collapsed:hover {
+    border-color: rgba(200, 200, 210, 0.5);
+    box-shadow: 0 2px 15px rgba(200, 200, 210, 0.15);
+    transform: translateX(-50%) scale(1.05);
+}
+
+#event-log.collapsed #event-log-header {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+#event-log.collapsed .log-title { display: none; }
+
+#event-log.collapsed .log-title-mobile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: #a0a0a8;
+    width: 100%;
+    height: 100%;
+}
+
+#event-log.collapsed #event-log-toggle { display: none; }
+#event-log.collapsed #event-log-entries { display: none; }
+
+/* Expanded: Slide-down panel from top */
+#event-log:not(.collapsed) {
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 60vh;
+    border-radius: 0 0 12px 12px;
+    background: linear-gradient(180deg, rgba(18, 16, 22, 0.98), rgba(12, 10, 15, 0.99));
+    border: none;
+    border-bottom: 1px solid rgba(200, 200, 210, 0.12);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    transform-origin: top center;
+    animation: chronicleExpand 0.25s ease-out;
+}
+
+@keyframes chronicleExpand {
+    from { 
+        opacity: 0;
+        transform: scaleY(0);
+    }
+    to { 
+        opacity: 1;
+        transform: scaleY(1);
+    }
+}
+
+#event-log:not(.collapsed) #event-log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    background: linear-gradient(180deg, rgba(38, 26, 18, 0.95), rgba(26, 18, 12, 0.9));
+    border-bottom: 1px solid rgba(126, 184, 158, 0.2);
+    flex-shrink: 0;
+}
+
+#event-log:not(.collapsed) .log-title {
+    display: block;
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--rune-glow);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+#event-log:not(.collapsed) .log-title-mobile { display: none; }
+
+#event-log:not(.collapsed) #event-log-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, var(--bark), var(--dark-bark));
+    border: 2px solid rgba(100, 80, 60, 0.5);
+    border-radius: 50%;
+    color: var(--parchment);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#event-log:not(.collapsed) #event-log-toggle:hover {
+    transform: scale(1.1);
+    border-color: var(--candlelight);
+}
+
+#event-log:not(.collapsed) #event-log-entries {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 16px;
+    max-height: calc(60vh - 60px);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(126, 184, 158, 0.3) transparent;
+}
+
+#event-log-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+#event-log-entries::-webkit-scrollbar { width: 5px; }
+#event-log-entries::-webkit-scrollbar-track { background: transparent; }
+#event-log-entries::-webkit-scrollbar-thumb {
+    background: rgba(126, 184, 158, 0.3);
+    border-radius: 3px;
+}
+
+/* Log entries */
+.log-entry {
+    padding: 6px 10px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--parchment);
+    opacity: 0.9;
+    border-left: 3px solid transparent;
+    animation: logEntryIn 0.3s ease-out;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 3px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 4px;
+}
+
+@keyframes logEntryIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 0.9; transform: translateX(0); }
+}
+
+.log-icon {
+    font-size: 12px;
+    flex-shrink: 0;
+    width: 18px;
+    text-align: center;
+}
+
+.log-text { flex: 1; }
+
+/* Entry type colors */
+.log-entry.player-action { border-left-color: var(--rune-glow); }
+.log-entry.enemy-action { border-left-color: var(--dried-blood); }
+.log-entry.combat { border-left-color: var(--ember); }
+.log-entry.death { border-left-color: #666; background: rgba(100, 100, 100, 0.05); }
+.log-entry.spell { border-left-color: var(--spirit-blue); }
+.log-entry.trap { border-left-color: #8b5cf6; }
+.log-entry.evolution { border-left-color: #9b59b6; }
+.log-entry.pyre { border-left-color: var(--candlelight); }
+.log-entry.heal { border-left-color: #27ae60; }
+.log-entry.status { border-left-color: #e67e22; }
+.log-entry.aura { border-left-color: #f1c40f; }
+.log-entry.buff { border-left-color: #3498db; }
+.log-entry.protection { border-left-color: #1abc9c; background: rgba(26, 188, 156, 0.05); }
+
+/* Names in log */
+.name-player { color: var(--rune-glow); font-weight: 600; }
+.name-enemy { color: #c97a7a; font-weight: 600; }
+
+/* Damage/heal values */
+.log-entry .damage { color: var(--ember); font-weight: 700; }
+.log-entry .heal { color: #27ae60; font-weight: 700; }
+.log-entry .pyre { color: var(--candlelight); font-weight: 700; }
+
+/* Turn separator */
+.log-turn-separator {
+    text-align: center;
+    padding: 10px 8px;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    color: var(--bone);
+    opacity: 0.5;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 6px 0;
+}
+
+/* ==================== LANDSCAPE SPECIFIC ==================== */
+@media (orientation: landscape) and (max-height: 550px) {
+    #event-log:not(.collapsed) {
+        max-height: 70vh;
+    }
+    
+    #event-log:not(.collapsed) #event-log-entries {
+        max-height: calc(70vh - 50px);
+    }
+    
+    .log-entry {
+        font-size: 11px;
+        padding: 5px 8px;
+    }
+}
+
+/* ==================== ABILITY ANIMATION EFFECTS ==================== */
+
+/* Ability damage flash */
+.cryptid-sprite.ability-damage {
+    animation: abilityDamageFlash 0.5s ease-out;
+}
+
+@keyframes abilityDamageFlash {
+    0% { filter: brightness(1); }
+    20% { filter: brightness(2) sepia(1) hue-rotate(-20deg); transform: scale(1.05); }
+    50% { filter: brightness(1.5) sepia(0.5); }
+    100% { filter: brightness(1); transform: scale(1); }
+}
+
+/* Counter-attack glow */
+.cryptid-sprite.counter-attacking {
+    animation: counterAttackGlow 0.4s ease-out;
+}
+
+@keyframes counterAttackGlow {
+    0% { filter: brightness(1); box-shadow: none; }
+    50% { filter: brightness(1.8); box-shadow: 0 0 20px rgba(255, 100, 100, 0.8); }
+    100% { filter: brightness(1.2); }
+}
+
+/* Cleave damage */
+.cryptid-sprite.cleave-damage {
+    animation: cleaveDamage 0.4s ease-out;
+}
+
+@keyframes cleaveDamage {
+    0% { transform: translateX(0); filter: brightness(1); }
+    25% { transform: translateX(-8px); filter: brightness(2) sepia(1); }
+    50% { transform: translateX(8px); }
+    75% { transform: translateX(-4px); }
+    100% { transform: translateX(0); filter: brightness(1); }
+}
+
+/* Multi-attack damage */
+.cryptid-sprite.multi-attack-damage {
+    animation: multiAttackDamage 0.35s ease-out;
+}
+
+@keyframes multiAttackDamage {
+    0% { transform: scale(1); filter: brightness(1); }
+    30% { transform: scale(0.9); filter: brightness(2) saturate(2); }
+    60% { transform: scale(1.05); }
+    100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* Buff applied glow */
+.cryptid-sprite.buff-applied {
+    animation: buffApplied 0.5s ease-out;
+}
+
+@keyframes buffApplied {
+    0% { filter: brightness(1); box-shadow: none; }
+    50% { filter: brightness(1.5); box-shadow: 0 0 25px rgba(100, 200, 255, 0.8); }
+    100% { filter: brightness(1); box-shadow: none; }
+}
+
+/* Healing glow */
+.cryptid-sprite.healing {
+    animation: healingGlow 0.4s ease-out;
+}
+
+@keyframes healingGlow {
+    0% { filter: brightness(1) hue-rotate(0deg); }
+    50% { filter: brightness(1.5) hue-rotate(80deg); box-shadow: 0 0 20px rgba(100, 255, 150, 0.7); }
+    100% { filter: brightness(1) hue-rotate(0deg); }
+}
+
+/* Floating damage numbers */
+.floating-damage {
+    position: absolute;
+    font-family: 'Cinzel', serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: #ff4444;
+    text-shadow: 0 0 4px #000, 0 0 8px rgba(255, 0, 0, 0.5);
+    pointer-events: none;
+    z-index: 1000;
+    animation: floatUp 1s ease-out forwards;
+}
+
+@keyframes floatUp {
+    0% { opacity: 1; transform: translateY(0) scale(1.2); }
+    20% { transform: translateY(-10px) scale(1); }
+    100% { opacity: 0; transform: translateY(-40px) scale(0.8); }
+}
+
+/* Floating heal numbers */
+.floating-heal {
+    position: absolute;
+    font-family: 'Cinzel', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #44ff88;
+    text-shadow: 0 0 4px #000, 0 0 8px rgba(0, 255, 100, 0.5);
+    pointer-events: none;
+    z-index: 1000;
+    animation: floatUp 1s ease-out forwards;
+}
+
+/* Pyre steal effect */
+.cryptid-sprite.pyre-stealing {
+    animation: pyreSteal 0.6s ease-out;
+}
+
+@keyframes pyreSteal {
+    0% { filter: brightness(1); }
+    30% { filter: brightness(1.5) sepia(1) hue-rotate(20deg); }
+    60% { box-shadow: 0 0 15px rgba(255, 180, 50, 0.8); }
+    100% { filter: brightness(1); box-shadow: none; }
+}

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Cryptid Fates</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="progression-styles.css">
+</head>
+<body>
+    <!-- Old fullscreen prompt - replaced by main menu -->
+    <div id="fullscreen-prompt" class="hidden"></div>
+
+    <div id="game-container" style="display: none;">
+        <div id="hud">
+            <div class="player-info player">
+                <span class="player-name">Seeker</span>
+                <div class="pyre-display">
+                    <div class="pyre-icon"></div>
+                    <span class="pyre-count" id="player-pyre">0</span>
+                </div>
+                <div class="death-counter player" id="player-deaths-counter" title="Cryptids lost">
+                    <span class="skull-icon">☠</span>
+                    <span id="player-deaths">0</span>/10
+                </div>
+            </div>
+            <div class="player-info enemy">
+                <div class="death-counter" id="enemy-deaths-counter" title="Enemy cryptids lost">
+                    <span class="skull-icon">☠</span>
+                    <span id="enemy-deaths">0</span>/10
+                </div>
+                <div class="pyre-display">
+                    <span class="pyre-count" id="enemy-pyre">0</span>
+                    <div class="pyre-icon"></div>
+                </div>
+                <span class="player-name">Warden</span>
+            </div>
+        </div>
+
+        <div id="phase-header">
+            <span id="phase-text">Your Turn</span>
+            <div id="hint">Drag cards or tap to select</div>
+            <div id="resource-counters">
+                <div class="resource-item" id="deck-counter" title="Cards in deck">
+                    <span class="resource-icon">📜</span>
+                    <span id="deck-count">0</span>
+                </div>
+                <div class="resource-item burn" id="burn-counter" title="Cryptids burned">
+                    <span class="resource-icon">🔥</span>
+                    <span id="burn-count">0</span>
+                </div>
+                <div class="resource-item" id="discard-counter" title="Discarded spells">
+                    <span class="resource-icon">📁</span>
+                    <span id="discard-count">0</span>
+                </div>
+                <div class="resource-divider">|</div>
+                <div class="resource-item enemy" title="Enemy deck">
+                    <span class="resource-icon">📜</span>
+                    <span id="enemy-deck-count">0</span>
+                </div>
+                <div class="resource-item enemy burn" title="Enemy burned">
+                    <span class="resource-icon">🔥</span>
+                    <span id="enemy-burn-count">0</span>
+                </div>
+                <div class="resource-item enemy" title="Enemy discarded">
+                    <span class="resource-icon">📁</span>
+                    <span id="enemy-discard-count">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="battlefield-area">
+            <div id="grid-wrapper">
+                <div class="battle-grid" id="battle-grid">
+                    <div class="grid-column trap-column" id="player-trap-col">
+                        <div class="tile player trap" data-col="trap" data-row="0" data-owner="player">
+                            <div class="tile-base"></div>
+                            <span class="tile-label">Trap</span>
+                        </div>
+                        <div class="tile player trap" data-col="trap" data-row="1" data-owner="player">
+                            <div class="tile-base"></div>
+                        </div>
+                    </div>
+                    <div class="grid-column" id="player-support-col">
+                        <div class="tile player support" data-col="0" data-row="0" data-owner="player">
+                            <div class="tile-base"></div>
+                            <span class="tile-label">Ward</span>
+                        </div>
+                        <div class="tile player support" data-col="0" data-row="1" data-owner="player">
+                            <div class="tile-base"></div>
+                        </div>
+                        <div class="tile player support" data-col="0" data-row="2" data-owner="player">
+                            <div class="tile-base"></div>
+                        </div>
+                    </div>
+                    <div class="grid-column" id="player-combat-col">
+                        <div class="tile player combat" data-col="1" data-row="0" data-owner="player">
+                            <div class="tile-base"></div>
+                            <span class="tile-label">Rite</span>
+                        </div>
+                        <div class="tile player combat" data-col="1" data-row="1" data-owner="player">
+                            <div class="tile-base"></div>
+                        </div>
+                        <div class="tile player combat" data-col="1" data-row="2" data-owner="player">
+                            <div class="tile-base"></div>
+                        </div>
+                    </div>
+                    <div class="grid-divider">
+                        <div class="divider-line"></div>
+                    </div>
+                    <div class="grid-column" id="enemy-combat-col">
+                        <div class="tile enemy combat" data-col="0" data-row="0" data-owner="enemy">
+                            <div class="tile-base"></div>
+                            <span class="tile-label">Rite</span>
+                        </div>
+                        <div class="tile enemy combat" data-col="0" data-row="1" data-owner="enemy">
+                            <div class="tile-base"></div>
+                        </div>
+                        <div class="tile enemy combat" data-col="0" data-row="2" data-owner="enemy">
+                            <div class="tile-base"></div>
+                        </div>
+                    </div>
+                    <div class="grid-column" id="enemy-support-col">
+                        <div class="tile enemy support" data-col="1" data-row="0" data-owner="enemy">
+                            <div class="tile-base"></div>
+                            <span class="tile-label">Ward</span>
+                        </div>
+                        <div class="tile enemy support" data-col="1" data-row="1" data-owner="enemy">
+                            <div class="tile-base"></div>
+                        </div>
+                        <div class="tile enemy support" data-col="1" data-row="2" data-owner="enemy">
+                            <div class="tile-base"></div>
+                        </div>
+                    </div>
+                    <div class="grid-column trap-column" id="enemy-trap-col">
+                        <div class="tile enemy trap" data-col="trap" data-row="0" data-owner="enemy">
+                            <div class="tile-base"></div>
+                            <span class="tile-label">Trap</span>
+                        </div>
+                        <div class="tile enemy trap" data-col="trap" data-row="1" data-owner="enemy">
+                            <div class="tile-base"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="sprite-layer"></div>
+        </div>
+
+        <!-- ==================== HAND AREA (Bottom 30% of screen) ==================== -->
+        <div id="hand-area">
+            <!-- Main Content: Left Button + Card Area + Right Button -->
+            <div class="hand-main-content">
+                <!-- Left menu button (large, opens action panel) -->
+                <button class="hand-side-btn hand-menu-btn" id="hand-menu-btn" title="Actions Menu"></button>
+                
+                <!-- Card area with info bar above -->
+                <div class="hand-cards-area">
+                    <!-- Info bar: Phase Timeline + Card Count -->
+                    <div class="hand-info-bar">
+                        <div class="phase-timeline">
+                            <div class="phase-node" data-phase="draw">Draw</div>
+                            <div class="phase-connector"></div>
+                            <div class="phase-node" data-phase="conjure1">Conjure I</div>
+                            <div class="phase-connector"></div>
+                            <div class="phase-node" data-phase="combat">Combat</div>
+                            <div class="phase-connector"></div>
+                            <div class="phase-node" data-phase="conjure2">Conjure II</div>
+                            <div class="phase-connector"></div>
+                            <div class="phase-node" data-phase="end">End</div>
+                        </div>
+                        <div class="hand-card-count" id="hand-card-count">0 Cards</div>
+                    </div>
+                    
+                    <!-- Card scroll area with fade edges -->
+                    <div class="hand-scroll-wrapper">
+                        <div class="hand-scroll-fade left"></div>
+                        <div id="hand-container"></div>
+                        <div class="hand-scroll-fade right"></div>
+                    </div>
+                </div>
+                
+                <!-- Right phase button (large, advance phase) -->
+                <button class="hand-side-btn advance-phase-btn" id="advance-phase-btn" title="Advance Phase"></button>
+            </div>
+            
+            <!-- Action Menu Panel (slides in from left edge of screen) -->
+            <div class="hand-menu-panel" id="hand-menu-panel">
+                <button class="menu-action-btn" id="menu-kindling-btn" title="Toggle Kindling/Grimoire"></button>
+                <button class="menu-action-btn" id="menu-burn-btn" title="Burn Card for Pyre"></button>
+                <button class="menu-action-btn" id="menu-end-btn" title="End Turn"></button>
+            </div>
+            
+            <!-- Hidden elements for backwards compatibility -->
+            <div style="display:none;">
+                <button id="kindling-toggle-btn"></button>
+                <button id="pyre-burn-btn"></button>
+                <button id="end-turn-btn"></button>
+            </div>
+            <div id="action-bar" style="display:none;">
+                <button id="end-conjure1-btn"></button>
+                <button id="end-combat-btn"></button>
+            </div>
+        </div>
+
+        <button id="cancel-target">✕</button>
+        <div id="pyre-burn-overlay"></div>
+        <div id="pyre-burn-text">🜂 PYRE BURN 🜂</div>
+
+        <div id="message-overlay">
+            <div id="message-text"></div>
+        </div>
+
+        <div id="game-over">
+            <h1 id="game-over-text">VICTORY</h1>
+            <p id="game-over-sub"></p>
+            <button onclick="initGame()">Begin Anew</button>
+        </div>
+
+        <div id="tooltip">
+            <h4 id="tooltip-name"></h4>
+            <p id="tooltip-desc"></p>
+            <p class="combat-ability" id="tooltip-combat"></p>
+            <p class="support-ability" id="tooltip-support"></p>
+            <p class="other-ability" id="tooltip-other" style="display: none;"></p>
+            <p class="evolution-info" id="tooltip-evolution"></p>
+            <button id="tooltip-sacrifice-btn" class="sacrifice-btn" style="display: none;">⚰ Sacrifice Combatant</button>
+            <button id="tooltip-bloodpact-btn" class="bloodpact-btn" style="display: none;">🩸 Blood Pact (1 dmg → 1 pyre)</button>
+            <button id="tooltip-thermal-btn" class="thermal-btn" style="display: none;">🦅 Thermal Swap (heal both 2)</button>
+            <button id="tooltip-rageheal-btn" class="rageheal-btn" style="display: none;">💪 Trade 1 ATK → Heal 2 HP</button>
+            <button id="tooltip-bloodfrenzy-btn" class="bloodfrenzy-btn" style="display: none;">🐺 Blood Frenzy (+4 ATK, die end of turn)</button>
+        </div>
+
+        <!-- Event History Log -->
+        <div id="event-log" class="collapsed">
+            <div id="event-log-header">
+                <span class="log-title">⟡ Chronicle</span>
+                <span class="log-title-mobile">i</span>
+                <button id="event-log-toggle" title="Expand/Collapse">▼</button>
+            </div>
+            <div id="event-log-entries"></div>
+        </div>
+    </div>
+
+    <!-- Authentication (load first) -->
+    <script src="auth.js"></script>
+    <script src="login-screen.js"></script>
+    
+    <script src="city-of-flesh.js"></script>
+    <script src="forests-of-fear.js"></script>
+    <script src="abhorrent-armory.js"></script>
+    <script src="putrid-swamp.js"></script>
+    <script src="combat-effects.js"></script>
+    <script src="system.js"></script>
+    <script src="ai.js"></script>
+    <script src="progression.js"></script>
+    <script src="deckbuilder.js"></script>
+    <script src="collection.js"></script>
+    <script src="shop.js"></script>
+    <script src="win-screen.js"></script>
+    <script src="multiplayer.js"></script>
+    <script src="tutorial.js"></script>
+    <script src="home-screen.js"></script>
+    <script src="main-menu.js"></script>
+    
+    <!-- Initialize game flow on page load -->
+    <script>
+        // Start the game flow (handles auth, username, tutorial, then game)
+        document.addEventListener('DOMContentLoaded', () => {
+            GameFlow.start();
+        });
+    </script>
+</body>
+</html>
