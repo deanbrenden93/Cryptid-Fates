@@ -279,127 +279,181 @@ const MatchLog = {
         const d = details;
         let text = '';
         
+        // Helper to safely get values with fallback
+        const safe = (val, fallback = '?') => (val !== undefined && val !== null) ? val : fallback;
+        
         switch (category) {
             case 'TURN':
                 text = `═══ TURN ${this.turnNumber} - ${action.toUpperCase()} ═══`;
                 break;
                 
             case 'SUMMON':
-                text = `SUMMON: ${d.cardName} → ${d.position || 'field'}`;
+                text = `SUMMON: ${safe(d.cardName)} → ${d.position || 'field'}`;
                 if (d.col !== undefined) text += ` [col=${d.col}, row=${d.row}]`;
                 if (d.cost !== undefined) text += ` | Cost: ${d.cost} Pyre`;
-                if (d.stats) text += ` | Stats: ${d.stats.atk}/${d.stats.hp}`;
+                if (d.stats) text += ` | Stats: ${safe(d.stats.atk, 0)}/${safe(d.stats.hp, 0)}`;
                 if (d.isKindling) text += ' (Kindling)';
                 if (d.isSupport) text += ' [SUPPORT]';
                 if (d.isCombat) text += ' [COMBAT]';
                 break;
                 
             case 'ATTACK':
-                text = `ATTACK: ${d.attackerName} → ${d.defenderName}`;
-                text += ` | Attacker: ${d.attackerStats?.atk}/${d.attackerStats?.hp} [col=${d.attackerCol}, row=${d.attackerRow}]`;
-                text += ` | Defender: ${d.defenderStats?.hp} HP [col=${d.defenderCol}, row=${d.defenderRow}]`;
-                text += ` | Damage: ${d.damageDealt}`;
+                text = `ATTACK: ${safe(d.attackerName)} → ${safe(d.defenderName || d.targetName)}`;
+                if (d.attackerStats) {
+                    text += ` | Attacker: ${safe(d.attackerStats.atk, 0)}/${safe(d.attackerStats.hp, 0)}`;
+                }
+                if (d.attackerCol !== undefined) text += ` [col=${d.attackerCol}, row=${d.attackerRow}]`;
+                if (d.defenderStats || d.targetStats) {
+                    const stats = d.defenderStats || d.targetStats;
+                    text += ` | Defender: ${safe(stats.hp, '?')} HP`;
+                }
+                if (d.defenderCol !== undefined) text += ` [col=${d.defenderCol}, row=${d.defenderRow}]`;
+                if (d.damageDealt !== undefined) text += ` | Damage: ${d.damageDealt}`;
                 if (d.overkill) text += ` (${d.overkill} overkill)`;
                 if (d.defenderDied) text += ' → KILLED';
                 if (d.attackerTapped) text += ' | Attacker tapped';
                 break;
                 
             case 'DAMAGE':
-                text = `DAMAGE: ${d.targetName} takes ${d.amount} damage`;
-                text += ` [col=${d.col}, row=${d.row}]`;
-                text += ` | HP: ${d.hpBefore} → ${d.hpAfter}`;
+                const dmgAmount = d.amount !== undefined ? d.amount : d.damage;
+                text = `DAMAGE: ${safe(d.targetName)} takes ${safe(dmgAmount)} damage`;
+                if (d.col !== undefined) text += ` [col=${d.col}, row=${d.row}]`;
+                if (d.hpBefore !== undefined || d.hpAfter !== undefined) {
+                    text += ` | HP: ${safe(d.hpBefore)} → ${safe(d.hpAfter)}`;
+                }
                 if (d.source) text += ` | Source: ${d.source}`;
                 if (d.died) text += ' → DIED';
                 break;
                 
             case 'HEAL':
-                text = `HEAL: ${d.targetName} healed for ${d.amount}`;
-                text += ` | HP: ${d.hpBefore} → ${d.hpAfter}`;
+                text = `HEAL: ${safe(d.targetName)} healed for ${safe(d.amount)}`;
+                if (d.hpBefore !== undefined || d.hpAfter !== undefined) {
+                    text += ` | HP: ${safe(d.hpBefore)} → ${safe(d.hpAfter)}`;
+                }
                 if (d.source) text += ` | Source: ${d.source}`;
                 break;
                 
             case 'DEATH':
-                text = `DEATH: ${d.cardName} died`;
-                text += ` [col=${d.col}, row=${d.row}]`;
-                if (d.killedBy) text += ` | Killed by: ${d.killedBy}`;
+                text = `DEATH: ${safe(d.cardName || d.victimName)} died`;
+                if (d.col !== undefined) text += ` [col=${d.col}, row=${d.row}]`;
+                else if (d.victimCol !== undefined) text += ` [col=${d.victimCol}, row=${d.victimRow}]`;
+                if (d.killedBy || d.killerName) text += ` | Killed by: ${d.killedBy || d.killerName}`;
                 if (d.evolved) text += ' → Evolved instead';
                 break;
                 
             case 'EVOLVE':
-                text = `EVOLVE: ${d.baseName} → ${d.evolvedName}`;
-                text += ` [col=${d.col}, row=${d.row}]`;
-                text += ` | Stats: ${d.oldStats?.atk}/${d.oldStats?.hp} → ${d.newStats?.atk}/${d.newStats?.hp}`;
+                text = `EVOLVE: ${safe(d.baseName)} → ${safe(d.evolvedName)}`;
+                if (d.col !== undefined) text += ` [col=${d.col}, row=${d.row}]`;
+                if (d.oldStats || d.newStats) {
+                    const oldAtk = d.oldStats?.atk ?? '?';
+                    const oldHp = d.oldStats?.hp ?? '?';
+                    const newAtk = d.newStats?.atk ?? '?';
+                    const newHp = d.newStats?.hp ?? '?';
+                    text += ` | Stats: ${oldAtk}/${oldHp} → ${newAtk}/${newHp}`;
+                }
                 break;
                 
             case 'ABILITY':
-                text = `ABILITY: ${d.cardName} - ${d.abilityName}`;
+                text = `ABILITY: ${safe(d.cardName)}`;
+                if (d.abilityName) text += ` - ${d.abilityName}`;
                 if (d.col !== undefined) text += ` [col=${d.col}, row=${d.row}]`;
                 if (d.target) text += ` | Target: ${d.target}`;
                 if (d.effect) text += ` | Effect: ${d.effect}`;
                 break;
                 
+            case 'CALLBACK':
+                // For card callbacks (onSupport, onCombat, etc.)
+                text = `CALLBACK: ${safe(d.callbackType || action)}`;
+                if (d.cardName) text += ` | ${d.cardName}`;
+                if (d.col !== undefined) text += ` [col=${d.col}, row=${d.row}]`;
+                if (d.reason) text += ` | Reason: ${d.reason}`;
+                if (d.combatant) text += ` | Combatant: ${d.combatant}`;
+                if (d.target) text += ` | Target: ${d.target}`;
+                if (d.victim) text += ` | Victim: ${d.victim}`;
+                if (d.attacker) text += ` | Attacker: ${d.attacker}`;
+                if (d.damage !== undefined) text += ` | Damage: ${d.damage}`;
+                if (d.isKindling) text += ' (Kindling)';
+                break;
+                
+            case 'ACTIVATED':
+                // For player-activated abilities
+                text = `ACTIVATED: ${safe(action)}`;
+                if (d.cardName) text += ` | ${d.cardName}`;
+                if (d.col !== undefined) text += ` [col=${d.col}, row=${d.row}]`;
+                if (d.target) text += ` | Target: ${d.target}`;
+                if (d.targetRow !== undefined) text += ` | TargetRow: ${d.targetRow}`;
+                if (d.swapTarget) text += ` | SwapTarget: ${d.swapTarget}`;
+                if (d.willKill) text += ' (Will Kill)';
+                break;
+                
             case 'BUFF':
-                text = `BUFF: ${d.targetName} received ${d.buffType}`;
+                text = `BUFF: ${safe(d.targetName)} received ${safe(d.buffType)}`;
                 if (d.amount) text += ` +${d.amount}`;
                 if (d.source) text += ` | From: ${d.source}`;
                 if (d.newStats) text += ` | New stats: ${d.newStats.atk}/${d.newStats.hp}`;
                 break;
                 
             case 'DEBUFF':
-                text = `DEBUFF: ${d.targetName} received ${d.debuffType}`;
+                text = `DEBUFF: ${safe(d.targetName)} received ${safe(d.debuffType)}`;
                 if (d.amount) text += ` -${d.amount}`;
                 if (d.source) text += ` | From: ${d.source}`;
                 break;
                 
             case 'STATUS':
-                text = `STATUS: ${d.targetName} - ${d.status}`;
+                text = `STATUS: ${safe(d.targetName)} - ${safe(d.status)}`;
                 if (d.duration) text += ` (${d.duration} turns)`;
                 if (d.stacks) text += ` (${d.stacks} stacks)`;
                 if (d.removed) text += ' REMOVED';
                 break;
                 
             case 'SPELL':
-                text = `SPELL: ${d.cardName} cast`;
+                text = `SPELL: ${safe(d.cardName)} cast`;
                 if (d.cost !== undefined) text += ` | Cost: ${d.cost} Pyre`;
-                if (d.target) text += ` | Target: ${d.target}`;
+                if (d.target || d.targetName) text += ` | Target: ${d.target || d.targetName}`;
                 if (d.effect) text += ` | Effect: ${d.effect}`;
                 break;
                 
             case 'TRAP':
-                text = `TRAP: ${d.trapName}`;
-                if (d.placed) text += ` placed [row=${d.row}]`;
-                if (d.triggered) text += ` TRIGGERED on ${d.triggeredBy}`;
+                text = `TRAP: ${safe(d.trapName)}`;
+                if (action === 'Trap Set') text += ` placed [row=${d.row}]`;
+                if (action === 'Trap Triggered') text += ` TRIGGERED`;
                 if (d.effect) text += ` | Effect: ${d.effect}`;
                 break;
                 
             case 'AURA':
-                text = `AURA: ${d.auraName}`;
-                if (d.attached) text += ` attached to ${d.targetName}`;
+                text = `AURA: ${safe(d.auraName)}`;
+                if (action === 'Aura Applied') text += ` attached to ${safe(d.targetName)}`;
+                else if (action === 'Aura Removed') text += ` removed from ${safe(d.targetName)}`;
+                if (d.targetCol !== undefined) text += ` [col=${d.targetCol}, row=${d.targetRow}]`;
                 if (d.effect) text += ` | Effect: ${d.effect}`;
                 break;
                 
             case 'PYRE':
-                text = `PYRE: ${d.action}`;
+                // Handle different pyre actions
+                text = `PYRE: ${safe(d.owner, 'player')}`;
                 if (d.cardName) text += ` - ${d.cardName}`;
-                if (d.amount !== undefined) text += ` | +${d.amount} Pyre`;
-                if (d.total !== undefined) text += ` (Total: ${d.total})`;
+                if (action === 'Gained' && d.amount !== undefined) text += ` | +${d.amount} Pyre`;
+                else if (action === 'Spent' && d.amount !== undefined) text += ` | -${d.amount} Pyre`;
+                else if (d.amount !== undefined) text += ` | ${d.amount > 0 ? '+' : ''}${d.amount} Pyre`;
+                if (d.newValue !== undefined) text += ` (Total: ${d.newValue})`;
+                if (d.source) text += ` | Source: ${d.source}`;
                 break;
                 
             case 'DRAW':
-                text = `DRAW: ${d.owner} drew ${d.count || 1} card(s)`;
+                text = `DRAW: ${safe(d.owner, 'player')} drew ${d.count || 1} card(s)`;
                 if (d.handSize !== undefined) text += ` | Hand: ${d.handSize}`;
                 break;
                 
             case 'PROMOTE':
-                text = `PROMOTE: ${d.cardName} moved to Combat`;
-                text += ` [row=${d.row}]`;
+                text = `PROMOTE: ${safe(d.cardName)} moved to Combat`;
+                if (d.row !== undefined) text += ` [row=${d.row}]`;
                 if (d.fromSupport) text += ' (from Support)';
                 break;
                 
             case 'SUPPORT':
-                text = `SUPPORT EFFECT: ${d.supportName} → ${d.targetName}`;
+                text = `SUPPORT EFFECT: ${safe(d.supportName)} → ${safe(d.targetName)}`;
                 if (d.effect) text += ` | ${d.effect}`;
-                if (d.col !== undefined) text += ` [Support col=${d.supportCol}, row=${d.row}]`;
+                if (d.supportCol !== undefined) text += ` [Support col=${d.supportCol}, row=${d.row}]`;
                 break;
                 
             case 'GAME_STATE':
@@ -596,13 +650,17 @@ const MatchLog = {
         
         // Evolution events (correct event name is onEvolution)
         GameEvents.on('onEvolution', (data) => {
+            // Handle both event formats: {cryptid, previous} and {baseCryptid, evolved}
+            const evolved = data.evolved || data.cryptid;
+            const base = data.baseCryptid || data.previous;
             this.log('EVOLVE', 'Evolution', {
-                baseName: data.baseCryptid?.name,
-                evolvedName: data.evolved?.name,
+                baseName: base?.name,
+                evolvedName: evolved?.name,
                 col: data.col,
                 row: data.row,
                 owner: data.owner,
-                newStats: { atk: data.evolved?.currentAtk, hp: data.evolved?.currentHp }
+                oldStats: base ? { atk: base.currentAtk || base.atk, hp: base.currentHp || base.hp } : undefined,
+                newStats: evolved ? { atk: evolved.currentAtk || evolved.atk, hp: evolved.currentHp || evolved.hp } : undefined
             });
         });
         
@@ -715,22 +773,31 @@ const MatchLog = {
         });
         
         GameEvents.on('onEnterCombat', (data) => {
-            this.log('ABILITY', 'Entered Combat', {
-                cardName: data.cryptid?.name,
-                owner: data.owner,
-                row: data.row,
-                source: data.source
-            });
+            // Only log if explicitly entering (not during summon which is already logged)
+            if (data.source === 'promotion') {
+                this.log('PROMOTE', 'Promoted to Combat', {
+                    cardName: data.cryptid?.name,
+                    owner: data.owner,
+                    row: data.row
+                });
+            }
         });
         
         // Status effects
         GameEvents.on('onStatusApplied', (data) => {
+            let statusInfo = data.status;
+            // Add extra info for specific statuses
+            if (data.count) statusInfo += ` (${data.count} counters)`;
+            if (data.tokens) statusInfo += ` (${data.tokens} tokens)`;
+            if (data.charges) statusInfo += ` (${data.charges} charges)`;
+            if (data.refreshed) statusInfo += ' [refreshed]';
+            
             this.log('STATUS', 'Status Applied', {
                 targetName: data.cryptid?.name,
-                status: data.status,
-                duration: data.duration,
-                stacks: data.count || data.tokens || data.charges,
-                refreshed: data.refreshed
+                status: statusInfo,
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
+                owner: data.owner
             });
         });
         
@@ -745,8 +812,10 @@ const MatchLog = {
         GameEvents.on('onBurnDamage', (data) => {
             this.log('DAMAGE', 'Burn Damage', {
                 targetName: data.cryptid?.name,
-                damage: data.damage,
-                turnsRemaining: data.turnsRemaining,
+                amount: data.damage,
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
+                source: `Burn (${data.turnsRemaining} turns left)`,
                 owner: data.owner
             });
         });
@@ -755,7 +824,10 @@ const MatchLog = {
         GameEvents.on('onBleedDamage', (data) => {
             this.log('DAMAGE', 'Bleed Damage', {
                 targetName: data.target?.name,
-                attackerName: data.attacker?.name,
+                amount: data.damage || 1,
+                col: data.target?.col,
+                row: data.target?.row,
+                source: `Bleed from ${data.attacker?.name || 'unknown'}`,
                 owner: data.owner
             });
         });
@@ -771,7 +843,10 @@ const MatchLog = {
         
         GameEvents.on('onCalamityDeath', (data) => {
             this.log('DEATH', 'Calamity Death', {
-                targetName: data.cryptid?.name,
+                cardName: data.cryptid?.name,
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
+                killedBy: 'Calamity (doom timer)',
                 owner: data.owner
             });
         });
@@ -779,8 +854,11 @@ const MatchLog = {
         // Protection
         GameEvents.on('onProtectionBlock', (data) => {
             this.log('ABILITY', 'Protection Blocked', {
-                targetName: data.target?.name,
-                attackerName: data.attacker?.name,
+                cardName: data.target?.name,
+                abilityName: 'Protection',
+                col: data.target?.col,
+                row: data.target?.row,
+                effect: `Blocked attack from ${data.attacker?.name || 'attacker'}`,
                 owner: data.owner
             });
         });
@@ -788,10 +866,12 @@ const MatchLog = {
         // Damage reduction
         GameEvents.on('onDamageReduced', (data) => {
             this.log('ABILITY', 'Damage Reduced', {
-                targetName: data.target?.name,
-                originalDamage: data.originalDamage,
-                reducedTo: data.reducedTo,
-                source: data.source
+                cardName: data.target?.name,
+                abilityName: data.source || 'Damage Reduction',
+                col: data.target?.col,
+                row: data.target?.row,
+                effect: `${data.originalDamage} → ${data.reducedTo} damage`,
+                owner: data.target?.owner
             });
         });
         
@@ -857,24 +937,30 @@ const MatchLog = {
         GameEvents.on('onSnipeReveal', (data) => {
             this.log('ABILITY', 'Snipe Revealed', {
                 cardName: data.cryptid?.name,
+                abilityName: 'Snipe',
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
                 owner: data.owner
             });
         });
         
         GameEvents.on('onSnipeDamage', (data) => {
-            this.log('ABILITY', 'Snipe Damage', {
-                sourceName: data.source?.name,
+            this.log('DAMAGE', 'Snipe Damage', {
                 targetName: data.target?.name,
-                damage: data.damage
+                amount: data.damage,
+                col: data.target?.col,
+                row: data.target?.row,
+                source: `Snipe from ${data.source?.name || 'unknown'}`
             });
         });
         
         // Pyre Burn
         GameEvents.on('onPyreBurn', (data) => {
             this.log('ABILITY', 'Pyre Burn', {
-                owner: data.owner,
-                pyreGained: data.pyreGained,
-                cardsDrawn: data.cardsDrawn
+                cardName: 'Pyre Burn',
+                abilityName: 'Pyre Burn',
+                effect: `Gained ${data.pyreGained} Pyre, drew ${data.cardsDrawn} cards`,
+                owner: data.owner
             });
         });
         
@@ -882,7 +968,9 @@ const MatchLog = {
         GameEvents.on('onTap', (data) => {
             this.log('STATUS', 'Tapped', {
                 targetName: data.cryptid?.name,
-                reason: data.reason,
+                status: data.reason ? `Tapped (${data.reason})` : 'Tapped',
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
                 owner: data.owner
             });
         });
@@ -890,20 +978,16 @@ const MatchLog = {
         GameEvents.on('onUntap', (data) => {
             this.log('STATUS', 'Untapped', {
                 targetName: data.cryptid?.name,
-                reason: data.reason,
-                owner: data.owner
+                status: data.reason ? `Untapped (${data.reason})` : 'Untapped',
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
+                owner: data.owner,
+                removed: true
             });
         });
         
-        // Targeted (for spells/attacks)
-        GameEvents.on('onTargeted', (data) => {
-            this.log('ABILITY', 'Targeted', {
-                targetName: data.target?.name,
-                sourceName: data.source?.name,
-                sourceType: data.sourceType,
-                targetOwner: data.targetOwner
-            });
-        });
+        // Targeted (for spells/attacks) - usually logged through other events, so skip to avoid duplication
+        // GameEvents.on('onTargeted', (data) => { ... });
         
         // Card callbacks (ability triggers)
         GameEvents.on('onCardCallback', (data) => {
