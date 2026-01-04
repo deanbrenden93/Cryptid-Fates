@@ -3988,8 +3988,9 @@ div.menu-btn#tile-collection {
     .db-preview-modal,
     .coll-detail-modal,
     .shop-card-detail-modal {
-        padding: 8px 12px;
+        padding: 12px 20px;
         align-items: center;
+        justify-content: center;
     }
     
     .db-preview-content,
@@ -3997,186 +3998,237 @@ div.menu-btn#tile-collection {
         padding: 0;
         gap: 0;
         flex-direction: row;
+        align-items: center;
+        justify-content: center;
         max-width: 100%;
+        height: auto;
         max-height: 100%;
-        height: 100%;
     }
     
     .detail-view-layout {
         flex-direction: row;
-        align-items: stretch;
-        gap: 16px;
-        height: 100%;
-        max-height: calc(100vh - 20px);
+        align-items: center;
+        gap: clamp(16px, 4vw, 28px);
+        height: auto;
     }
     
+    /* Card wrapper - card only, series badge moved to footer */
     .detail-card-wrapper {
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
-        height: 100%;
+        flex-shrink: 0;
     }
     
-    /* Card scales to fit height */
+    /* Card scales to fit height - LARGER now that we have more space */
     .game-card.detail-card {
-        --gc-width: clamp(100px, 25vh, 160px);
+        --gc-width: clamp(120px, 32vh, 200px);
     }
     
+    /* Hide the series badge under card - it's in footer now */
     .detail-card-series {
-        bottom: -4px;
-        font-size: 8px;
-        padding: 3px 8px;
+        display: none;
     }
     
-    /* Info panel takes remaining space */
+    /* Info panel - compact and efficient */
     .detail-info-panel {
         flex: 1;
-        gap: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: clamp(8px, 2vh, 12px);
         min-width: 0;
-        max-height: 100%;
-        overflow-y: auto;
-        padding-right: 4px;
+        max-width: 450px;
+        max-height: calc(100vh - 30px);
     }
     
     .detail-section {
-        padding: 8px 10px;
+        padding: clamp(8px, 2vh, 12px) clamp(10px, 2.5vw, 14px);
         border-radius: 8px;
     }
     
     .detail-section-title {
-        font-size: 9px;
-        margin-bottom: 6px;
+        font-size: clamp(8px, 1.6vh, 10px);
+        margin-bottom: clamp(6px, 1.2vh, 10px);
         padding-bottom: 4px;
     }
     
+    /* Abilities section */
     .detail-abilities-list {
-        max-height: 100px;
+        max-height: clamp(70px, 18vh, 120px);
         overflow-y: auto;
         gap: 6px;
     }
     
     .detail-ability {
-        padding: 6px 8px;
+        padding: clamp(6px, 1.2vh, 10px) clamp(8px, 2vw, 12px);
+        border-left-width: 2px;
     }
     
     .detail-ability-type {
-        font-size: 8px;
+        font-size: clamp(7px, 1.4vh, 9px);
     }
     
     .detail-ability-name {
-        font-size: 11px;
+        font-size: clamp(10px, 2.2vh, 13px);
         margin-bottom: 2px;
     }
     
     .detail-ability-desc {
-        font-size: 10px;
-        line-height: 1.3;
+        font-size: clamp(9px, 1.9vh, 12px);
+        line-height: 1.35;
     }
     
-    /* Collection section compact */
+    /* Collection section - compact inline */
     .detail-collection-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 6px;
+        display: flex;
+        gap: clamp(8px, 2vw, 12px);
     }
     
     .detail-collection-item {
-        padding: 6px 8px;
+        flex: 1;
+        padding: clamp(6px, 1.4vh, 10px) clamp(10px, 2.5vw, 14px);
         gap: 2px;
+        min-width: 0;
     }
     
     .detail-collection-label {
-        font-size: 9px;
+        font-size: clamp(8px, 1.6vh, 10px);
     }
     
     .detail-collection-count {
-        font-size: 18px;
+        font-size: clamp(16px, 3.5vh, 24px);
     }
     
     .detail-preview-hint {
-        font-size: 8px;
+        font-size: clamp(7px, 1.3vh, 9px);
     }
     
-    /* Actions inline and compact */
-    .detail-actions {
-        padding-top: 4px;
-        flex-wrap: wrap;
-        gap: 6px;
+    /* Hide deckbuilder-specific actions row if present */
+    .detail-actions:not(:has(.detail-btn.close)) {
+        display: flex;
+        gap: clamp(6px, 1.5vw, 10px);
+        padding-top: clamp(4px, 1vh, 8px);
     }
     
-    .detail-btn {
-        padding: 6px 12px;
-        font-size: 10px;
+    .detail-btn:not(.close) {
+        padding: clamp(6px, 1.4vh, 10px) clamp(12px, 3vw, 18px);
+        font-size: clamp(9px, 1.9vh, 12px);
         min-width: auto;
     }
     
-    .detail-btn.close {
-        padding: 6px 16px;
-    }
-    
-    /* Series badge compact */
+    /* FOOTER ROW: Series badge + Close button together */
     .detail-series-badge {
-        padding: 4px 8px;
-        gap: 6px;
+        display: flex;
+        align-items: center;
+        padding: clamp(4px, 1vh, 8px) clamp(8px, 2vw, 12px);
+        gap: clamp(6px, 1.5vw, 10px);
+        margin-top: auto;
     }
     
     .detail-series-code {
-        font-size: 9px;
-        padding: 2px 6px;
+        font-size: clamp(9px, 1.8vh, 11px);
+        padding: 3px 8px;
     }
     
     .detail-series-name {
-        font-size: 10px;
+        font-size: clamp(10px, 1.9vh, 12px);
+    }
+    
+    /* Close button moves to be inline with series badge */
+    .detail-btn.close {
+        padding: clamp(6px, 1.4vh, 10px) clamp(14px, 3.5vw, 22px);
+        font-size: clamp(10px, 2vh, 12px);
+        margin-left: auto;
+    }
+    
+    /* Actions row contains close button inline with series */
+    .detail-actions {
+        display: flex;
+        align-items: center;
+        gap: clamp(8px, 2vw, 14px);
+        padding-top: 0;
+        margin-top: auto;
     }
 }
 
-/* Very short landscape - ultra compact */
+/* Very short landscape - everything scales down but stays visible */
 @media (max-height: 450px) {
     .db-preview-modal,
     .coll-detail-modal,
     .shop-card-detail-modal {
-        padding: 6px 10px;
+        padding: 8px 14px;
     }
     
     .detail-view-layout {
-        gap: 12px;
+        gap: clamp(12px, 3vw, 20px);
     }
     
     .game-card.detail-card {
-        --gc-width: clamp(90px, 22vh, 140px);
+        --gc-width: clamp(105px, 28vh, 160px);
     }
     
     .detail-info-panel {
-        gap: 6px;
+        gap: clamp(6px, 1.5vh, 10px);
     }
     
     .detail-section {
-        padding: 6px 8px;
+        padding: clamp(6px, 1.5vh, 10px) clamp(8px, 2vw, 12px);
+    }
+    
+    .detail-section-title {
+        font-size: clamp(7px, 1.4vh, 9px);
+        margin-bottom: clamp(4px, 1vh, 8px);
     }
     
     .detail-abilities-list {
-        max-height: 70px;
+        max-height: clamp(55px, 14vh, 90px);
+        gap: 5px;
     }
     
     .detail-ability {
-        padding: 5px 6px;
+        padding: clamp(4px, 1vh, 8px) clamp(6px, 1.5vw, 10px);
+    }
+    
+    .detail-ability-type {
+        font-size: clamp(6px, 1.2vh, 8px);
+    }
+    
+    .detail-ability-name {
+        font-size: clamp(9px, 1.9vh, 11px);
     }
     
     .detail-ability-desc {
-        font-size: 9px;
+        font-size: clamp(8px, 1.6vh, 10px);
+    }
+    
+    .detail-collection-item {
+        padding: clamp(5px, 1.2vh, 8px) clamp(8px, 2vw, 12px);
+    }
+    
+    .detail-collection-label {
+        font-size: clamp(7px, 1.4vh, 9px);
     }
     
     .detail-collection-count {
-        font-size: 16px;
-    }
-    
-    .detail-btn {
-        padding: 5px 10px;
-        font-size: 9px;
+        font-size: clamp(14px, 3vh, 20px);
     }
     
     .detail-series-badge {
-        display: none;
+        padding: clamp(3px, 0.8vh, 6px) clamp(6px, 1.5vw, 10px);
+        gap: clamp(5px, 1.2vw, 8px);
+    }
+    
+    .detail-series-code {
+        font-size: clamp(8px, 1.5vh, 10px);
+    }
+    
+    .detail-series-name {
+        font-size: clamp(9px, 1.6vh, 11px);
+    }
+    
+    .detail-btn.close {
+        padding: clamp(5px, 1.2vh, 8px) clamp(12px, 3vw, 18px);
+        font-size: clamp(9px, 1.7vh, 11px);
     }
 }
 

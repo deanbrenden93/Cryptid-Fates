@@ -2467,150 +2467,157 @@ const TutorialRewards = {
       
       /* ==================== RESPONSIVE - CLEAN MOBILE LAYOUTS ==================== */
       
-      /* LANDSCAPE MODE - Two-column layout with everything visible */
+      /* LANDSCAPE MODE - Deck selection is the hero */
       @media (max-height: 500px) and (orientation: landscape) {
         .tutorial-rewards-screen {
-          padding: 8px 16px;
-          overflow-y: auto;
+          padding: 10px 20px;
         }
         
         .rewards-content {
-          display: grid;
-          grid-template-columns: auto 1fr;
-          grid-template-rows: auto auto auto;
-          gap: 8px 20px;
+          display: flex;
+          flex-direction: column;
           align-items: center;
-          justify-items: start;
+          justify-content: center;
+          gap: 8px;
           max-width: 100%;
           width: 100%;
+          height: 100%;
         }
         
-        /* Header spans full width */
+        /* Header */
         .rewards-header {
-          grid-column: 1 / -1;
           text-align: center;
-          width: 100%;
-          margin-bottom: 4px;
+          flex-shrink: 0;
         }
         .rewards-title {
-          font-size: clamp(18px, 4vh, 26px);
+          font-size: clamp(16px, 3.5vh, 22px);
           margin-bottom: 2px;
         }
         .rewards-subtitle {
-          font-size: clamp(10px, 2vh, 12px);
+          display: none;
         }
         
-        /* Rewards in left column */
+        /* Rewards as small badges in top-right */
         .rewards-container {
-          grid-column: 1;
-          flex-direction: column;
+          flex-direction: row;
           gap: 8px;
+          position: absolute;
+          top: 8px;
+          right: 16px;
         }
         .reward-item {
-          padding: 8px 12px;
+          padding: 5px 10px;
           flex-direction: row;
-          gap: 10px;
-          min-width: 130px;
+          gap: 6px;
+          min-width: auto;
+          border-radius: 8px;
         }
         .reward-icon {
-          font-size: clamp(24px, 5vh, 36px);
+          font-size: clamp(16px, 3.5vh, 22px);
         }
         .reward-name {
-          font-size: 9px;
+          display: none;
         }
         .reward-value {
-          font-size: clamp(14px, 3vh, 20px);
+          font-size: clamp(11px, 2.2vh, 14px);
         }
         
-        /* Deck selection header above deck cards */
+        /* Deck selection header */
         .deck-selection-header {
-          grid-column: 2;
-          grid-row: 2;
-          align-self: end;
-          font-size: 11px;
-          margin: 0;
+          font-size: clamp(9px, 2vh, 11px);
+          margin: 2px 0;
+          flex-shrink: 0;
         }
         
-        /* Deck cards in right area */
+        /* DECK CARDS - Content-sized, not stretched */
         .rewards-deck-selection {
-          grid-column: 2;
-          grid-row: 2 / 4;
-          align-self: center;
-          gap: 10px;
+          gap: clamp(10px, 2vw, 16px);
           flex-wrap: nowrap;
+          align-items: stretch;
+          flex-shrink: 0;
         }
         .rewards-deck {
-          padding: 10px 12px;
+          padding: clamp(10px, 2vh, 16px) clamp(12px, 2vw, 18px);
           gap: 4px;
-          max-width: 160px;
-          min-width: 120px;
+          max-width: clamp(140px, 22vw, 200px);
+          min-width: clamp(110px, 18vw, 160px);
+          justify-content: center;
         }
         .deck-icon {
-          font-size: clamp(28px, 6vh, 40px);
+          font-size: clamp(28px, 6vh, 44px);
         }
         .deck-name {
-          font-size: clamp(11px, 2.5vh, 14px);
+          font-size: clamp(11px, 2.5vh, 15px);
         }
         .deck-desc {
           display: none;
         }
         .deck-theme {
-          font-size: 8px;
+          font-size: clamp(7px, 1.5vh, 9px);
           padding-top: 4px;
         }
         .rewards-deck.selected::after {
-          width: 20px;
-          height: 20px;
-          font-size: 11px;
+          width: clamp(18px, 4vh, 24px);
+          height: clamp(18px, 4vh, 24px);
+          font-size: clamp(10px, 2vh, 13px);
           top: 6px;
           right: 6px;
         }
         
-        /* Claim button at bottom */
+        /* Claim button */
         .rewards-claim-btn {
-          grid-column: 1 / -1;
-          justify-self: center;
+          padding: clamp(8px, 1.8vh, 12px) clamp(28px, 6vw, 40px);
+          font-size: clamp(10px, 2vh, 12px);
           margin-top: 4px;
-          padding: 10px 32px;
-          font-size: 11px;
+          flex-shrink: 0;
         }
       }
       
-      /* Very short landscape - even more compact */
+      /* Very short landscape - ultra compact but keep all text */
       @media (max-height: 380px) and (orientation: landscape) {
         .tutorial-rewards-screen {
           padding: 6px 12px;
         }
         .rewards-content {
-          gap: 6px 16px;
+          gap: 4px;
         }
         .rewards-title {
-          font-size: clamp(16px, 4vh, 22px);
+          font-size: clamp(13px, 3.2vh, 18px);
         }
-        .rewards-subtitle {
-          display: none;
+        .rewards-container {
+          top: 5px;
+          right: 12px;
+          gap: 6px;
         }
         .reward-item {
-          padding: 6px 10px;
-          min-width: 110px;
+          padding: 3px 7px;
         }
         .reward-icon {
-          font-size: clamp(20px, 4.5vh, 28px);
+          font-size: clamp(14px, 3vh, 18px);
+        }
+        .reward-value {
+          font-size: clamp(9px, 2vh, 12px);
+        }
+        .deck-selection-header {
+          font-size: clamp(8px, 1.8vh, 10px);
         }
         .rewards-deck {
-          padding: 8px 10px;
-          max-width: 140px;
-          min-width: 100px;
+          padding: clamp(8px, 1.8vh, 12px) clamp(10px, 1.8vw, 14px);
+          gap: 3px;
         }
         .deck-icon {
-          font-size: clamp(24px, 5vh, 32px);
+          font-size: clamp(22px, 5vh, 36px);
+        }
+        .deck-name {
+          font-size: clamp(10px, 2.2vh, 13px);
         }
         .deck-theme {
-          display: none;
+          font-size: clamp(6px, 1.3vh, 8px);
+          padding-top: 3px;
         }
         .rewards-claim-btn {
-          padding: 8px 24px;
-          font-size: 10px;
+          padding: clamp(6px, 1.5vh, 10px) clamp(20px, 5vw, 32px);
+          font-size: clamp(9px, 1.8vh, 11px);
         }
       }
       
