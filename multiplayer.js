@@ -848,8 +848,8 @@ window.Multiplayer = {
     // ==================== MATCHMAKING ====================
     
     async startMatchmaking(mode, deckId) {
-        // Check if user is authenticated for multiplayer
-        if (!window.Auth?.isAuthenticated) {
+        // Check if user is authenticated for multiplayer (skip in offline/dev mode)
+        if (!window.Auth?.isAuthenticated && !window.isOfflineMode) {
             showMessage('Please sign in to play multiplayer!', 2000);
             LoginScreen.show();
             return;

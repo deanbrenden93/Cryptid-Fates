@@ -3181,8 +3181,8 @@ class Game {
                     }
                     
                     // Call onTurnStartSupport for supports (Hellhound Pup regen, etc.)
-                    const supportCol = this.getSupportCol(owner);
-                    if (col === supportCol && cryptid.onTurnStartSupport) {
+                    // Note: supportCol is already defined in outer scope (line 3109)
+                    if (c === supportCol && cryptid.onTurnStartSupport) {
                         cryptid.onTurnStartSupport(cryptid, owner, this);
                     }
                 }
