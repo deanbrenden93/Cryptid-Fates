@@ -620,20 +620,20 @@ export default {
         
         // WebSocket upgrade for multiplayer
         if (request.headers.get('Upgrade') === 'websocket') {
-            // Verify authentication for multiplayer
+            // Try to get session (optional - allow unauthenticated for legacy/guest support)
             const session = await getSession(env, request);
-            if (!session) {
-                return new Response('Unauthorized', { status: 401 });
-            }
             
-            // Pass user info to matchmaker
+            // Pass to matchmaker
             const matchmakerId = env.MATCHMAKER.idFromName('global');
             const matchmaker = env.MATCHMAKER.get(matchmakerId);
             
-            // Add user info to request headers for the matchmaker
+            // Add user info to request headers for the matchmaker (if authenticated)
             const newHeaders = new Headers(request.headers);
-            newHeaders.set('X-User-Id', session.userId);
-            newHeaders.set('X-User-Name', session.displayName);
+            if (session) {
+                newHeaders.set('X-User-Id', session.userId);
+                newHeaders.set('X-User-Name', session.displayName || 'Player');
+            }
+            // If no session, Matchmaker will handle via legacy 'auth' message
             
             const newRequest = new Request(request.url, {
                 method: request.method,
