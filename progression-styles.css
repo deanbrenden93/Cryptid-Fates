@@ -3264,7 +3264,7 @@ div.menu-btn#tile-collection {
     transform-style: preserve-3d;
 }
 
-.db-card::before {
+.db-card:not(.game-card)::before {
     content: '';
     position: absolute;
     inset: -3px;
@@ -3898,7 +3898,7 @@ div.menu-btn#tile-collection {
 
 .db-action-btn.secondary:hover { background: rgba(200, 80, 80, 0.3); }
 
-/* ===== CARD PREVIEW MODAL - Full Size Card Design ===== */
+/* ===== CARD DETAIL VIEW MODAL - Elegant Two-Panel Design ===== */
 .db-preview-modal {
     position: fixed;
     inset: 0;
@@ -3906,7 +3906,7 @@ div.menu-btn#tile-collection {
     display: none;
     justify-content: center;
     align-items: center;
-    padding: 16px;
+    padding: 20px;
     overflow-y: auto;
 }
 
@@ -3915,8 +3915,8 @@ div.menu-btn#tile-collection {
 .db-preview-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.9);
-    backdrop-filter: blur(6px);
+    background: radial-gradient(ellipse at center, rgba(15, 12, 20, 0.95) 0%, rgba(5, 3, 8, 0.98) 100%);
+    backdrop-filter: blur(8px);
 }
 
 .db-preview-content {
@@ -3925,443 +3925,504 @@ div.menu-btn#tile-collection {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 16px;
-    animation: previewIn 0.25s ease-out;
+    gap: 20px;
+    animation: detailViewIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     max-height: 100%;
-    overflow-y: auto;
-    padding: 10px;
+    max-width: 720px;
+    width: 100%;
 }
 
-@keyframes previewIn {
-    from { opacity: 0; transform: scale(0.9) translateY(20px); }
+@keyframes detailViewIn {
+    from { opacity: 0; transform: scale(0.9) translateY(30px); }
     to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-/* Full-size Card Frame */
-.db-preview-card {
-    width: 280px;
-    max-width: 90vw;
-    aspect-ratio: 800 / 1100;
+/* ===== DETAIL VIEW LAYOUT ===== */
+.detail-view-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    width: 100%;
+}
+
+/* ===== SCALED UP GAME CARD ===== */
+.detail-card-wrapper {
     position: relative;
-    border-radius: 12px;
-    overflow: hidden;
-    background: #0a0a0a;
-    box-shadow: 
-        0 4px 8px rgba(0,0,0,0.3),
-        0 12px 40px rgba(0,0,0,0.5),
-        0 0 40px rgba(200, 200, 210, 0.15);
     flex-shrink: 0;
 }
 
-/* Card template overlay */
-.db-preview-card::before {
-    content: '';
+.game-card.detail-card {
+    --gc-width: 200px;
+    --gc-height: calc(var(--gc-width) * 1.375);
+    filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 40px rgba(100, 100, 120, 0.15));
+}
+
+.detail-card-series {
     position: absolute;
-    inset: 0;
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6373-72e1-705a-a69e-080b071b67e2/new-template-v1.png');
-    background-size: 100% 100%;
-    background-repeat: no-repeat;
-    pointer-events: none;
-    z-index: 10;
-}
-
-/* Inner card content */
-.db-preview-card-inner {
-    position: relative;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    z-index: 1;
-}
-
-/* Element and type colored frames DISABLED - uses steel frame */
-
-/* Preview header */
-.preview-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 12px 8px;
-    position: relative;
-    z-index: 15;
-}
-
-.preview-name {
-    font-family: 'Cinzel', serif;
-    font-size: 18px;
-    font-weight: 600;
-    color: #f4e4c1;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.9);
-    letter-spacing: 0.5px;
-    flex: 1;
-    line-height: 1.2;
-}
-
-.preview-cost {
-    width: 32px;
-    height: 32px;
-    background: radial-gradient(circle at 30% 30%, #ff6b35 0%, #cc4400 50%, #882200 100%);
-    color: #fff;
-    font-family: 'Cinzel', serif;
-    font-weight: 700;
-    font-size: 16px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 
-        0 2px 4px rgba(0,0,0,0.4),
-        0 0 10px rgba(255, 107, 53, 0.4);
-    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-    flex-shrink: 0;
-    margin-left: 8px;
-    z-index: 20;
-}
-
-/* Art container */
-.preview-art-container {
-    position: relative;
-    flex: 1;
-    margin: 0;
-    overflow: hidden;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1;
-}
-
-.preview-sprite {
-    font-size: 64px;
-    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    max-width: 100%;
-    max-height: 100%;
-}
-
-.preview-sprite .sprite-img,
-.db-preview-card .preview-sprite .sprite-img {
-    max-width: 140px;
-    max-height: 140px;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
-}
-
-/* Element badge in art area */
-.preview-element-badge {
-    position: absolute;
-    bottom: 8px;
-    left: 8px;
-    padding: 4px 12px;
-    background: linear-gradient(135deg, #7a8b99 0%, #2a3a48 100%);
-    border-radius: 14px;
-    font-family: 'Cinzel', serif;
-    font-size: 10px;
-    font-weight: 600;
-    color: #c4d4e4;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    border: 1px solid #c4d4e4;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-}
-
-.preview-element-badge.void { background: linear-gradient(135deg, #9b59b6 0%, #3a1a5a 100%); border-color: #d8c0f0; }
-.preview-element-badge.blood { background: linear-gradient(135deg, #c0392b 0%, #4a1510 100%); border-color: #f0c0c0; }
-.preview-element-badge.water { background: linear-gradient(135deg, #3498db 0%, #104060 100%); border-color: #c0e0f0; }
-.preview-element-badge.steel { background: linear-gradient(135deg, #7a8b99 0%, #2a3a48 100%); border-color: #c4d4e4; }
-.preview-element-badge.nature { background: linear-gradient(135deg, #27ae60 0%, #0a4a20 100%); border-color: #c0f0d0; }
-
-/* Parchment text box */
-.preview-text-box {
-    margin: 10px;
-    padding: 12px;
-    position: relative;
-    z-index: 15;
-    flex: 1;
-}
-
-.preview-type {
-    font-family: 'Cinzel', serif;
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: #2a2520;
-    text-align: center;
-    padding-bottom: 6px;
-    margin-bottom: 8px;
-    text-shadow: 0 1px 1px rgba(255,255,255,0.3);
-}
-
-.preview-stats-row {
-    display: flex;
-    justify-content: center;
-    gap: 16px;
-    margin-bottom: 10px;
-}
-
-.preview-stat {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 12px;
-    background: rgba(0,0,0,0.4);
-    border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.1);
-    font-family: 'Cinzel', serif;
-    font-size: 14px;
-    font-weight: 700;
-    color: #fff;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-}
-
-.preview-stat.atk { 
-    background: linear-gradient(135deg, rgba(180, 60, 60, 0.7) 0%, rgba(100, 30, 30, 0.7) 100%);
-    border-color: rgba(255, 100, 100, 0.3);
-}
-
-.preview-stat.hp { 
-    background: linear-gradient(135deg, rgba(60, 140, 60, 0.7) 0%, rgba(30, 80, 30, 0.7) 100%);
-    border-color: rgba(100, 200, 100, 0.3);
-}
-
-.preview-abilities {
-    text-align: left;
-    max-height: 100px;
-    overflow-y: auto;
-}
-
-.preview-ability {
-    padding: 6px 8px;
-    background: rgba(0, 0, 0, 0.15);
-    border-radius: 4px;
-    margin-bottom: 5px;
-    font-family: 'Spectral', serif;
-    font-size: 11px;
-    color: #1a1410;
-    line-height: 1.4;
-    border-left: 2px solid rgba(0,0,0,0.25);
-}
-
-.preview-ability strong {
-    color: #0a0805;
-    font-weight: 600;
-}
-
-/* Footer stats section */
-.preview-footer {
-    padding: 10px 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    position: relative;
-    z-index: 15;
-}
-
-/* Rarity gems */
-.preview-rarity {
-    display: flex;
-    gap: 4px;
-}
-
-.preview-rarity .rarity-gem {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #e8e8e8 0%, #888 100%);
-    box-shadow: 0 0 4px rgba(192, 192, 192, 0.5);
-}
-
-.preview-rarity.uncommon .rarity-gem { background: linear-gradient(135deg, #c0c0c0 0%, #606060 100%); }
-.preview-rarity.rare .rarity-gem { background: linear-gradient(135deg, #ffd700 0%, #aa8800 100%); box-shadow: 0 0 6px rgba(255, 215, 0, 0.5); }
-.preview-rarity.ultimate .rarity-gem { background: linear-gradient(90deg, #ff0000, #ffff00, #00ffff); }
-
-/* Mythical badge in preview */
-.preview-mythical-badge {
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
-    width: 32px;
-    height: 32px;
-    background: radial-gradient(circle at 50% 50%, rgba(200, 150, 255, 0.9) 0%, rgba(100, 50, 150, 0.95) 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 
-        0 0 12px rgba(180, 130, 255, 0.6),
-        0 0 24px rgba(180, 130, 255, 0.3);
-    border: 2px solid rgba(255, 200, 255, 0.4);
-}
-
-.preview-mythical-eye {
-    position: relative;
-    width: 18px;
-    height: 12px;
-}
-
-.preview-mythical-eye::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(200, 180, 255, 0.9) 100%);
-    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-    box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
-}
-
-.preview-mythical-eye::after {
-    content: '';
-    position: absolute;
-    top: 50%;
+    bottom: -8px;
     left: 50%;
-    transform: translate(-50%, -50%);
-    width: 7px;
-    height: 7px;
-    background: radial-gradient(circle at 30% 30%, #6a3d9a 0%, #2a1a4a 100%);
-    border-radius: 50%;
-    box-shadow: 0 0 3px rgba(180, 130, 255, 1);
+    transform: translateX(-50%);
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: rgba(180, 170, 150, 0.6);
+    background: rgba(20, 18, 25, 0.9);
+    padding: 4px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(100, 90, 80, 0.3);
 }
 
-.preview-availability {
+/* ===== INFO PANEL ===== */
+.detail-info-panel {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    padding: 8px;
-    background: rgba(0, 0, 0, 0.08);
-    border-radius: 6px;
-    margin-top: 8px;
+    gap: 16px;
+    min-width: 0;
 }
 
-.preview-owned-row,
-.preview-deck-row,
-.preview-avail-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
+/* Title bar - shows on mobile, hidden on desktop since card shows name */
+.detail-title-bar {
+    display: none;
 }
 
-.avail-label {
-    color: #5a4a3a;
+.detail-card-name {
+    font-family: 'Cinzel', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #e8e0d0;
+    margin: 0;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
-.avail-value {
-    font-weight: bold;
-    color: #3d2b1f;
-}
-
-.preview-owned-row.have .avail-value { color: #27ae60; }
-.preview-owned-row.none .avail-value { color: #e74c3c; }
-.preview-avail-row.available .avail-value { color: #27ae60; }
-.preview-avail-row.unavailable .avail-value { color: #95a5a6; }
-
-/* Preview footer */
-.preview-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 10px;
-    background: linear-gradient(0deg, rgba(30,25,20,0.9) 0%, transparent 100%);
-}
-
-.preview-set {
-    font-family: 'Spectral', serif;
-    font-size: 10px;
-    color: rgba(200, 200, 210, 0.4);
-    letter-spacing: 1px;
-}
-
-.preview-owned {
-    font-size: 12px;
-    font-weight: bold;
-    padding: 5px 10px;
-    border-radius: 4px;
-}
-
-.preview-owned.have {
-    background: rgba(39, 174, 96, 0.2);
-    color: #27ae60;
-}
-
-.preview-owned.none {
-    background: rgba(231, 76, 60, 0.2);
-    color: #e74c3c;
-}
-
-.preview-actions {
+.detail-card-meta {
     display: flex;
     gap: 10px;
-    flex-shrink: 0;
+    align-items: center;
+    margin-top: 4px;
 }
 
-.preview-btn {
-    padding: 10px 20px;
-    border-radius: 6px;
+.detail-element {
     font-family: 'Cinzel', serif;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid;
+}
+
+.detail-element.void { background: rgba(155, 89, 182, 0.3); border-color: rgba(155, 89, 182, 0.5); color: #d8c0f0; }
+.detail-element.blood { background: rgba(192, 57, 43, 0.3); border-color: rgba(192, 57, 43, 0.5); color: #f0c0c0; }
+.detail-element.water { background: rgba(52, 152, 219, 0.3); border-color: rgba(52, 152, 219, 0.5); color: #c0e0f0; }
+.detail-element.steel { background: rgba(122, 139, 153, 0.3); border-color: rgba(122, 139, 153, 0.5); color: #c4d4e4; }
+.detail-element.nature { background: rgba(39, 174, 96, 0.3); border-color: rgba(39, 174, 96, 0.5); color: #c0f0d0; }
+
+.detail-type-label {
+    font-family: 'Spectral', serif;
     font-size: 12px;
+    color: #908878;
+    font-style: italic;
+}
+
+/* ===== SECTIONS ===== */
+.detail-section {
+    background: linear-gradient(145deg, rgba(35, 32, 40, 0.9) 0%, rgba(25, 22, 30, 0.95) 100%);
+    border: 1px solid rgba(100, 90, 80, 0.25);
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+
+.detail-section-title {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: rgba(180, 170, 150, 0.7);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(100, 90, 80, 0.2);
+}
+
+/* ===== ABILITIES SECTION ===== */
+.detail-abilities-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.detail-ability {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    border-left: 3px solid rgba(180, 170, 150, 0.4);
+}
+
+.detail-ability.evolution { border-left-color: rgba(155, 89, 182, 0.7); }
+.detail-ability.effect { border-left-color: rgba(52, 152, 219, 0.7); }
+.detail-ability.pyre-effect { border-left-color: rgba(230, 126, 34, 0.7); }
+
+.detail-ability-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.detail-ability-icon {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.detail-ability-type {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: rgba(180, 170, 150, 0.8);
+}
+
+.detail-ability-name {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #e0d8c8;
+    margin-bottom: 4px;
+}
+
+.detail-ability-desc {
+    font-family: 'Spectral', serif;
+    font-size: 12px;
+    color: #a0988a;
+    line-height: 1.5;
+}
+
+.detail-ability-desc strong {
+    color: #d0c8b8;
+}
+
+/* ===== COLLECTION SECTION ===== */
+.detail-collection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px;
+}
+
+.detail-collection-item {
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid rgba(100, 90, 80, 0.2);
+    transition: all 0.2s ease;
+}
+
+.detail-collection-item.owned {
+    border-color: rgba(100, 180, 100, 0.3);
+    background: rgba(40, 80, 40, 0.15);
+}
+
+.detail-collection-item.holo.owned {
+    border-color: rgba(255, 215, 0, 0.3);
+    background: linear-gradient(135deg, rgba(60, 50, 30, 0.3) 0%, rgba(40, 35, 25, 0.3) 100%);
+}
+
+.detail-collection-item.empty {
+    opacity: 0.5;
+}
+
+.detail-collection-item.in-deck {
+    border-color: rgba(100, 150, 200, 0.3);
+    background: rgba(40, 60, 80, 0.15);
+}
+
+.detail-collection-item.infinite {
+    border-color: rgba(180, 170, 150, 0.3);
+}
+
+.collection-label {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: rgba(180, 170, 150, 0.7);
+}
+
+.collection-value {
+    font-family: 'Cinzel', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #e0d8c8;
+}
+
+.detail-collection-item.owned .collection-value { color: #80c080; }
+.detail-collection-item.holo.owned .collection-value { color: #ffd700; }
+.detail-collection-item.in-deck .collection-value { color: #80b0d0; }
+
+/* Clickable variant toggle */
+.detail-collection-item.clickable {
+    cursor: pointer;
+    position: relative;
+}
+
+.detail-collection-item.clickable::before {
+    content: 'Click to preview';
+    position: absolute;
+    bottom: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 8px;
+    color: rgba(180, 170, 150, 0.4);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.detail-collection-item.clickable:hover::before {
+    opacity: 1;
+}
+
+.detail-collection-item.clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border-color: rgba(150, 140, 120, 0.4);
+}
+
+.detail-collection-item.clickable.holo:hover {
+    border-color: rgba(255, 215, 0, 0.5);
+    box-shadow: 0 4px 16px rgba(255, 215, 0, 0.15);
+}
+
+.detail-collection-item.clickable.active {
+    border-color: rgba(180, 160, 120, 0.6);
+    background: rgba(60, 50, 40, 0.4);
+    box-shadow: inset 0 0 10px rgba(255, 220, 150, 0.1);
+}
+
+.detail-collection-item.clickable.active::after {
+    content: '●';
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    font-size: 8px;
+    color: rgba(255, 220, 150, 0.8);
+}
+
+.detail-collection-item.clickable.holo.active {
+    border-color: rgba(255, 215, 0, 0.6);
+    background: linear-gradient(135deg, rgba(80, 70, 40, 0.4) 0%, rgba(50, 45, 35, 0.4) 100%);
+    box-shadow: inset 0 0 12px rgba(255, 215, 0, 0.15);
+}
+
+.detail-collection-item.clickable.holo.active::after {
+    color: #ffd700;
+}
+
+.collection-ember {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #e8a040;
+}
+
+.ember-icon-sm {
+    width: 14px;
+    height: 14px;
+}
+
+/* ===== SERIES BADGE ===== */
+.detail-series-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 20px;
+    align-self: flex-start;
+}
+
+.series-code {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: rgba(180, 170, 150, 0.9);
+    background: rgba(100, 90, 80, 0.3);
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.series-name {
+    font-family: 'Spectral', serif;
+    font-size: 12px;
+    color: rgba(180, 170, 150, 0.6);
+    font-style: italic;
+}
+
+/* ===== ACTION BUTTONS ===== */
+.detail-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding-top: 8px;
+}
+
+.detail-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
 }
 
-.preview-btn.add {
-    background: linear-gradient(180deg, #80c0a0, #60a080);
-    border: 1px solid rgba(100, 180, 130, 0.5);
-    color: #1a2a20;
+.detail-btn.primary {
+    background: linear-gradient(180deg, #60a080 0%, #408060 100%);
+    border-color: rgba(100, 180, 130, 0.5);
+    color: #f0fff8;
+    box-shadow: 0 4px 12px rgba(60, 140, 100, 0.3);
 }
 
-.preview-btn.add:hover {
-    box-shadow: 0 0 20px rgba(100, 180, 130, 0.4);
+.detail-btn.primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(60, 140, 100, 0.4);
 }
 
-.preview-btn.close {
-    background: rgba(100, 100, 110, 0.3);
-    border: 1px solid rgba(200, 200, 210, 0.2);
-    color: #a0a0a8;
+.detail-btn.primary .btn-icon {
+    font-size: 16px;
+    font-weight: 700;
 }
 
-.preview-btn.close:hover {
-    background: rgba(100, 100, 110, 0.5);
+.detail-btn.incinerate {
+    background: linear-gradient(180deg, rgba(200, 100, 50, 0.8) 0%, rgba(150, 60, 30, 0.8) 100%);
+    border-color: rgba(230, 126, 34, 0.4);
+    color: #ffe8d8;
 }
 
-/* Preview responsive */
+.detail-btn.incinerate:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(230, 126, 34, 0.3);
+}
+
+.detail-btn.incinerate.holo {
+    background: linear-gradient(180deg, rgba(180, 150, 50, 0.8) 0%, rgba(140, 110, 30, 0.8) 100%);
+    border-color: rgba(255, 215, 0, 0.4);
+    color: #fff8e0;
+}
+
+.detail-btn.close {
+    background: rgba(60, 55, 65, 0.8);
+    border-color: rgba(100, 90, 100, 0.3);
+    color: #a0989a;
+}
+
+.detail-btn.close:hover {
+    background: rgba(80, 75, 85, 0.9);
+}
+
+/* ===== RESPONSIVE - MOBILE ===== */
+@media (max-width: 600px) {
+    .detail-view-layout {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .game-card.detail-card {
+        --gc-width: 160px;
+    }
+    
+    .detail-title-bar {
+        display: block;
+        text-align: center;
+    }
+    
+    .detail-card-meta {
+        justify-content: center;
+    }
+    
+    .detail-info-panel {
+        width: 100%;
+    }
+    
+    .detail-collection-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .detail-actions {
+        width: 100%;
+    }
+    
+    .detail-btn {
+        flex: 1;
+        min-width: 120px;
+        padding: 10px 16px;
+        font-size: 12px;
+    }
+}
+
+@media (max-height: 600px) {
+    .db-preview-content {
+        padding: 10px;
+        gap: 12px;
+    }
+    
+    .game-card.detail-card {
+        --gc-width: 140px;
+    }
+    
+    .detail-section {
+        padding: 10px 12px;
+    }
+    
+    .detail-abilities-list {
+        max-height: 120px;
+        overflow-y: auto;
+    }
+    
+    .detail-actions {
+        padding-top: 4px;
+    }
+    
+    .detail-btn {
+        padding: 8px 16px;
+        font-size: 11px;
+    }
+}
+
 @media (max-height: 500px) {
     .db-preview-modal {
-        padding: 8px;
+        padding: 10px;
         align-items: flex-start;
     }
     
-    .db-preview-content {
-        gap: 8px;
+    .detail-view-layout {
+        flex-direction: row;
+        align-items: flex-start;
     }
     
-    .db-preview-card {
-        width: 200px;
-        padding: 10px;
+    .game-card.detail-card {
+        --gc-width: 120px;
     }
     
-    .preview-name { font-size: 14px; }
-    .preview-cost { width: 22px; height: 22px; font-size: 12px; }
-    .preview-sprite { font-size: 40px; margin: 6px 0; }
-    .preview-type { font-size: 9px; margin-bottom: 6px; }
-    .preview-stats-row { gap: 16px; margin-bottom: 6px; }
-    .preview-stat { font-size: 12px; }
-    .preview-abilities { max-height: 80px; }
-    .preview-ability { padding: 4px 6px; font-size: 10px; }
-    .preview-availability { padding: 6px; }
-    .preview-owned-row, .preview-deck-row, .preview-avail-row { font-size: 11px; }
-    .preview-btn { padding: 8px 16px; font-size: 11px; }
-}
-
-@media (max-height: 400px) {
-    .db-preview-card {
-        width: 180px;
-        padding: 8px;
+    .detail-abilities-list {
+        max-height: 80px;
     }
-    
-    .preview-sprite { font-size: 32px; margin: 4px 0; }
-    .preview-abilities { max-height: 60px; }
 }
 
 /* ===== RESPONSIVE ===== */
@@ -4372,8 +4433,11 @@ div.menu-btn#tile-collection {
         grid-template-columns: repeat(auto-fill, minmax(85px, 105px)); 
         gap: 14px; 
     }
-    .db-card { width: 90px; height: 126px; }
-    .db-card .mini-art { font-size: 32px; }
+    /* Legacy mini-card format */
+    .db-card:not(.game-card) { width: 90px; height: 126px; }
+    .db-card:not(.game-card) .mini-art { font-size: 32px; }
+    /* Game card format - use CSS variables */
+    .db-card.game-card { --gc-width: 90px; }
 }
 
 @media (max-width: 600px) {
@@ -4382,9 +4446,12 @@ div.menu-btn#tile-collection {
         gap: 12px; 
         padding: 14px;
     }
-    .db-card { width: 80px; height: 112px; }
-    .db-card .mini-art { font-size: 28px; }
-    .db-card .mini-name-header span { font-size: 0.4rem; }
+    /* Legacy mini-card format */
+    .db-card:not(.game-card) { width: 80px; height: 112px; }
+    .db-card:not(.game-card) .mini-art { font-size: 28px; }
+    .db-card:not(.game-card) .mini-name-header span { font-size: 0.4rem; }
+    /* Game card format - use CSS variables */
+    .db-card.game-card { --gc-width: 80px; }
 }
 
 @media (max-height: 500px) {
@@ -4401,8 +4468,11 @@ div.menu-btn#tile-collection {
         gap: 10px; 
         padding: 10px; 
     }
-    .db-card { width: 75px; height: 105px; }
-    .db-card .mini-art { font-size: 26px; }
+    /* Legacy mini-card format */
+    .db-card:not(.game-card) { width: 75px; height: 105px; }
+    .db-card:not(.game-card) .mini-art { font-size: 26px; }
+    /* Game card format - use CSS variables */
+    .db-card.game-card { --gc-width: 75px; }
     
     .db-deck { width: 220px; }
     .db-deck-top { padding: 8px 10px; }
@@ -5166,7 +5236,7 @@ div.menu-btn#tile-collection {
     transform-style: preserve-3d;
 }
 
-.coll-card::before {
+.coll-card:not(.game-card)::before {
     content: '';
     position: absolute;
     inset: -3px;
@@ -5520,7 +5590,7 @@ div.menu-btn#tile-collection {
     font-size: 15px;
 }
 
-/* Detail Modal */
+/* ===== COLLECTION DETAIL MODAL - Uses shared detail view styles ===== */
 .coll-detail-modal {
     position: fixed;
     inset: 0;
@@ -5528,7 +5598,7 @@ div.menu-btn#tile-collection {
     display: none;
     justify-content: center;
     align-items: center;
-    padding: 16px;
+    padding: 20px;
     overflow-y: auto;
 }
 
@@ -5537,8 +5607,8 @@ div.menu-btn#tile-collection {
 .coll-detail-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.9);
-    backdrop-filter: blur(6px);
+    background: radial-gradient(ellipse at center, rgba(15, 12, 20, 0.95) 0%, rgba(5, 3, 8, 0.98) 100%);
+    backdrop-filter: blur(8px);
 }
 
 .coll-detail-content {
@@ -5547,294 +5617,16 @@ div.menu-btn#tile-collection {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 16px;
-    animation: collDetailIn 0.25s ease-out;
+    gap: 20px;
+    animation: detailViewIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     max-height: 100%;
-    overflow-y: auto;
-    padding: 10px;
+    max-width: 720px;
+    width: 100%;
 }
 
-@keyframes collDetailIn {
-    from { opacity: 0; transform: scale(0.9) translateY(20px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-/* Full-size Card Frame - matches deckbuilder preview */
-.coll-detail-card {
-    width: 280px;
-    max-width: 90vw;
-    aspect-ratio: 800 / 1100;
-    position: relative;
-    border-radius: 12px;
-    overflow: hidden;
-    background: #0a0a0a;
-    box-shadow: 
-        0 4px 8px rgba(0,0,0,0.3),
-        0 12px 40px rgba(0,0,0,0.5),
-        0 0 40px rgba(200, 200, 210, 0.15);
-    flex-shrink: 0;
-}
-
-/* Card template overlay */
-.coll-detail-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6373-72e1-705a-a69e-080b071b67e2/new-template-v1.png');
-    background-size: 100% 100%;
-    background-repeat: no-repeat;
-    pointer-events: none;
-    z-index: 10;
-}
-
-/* Inner card content */
-.coll-detail-card-inner {
-    position: relative;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    z-index: 1;
-}
-
-/* Element and type frame colors DISABLED for detail view - uses steel frame only */
-/* Colors only appear on battle cards */
-
-/* Detail header */
-.detail-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 12px 8px;
-    position: relative;
-    z-index: 15;
-}
-
-.detail-name {
-    font-family: 'Cinzel', serif;
-    font-size: 18px;
-    font-weight: 600;
-    color: #f4e4c1;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.9);
-    letter-spacing: 0.5px;
-    flex: 1;
-    line-height: 1.2;
-}
-
-.detail-cost {
-    width: 32px;
-    height: 32px;
-    background: radial-gradient(circle at 30% 30%, #ff6b35 0%, #cc4400 50%, #882200 100%);
-    color: #fff;
-    font-family: 'Cinzel', serif;
-    font-weight: 700;
-    font-size: 16px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 
-        0 2px 4px rgba(0,0,0,0.4),
-        0 0 10px rgba(255, 107, 53, 0.4);
-    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-    flex-shrink: 0;
-    margin-left: 8px;
-    z-index: 20;
-}
-
-/* Art container */
-.detail-art-container {
-    position: relative;
-    flex: 1;
-    margin: 0;
-    overflow: hidden;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1;
-}
-
-.detail-sprite {
-    font-size: 64px;
-    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    max-width: 100%;
-    max-height: 100%;
-}
-
-.detail-sprite .sprite-img {
-    max-width: 140px;
-    max-height: 140px;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
-}
-
-/* Element badge in art area */
-.detail-element-badge {
-    position: absolute;
-    bottom: 8px;
-    left: 8px;
-    padding: 4px 12px;
-    background: linear-gradient(135deg, #7a8b99 0%, #2a3a48 100%);
-    border-radius: 14px;
-    font-family: 'Cinzel', serif;
-    font-size: 10px;
-    font-weight: 600;
-    color: #c4d4e4;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    border: 1px solid #c4d4e4;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-}
-
-.detail-element-badge.void { background: linear-gradient(135deg, #9b59b6 0%, #3a1a5a 100%); border-color: #d8c0f0; }
-.detail-element-badge.blood { background: linear-gradient(135deg, #c0392b 0%, #4a1510 100%); border-color: #f0c0c0; }
-.detail-element-badge.water { background: linear-gradient(135deg, #3498db 0%, #104060 100%); border-color: #c0e0f0; }
-.detail-element-badge.steel { background: linear-gradient(135deg, #7a8b99 0%, #2a3a48 100%); border-color: #c4d4e4; }
-.detail-element-badge.nature { background: linear-gradient(135deg, #27ae60 0%, #0a4a20 100%); border-color: #c0f0d0; }
-
-/* Parchment text box */
-.detail-text-box {
-    margin: 10px;
-    padding: 12px;
-    position: relative;
-    z-index: 15;
-    flex: 1;
-}
-
-.detail-type {
-    font-family: 'Cinzel', serif;
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: #2a2520;
-    text-align: center;
-    padding-bottom: 6px;
-    margin-bottom: 8px;
-    text-shadow: 0 1px 1px rgba(255,255,255,0.3);
-}
-
-.detail-stats-row {
-    display: flex;
-    justify-content: center;
-    gap: 16px;
-    margin-bottom: 10px;
-}
-
-.detail-stat {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 12px;
-    background: rgba(0,0,0,0.4);
-    border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.1);
-    font-family: 'Cinzel', serif;
-    font-size: 14px;
-    font-weight: 700;
-    color: #fff;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-}
-
-.detail-stat.atk { 
-    background: linear-gradient(135deg, rgba(180, 60, 60, 0.7) 0%, rgba(100, 30, 30, 0.7) 100%);
-    border-color: rgba(255, 100, 100, 0.3);
-}
-
-.detail-stat.hp { 
-    background: linear-gradient(135deg, rgba(60, 140, 60, 0.7) 0%, rgba(30, 80, 30, 0.7) 100%);
-    border-color: rgba(100, 200, 100, 0.3);
-}
-
-.detail-abilities {
-    text-align: left;
-    max-height: 100px;
-    overflow-y: auto;
-}
-
-.detail-ability {
-    padding: 6px 8px;
-    background: rgba(0, 0, 0, 0.15);
-    border-radius: 4px;
-    margin-bottom: 5px;
-    font-family: 'Spectral', serif;
-    font-size: 11px;
-    color: #1a1410;
-    line-height: 1.4;
-    border-left: 2px solid rgba(0,0,0,0.25);
-}
-
-.detail-ability strong {
-    color: #0a0805;
-    font-weight: 600;
-}
-
-/* Footer section */
-.detail-footer {
-    padding: 10px 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    position: relative;
-    z-index: 15;
-}
-
-/* Rarity gems */
-.detail-rarity {
-    display: flex;
-    gap: 4px;
-}
-
-.detail-rarity .rarity-gem {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #e8e8e8 0%, #888 100%);
-    box-shadow: 0 0 4px rgba(192, 192, 192, 0.5);
-}
-
-.detail-rarity.uncommon .rarity-gem { background: linear-gradient(135deg, #c0c0c0 0%, #606060 100%); }
-.detail-rarity.rare .rarity-gem { background: linear-gradient(135deg, #ffd700 0%, #aa8800 100%); box-shadow: 0 0 6px rgba(255, 215, 0, 0.5); }
-.detail-rarity.ultimate .rarity-gem { background: linear-gradient(90deg, #ff0000, #ffff00, #00ffff); }
-
-/* Owned badge */
-.detail-owned {
-    font-size: 12px;
-    font-weight: bold;
-    padding: 4px 12px;
-    border-radius: 12px;
-}
-
-.detail-owned.have {
-    background: rgba(39, 174, 96, 0.3);
-    color: #6dce8c;
-    border: 1px solid rgba(39, 174, 96, 0.4);
-}
-
-.detail-owned.none {
-    background: rgba(192, 57, 43, 0.3);
-    color: #e88a80;
-    border: 1px solid rgba(192, 57, 43, 0.4);
-}
-
-.detail-close-btn {
-    padding: 12px 32px;
-    background: rgba(200, 200, 210, 0.15);
-    border: 1px solid rgba(200, 200, 210, 0.25);
-    border-radius: 8px;
-    color: #c0c0c8;
-    font-family: 'Cinzel', serif;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.detail-close-btn:hover {
-    background: rgba(200, 200, 210, 0.25);
-    transform: translateY(-2px);
+/* Shop card detail modal - inherits from deckbuilder styles */
+.shop-card-detail-modal {
+    z-index: 40000;
 }
 
 /* Collection Responsive */
@@ -5868,10 +5660,13 @@ div.menu-btn#tile-collection {
         padding: 16px;
     }
     
-    .coll-card {
+    /* Legacy mini-card format */
+    .coll-card:not(.game-card) {
         width: 90px;
         height: 126px;
     }
+    /* Game card format - use CSS variables */
+    .coll-card.game-card { --gc-width: 90px; }
 }
 
 @media (max-width: 400px) {
@@ -5881,10 +5676,13 @@ div.menu-btn#tile-collection {
         padding: 12px;
     }
     
-    .coll-card {
+    /* Legacy mini-card format */
+    .coll-card:not(.game-card) {
         width: 80px;
         height: 112px;
     }
+    /* Game card format - use CSS variables */
+    .coll-card.game-card { --gc-width: 80px; }
 }
 
 @media (max-height: 500px) {
@@ -5912,10 +5710,13 @@ div.menu-btn#tile-collection {
         padding: 14px; 
     }
     
-    .coll-card {
+    /* Legacy mini-card format */
+    .coll-card:not(.game-card) {
         width: 85px;
         height: 119px;
     }
+    /* Game card format - use CSS variables */
+    .coll-card.game-card { --gc-width: 85px; }
     
     .coll-detail-card { width: 260px; }
     .detail-art-container { height: 130px; }
@@ -6976,14 +6777,17 @@ div.menu-btn#tile-collection {
 }
 
 /* ============================================================
-   RARITY GEMS - Positioned at top center
+   RARITY GEMS - Positioned at top center (proportional)
    ============================================================ */
 
 .game-card .gc-rarity {
     position: absolute;
-    top: 20px;
+    /* Proportional positioning: ~13% from top, scales with card size */
+    top: calc(var(--gc-width) * 0.18);
     left: 50%;
     transform: translateX(-50%);
+    /* Default dimensions for fallback */
+    width: calc(var(--gc-width) * 0.3);
     height: calc(var(--gc-width) * 0.1);
     z-index: 20;
     background-size: contain;
@@ -6993,31 +6797,22 @@ div.menu-btn#tile-collection {
 
 .game-card .gc-rarity.common {
     width: calc(var(--gc-width) * 0.3);
-    height: calc(var(--gc-width) * 0.1);
     background-image: url('https://f.playcode.io/p-2633929/v-1/019b6b65-9838-715d-ba93-e5bbc255be7e/common-gem.png');
 }
 
 .game-card .gc-rarity.uncommon {
     width: calc(var(--gc-width) * 0.38);
-    height: calc(var(--gc-width) * 0.1);
     background-image: url('https://f.playcode.io/p-2633929/v-1/019b6b65-9836-703e-9123-cacdc8ec8b91/uncommon-gems.png');
 }
 
 .game-card .gc-rarity.rare {
     width: calc(var(--gc-width) * 0.39);
-    height: calc(var(--gc-width) * 0.1);
     background-image: url('https://f.playcode.io/p-2633929/v-1/019b6b65-983d-7617-8584-34f6dd88a516/rare-gems.png');
 }
 
 .game-card .gc-rarity.ultimate {
     width: calc(var(--gc-width) * 0.42);
-    height: calc(var(--gc-width) * 0.1);
     background-image: url('https://f.playcode.io/p-2633929/v-1/019b6b65-9834-73ba-adc7-61d686d9edc5/ultimate-gems.png');
-}
-
-/* Spell card rarity - same position as cryptids */
-.game-card.spell-card .gc-rarity {
-    top: 20px;
 }
 
 /* Hide old rarity gem children */
@@ -7118,12 +6913,46 @@ div.menu-btn#tile-collection {
 .game-card .gc-header {
     position: absolute;
     top: 67.9%;
-    left: 15%;
-    right: 15%;
+    left: 17%;
+    right: 17%;
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 15;
+    overflow: hidden;
+    /* Fade edges with gradient mask */
+    -webkit-mask-image: linear-gradient(
+        to right,
+        transparent 0%,
+        black 10%,
+        black 90%,
+        transparent 100%
+    );
+    mask-image: linear-gradient(
+        to right,
+        transparent 0%,
+        black 10%,
+        black 90%,
+        transparent 100%
+    );
+}
+
+/* When name overflows, left-align to show start */
+.game-card .gc-header.name-overflows {
+    justify-content: flex-start;
+    /* Adjust mask for left-aligned text - no fade on left edge */
+    -webkit-mask-image: linear-gradient(
+        to right,
+        black 0%,
+        black 85%,
+        transparent 100%
+    );
+    mask-image: linear-gradient(
+        to right,
+        black 0%,
+        black 85%,
+        transparent 100%
+    );
 }
 
 .game-card .gc-name {
@@ -7132,11 +6961,35 @@ div.menu-btn#tile-collection {
     font-weight: 700;
     color: #2a2010;
     line-height: 1.1;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
     letter-spacing: 0px;
     text-align: center;
+    padding: 0 calc(var(--gc-width) * 0.06);
+    display: inline-block;
+}
+
+/* Only animate names that overflow - class added via JS */
+.game-card .gc-header.name-overflows .gc-name {
+    animation: scrollName 4s ease-in-out infinite;
+    animation-delay: 0.5s;
+    animation-play-state: paused;
+    padding-left: calc(var(--gc-width) * 0.02);
+}
+
+.game-card:hover .gc-header.name-overflows .gc-name {
+    animation-play-state: running;
+}
+
+@keyframes scrollName {
+    0%, 25% {
+        transform: translateX(0);
+    }
+    45%, 55% {
+        transform: translateX(var(--scroll-amount, -30%));
+    }
+    75%, 100% {
+        transform: translateX(0);
+    }
 }
 
 /* Ability boxes - two rectangles below name banner */
@@ -7174,7 +7027,7 @@ div.menu-btn#tile-collection {
 /* Art/Sprite area */
 .game-card .gc-art {
     position: absolute;
-    top: 10%;
+    top: 15%;
     left: 10%;
     width: 80%;
     height: 52%;
@@ -7213,13 +7066,9 @@ div.menu-btn#tile-collection {
     z-index: 15;
 }
 
-/* Spell type label */
+/* Spell type label - HIDDEN since gc-card-type now handles all card types */
 .game-card .gc-stat-type {
-    font-family: 'Cinzel', serif;
-    font-size: calc(var(--gc-width) * 0.08);
-    color: #d0c0a0;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    display: none;
     text-shadow: 0 1px 3px rgba(0,0,0,0.9);
 }
 
@@ -7310,28 +7159,304 @@ div.menu-btn#tile-collection {
 .game-card .gc-owned.have { background: rgba(60, 120, 60, 0.8); color: #fff; }
 .game-card .gc-owned.none { background: rgba(80, 60, 60, 0.8); color: #a08080; }
 
-/* Foil/Holo effect - shimmer on the art area */
+/* ============================================================
+   HOLOGRAPHIC / FOIL CARD EFFECT - Premium Prismatic Design
+   ============================================================ */
+
+/* Base foil card setup */
+.game-card.foil {
+    --holo-angle: 125deg;
+    --holo-speed: 3s;
+    --sparkle-x: 50%;
+    --sparkle-y: 50%;
+    position: relative;
+    transition: transform 0.1s ease-out;
+}
+
+/* Prismatic rainbow border glow */
+.game-card.foil::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: calc(var(--gc-border-radius) + 3px);
+    background: linear-gradient(
+        var(--holo-angle),
+        #ff0080 0%,
+        #ff8c00 14%,
+        #ffd700 28%,
+        #00ff88 42%,
+        #00cfff 56%,
+        #8c00ff 70%,
+        #ff0080 84%,
+        #ff8c00 100%
+    );
+    background-size: 300% 300%;
+    animation: holoBorderFlow 4s linear infinite;
+    z-index: -1;
+    opacity: 0.85;
+    filter: blur(2px);
+}
+
+/* Main holographic overlay on art */
+.game-card.foil .gc-art::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: 
+        /* Prismatic rainbow layer */
+        linear-gradient(
+            var(--holo-angle),
+            rgba(255, 0, 128, 0.15) 0%,
+            rgba(255, 140, 0, 0.15) 16%,
+            rgba(255, 215, 0, 0.2) 32%,
+            rgba(0, 255, 136, 0.2) 48%,
+            rgba(0, 207, 255, 0.2) 64%,
+            rgba(140, 0, 255, 0.15) 80%,
+            rgba(255, 0, 128, 0.15) 100%
+        );
+    background-size: 200% 200%;
+    animation: holoRainbow var(--holo-speed) ease-in-out infinite;
+    pointer-events: none;
+    z-index: 4;
+    mix-blend-mode: color-dodge;
+}
+
+/* Light sweep effect */
 .game-card.foil .gc-art::after {
     content: '';
     position: absolute;
     inset: 0;
     background: linear-gradient(
-        125deg,
-        transparent 30%,
-        rgba(255, 200, 100, 0.2) 45%,
-        rgba(100, 255, 200, 0.2) 50%,
-        rgba(200, 100, 255, 0.2) 55%,
-        transparent 70%
+        105deg,
+        transparent 0%,
+        transparent 35%,
+        rgba(255, 255, 255, 0.4) 45%,
+        rgba(255, 255, 255, 0.6) 50%,
+        rgba(255, 255, 255, 0.4) 55%,
+        transparent 65%,
+        transparent 100%
     );
-    background-size: 200% 200%;
-    animation: gcHoloShimmer 2s ease-in-out infinite;
+    background-size: 250% 100%;
+    animation: holoSweep 2.5s ease-in-out infinite;
     pointer-events: none;
     z-index: 5;
 }
 
-@keyframes gcHoloShimmer {
-    0%, 100% { background-position: 0% 50%; }
+/* Sparkle overlay layer - uses card frame pseudo-element */
+.game-card.foil > .gc-header::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 100;
+    background-image: 
+        radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.9) 0%, transparent 0.5%),
+        radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.9) 0%, transparent 0.4%),
+        radial-gradient(circle at 40% 80%, rgba(255, 255, 255, 0.8) 0%, transparent 0.5%),
+        radial-gradient(circle at 70% 60%, rgba(255, 255, 255, 0.9) 0%, transparent 0.3%),
+        radial-gradient(circle at 10% 70%, rgba(255, 255, 255, 0.8) 0%, transparent 0.4%),
+        radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.9) 0%, transparent 0.5%),
+        radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.8) 0%, transparent 0.3%),
+        radial-gradient(circle at 30% 50%, rgba(255, 255, 255, 0.9) 0%, transparent 0.4%),
+        radial-gradient(circle at 60% 40%, rgba(255, 255, 255, 0.8) 0%, transparent 0.5%),
+        radial-gradient(circle at 85% 45%, rgba(255, 255, 255, 0.9) 0%, transparent 0.3%);
+    animation: holoSparkle 2s steps(1) infinite;
+    display: none; /* Hidden by default, enabled below */
+}
+
+/* Sparkle container positioned on card */
+.game-card.foil::after {
+    content: '';
+    position: absolute;
+    inset: 5%;
+    border-radius: calc(var(--gc-border-radius) - 2px);
+    pointer-events: none;
+    z-index: 30;
+    background-image: 
+        radial-gradient(circle at 15% 25%, #fff 0%, transparent 2px),
+        radial-gradient(circle at 75% 15%, #fff 0%, transparent 1.5px),
+        radial-gradient(circle at 35% 75%, #fff 0%, transparent 2px),
+        radial-gradient(circle at 85% 55%, #fff 0%, transparent 1.5px),
+        radial-gradient(circle at 25% 45%, #fff 0%, transparent 1px),
+        radial-gradient(circle at 65% 85%, #fff 0%, transparent 2px),
+        radial-gradient(circle at 55% 35%, #fff 0%, transparent 1.5px),
+        radial-gradient(circle at 95% 25%, #fff 0%, transparent 1px),
+        radial-gradient(circle at 45% 5%, #fff 0%, transparent 2px),
+        radial-gradient(circle at 5% 65%, #fff 0%, transparent 1.5px),
+        radial-gradient(circle at 82% 78%, #fff 0%, transparent 1px),
+        radial-gradient(circle at 18% 92%, #fff 0%, transparent 2px);
+    animation: holoSparkle 1.5s steps(1) infinite;
+    opacity: 0.9;
+}
+
+/* Enhanced frame glow */
+.game-card.foil {
+    box-shadow: 
+        0 0 15px rgba(255, 215, 0, 0.4),
+        0 0 30px rgba(255, 100, 200, 0.2),
+        0 0 45px rgba(100, 200, 255, 0.15);
+}
+
+/* Hover state - intensify all effects */
+.game-card.foil:hover {
+    --holo-speed: 1.5s;
+    box-shadow: 
+        0 0 20px rgba(255, 215, 0, 0.6),
+        0 0 40px rgba(255, 100, 200, 0.35),
+        0 0 60px rgba(100, 200, 255, 0.25);
+    transform: scale(1.02);
+}
+
+.game-card.foil:hover::before {
+    opacity: 1;
+    filter: blur(3px);
+    animation-duration: 2s;
+}
+
+.game-card.foil:hover .gc-art::before {
+    animation-duration: 1.5s;
+}
+
+.game-card.foil:hover .gc-art::after {
+    animation-duration: 1.5s;
+}
+
+/* Keyframe Animations */
+@keyframes holoBorderFlow {
+    0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes holoRainbow {
+    0%, 100% { 
+        background-position: 0% 0%;
+        filter: hue-rotate(0deg);
+    }
+    25% { 
+        background-position: 100% 0%;
+        filter: hue-rotate(30deg);
+    }
+    50% { 
+        background-position: 100% 100%;
+        filter: hue-rotate(60deg);
+    }
+    75% { 
+        background-position: 0% 100%;
+        filter: hue-rotate(30deg);
+    }
+}
+
+@keyframes holoSweep {
+    0%, 100% { 
+        background-position: -100% 0;
+        opacity: 0;
+    }
+    20% { opacity: 1; }
+    50% { 
+        background-position: 100% 0;
+        opacity: 1;
+    }
+    70% { opacity: 0; }
+}
+
+@keyframes holoSparkle {
+    0% { 
+        opacity: 0.7;
+        background-position: 0% 0%;
+    }
+    25% { 
+        opacity: 0.9;
+        background-position: 2% 3%;
+    }
+    50% { 
+        opacity: 0.6;
+        background-position: -1% -2%;
+    }
+    75% { 
+        opacity: 0.85;
+        background-position: 3% 1%;
+    }
+    100% { 
+        opacity: 0.7;
+        background-position: 0% 0%;
+    }
+}
+
+/* Card art shimmer enhancement for textures */
+.game-card.foil .gc-art .sprite-img {
+    filter: saturate(1.15) contrast(1.05);
+}
+
+.game-card.foil:hover .gc-art .sprite-img {
+    filter: saturate(1.25) contrast(1.1) brightness(1.08);
+}
+
+/* Dynamic light spot that follows cursor (uses CSS variables set by JS) */
+.game-card.foil .gc-art {
+    position: relative;
+}
+
+.game-card.foil .gc-art > img {
+    position: relative;
+    z-index: 1;
+}
+
+/* Extra shine layer that responds to mouse position */
+.game-card.foil .gc-header::after {
+    content: '';
+    position: absolute;
+    top: calc(-100% - var(--gc-height) * 0.15);
+    left: -20%;
+    width: 140%;
+    height: calc(var(--gc-height) * 0.9);
+    background: radial-gradient(
+        circle at var(--sparkle-x, 50%) var(--sparkle-y, 50%),
+        rgba(255, 255, 255, 0.35) 0%,
+        rgba(255, 255, 255, 0.1) 20%,
+        transparent 50%
+    );
+    pointer-events: none;
+    z-index: 25;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.game-card.foil:hover .gc-header::after {
+    opacity: 1;
+}
+
+/* Extra rainbow refraction line */
+.game-card.foil .gc-cost::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: conic-gradient(
+        from var(--holo-angle),
+        transparent 0%,
+        rgba(255, 100, 100, 0.3) 10%,
+        rgba(255, 255, 100, 0.3) 20%,
+        rgba(100, 255, 100, 0.3) 30%,
+        rgba(100, 255, 255, 0.3) 40%,
+        rgba(100, 100, 255, 0.3) 50%,
+        rgba(255, 100, 255, 0.3) 60%,
+        transparent 70%
+    );
+    border-radius: 50%;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    animation: holoOrb 3s linear infinite;
+}
+
+@keyframes holoOrb {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 /* ============================================================

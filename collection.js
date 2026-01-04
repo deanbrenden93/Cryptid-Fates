@@ -83,11 +83,12 @@ window.Collection = {
         this.bindEvents();
     },
     
-    // Helper to render sprite as image or emoji (no scale in card contexts)
-    renderSprite(sprite) {
+    // Helper to render sprite as image or emoji with optional card scale
+    renderSprite(sprite, cardSpriteScale = null) {
         if (!sprite) return '?';
         if (sprite.startsWith('http') || sprite.startsWith('sprites/')) {
-            return `<img src="${sprite}" class="sprite-img" alt="" draggable="false">`;
+            const scaleStyle = (cardSpriteScale && cardSpriteScale !== 1) ? ` style="transform: scale(${cardSpriteScale})"` : '';
+            return `<img src="${sprite}" class="sprite-img"${scaleStyle} alt="" draggable="false">`;
         }
         return sprite;
     },
@@ -554,6 +555,12 @@ window.Collection = {
         });
         
         container.innerHTML = html;
+        
+        // Detect card name overflow for scroll animation and setup holo effects
+        requestAnimationFrame(() => {
+            detectCardNameOverflow(container);
+            if (typeof setupHoloEffect === 'function') setupHoloEffect(container);
+        });
     },
     
     filterCards(cards) {
@@ -597,6 +604,15 @@ window.Collection = {
         const foilClass = card.foil ? 'foil' : '';
         const rarityClass = card.rarity || 'common';
         
+        // Card type label (Cryptid/Kindling for cryptids, spell type for spells)
+        let cardTypeLabel;
+        if (isCryptid) {
+            cardTypeLabel = card.isKindling ? 'Kindling' : 'Cryptid';
+        } else {
+            const spellTypeLabels = { trap: 'Trap', aura: 'Aura', pyre: 'Pyre', burst: 'Burst' };
+            cardTypeLabel = spellTypeLabels[card.type] || 'Spell';
+        }
+        
         // Stats display
         let statsHTML = '';
         if (isCryptid) {
@@ -620,8 +636,9 @@ window.Collection = {
                  onclick="Collection.showDetail('${card.key}')">
                 <span class="gc-cost">${card.cost}</span>
                 <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-                <div class="gc-art">${Collection.renderSprite(card.sprite)}</div>
+                <div class="gc-art">${Collection.renderSprite(card.sprite, card.cardSpriteScale)}</div>
                 <div class="gc-stats">${statsHTML}</div>
+                <div class="gc-card-type">${cardTypeLabel}</div>
                 ${rarityGems}
                 ${ownedBadge}
             </div>
@@ -663,71 +680,222 @@ window.Collection = {
     
     // ==================== CARD DETAIL ====================
     
+    getCardSeries(cardKey) {
+        // Match card keys to their series
+        const forestsOfFearKeys = [
+            'newbornWendigo', 'matureWendigo', 'primalWendigo',
+            'stormhawk', 'thunderbird',
+            'adolescentBigfoot', 'adultBigfoot',
+            'cursedHybrid', 'werewolf', 'lycanthrope',
+            'deerWoman', 'snipe',
+            'rogueRazorback', 'notDeer', 'jerseyDevil', 'babaYaga', 'skinwalker',
+            'burialGround', 'cursedWoods', 'animalPelts',
+            'dauntingPresence', 'sproutWings', 'weaponizedTree', 'insatiableHunger',
+            'terrify', 'hunt', 'fullMoon'
+        ];
+        
+        const putridSwampKeys = [
+            'tadpole', 'bullfrog', 'lovelandFrog',
+            'hatchling', 'crocodilian', 'mokele',
+            'maggot', 'carrionBeetle', 'mongolianDeathWorm',
+            'bloatedCorpse', 'swampZombie', 'bogBeast',
+            'willOWisp', 'mothman',
+            'lizardMan', 'chupacabra', 'flatwoodsMonster', 'hopkinsville',
+            'rotTrap', 'miasma', 'swampGas',
+            'infection', 'devour', 'swampRenewal', 'toxicSpores',
+            'decay', 'miasmaCloud', 'dredge'
+        ];
+        
+        if (forestsOfFearKeys.includes(cardKey)) return 'forests-of-fear';
+        if (putridSwampKeys.includes(cardKey)) return 'putrid-swamp';
+        return 'city-of-flesh';
+    },
+    
     showDetail(cardKey) {
         const card = this.getCard(cardKey);
         if (!card) return;
         
-        const owned = PlayerData.getOwnedCount(cardKey);
+        const normalOwned = PlayerData.collection[cardKey]?.owned || 0;
+        const holoOwned = PlayerData.collection[cardKey]?.holoOwned || 0;
+        const totalOwned = normalOwned + holoOwned;
         const isCryptid = card.type === 'cryptid';
         const elementClass = card.element ? `element-${card.element}` : '';
         const typeClass = this.getTypeClass(card);
+        const rarityClass = card.rarity || 'common';
+        const mythicalClass = card.mythical ? 'mythical' : '';
+        const cardTypeClass = isCryptid ? 'cryptid-card' : 'spell-card';
         
-        const elementNames = { void: 'Void', blood: 'Blood', water: 'Water', steel: 'Steel', nature: 'Nature' };
-        const typeNames = { burst: 'Burst Spell', trap: 'Trap', aura: 'Aura', pyre: 'Pyre', cryptid: 'Cryptid' };
+        // Card type label
+        let cardTypeLabel;
+        if (isCryptid) {
+            cardTypeLabel = card.isKindling ? 'Kindling' : 'Cryptid';
+        } else {
+            const spellTypeLabels = { trap: 'Trap', aura: 'Aura', pyre: 'Pyre', burst: 'Burst' };
+            cardTypeLabel = spellTypeLabels[card.type] || 'Spell';
+        }
         
-        let typeLabel = typeNames[card.type] || 'Card';
-        if (card.isKindling) typeLabel = 'Kindling';
-        if (card.mythical) typeLabel = 'Mythical Cryptid';
-        if (card.element) typeLabel = `${elementNames[card.element]} ${typeLabel}`;
+        // Stats HTML
+        let statsHTML = '';
+        if (isCryptid) {
+            statsHTML = `<span class="gc-stat atk">${card.atk}</span><span class="gc-stat hp">${card.hp}</span>`;
+        } else {
+            const typeLabels = { trap: 'Trap', aura: 'Aura', pyre: 'Pyre', burst: 'Burst' };
+            statsHTML = `<span class="gc-stat-type">${typeLabels[card.type] || 'Spell'}</span>`;
+        }
         
         // Rarity gems
-        const rarityClass = card.rarity || 'common';
-        const gemCount = rarityClass === 'common' ? 1 : rarityClass === 'uncommon' ? 2 : rarityClass === 'rare' ? 3 : 4;
-        const rarityGems = isCryptid ? `
-            <div class="detail-rarity ${rarityClass}">
-                ${'<span class="rarity-gem"></span>'.repeat(gemCount)}
-            </div>
-        ` : '';
+        const rarityGems = `<span class="gc-rarity ${rarityClass}"></span>`;
+        
+        // Series code
+        const seriesCode = this.getCardSeries(cardKey).split('-').map(w => w.charAt(0).toUpperCase()).join('');
+        const seriesNames = { 'COF': 'City of Flesh', 'FOF': 'Forests of Fear', 'PS': 'Putrid Swamp' };
+        const seriesFullName = seriesNames[seriesCode] || seriesCode;
+        
+        // Element info
+        const elementNames = { void: 'Void', blood: 'Blood', water: 'Water', steel: 'Steel', nature: 'Nature' };
+        
+        // Build abilities section
+        let abilitiesHTML = '';
+        if (card.combatAbility) {
+            const [abilityName, ...descParts] = card.combatAbility.split(':');
+            abilitiesHTML += `
+                <div class="detail-ability">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">⚔</span>
+                        <span class="detail-ability-type">Combat</span>
+                    </div>
+                    <div class="detail-ability-name">${abilityName.trim()}</div>
+                    ${descParts.length ? `<div class="detail-ability-desc">${descParts.join(':').trim()}</div>` : ''}
+                </div>`;
+        }
+        if (card.supportAbility) {
+            const [abilityName, ...descParts] = card.supportAbility.split(':');
+            abilitiesHTML += `
+                <div class="detail-ability">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">✦</span>
+                        <span class="detail-ability-type">Support</span>
+                    </div>
+                    <div class="detail-ability-name">${abilityName.trim()}</div>
+                    ${descParts.length ? `<div class="detail-ability-desc">${descParts.join(':').trim()}</div>` : ''}
+                </div>`;
+        }
+        if (card.evolvesFrom) {
+            abilitiesHTML += `
+                <div class="detail-ability evolution">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">◈</span>
+                        <span class="detail-ability-type">Evolution</span>
+                    </div>
+                    <div class="detail-ability-desc">Evolves from <strong>${card.evolvesFrom}</strong></div>
+                </div>`;
+        }
+        if (card.description) {
+            abilitiesHTML += `
+                <div class="detail-ability effect">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">✧</span>
+                        <span class="detail-ability-type">Effect</span>
+                    </div>
+                    <div class="detail-ability-desc">${card.description}</div>
+                </div>`;
+        }
+        if (card.pyreEffect) {
+            abilitiesHTML += `
+                <div class="detail-ability pyre-effect">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">🔥</span>
+                        <span class="detail-ability-type">Pyre Effect</span>
+                    </div>
+                    <div class="detail-ability-desc">${card.pyreEffect}</div>
+                </div>`;
+        }
         
         const content = document.getElementById('coll-detail-content');
         content.innerHTML = `
-            <div class="coll-detail-card ${elementClass} ${typeClass}">
-                <div class="coll-detail-card-inner">
-                    <div class="detail-header">
-                        <span class="detail-name">${card.name}</span>
-                        <span class="detail-cost">${card.cost}</span>
-                    </div>
-                    <div class="detail-art-container">
-                        <span class="detail-sprite">${Collection.renderSprite(card.sprite)}</span>
-                        ${card.element ? `<span class="detail-element-badge ${card.element}">${elementNames[card.element]}</span>` : ''}
-                    </div>
-                    <div class="detail-text-box">
-                        <div class="detail-type">${typeLabel}</div>
-                        ${isCryptid ? `
-                            <div class="detail-stats-row">
-                                <span class="detail-stat atk">⚔ ${card.atk}</span>
-                                <span class="detail-stat hp">♥ ${card.hp}</span>
-                            </div>
-                        ` : ''}
-                        <div class="detail-abilities">
-                            ${card.combatAbility ? `<div class="detail-ability"><strong>Combat:</strong> ${card.combatAbility}</div>` : ''}
-                            ${card.supportAbility ? `<div class="detail-ability"><strong>Support:</strong> ${card.supportAbility}</div>` : ''}
-                            ${card.description ? `<div class="detail-ability">${card.description}</div>` : ''}
-                            ${card.pyreEffect ? `<div class="detail-ability"><strong>Pyre:</strong> ${card.pyreEffect}</div>` : ''}
-                        </div>
-                    </div>
-                    <div class="detail-footer">
+            <div class="detail-view-layout">
+                <!-- Scaled up game card using actual template -->
+                <div class="detail-card-wrapper">
+                    <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${mythicalClass}">
+                        <span class="gc-cost">${card.cost}</span>
+                        <div class="gc-header"><span class="gc-name">${card.name}</span></div>
+                        <div class="gc-art">${Collection.renderSprite(card.sprite, card.cardSpriteScale)}</div>
+                        <div class="gc-stats">${statsHTML}</div>
+                        <div class="gc-card-type">${cardTypeLabel}</div>
                         ${rarityGems}
-                        <div class="detail-owned ${owned > 0 ? 'have' : 'none'}">
-                            ${owned > 0 ? `Owned: ×${owned}` : 'Not Owned'}
+                    </div>
+                    <div class="detail-card-series">${seriesCode}</div>
+                </div>
+                
+                <!-- Info panel -->
+                <div class="detail-info-panel">
+                    <!-- Card title & type for mobile -->
+                    <div class="detail-title-bar">
+                        <h2 class="detail-card-name">${card.name}</h2>
+                        <span class="detail-card-meta">
+                            ${card.element ? `<span class="detail-element ${card.element}">${elementNames[card.element]}</span>` : ''}
+                            <span class="detail-type-label">${cardTypeLabel}</span>
+                        </span>
+                    </div>
+                    
+                    <!-- Abilities section -->
+                    ${abilitiesHTML ? `
+                        <div class="detail-section abilities-section">
+                            <div class="detail-section-title">Abilities</div>
+                            <div class="detail-abilities-list">${abilitiesHTML}</div>
                         </div>
+                    ` : ''}
+                    
+                    <!-- Collection info -->
+                    <div class="detail-section collection-section">
+                        <div class="detail-section-title">Collection</div>
+                        <div class="detail-collection-grid">
+                            <div class="detail-collection-item clickable active ${normalOwned > 0 ? 'owned' : 'empty'}" data-variant="normal">
+                                <span class="collection-label">Normal</span>
+                                <span class="collection-value">${normalOwned}</span>
+                            </div>
+                            <div class="detail-collection-item clickable holo ${holoOwned > 0 ? 'owned' : 'empty'}" data-variant="holo">
+                                <span class="collection-label">✨ Holo</span>
+                                <span class="collection-value">${holoOwned}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Series info -->
+                    <div class="detail-series-badge">
+                        <span class="series-code">${seriesCode}</span>
+                        <span class="series-name">${seriesFullName}</span>
                     </div>
                 </div>
             </div>
-            <button class="detail-close-btn" onclick="Collection.closeDetail()">Close</button>
+            
+            <!-- Action buttons -->
+            <div class="detail-actions">
+                <button class="detail-btn close" onclick="Collection.closeDetail()">Close</button>
+            </div>
         `;
         
         document.getElementById('coll-detail-modal').classList.add('open');
+        
+        // Add click handlers for variant toggle
+        content.querySelectorAll('.detail-collection-item.clickable').forEach(item => {
+            item.addEventListener('click', () => {
+                const variant = item.dataset.variant;
+                const card = content.querySelector('.game-card.detail-card');
+                const allItems = content.querySelectorAll('.detail-collection-item.clickable');
+                
+                // Update active state
+                allItems.forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                // Toggle foil class on card
+                if (variant === 'holo') {
+                    card.classList.add('foil');
+                } else {
+                    card.classList.remove('foil');
+                }
+            });
+        });
     },
     
     closeDetail() {

@@ -2779,13 +2779,85 @@ function getElementIcon(element) {
     return icons[element] || '';
 }
 
-function renderSprite(sprite, isFieldSprite = false, spriteScale = null) {
+function renderSprite(sprite, isFieldSprite = false, spriteScale = null, cardSpriteScale = null) {
     if (sprite && (sprite.startsWith('sprites/') || sprite.startsWith('http'))) {
         const sizeClass = isFieldSprite ? 'sprite-img field-sprite-img' : 'sprite-img';
-        const scaleStyle = (isFieldSprite && spriteScale) ? ` style="transform: scale(${spriteScale})"` : '';
+        // Use spriteScale for field, cardSpriteScale for card art (both default to 1.0)
+        let scaleStyle = '';
+        if (isFieldSprite && spriteScale && spriteScale !== 1) {
+            scaleStyle = ` style="transform: scale(${spriteScale})"`;
+        } else if (!isFieldSprite && cardSpriteScale && cardSpriteScale !== 1) {
+            scaleStyle = ` style="transform: scale(${cardSpriteScale})"`;
+        }
         return `<img src="${sprite}" class="${sizeClass}"${scaleStyle} alt="" draggable="false">`;
     }
     return sprite || '?';
+}
+
+// Detect card name overflow and add scroll animation class
+function detectCardNameOverflow(container = document) {
+    const headers = container.querySelectorAll('.game-card .gc-header');
+    headers.forEach(header => {
+        const name = header.querySelector('.gc-name');
+        if (!name) return;
+        
+        // Remove class first to get accurate measurement
+        header.classList.remove('name-overflows');
+        
+        // Check if text overflows container
+        requestAnimationFrame(() => {
+            const headerWidth = header.clientWidth;
+            const nameWidth = name.scrollWidth;
+            
+            if (nameWidth > headerWidth) {
+                header.classList.add('name-overflows');
+                // Calculate scroll amount needed (negative percentage)
+                const overflow = nameWidth - headerWidth;
+                const scrollPercent = Math.min((overflow / nameWidth) * 100 + 15, 50);
+                header.style.setProperty('--scroll-amount', `-${scrollPercent}%`);
+            }
+        });
+    });
+}
+
+// Setup interactive holographic effect on foil cards - mouse tracking creates 3D tilt
+function setupHoloEffect(container = document) {
+    const foilCards = container.querySelectorAll('.game-card.foil');
+    
+    foilCards.forEach(card => {
+        // Skip if already set up
+        if (card.dataset.holoSetup) return;
+        card.dataset.holoSetup = 'true';
+        
+        card.addEventListener('mousemove', (e) => {
+            const rect = card.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Calculate position as percentage (0-1)
+            const xPercent = x / rect.width;
+            const yPercent = y / rect.height;
+            
+            // Convert to angle range (-15 to 15 degrees)
+            const rotateY = (xPercent - 0.5) * 20;
+            const rotateX = (0.5 - yPercent) * 15;
+            
+            // Update holo angle based on mouse position (creates prismatic shift)
+            const holoAngle = Math.round(xPercent * 180 + yPercent * 90);
+            
+            card.style.setProperty('--holo-angle', `${holoAngle}deg`);
+            card.style.transform = `perspective(500px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.05)`;
+            
+            // Move sparkle positions
+            card.style.setProperty('--sparkle-x', `${xPercent * 100}%`);
+            card.style.setProperty('--sparkle-y', `${yPercent * 100}%`);
+        });
+        
+        card.addEventListener('mouseleave', () => {
+            card.style.setProperty('--holo-angle', '125deg');
+            card.style.transform = '';
+        });
+    });
 }
 
 // ==================== GAME STATE CLASS ====================
@@ -5920,7 +5992,7 @@ function renderHand() {
         cardEl.innerHTML = `
             <span class="gc-cost">${card.cost}</span>
             <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-            <div class="gc-art">${renderSprite(card.sprite, false, card.spriteScale)}</div>
+            <div class="gc-art">${renderSprite(card.sprite, false, null, card.cardSpriteScale)}</div>
             <div class="gc-stats">${statsHTML}</div>
             <div class="gc-card-type">${cardTypeLabel}</div>
             ${abilityBoxes}
@@ -5943,6 +6015,8 @@ function renderHand() {
         scaleAllAbilityText();
         applyCardFanLayout();
         ensureFanHoverEffects();
+        detectCardNameOverflow(container);
+        setupHoloEffect(container);
     });
     
     updateKindlingButton();
@@ -6056,7 +6130,7 @@ function renderHandAnimated() {
         cardEl.innerHTML = `
             <span class="gc-cost">${card.cost}</span>
             <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-            <div class="gc-art">${renderSprite(card.sprite, false, card.spriteScale)}</div>
+            <div class="gc-art">${renderSprite(card.sprite, false, null, card.cardSpriteScale)}</div>
             <div class="gc-stats">${statsHTML}</div>
             <div class="gc-card-type">${cardTypeLabel}</div>
             ${abilityBoxes}
@@ -6079,6 +6153,8 @@ function renderHandAnimated() {
         scaleAllAbilityText();
         applyCardFanLayout();
         ensureFanHoverEffects();
+        detectCardNameOverflow(container);
+        setupHoloEffect(container);
     });
     
     updateKindlingButton();

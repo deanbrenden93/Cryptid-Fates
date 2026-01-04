@@ -1928,11 +1928,6 @@ body {
     display: none;
 }
 
-/* Rarity indicator - hidden since frame indicates rarity */
-.gc-rarity {
-    display: none;
-}
-
 /* Mythical marker - hidden for now, frame indicates mythical */
 .gc-mythical,
 .card-mythical {

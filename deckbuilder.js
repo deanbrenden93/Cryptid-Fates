@@ -33,11 +33,12 @@ window.DeckBuilder = {
         this.bindEvents();
     },
     
-    // Helper to render sprite as image or emoji (no scale in card contexts)
-    renderSprite(sprite) {
+    // Helper to render sprite as image or emoji with optional card scale
+    renderSprite(sprite, cardSpriteScale = null) {
         if (!sprite) return '?';
         if (sprite.startsWith('http') || sprite.startsWith('sprites/')) {
-            return `<img src="${sprite}" class="sprite-img" alt="" draggable="false">`;
+            const scaleStyle = (cardSpriteScale && cardSpriteScale !== 1) ? ` style="transform: scale(${cardSpriteScale})"` : '';
+            return `<img src="${sprite}" class="sprite-img"${scaleStyle} alt="" draggable="false">`;
         }
         return sprite;
     },
@@ -456,6 +457,12 @@ window.DeckBuilder = {
         
         container.innerHTML = html;
         
+        // Detect card name overflow for scroll animation and setup holo effects
+        requestAnimationFrame(() => {
+            detectCardNameOverflow(container);
+            if (typeof setupHoloEffect === 'function') setupHoloEffect(container);
+        });
+        
         // Add event handlers for click, right-click, and long-press
         container.querySelectorAll('.db-card').forEach(cardEl => {
             let longPressTimer = null;
@@ -516,6 +523,15 @@ window.DeckBuilder = {
         const foilClass = isFoil ? 'foil' : '';
         const rarityClass = card.rarity || 'common';
         
+        // Card type label (Cryptid/Kindling for cryptids, spell type for spells)
+        let cardTypeLabel;
+        if (isCryptid) {
+            cardTypeLabel = card.isKindling ? 'Kindling' : 'Cryptid';
+        } else {
+            const spellTypeLabels = { trap: 'Trap', aura: 'Aura', pyre: 'Pyre', burst: 'Burst' };
+            cardTypeLabel = spellTypeLabels[card.type] || 'Spell';
+        }
+        
         // Stats display
         let statsHTML = '';
         if (isCryptid) {
@@ -551,8 +567,9 @@ window.DeckBuilder = {
                  data-foil="${isFoil}">
                 <span class="gc-cost">${card.cost}</span>
                 <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-                <div class="gc-art">${DeckBuilder.renderSprite(card.sprite)}</div>
+                <div class="gc-art">${DeckBuilder.renderSprite(card.sprite, card.cardSpriteScale)}</div>
                 <div class="gc-stats">${statsHTML}</div>
+                <div class="gc-card-type">${cardTypeLabel}</div>
                 ${rarityGems}
                 ${foilBadge}
                 <span class="gc-owned">${ownedDisplay}</span>
@@ -1013,104 +1030,214 @@ window.DeckBuilder = {
         const isCryptid = card.type === 'cryptid';
         const elementClass = card.element ? `element-${card.element}` : '';
         const typeClass = this.getTypeClass(card);
+        const rarityClass = card.rarity || 'common';
+        const mythicalClass = card.mythical ? 'mythical' : '';
+        const foilClass = isHolo ? 'foil' : '';
+        const cardTypeClass = isCryptid ? 'cryptid-card' : 'spell-card';
         
-        const elementNames = { void: 'Void', blood: 'Blood', water: 'Water', steel: 'Steel', nature: 'Nature' };
-        const elementIcons = { void: '◈', blood: '◉', water: '◎', steel: '⬡', nature: '❖' };
-        const typeNames = { burst: 'Burst Spell', trap: 'Trap', aura: 'Aura', pyre: 'Pyre', cryptid: 'Cryptid' };
+        // Card type label
+        let cardTypeLabel;
+        if (isCryptid) {
+            cardTypeLabel = card.isKindling ? 'Kindling' : 'Cryptid';
+        } else {
+            const spellTypeLabels = { trap: 'Trap', aura: 'Aura', pyre: 'Pyre', burst: 'Burst' };
+            cardTypeLabel = spellTypeLabels[card.type] || 'Spell';
+        }
         
-        let typeLabel = typeNames[card.type] || 'Card';
-        if (card.isKindling) typeLabel = 'Kindling';
-        if (card.mythical) typeLabel = 'Mythical Cryptid';
-        if (card.element && isCryptid) typeLabel = `${elementNames[card.element]} ${typeLabel}`;
+        // Stats HTML for the card
+        let statsHTML = '';
+        if (isCryptid) {
+            statsHTML = `<span class="gc-stat atk">${card.atk}</span><span class="gc-stat hp">${card.hp}</span>`;
+        } else {
+            const typeLabels = { trap: 'Trap', aura: 'Aura', pyre: 'Pyre', burst: 'Burst' };
+            statsHTML = `<span class="gc-stat-type">${typeLabels[card.type] || 'Spell'}</span>`;
+        }
         
         // Rarity gems
-        const rarityClass = card.rarity || 'common';
-        const gemCount = rarityClass === 'common' ? 1 : rarityClass === 'uncommon' ? 2 : rarityClass === 'rare' ? 3 : 4;
-        const rarityGems = isCryptid ? `<span class="preview-rarity ${rarityClass}">${'<span class="rarity-gem"></span>'.repeat(gemCount)}</span>` : '';
+        const rarityGems = `<span class="gc-rarity ${rarityClass}"></span>`;
         
-        // Element badge
-        const elementBadge = card.element ? `<span class="preview-element-badge ${card.element}">${elementIcons[card.element]} ${elementNames[card.element]}</span>` : '';
+        // Series code
+        const seriesCode = this.getCardSeries(cardKey).split('-').map(w => w.charAt(0).toUpperCase()).join('');
+        const seriesNames = { 'COF': 'City of Flesh', 'FOF': 'Forests of Fear', 'PS': 'Putrid Swamp' };
+        const seriesFullName = seriesNames[seriesCode] || seriesCode;
         
-        // Mythical badge
-        const mythicalBadge = card.mythical ? `<div class="preview-mythical-badge"><div class="preview-mythical-eye"></div></div>` : '';
+        // Element info
+        const elementNames = { void: 'Void', blood: 'Blood', water: 'Water', steel: 'Steel', nature: 'Nature' };
         
-        // Abilities section
+        // Build abilities section
         let abilitiesHTML = '';
-        if (card.combatAbility) abilitiesHTML += `<div class="preview-ability"><strong>Combat:</strong> ${card.combatAbility}</div>`;
-        if (card.supportAbility) abilitiesHTML += `<div class="preview-ability"><strong>Support:</strong> ${card.supportAbility}</div>`;
-        if (card.description) abilitiesHTML += `<div class="preview-ability">${card.description}</div>`;
-        if (card.pyreEffect) abilitiesHTML += `<div class="preview-ability"><strong>Pyre:</strong> ${card.pyreEffect}</div>`;
+        if (card.combatAbility) {
+            const [abilityName, ...descParts] = card.combatAbility.split(':');
+            abilitiesHTML += `
+                <div class="detail-ability">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">⚔</span>
+                        <span class="detail-ability-type">Combat</span>
+                    </div>
+                    <div class="detail-ability-name">${abilityName.trim()}</div>
+                    ${descParts.length ? `<div class="detail-ability-desc">${descParts.join(':').trim()}</div>` : ''}
+                </div>`;
+        }
+        if (card.supportAbility) {
+            const [abilityName, ...descParts] = card.supportAbility.split(':');
+            abilitiesHTML += `
+                <div class="detail-ability">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">✦</span>
+                        <span class="detail-ability-type">Support</span>
+                    </div>
+                    <div class="detail-ability-name">${abilityName.trim()}</div>
+                    ${descParts.length ? `<div class="detail-ability-desc">${descParts.join(':').trim()}</div>` : ''}
+                </div>`;
+        }
+        if (card.evolvesFrom) {
+            abilitiesHTML += `
+                <div class="detail-ability evolution">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">◈</span>
+                        <span class="detail-ability-type">Evolution</span>
+                    </div>
+                    <div class="detail-ability-desc">Evolves from <strong>${card.evolvesFrom}</strong></div>
+                </div>`;
+        }
+        if (card.description) {
+            abilitiesHTML += `
+                <div class="detail-ability effect">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">✧</span>
+                        <span class="detail-ability-type">Effect</span>
+                    </div>
+                    <div class="detail-ability-desc">${card.description}</div>
+                </div>`;
+        }
+        if (card.pyreEffect) {
+            abilitiesHTML += `
+                <div class="detail-ability pyre-effect">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">🔥</span>
+                        <span class="detail-ability-type">Pyre Effect</span>
+                    </div>
+                    <div class="detail-ability-desc">${card.pyreEffect}</div>
+                </div>`;
+        }
         
-        // Calculate ember values for display
+        // Calculate ember values
         const normalValue = this.calculateIncinerateValue(cardKey, false);
         const holoValue = this.calculateIncinerateValue(cardKey, true);
         
         const content = document.getElementById('db-preview-content');
         content.innerHTML = `
-            <div class="db-preview-card ${elementClass} ${typeClass}">
-                <div class="db-preview-card-inner">
-                    <div class="preview-header">
-                        <span class="preview-name">${card.name}</span>
-                        <span class="preview-cost">${card.cost}</span>
+            <div class="detail-view-layout">
+                <!-- Scaled up game card using actual template -->
+                <div class="detail-card-wrapper">
+                    <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${mythicalClass} ${foilClass}">
+                        <span class="gc-cost">${card.cost}</span>
+                        <div class="gc-header"><span class="gc-name">${card.name}</span></div>
+                        <div class="gc-art">${DeckBuilder.renderSprite(card.sprite, card.cardSpriteScale)}</div>
+                        <div class="gc-stats">${statsHTML}</div>
+                        <div class="gc-card-type">${cardTypeLabel}</div>
+                        ${rarityGems}
+                    </div>
+                    <div class="detail-card-series">${seriesCode}</div>
+                </div>
+                
+                <!-- Info panel -->
+                <div class="detail-info-panel">
+                    <!-- Card title & type for mobile -->
+                    <div class="detail-title-bar">
+                        <h2 class="detail-card-name">${card.name}</h2>
+                        <span class="detail-card-meta">
+                            ${card.element ? `<span class="detail-element ${card.element}">${elementNames[card.element]}</span>` : ''}
+                            <span class="detail-type-label">${cardTypeLabel}</span>
+                        </span>
                     </div>
                     
-                    <div class="preview-art-container">
-                        <div class="preview-sprite">${DeckBuilder.renderSprite(card.sprite)}</div>
-                        ${elementBadge}
-                        ${mythicalBadge}
-                    </div>
+                    <!-- Abilities section -->
+                    ${abilitiesHTML ? `
+                        <div class="detail-section abilities-section">
+                            <div class="detail-section-title">Abilities</div>
+                            <div class="detail-abilities-list">${abilitiesHTML}</div>
+                        </div>
+                    ` : ''}
                     
-                    <div class="preview-text-box">
-                        <div class="preview-type">${typeLabel}</div>
-                        ${isCryptid ? `
-                            <div class="preview-stats-row">
-                                <span class="preview-stat atk">⚔ ${card.atk}</span>
-                                <span class="preview-stat hp">♥ ${card.hp}</span>
-                            </div>
-                        ` : ''}
-                        ${abilitiesHTML ? `<div class="preview-abilities">${abilitiesHTML}</div>` : ''}
-                        <div class="preview-availability">
+                    <!-- Collection info -->
+                    <div class="detail-section collection-section">
+                        <div class="detail-section-title">Collection</div>
+                        <div class="detail-collection-grid">
                             ${isInfinite ? `
-                                <div class="preview-owned-row have infinite">
-                                    <span class="avail-label">Available:</span>
-                                    <span class="avail-value">∞ Unlimited</span>
+                                <div class="detail-collection-item infinite">
+                                    <span class="collection-label">Available</span>
+                                    <span class="collection-value">∞</span>
                                 </div>
                             ` : `
-                                <div class="preview-owned-row ${normalOwned > 0 ? 'have' : 'none'}">
-                                    <span class="avail-label">Normal:</span>
-                                    <span class="avail-value">${normalOwned}</span>
-                                    ${normalOwned > 0 ? `<span class="ember-value">(<img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="embers-img-sm" alt="">${normalValue})</span>` : ''}
+                                <div class="detail-collection-item clickable active ${normalOwned > 0 ? 'owned' : 'empty'}" data-variant="normal">
+                                    <span class="collection-label">Normal</span>
+                                    <span class="collection-value">${normalOwned}</span>
+                                    ${normalOwned > 0 ? `<span class="collection-ember"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="ember-icon-sm" alt="">${normalValue}</span>` : ''}
                                 </div>
-                                <div class="preview-owned-row ${holoOwned > 0 ? 'have holo' : 'none'}">
-                                    <span class="avail-label">✨ Holo:</span>
-                                    <span class="avail-value">${holoOwned}</span>
-                                    ${holoOwned > 0 ? `<span class="ember-value">(<img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="embers-img-sm" alt="">${holoValue})</span>` : ''}
+                                <div class="detail-collection-item clickable holo ${holoOwned > 0 ? 'owned' : 'empty'}" data-variant="holo">
+                                    <span class="collection-label">✨ Holo</span>
+                                    <span class="collection-value">${holoOwned}</span>
+                                    ${holoOwned > 0 ? `<span class="collection-ember"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="ember-icon-sm" alt="">${holoValue}</span>` : ''}
                                 </div>
                             `}
                             ${this.currentDeck ? `
-                                <div class="preview-deck-row">
-                                    <span class="avail-label">In Deck:</span>
-                                    <span class="avail-value">${inDeck}</span>
+                                <div class="detail-collection-item in-deck">
+                                    <span class="collection-label">In Deck</span>
+                                    <span class="collection-value">${inDeck}</span>
                                 </div>
                             ` : ''}
                         </div>
                     </div>
                     
-                    <div class="preview-footer">
-                        ${rarityGems}
-                        <span class="preview-set">${this.getCardSeries(cardKey).split('-').map(w => w.charAt(0).toUpperCase()).join('')}</span>
+                    <!-- Series info -->
+                    <div class="detail-series-badge">
+                        <span class="series-code">${seriesCode}</span>
+                        <span class="series-name">${seriesFullName}</span>
                     </div>
                 </div>
             </div>
-            <div class="preview-actions">
-                ${(totalOwned > 0 || isInfinite) && this.currentDeck && available > 0 ? `<button class="preview-btn add" onclick="DeckBuilder.addCard('${cardKey}'); DeckBuilder.closePreview();">Add to Deck</button>` : ''}
-                ${normalOwned > 0 && !isInfinite ? `<button class="preview-btn incinerate" onclick="DeckBuilder.showIncinerateModal('${cardKey}', false);"><img src='https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png' class='embers-img-sm' alt=''> Incinerate</button>` : ''}
-                ${holoOwned > 0 ? `<button class="preview-btn incinerate holo" onclick="DeckBuilder.showIncinerateModal('${cardKey}', true);">✨ Incinerate Holo</button>` : ''}
-                <button class="preview-btn close" onclick="DeckBuilder.closePreview()">Close</button>
+            
+            <!-- Action buttons -->
+            <div class="detail-actions">
+                ${(totalOwned > 0 || isInfinite) && this.currentDeck && available > 0 ? 
+                    `<button class="detail-btn primary" onclick="DeckBuilder.addCard('${cardKey}'); DeckBuilder.closePreview();">
+                        <span class="btn-icon">+</span> Add to Deck
+                    </button>` : ''}
+                ${normalOwned > 0 && !isInfinite ? 
+                    `<button class="detail-btn incinerate" onclick="DeckBuilder.showIncinerateModal('${cardKey}', false);">
+                        <img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="ember-icon-sm" alt=""> Incinerate
+                    </button>` : ''}
+                ${holoOwned > 0 ? 
+                    `<button class="detail-btn incinerate holo" onclick="DeckBuilder.showIncinerateModal('${cardKey}', true);">
+                        ✨ Incinerate Holo
+                    </button>` : ''}
+                <button class="detail-btn close" onclick="DeckBuilder.closePreview()">Close</button>
             </div>
         `;
         
         document.getElementById('db-preview-modal').classList.add('open');
+        
+        // Add click handlers for variant toggle
+        const content = document.getElementById('db-preview-content');
+        content.querySelectorAll('.detail-collection-item.clickable').forEach(item => {
+            item.addEventListener('click', () => {
+                const variant = item.dataset.variant;
+                const card = content.querySelector('.game-card.detail-card');
+                const allItems = content.querySelectorAll('.detail-collection-item.clickable');
+                
+                // Update active state
+                allItems.forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                // Toggle foil class on card
+                if (variant === 'holo') {
+                    card.classList.add('foil');
+                } else {
+                    card.classList.remove('foil');
+                }
+            });
+        });
     },
     
     closePreview() {

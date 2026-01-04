@@ -845,6 +845,37 @@ window.Shop = {
                CardRegistry.getAura(key) || CardRegistry.getPyre(key);
     },
     
+    // Get card series for a card key
+    getCardSeries(cardKey) {
+        const forestsOfFearKeys = [
+            'newbornWendigo', 'matureWendigo', 'primalWendigo',
+            'stormhawk', 'thunderbird',
+            'adolescentBigfoot', 'adultBigfoot',
+            'cursedHybrid', 'werewolf', 'lycanthrope',
+            'deerWoman', 'snipe',
+            'rogueRazorback', 'notDeer', 'jerseyDevil', 'babaYaga', 'skinwalker',
+            'burialGround', 'cursedWoods', 'animalPelts',
+            'dauntingPresence', 'sproutWings', 'weaponizedTree', 'insatiableHunger',
+            'terrify', 'hunt', 'fullMoon'
+        ];
+        
+        const putridSwampKeys = [
+            'tadpole', 'bullfrog', 'lovelandFrog',
+            'hatchling', 'crocodilian', 'mokele',
+            'maggot', 'carrionBeetle', 'mongolianDeathWorm',
+            'bloatedCorpse', 'swampZombie', 'bogBeast',
+            'willOWisp', 'mothman',
+            'lizardMan', 'chupacabra', 'flatwoodsMonster', 'hopkinsville',
+            'rotTrap', 'miasma', 'swampGas',
+            'infection', 'devour', 'swampRenewal', 'toxicSpores',
+            'decay', 'miasmaCloud', 'dredge'
+        ];
+        
+        if (forestsOfFearKeys.includes(cardKey)) return 'forests-of-fear';
+        if (putridSwampKeys.includes(cardKey)) return 'putrid-swamp';
+        return 'city-of-flesh';
+    },
+    
     // Standalone card detail modal for shop context
     showCardDetail(cardKey) {
         // Get card data
@@ -892,32 +923,105 @@ window.Shop = {
                          cardType === 'aura' ? 'aura-card' :
                          cardType === 'pyre' ? 'pyre-card' :
                          cardType === 'burst' ? 'burst-card' : '';
+        const rarityClass = card.rarity || 'common';
+        const mythicalClass = card.mythical ? 'mythical' : '';
+        const cardTypeClass = isCryptid ? 'cryptid-card' : 'spell-card';
         
-        const elementNames = { void: 'Void', blood: 'Blood', water: 'Water', steel: 'Steel', nature: 'Nature' };
-        const typeNames = { burst: 'Burst Spell', trap: 'Trap', aura: 'Aura', pyre: 'Pyre', cryptid: 'Cryptid' };
+        // Card type label
+        let cardTypeLabel;
+        if (isCryptid) {
+            cardTypeLabel = card.isKindling ? 'Kindling' : 'Cryptid';
+        } else {
+            const spellTypeLabels = { trap: 'Trap', aura: 'Aura', pyre: 'Pyre', burst: 'Burst' };
+            cardTypeLabel = spellTypeLabels[cardType] || 'Spell';
+        }
         
-        let typeLabel = typeNames[cardType] || 'Card';
-        if (card.isKindling) typeLabel = 'Kindling';
-        if (card.mythical) typeLabel = 'Mythical Cryptid';
-        if (card.element) typeLabel = `${elementNames[card.element]} ${typeLabel}`;
+        // Stats HTML
+        let statsHTML = '';
+        if (isCryptid) {
+            statsHTML = `<span class="gc-stat atk">${card.atk}</span><span class="gc-stat hp">${card.hp}</span>`;
+        } else {
+            const typeLabels = { trap: 'Trap', aura: 'Aura', pyre: 'Pyre', burst: 'Burst' };
+            statsHTML = `<span class="gc-stat-type">${typeLabels[cardType] || 'Spell'}</span>`;
+        }
         
         // Rarity gems
-        const rarityClass = card.rarity || 'common';
-        const gemCount = rarityClass === 'common' ? 1 : rarityClass === 'uncommon' ? 2 : rarityClass === 'rare' ? 3 : 4;
-        const rarityGems = isCryptid ? `
-            <div class="detail-rarity ${rarityClass}">
-                ${'<span class="rarity-gem"></span>'.repeat(gemCount)}
-            </div>
-        ` : '';
+        const rarityGems = `<span class="gc-rarity ${rarityClass}"></span>`;
         
-        // Sprite HTML
-        const spriteHTML = card.sprite ? 
-            (card.sprite.startsWith('http') || card.sprite.startsWith('sprites/') ? 
-                `<img src="${card.sprite}" class="sprite-img" alt="" draggable="false">` : card.sprite) 
-            : '?';
+        // Series code
+        const seriesCode = this.getCardSeries(cardKey).split('-').map(w => w.charAt(0).toUpperCase()).join('');
+        const seriesNames = { 'COF': 'City of Flesh', 'FOF': 'Forests of Fear', 'PS': 'Putrid Swamp' };
+        const seriesFullName = seriesNames[seriesCode] || seriesCode;
+        
+        // Element info
+        const elementNames = { void: 'Void', blood: 'Blood', water: 'Water', steel: 'Steel', nature: 'Nature' };
+        
+        // Build abilities section
+        let abilitiesHTML = '';
+        if (card.combatAbility) {
+            const [abilityName, ...descParts] = card.combatAbility.split(':');
+            abilitiesHTML += `
+                <div class="detail-ability">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">⚔</span>
+                        <span class="detail-ability-type">Combat</span>
+                    </div>
+                    <div class="detail-ability-name">${abilityName.trim()}</div>
+                    ${descParts.length ? `<div class="detail-ability-desc">${descParts.join(':').trim()}</div>` : ''}
+                </div>`;
+        }
+        if (card.supportAbility) {
+            const [abilityName, ...descParts] = card.supportAbility.split(':');
+            abilitiesHTML += `
+                <div class="detail-ability">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">✦</span>
+                        <span class="detail-ability-type">Support</span>
+                    </div>
+                    <div class="detail-ability-name">${abilityName.trim()}</div>
+                    ${descParts.length ? `<div class="detail-ability-desc">${descParts.join(':').trim()}</div>` : ''}
+                </div>`;
+        }
+        if (card.evolvesFrom) {
+            abilitiesHTML += `
+                <div class="detail-ability evolution">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">◈</span>
+                        <span class="detail-ability-type">Evolution</span>
+                    </div>
+                    <div class="detail-ability-desc">Evolves from <strong>${card.evolvesFrom}</strong></div>
+                </div>`;
+        }
+        if (card.description) {
+            abilitiesHTML += `
+                <div class="detail-ability effect">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">✧</span>
+                        <span class="detail-ability-type">Effect</span>
+                    </div>
+                    <div class="detail-ability-desc">${card.description}</div>
+                </div>`;
+        }
+        if (card.pyreEffect) {
+            abilitiesHTML += `
+                <div class="detail-ability pyre-effect">
+                    <div class="detail-ability-header">
+                        <span class="detail-ability-icon">🔥</span>
+                        <span class="detail-ability-type">Pyre Effect</span>
+                    </div>
+                    <div class="detail-ability-desc">${card.pyreEffect}</div>
+                </div>`;
+        }
         
         // Owned count
-        const owned = typeof PlayerData !== 'undefined' ? PlayerData.getOwnedCount(cardKey) : 0;
+        const normalOwned = typeof PlayerData !== 'undefined' ? (PlayerData.collection[cardKey]?.owned || 0) : 0;
+        const holoOwned = typeof PlayerData !== 'undefined' ? (PlayerData.collection[cardKey]?.holoOwned || 0) : 0;
+        
+        // Sprite HTML with scale
+        const spriteHTML = card.sprite ? 
+            (card.sprite.startsWith('http') || card.sprite.startsWith('sprites/') ? 
+                `<img src="${card.sprite}" class="sprite-img"${card.cardSpriteScale && card.cardSpriteScale !== 1 ? ` style="transform: scale(${card.cardSpriteScale})"` : ''} alt="" draggable="false">` : card.sprite) 
+            : '?';
         
         // Remove existing modal if any
         const existing = document.getElementById('shop-card-detail-modal');
@@ -926,44 +1030,70 @@ window.Shop = {
         // Create modal
         const modal = document.createElement('div');
         modal.id = 'shop-card-detail-modal';
-        modal.className = 'shop-card-detail-modal';
+        modal.className = 'shop-card-detail-modal db-preview-modal';
         modal.innerHTML = `
-            <div class="shop-detail-backdrop"></div>
-            <div class="shop-detail-content">
-                <div class="coll-detail-card ${elementClass} ${typeClass}">
-                    <div class="coll-detail-card-inner">
-                        <div class="detail-header">
-                            <span class="detail-name">${card.name}</span>
-                            <span class="detail-cost">${card.cost}</span>
-                        </div>
-                        <div class="detail-art-container">
-                            <span class="detail-sprite">${spriteHTML}</span>
-                            ${card.element ? `<span class="detail-element-badge ${card.element}">${elementNames[card.element]}</span>` : ''}
-                        </div>
-                        <div class="detail-text-box">
-                            <div class="detail-type">${typeLabel}</div>
-                            ${isCryptid ? `
-                                <div class="detail-stats-row">
-                                    <span class="detail-stat atk">⚔ ${card.atk}</span>
-                                    <span class="detail-stat hp">♥ ${card.hp}</span>
-                                </div>
-                            ` : ''}
-                            <div class="detail-abilities">
-                                ${card.combatAbility ? `<div class="detail-ability"><strong>Combat:</strong> ${card.combatAbility}</div>` : ''}
-                                ${card.supportAbility ? `<div class="detail-ability"><strong>Support:</strong> ${card.supportAbility}</div>` : ''}
-                                ${card.description ? `<div class="detail-ability">${card.description}</div>` : ''}
-                                ${card.pyreEffect ? `<div class="detail-ability"><strong>Pyre:</strong> ${card.pyreEffect}</div>` : ''}
-                            </div>
-                        </div>
-                        <div class="detail-footer">
+            <div class="db-preview-backdrop"></div>
+            <div class="db-preview-content">
+                <div class="detail-view-layout">
+                    <!-- Scaled up game card using actual template -->
+                    <div class="detail-card-wrapper">
+                        <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${mythicalClass}">
+                            <span class="gc-cost">${card.cost}</span>
+                            <div class="gc-header"><span class="gc-name">${card.name}</span></div>
+                            <div class="gc-art">${spriteHTML}</div>
+                            <div class="gc-stats">${statsHTML}</div>
+                            <div class="gc-card-type">${cardTypeLabel}</div>
                             ${rarityGems}
-                            <div class="detail-owned ${owned > 0 ? 'have' : 'none'}">
-                                ${owned > 0 ? `Owned: ×${owned}` : 'Not Owned'}
+                        </div>
+                        <div class="detail-card-series">${seriesCode}</div>
+                    </div>
+                    
+                    <!-- Info panel -->
+                    <div class="detail-info-panel">
+                        <!-- Card title & type for mobile -->
+                        <div class="detail-title-bar">
+                            <h2 class="detail-card-name">${card.name}</h2>
+                            <span class="detail-card-meta">
+                                ${card.element ? `<span class="detail-element ${card.element}">${elementNames[card.element]}</span>` : ''}
+                                <span class="detail-type-label">${cardTypeLabel}</span>
+                            </span>
+                        </div>
+                        
+                        <!-- Abilities section -->
+                        ${abilitiesHTML ? `
+                            <div class="detail-section abilities-section">
+                                <div class="detail-section-title">Abilities</div>
+                                <div class="detail-abilities-list">${abilitiesHTML}</div>
                             </div>
+                        ` : ''}
+                        
+                        <!-- Collection info -->
+                        <div class="detail-section collection-section">
+                            <div class="detail-section-title">Collection</div>
+                            <div class="detail-collection-grid">
+                                <div class="detail-collection-item clickable active ${normalOwned > 0 ? 'owned' : 'empty'}" data-variant="normal">
+                                    <span class="collection-label">Normal</span>
+                                    <span class="collection-value">${normalOwned}</span>
+                                </div>
+                                <div class="detail-collection-item clickable holo ${holoOwned > 0 ? 'owned' : 'empty'}" data-variant="holo">
+                                    <span class="collection-label">✨ Holo</span>
+                                    <span class="collection-value">${holoOwned}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Series info -->
+                        <div class="detail-series-badge">
+                            <span class="series-code">${seriesCode}</span>
+                            <span class="series-name">${seriesFullName}</span>
                         </div>
                     </div>
                 </div>
-                <button class="shop-detail-close" onclick="Shop.closeCardDetail()">✕</button>
+                
+                <!-- Action buttons -->
+                <div class="detail-actions">
+                    <button class="detail-btn close" onclick="Shop.closeCardDetail()">Close</button>
+                </div>
             </div>
         `;
         
@@ -975,7 +1105,27 @@ window.Shop = {
         });
         
         // Click backdrop to close
-        modal.querySelector('.shop-detail-backdrop').onclick = () => this.closeCardDetail();
+        modal.querySelector('.db-preview-backdrop').onclick = () => this.closeCardDetail();
+        
+        // Add click handlers for variant toggle
+        modal.querySelectorAll('.detail-collection-item.clickable').forEach(item => {
+            item.addEventListener('click', () => {
+                const variant = item.dataset.variant;
+                const card = modal.querySelector('.game-card.detail-card');
+                const allItems = modal.querySelectorAll('.detail-collection-item.clickable');
+                
+                // Update active state
+                allItems.forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                // Toggle foil class on card
+                if (variant === 'holo') {
+                    card.classList.add('foil');
+                } else {
+                    card.classList.remove('foil');
+                }
+            });
+        });
     },
     
     closeCardDetail() {
