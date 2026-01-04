@@ -344,6 +344,10 @@ const LoginScreen = {
                     <button class="skip-login-btn dev-tutorial-btn" onclick="LoginScreen.startTutorial()">
                         📖 Dev: Start Tutorial
                     </button>
+                    
+                    <button class="skip-login-btn dev-rewards-btn" onclick="LoginScreen.testRewardsScreen()">
+                        🎁 Dev: Test Rewards
+                    </button>
                 </div>
             </div>
         `;
@@ -377,6 +381,30 @@ const LoginScreen = {
             await TutorialManager.start();
         } else {
             console.error('[LoginScreen] TutorialManager not found');
+        }
+    },
+    
+    /**
+     * Test rewards screen directly (dev bypass)
+     */
+    testRewardsScreen() {
+        console.log('[LoginScreen] Testing rewards screen...');
+        this.hide();
+        
+        // Hide other screens
+        ['main-menu', 'home-screen', 'loading-screen', 'fullscreen-prompt', 'game-container'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.style.display = 'none';
+                el.classList.add('hidden');
+            }
+        });
+        
+        // Show rewards screen directly
+        if (typeof TutorialRewards !== 'undefined') {
+            TutorialRewards.show();
+        } else {
+            console.error('[LoginScreen] TutorialRewards not found');
         }
     },
     
@@ -719,6 +747,17 @@ const loginStyles = `
     background: rgba(100, 180, 100, 0.1);
     color: #6a9a6a;
     border-color: rgba(100, 180, 100, 0.5);
+}
+
+.dev-rewards-btn {
+    border-color: rgba(255, 180, 60, 0.3);
+    color: #a08040;
+}
+
+.dev-rewards-btn:hover {
+    background: rgba(255, 180, 60, 0.1);
+    color: #c0a060;
+    border-color: rgba(255, 180, 60, 0.5);
 }
 
 /* Username Entry Screen */

@@ -201,7 +201,7 @@ const TutorialSteps = [
     glowTargets: [".tile[data-owner='player'][data-col='1']"],
     advance: "tap",
     position: "top",
-    delay: 7000, // Wait for full enemy turn sequence (targeting + trap + attack + pause)
+    delay: 5000, // Wait for enemy turn sequence (targeting + trap + attack)
     onShow: () => {
       // Block advancing during enemy turn
       TutorialManager.blockAdvance = true;
@@ -212,7 +212,7 @@ const TutorialSteps = [
       // Unblock when the sequence is complete (matches delay)
       setTimeout(() => {
         TutorialManager.blockAdvance = false;
-      }, 6800);
+      }, 4800);
     },
   },
 
@@ -385,7 +385,7 @@ const TutorialSteps = [
     glowTargets: [".tile[data-owner='player'][data-col='0']"],
     advance: "tap",
     position: "top",
-    delay: 9000, // Wait for full sequence: summon (2s) + targeting (1.5s) + attack (1.5s) + death (2s) + message (2s)
+    delay: 6500, // Wait for sequence: summon (2s) + targeting (1.5s) + attack (1.5s) + death (1s)
     onShow: () => {
       // Block advancing during enemy turn
       TutorialManager.blockAdvance = true;
@@ -396,7 +396,7 @@ const TutorialSteps = [
       // Unblock when the sequence is complete (matches delay)
       setTimeout(() => {
         TutorialManager.blockAdvance = false;
-      }, 8800);
+      }, 6300);
     },
   },
 
@@ -1130,18 +1130,10 @@ const TutorialBattle = {
             attacker.tapped = true;
             attacker.canAttack = false;
 
-            // PHASE 4: Brief pause before turn ends (1s)
-            setTimeout(() => {
-              if (typeof showMessage === "function") {
-                showMessage("Enemy turn complete.", 1000);
-              }
-              
-              setTimeout(() => {
-                if (typeof renderField === "function") renderField();
-                if (typeof renderSprites === "function") renderSprites();
-                console.log("[TutorialBattle] Enemy turn 1 complete");
-              }, 800);
-            }, 500);
+            // PHASE 4: Quick cleanup
+            if (typeof renderField === "function") renderField();
+            if (typeof renderSprites === "function") renderSprites();
+            console.log("[TutorialBattle] Enemy turn 1 complete");
           });
         } else {
           // Fallback without animation
@@ -1380,20 +1372,12 @@ const TutorialBattle = {
                 game.playerDeaths++;
                 console.log("[TutorialBattle] Support killed!");
 
-                // PHASE 4: Brief pause before turn ends
-                setTimeout(() => {
-                  if (typeof showMessage === "function") {
-                    showMessage("Your support was defeated!", 1500);
-                  }
-                  
-                  setTimeout(() => {
-                    if (typeof renderField === "function") renderField();
-                    if (typeof renderSprites === "function") renderSprites();
-                    if (typeof renderHUD === "function") renderHUD();
-                    console.log("[TutorialBattle] Enemy turn 2 complete");
-                  }, 800);
-                }, 500);
-              }, 700);
+                // Quick cleanup
+                if (typeof renderField === "function") renderField();
+                if (typeof renderSprites === "function") renderSprites();
+                if (typeof renderHUD === "function") renderHUD();
+                console.log("[TutorialBattle] Enemy turn 2 complete");
+              }, 600);
             } else {
               setTimeout(() => {
                 if (typeof renderField === "function") renderField();

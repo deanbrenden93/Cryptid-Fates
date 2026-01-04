@@ -2640,6 +2640,12 @@ class Game {
         if (col === combatCol) {
             const support = this.getFieldCryptid(owner, supportCol, row);
             if (support) {
+                // Call onCombatantDeath hook on support BEFORE promotion (for Sewer Alligator, etc.)
+                if (support.onCombatantDeath) {
+                    support.onCombatantDeath(support, cryptid, this);
+                }
+                GameEvents.emit('onCombatantDeath', { combatant: cryptid, support, owner, row });
+                
                 // Promote the support to combat position
                 this.setFieldCryptid(owner, supportCol, row, null);
                 support.col = combatCol;
@@ -3172,6 +3178,12 @@ class Game {
                     // Call cryptid's onTurnStart callback (Elder Vampire Undying, etc.)
                     if (cryptid.onTurnStart) {
                         cryptid.onTurnStart(cryptid, owner, this);
+                    }
+                    
+                    // Call onTurnStartSupport for supports (Hellhound Pup regen, etc.)
+                    const supportCol = this.getSupportCol(owner);
+                    if (col === supportCol && cryptid.onTurnStartSupport) {
+                        cryptid.onTurnStartSupport(cryptid, owner, this);
                     }
                 }
             }

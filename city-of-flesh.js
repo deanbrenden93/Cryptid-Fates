@@ -437,7 +437,8 @@ CardRegistry.registerCryptid('rooftopGargoyle', {
     },
     // SUPPORT: On combatant death, give attacker calamity
     onSummon: (cryptid, owner, game) => {
-        cryptid._vengeanceListener = (data) => {
+        // Use the unsubscribe function returned by GameEvents.on() for clean cleanup
+        cryptid._unsubscribeVengeance = GameEvents.on('onDeath', (data) => {
             // Check if the dead cryptid was our combatant
             const combatant = game.getCombatant(cryptid);
             if (data.cryptid === combatant && data.killerOwner && data.killerOwner !== owner) {
@@ -452,13 +453,12 @@ CardRegistry.registerCryptid('rooftopGargoyle', {
                     game.applyCalamity(attacker, 3);
                 }
             }
-        };
-        GameEvents.on('onDeath', cryptid._vengeanceListener);
+        });
     },
     onDeath: (cryptid, game) => {
-        if (cryptid._vengeanceListener) {
-            const idx = GameEvents.listeners['onDeath']?.indexOf(cryptid._vengeanceListener);
-            if (idx > -1) GameEvents.listeners['onDeath'].splice(idx, 1);
+        if (cryptid._unsubscribeVengeance) {
+            cryptid._unsubscribeVengeance();
+            cryptid._unsubscribeVengeance = null;
         }
     }
 });
@@ -565,9 +565,8 @@ CardRegistry.registerCryptid('sewerAlligator', {
         const enemyOwner = owner === 'player' ? 'enemy' : 'player';
         const enemyCombatCol = game.getCombatCol(enemyOwner);
         
-        // Make enemy slot across toxic
-        game.applyToxicToTile(enemyOwner, enemyCombatCol, support.row, 3);
-        GameEvents.emit('onToxicApplied', { owner: enemyOwner, col: enemyCombatCol, row: support.row, source: 'Sewer Alligator' });
+        // Make enemy slot across toxic (method is applyToxic, not applyToxicToTile)
+        game.applyToxic(enemyOwner, enemyCombatCol, support.row);
     }
 });
 
@@ -732,8 +731,8 @@ CardRegistry.registerCryptid('mothman', {
     },
     // Set up calamity death listener on summon (regardless of position)
     onSummon: (cryptid, owner, game) => {
-        // Set up calamity death listener for +1 ATK - triggers for ANY calamity death
-        cryptid._calamityDeathListener = (data) => {
+        // Use the unsubscribe function returned by GameEvents.on() for clean cleanup
+        cryptid._unsubscribeCalamityDeath = GameEvents.on('onDeath', (data) => {
             // Check if the dead cryptid died from calamity
             if (data.cryptid?.killedBy === 'calamity') {
                 // Mothman gains +1 ATK permanently
@@ -746,8 +745,7 @@ CardRegistry.registerCryptid('mothman', {
                     source: 'Mothman Harbinger'
                 });
             }
-        };
-        GameEvents.on('onDeath', cryptid._calamityDeathListener);
+        });
     },
     // SUPPORT: Combatant's attacks grant 3 calamity before damage
     onCombatantBeforeAttack: (support, combatant, target, game) => {
@@ -755,9 +753,9 @@ CardRegistry.registerCryptid('mothman', {
     },
     // Clean up listener on death
     onDeath: (cryptid, game) => {
-        if (cryptid._calamityDeathListener) {
-            const idx = GameEvents.listeners['onDeath']?.indexOf(cryptid._calamityDeathListener);
-            if (idx > -1) GameEvents.listeners['onDeath'].splice(idx, 1);
+        if (cryptid._unsubscribeCalamityDeath) {
+            cryptid._unsubscribeCalamityDeath();
+            cryptid._unsubscribeCalamityDeath = null;
         }
     }
 });
@@ -829,7 +827,8 @@ CardRegistry.registerCryptid('theFlayer', {
     },
     // Hook into death to grant rewards
     onSummon: (cryptid, owner, game) => {
-        cryptid._killListener = (data) => {
+        // Use the unsubscribe function returned by GameEvents.on() for clean cleanup
+        cryptid._unsubscribeKillReward = GameEvents.on('onDeath', (data) => {
             if (data.cryptid?.killedBySource === cryptid && cryptid.rewardOnKill) {
                 // Gain 1 pyre
                 if (owner === 'player') game.playerPyre++;
@@ -839,8 +838,7 @@ CardRegistry.registerCryptid('theFlayer', {
                 cryptid.rewardOnKill = false;
                 GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'The Flayer' });
             }
-        };
-        GameEvents.on('onDeath', cryptid._killListener);
+        });
         
         // If summoned as support, immediately apply focus to combatant
         const supportCol = game.getSupportCol(owner);
@@ -853,9 +851,9 @@ CardRegistry.registerCryptid('theFlayer', {
         }
     },
     onDeath: (cryptid, game) => {
-        if (cryptid._killListener) {
-            const idx = GameEvents.listeners['onDeath']?.indexOf(cryptid._killListener);
-            if (idx > -1) GameEvents.listeners['onDeath'].splice(idx, 1);
+        if (cryptid._unsubscribeKillReward) {
+            cryptid._unsubscribeKillReward();
+            cryptid._unsubscribeKillReward = null;
         }
         // Clear focus from combatant when Flayer dies
         const combatant = game.getCombatant(cryptid);
