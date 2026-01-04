@@ -1127,6 +1127,388 @@ const MatchLog = {
             this.log('ACTIVATED', description, details);
         });
         
+        // ==================== CARD-SPECIFIC ABILITY EVENTS ====================
+        
+        // Skinwalker Mimic
+        GameEvents.on('onMimic', (data) => {
+            this.log('ABILITY', 'Mimic', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Mimic',
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
+                effect: `Copied ${data.copied?.name}'s ATK (now ${data.newAtk})`,
+                owner: data.owner
+            });
+        });
+        
+        // Stormhawk Lone Hunter
+        GameEvents.on('onLoneHunterBonus', (data) => {
+            this.log('ABILITY', 'Lone Hunter', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Lone Hunter',
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
+                effect: '+1 ATK (only combatant)',
+                owner: data.owner
+            });
+        });
+        
+        // Stormhawk/Thunderbird Thermal Swap
+        GameEvents.on('onThermalSwap', (data) => {
+            this.log('ABILITY', 'Thermal Swap', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Thermal',
+                effect: `Swapped with row ${data.targetRow}, both healed 2 HP`,
+                owner: data.owner
+            });
+        });
+        
+        // Adolescent Bigfoot Rage
+        GameEvents.on('onRageStack', (data) => {
+            this.log('ABILITY', 'Rage Stack', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Rage',
+                effect: `ATK now ${data.newAtk}`,
+                owner: data.cryptid?.owner
+            });
+        });
+        
+        GameEvents.on('onRageHeal', (data) => {
+            this.log('ABILITY', 'Rage Heal', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Rage Heal',
+                effect: 'Converted ATK stacks to healing',
+                owner: data.owner
+            });
+        });
+        
+        // Cursed Hybrid Adaptation
+        GameEvents.on('onHybridAdaptation', (data) => {
+            this.log('ABILITY', 'Hybrid Adaptation', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Adaptation',
+                effect: data.type === 'atk' ? '+1 ATK from fire/death' : '+1 HP from nature/water',
+                owner: data.cryptid?.owner
+            });
+        });
+        
+        // Deer Woman Grace & Offering
+        GameEvents.on('onGraceBuff', (data) => {
+            this.log('ABILITY', 'Grace', {
+                cardName: 'Deer Woman',
+                abilityName: 'Grace',
+                target: data.target?.name,
+                effect: '+1/+1 to adjacent',
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onOfferingPyre', (data) => {
+            this.log('ABILITY', 'Offering', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Offering',
+                effect: '+1 Pyre when attacked',
+                owner: data.owner
+            });
+        });
+        
+        // Wendigo abilities
+        GameEvents.on('onHungerDamage', (data) => {
+            this.log('ABILITY', 'Hunger', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Hunger',
+                effect: 'Dealt 1 damage to self',
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onWendigoHunger', (data) => {
+            this.log('ABILITY', 'Wendigo Hunger', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Hunger',
+                effect: 'Gains +1/+1 each turn',
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onPrimalWendigoAscension', (data) => {
+            this.log('ABILITY', 'Ascension', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Ascension',
+                effect: 'Death prevented, became 1/1',
+                owner: data.owner
+            });
+        });
+        
+        // Guardian/Bulwark protection
+        GameEvents.on('onGuardianProtect', (data) => {
+            this.log('ABILITY', 'Guardian', {
+                cardName: data.support?.name,
+                abilityName: 'Guardian',
+                target: data.combatant?.name,
+                effect: 'Granted protection to combatant',
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onBulwarkTrigger', (data) => {
+            this.log('ABILITY', 'Bulwark', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Bulwark',
+                effect: 'Damage reduced to 1',
+                owner: data.owner
+            });
+        });
+        
+        // Primal Wendigo Counter
+        GameEvents.on('onPrimalCounter', (data) => {
+            this.log('ABILITY', 'Counter', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Counter',
+                target: data.attacker?.name,
+                effect: `Counter-killed attacker for ${data.damage} damage`,
+                owner: data.owner
+            });
+        });
+        
+        // Apex Kill (Primal Wendigo/Lycanthrope)
+        GameEvents.on('onApexKill', (data) => {
+            this.log('ABILITY', 'Apex Kill', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Apex',
+                target: data.victim?.name,
+                effect: 'Kill trigger activated',
+                owner: data.owner
+            });
+        });
+        
+        // Cannibalize (support sacrifice)
+        GameEvents.on('onCannibalizeDamage', (data) => {
+            this.log('ABILITY', 'Cannibalize', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Cannibalize',
+                target: data.support?.name,
+                effect: `Dealt ${data.damage} damage to support`,
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onCannibalizeKill', (data) => {
+            this.log('ABILITY', 'Cannibalize Kill', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Cannibalize',
+                target: data.support?.name,
+                effect: 'Killed and consumed support',
+                owner: data.owner
+            });
+        });
+        
+        // Thunderbird Storm Call
+        GameEvents.on('onStormCallDamage', (data) => {
+            this.log('DAMAGE', 'Storm Call', {
+                targetName: data.target?.name,
+                amount: data.damage,
+                col: data.target?.col,
+                row: data.target?.row,
+                source: `Storm Call from ${data.source?.name}`
+            });
+        });
+        
+        // Thunderbird Tailwind
+        GameEvents.on('onTailwindBuff', (data) => {
+            this.log('ABILITY', 'Tailwind', {
+                cardName: data.support?.name,
+                abilityName: 'Tailwind',
+                target: data.combatant?.name,
+                effect: 'Granted Flight and +1/+1',
+                owner: data.owner
+            });
+        });
+        
+        // Snipe Hide
+        GameEvents.on('onHide', (data) => {
+            this.log('ABILITY', 'Hide', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Hide',
+                effect: 'Entered hiding (untargetable)',
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onReHide', (data) => {
+            this.log('ABILITY', 'Re-Hide', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Hide',
+                effect: 'Re-entered hiding after kill',
+                owner: data.owner
+            });
+        });
+        
+        // Snipe Mend
+        GameEvents.on('onMendHeal', (data) => {
+            this.log('ABILITY', 'Mend', {
+                cardName: data.support?.name,
+                abilityName: 'Mend',
+                target: data.combatant?.name,
+                effect: `Healed to ${data.healedTo} HP`,
+                owner: data.owner
+            });
+        });
+        
+        // Evolution Bonus
+        GameEvents.on('onEvolutionBonus', (data) => {
+            this.log('ABILITY', 'Evolution Bonus', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Evolution Bonus',
+                effect: `+${data.bonus} ATK from evolutions`,
+                owner: data.owner
+            });
+        });
+        
+        // Werewolf Blood Frenzy
+        GameEvents.on('onBloodFrenzy', (data) => {
+            this.log('ABILITY', 'Blood Frenzy', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Blood Frenzy',
+                effect: '+1 ATK (damaged enemy)',
+                owner: data.owner
+            });
+        });
+        
+        // Razorback Savage/Gore
+        GameEvents.on('onSavageBuff', (data) => {
+            this.log('ABILITY', 'Savage', {
+                cardName: data.support?.name,
+                abilityName: 'Savage',
+                target: data.combatant?.name,
+                effect: '+2 ATK buff',
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onGoreDamage', (data) => {
+            this.log('DAMAGE', 'Gore', {
+                targetName: data.target?.name,
+                amount: data.damage,
+                col: data.target?.col,
+                row: data.target?.row,
+                source: `Gore from ${data.source?.name}`
+            });
+        });
+        
+        // Iron Hide
+        GameEvents.on('onIronHide', (data) => {
+            this.log('ABILITY', 'Iron Hide', {
+                cardName: data.support?.name,
+                abilityName: 'Iron Hide',
+                target: data.combatant?.name,
+                effect: 'Granted damage reduction',
+                owner: data.owner
+            });
+        });
+        
+        // Not Deer Herd Blessing
+        GameEvents.on('onHerdBlessing', (data) => {
+            this.log('ABILITY', 'Herd Blessing', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Herd Blessing',
+                effect: `+${data.pyresGained} Pyre from nature cards`,
+                owner: data.owner
+            });
+        });
+        
+        // Jersey Devil Swoop
+        GameEvents.on('onSwoopDamage', (data) => {
+            this.log('DAMAGE', 'Swoop', {
+                targetName: data.target?.name,
+                amount: data.damage,
+                col: data.target?.col,
+                row: data.target?.row,
+                source: `Swoop from ${data.source?.name}`
+            });
+        });
+        
+        // Jersey Devil Pyre Steal
+        GameEvents.on('onPyreSteal', (data) => {
+            this.log('ABILITY', 'Pyre Steal', {
+                cardName: data.source?.name,
+                abilityName: 'Pyre Steal',
+                effect: `Stole 1 Pyre from ${data.stolenFrom}`,
+                owner: data.owner
+            });
+        });
+        
+        // Baba Yaga Infernal Ward
+        GameEvents.on('onInfernalWard', (data) => {
+            this.log('ABILITY', 'Infernal Ward', {
+                cardName: data.support?.name,
+                abilityName: 'Infernal Ward',
+                target: data.combatant?.name,
+                effect: 'Granted spell immunity',
+                owner: data.owner
+            });
+        });
+        
+        // Baba Yaga Hex Kill
+        GameEvents.on('onHexKill', (data) => {
+            this.log('ABILITY', 'Hex', {
+                cardName: data.source?.name,
+                abilityName: 'Hex',
+                target: data.victim?.name,
+                effect: 'Killed by curse tokens',
+                owner: data.owner
+            });
+        });
+        
+        // Crone's Blessing
+        GameEvents.on('onCronesBlessing', (data) => {
+            this.log('ABILITY', "Crone's Blessing", {
+                cardName: data.support?.name,
+                abilityName: "Crone's Blessing",
+                target: data.combatant?.name,
+                effect: '+1 Pyre and heal when targeted',
+                owner: data.owner
+            });
+        });
+        
+        // Hunt trap steal
+        GameEvents.on('onHuntSteal', (data) => {
+            this.log('TRAP', 'Hunt Triggered', {
+                trapName: 'Hunt',
+                effect: `Stole ${data.stolenPyre} Pyre from ${data.from}`,
+                owner: data.to
+            });
+        });
+        
+        // Full Moon burst
+        GameEvents.on('onFullMoonEvolve', (data) => {
+            this.log('SPELL', 'Full Moon', {
+                cardName: 'Full Moon',
+                target: data.target?.name,
+                effect: `Forced evolution into ${data.evolution?.name}`,
+                owner: data.owner
+            });
+        });
+        
+        GameEvents.on('onFullMoonFail', (data) => {
+            this.log('SPELL', 'Full Moon Failed', {
+                cardName: 'Full Moon',
+                target: data.target?.name,
+                effect: `Failed: ${data.reason}`,
+                owner: data.target?.owner
+            });
+        });
+        
+        // Curse Heal
+        GameEvents.on('onCurseHeal', (data) => {
+            this.log('ABILITY', 'Curse Heal', {
+                cardName: data.combatant?.name,
+                abilityName: 'Curse Heal',
+                effect: 'Healed from curse tokens',
+                owner: data.owner
+            });
+        });
+        
         console.log('[MatchLog] Subscribed to game events');
     }
 };
@@ -3491,6 +3873,8 @@ class Game {
     killCryptid(cryptid, killerOwner = null) {
         // Track death count BEFORE onDeath (for Wendigo 10th death check)
         const owner = cryptid.owner;
+        const { col, row } = cryptid; // Extract col/row early for callbacks
+        
         if (owner === 'player') this.playerDeathCount = (this.playerDeathCount || 0);
         else this.enemyDeathCount = (this.enemyDeathCount || 0);
         
@@ -3504,8 +3888,6 @@ class Game {
             cryptid.preventDeath = false;
             return null;
         }
-        
-        const { col, row } = cryptid;
         const combatCol = this.getCombatCol(owner);
         const supportCol = this.getSupportCol(owner);
         const deathCount = cryptid.evolutionChain?.length || 1;
