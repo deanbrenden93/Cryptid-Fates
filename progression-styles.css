@@ -3250,399 +3250,6 @@ div.menu-btn#tile-collection {
     justify-items: center;
 }
 
-/* ========== DEPRECATED - Use .game-card instead ========== */
-/* Legacy styles kept for backward compatibility */
-/* ========== DECKBUILDER MINI CARD - Matches Collection Style ========== */
-.db-card:not(.game-card) {
-    width: 100px;
-    height: 140px;
-    position: relative;
-    cursor: pointer;
-    border-radius: 8px;
-    overflow: visible;
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    transform-style: preserve-3d;
-}
-
-.db-card:not(.game-card)::before {
-    content: '';
-    position: absolute;
-    inset: -3px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, 
-        rgba(255,255,255,0.1) 0%, 
-        transparent 50%,
-        rgba(255,255,255,0.05) 100%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-}
-
-.db-card:not(.game-card):hover {
-    transform: translateY(-10px) scale(1.06);
-    z-index: 10;
-}
-
-.db-card:not(.game-card):hover::before {
-    opacity: 1;
-}
-
-.db-card:not(.game-card) .mini-frame {
-    position: absolute;
-    inset: 0;
-    border-radius: 8px;
-    padding: 3px;
-    background: linear-gradient(145deg, 
-        #c4d4e4 0%, 
-        #7a8b99 30%,
-        #4a5a68 60%,
-        #2a3a48 100%);
-    box-shadow: 
-        0 4px 10px rgba(0,0,0,0.5),
-        0 0 15px rgba(192, 192, 192, 0.15),
-        inset 0 1px 0 rgba(255,255,255,0.25);
-    transition: box-shadow 0.3s ease;
-}
-
-.db-card:not(.game-card):hover .mini-frame {
-    box-shadow: 
-        0 8px 20px rgba(0,0,0,0.6),
-        0 0 30px rgba(192, 192, 192, 0.2),
-        inset 0 1px 0 rgba(255,255,255,0.3);
-}
-
-.db-card:not(.game-card) .mini-content {
-    position: absolute;
-    inset: 3px;
-    border-radius: 6px;
-    background: linear-gradient(180deg, #1a1815 0%, #0f0d0b 100%);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-/* Element frame colors */
-.db-card.element-:not(.game-card)void .mini-frame { background: linear-gradient(145deg, #d8c0f0 0%, #9b59b6 30%, #6a3a8a 60%, #3a1a5a 100%); }
-.db-card.element-:not(.game-card)blood .mini-frame { background: linear-gradient(145deg, #f0c0c0 0%, #c0392b 30%, #8a2a1a 60%, #4a1510 100%); }
-.db-card.element-:not(.game-card)water .mini-frame { background: linear-gradient(145deg, #c0e0f0 0%, #3498db 30%, #2070a0 60%, #104060 100%); }
-.db-card.element-:not(.game-card)steel .mini-frame { background: linear-gradient(145deg, #c4d4e4 0%, #7a8b99 30%, #4a5a68 60%, #2a3a48 100%); }
-.db-card.element-:not(.game-card)nature .mini-frame { background: linear-gradient(145deg, #c0f0d0 0%, #27ae60 30%, #1a7a40 60%, #0a4a20 100%); }
-
-/* Card type frame colors */
-.db-card.kindling-card:not(.game-card) .mini-frame { background: linear-gradient(145deg, #f8e8c0 0%, #e8a93e 30%, #c07820 60%, #804810 100%); }
-.db-card.trap-card:not(.game-card) .mini-frame { background: linear-gradient(145deg, #e0d0f0 0%, #8b5cf6 30%, #5a3aa0 60%, #2a1a60 100%); }
-.db-card.aura-card:not(.game-card) .mini-frame { background: linear-gradient(145deg, #f8f0c0 0%, #f1c40f 30%, #c09000 60%, #806000 100%); }
-.db-card.pyre-card:not(.game-card) .mini-frame { background: linear-gradient(145deg, #f0d8c0 0%, #e67e22 30%, #b05010 60%, #703008 100%); }
-.db-card.burst-card:not(.game-card) .mini-frame { background: linear-gradient(145deg, #c0e0f0 0%, #5dade2 30%, #3080b0 60%, #104060 100%); }
-
-/* Card states */
-.db-card.unowned:not(.game-card) { filter: grayscale(0.6) brightness(0.5); opacity: 0.5; }
-.db-card.in-deck:not(.game-card) .mini-frame { 
-    background: linear-gradient(145deg, #80ffc0 0%, #60c090 30%, #408060 60%, #205030 100%); 
-    box-shadow: 0 2px 6px rgba(0,0,0,0.4), 0 0 12px rgba(100, 180, 130, 0.5);
-}
-.db-card.unavailable:not(.game-card) { opacity: 0.6; }
-
-/* Name header */
-.db-card:not(.game-card) .mini-name-header {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 16px;
-    background: linear-gradient(180deg, rgba(15,13,11,0.95) 0%, rgba(15,13,11,0.85) 70%, transparent 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 4px;
-    z-index: 6;
-}
-
-.db-card:not(.game-card) .mini-name-header span {
-    font-family: 'Cinzel', serif;
-    font-weight: 600;
-    font-size: 0.4rem;
-    color: #f4e4c1;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    letter-spacing: 0.3px;
-}
-
-/* Art area (sprite) */
-.db-card:not(.game-card) .mini-art {
-    width: 100%;
-    height: 54px;
-    margin-top: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 32px;
-    border-bottom: 1px solid #4a5a68;
-    overflow: hidden;
-}
-
-.db-card:not(.game-card) .mini-art .sprite-img {
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-}
-
-/* Info area (footer with stats) */
-.db-card:not(.game-card) .mini-info {
-    flex: 1;
-    padding: 4px 5px 5px;
-    background: linear-gradient(180deg, #c4b491 0%, #a89870 100%);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-.db-card:not(.game-card) .mini-stats {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 2px;
-}
-
-.db-card:not(.game-card) .mini-stat {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 1px;
-    padding: 2px 5px;
-    border-radius: 3px;
-    font-family: 'Cinzel', serif;
-    font-weight: 700;
-    font-size: 0.55rem;
-    color: #fff;
-}
-
-.db-card:not(.game-card) .mini-stat.atk {
-    background: linear-gradient(135deg, rgba(180, 60, 60, 0.9) 0%, rgba(120, 40, 40, 0.9) 100%);
-}
-
-.db-card:not(.game-card) .mini-stat.hp {
-    background: linear-gradient(135deg, rgba(60, 140, 60, 0.9) 0%, rgba(40, 100, 40, 0.9) 100%);
-}
-
-.db-card:not(.game-card) .mini-stat-icon {
-    font-size: 0.45rem;
-}
-
-.db-card:not(.game-card) .mini-stat-type {
-    font-family: 'Cinzel', serif;
-    font-size: 0.5rem;
-    font-weight: 600;
-    color: #3a3020;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-/* Pyre cost - positioned at art/info border */
-.db-card:not(.game-card) .mini-pyre {
-    position: absolute;
-    top: 70px;
-    transform: translateY(-50%);
-    right: 4px;
-    width: 18px;
-    height: 18px;
-    background: radial-gradient(circle at 30% 30%, #ff6b35 0%, #882200 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Cinzel', serif;
-    font-weight: 700;
-    font-size: 0.6rem;
-    color: #fff;
-    z-index: 20;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
-}
-
-/* Element indicator - positioned at art/info border */
-.db-card:not(.game-card) .mini-element {
-    position: absolute;
-    top: 70px;
-    transform: translateY(-50%);
-    left: 4px;
-    width: 16px;
-    height: 16px;
-    background: linear-gradient(135deg, #7a8b99 0%, #2a3a48 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.55rem;
-    border: 1px solid #c4d4e4;
-    z-index: 20;
-}
-
-.db-card:not(.game-card) .mini-element.void { background: linear-gradient(135deg, #9b59b6 0%, #3a1a5a 100%); border-color: #d8c0f0; }
-.db-card:not(.game-card) .mini-element.blood { background: linear-gradient(135deg, #c0392b 0%, #4a1510 100%); border-color: #f0c0c0; }
-.db-card:not(.game-card) .mini-element.water { background: linear-gradient(135deg, #3498db 0%, #104060 100%); border-color: #c0e0f0; }
-.db-card:not(.game-card) .mini-element.steel { background: linear-gradient(135deg, #7a8b99 0%, #2a3a48 100%); border-color: #c4d4e4; }
-.db-card:not(.game-card) .mini-element.nature { background: linear-gradient(135deg, #27ae60 0%, #0a4a20 100%); border-color: #c0f0d0; }
-
-/* Rarity dots */
-.db-card:not(.game-card) .mini-rarity {
-    position: absolute;
-    bottom: 3px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 2px;
-    z-index: 20;
-}
-
-.db-card:not(.game-card) .mini-rarity-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #e8e8e8 0%, #888 100%);
-    box-shadow: 0 0 2px rgba(192, 192, 192, 0.5);
-}
-
-.db-card:not(.game-card) .mini-rarity.uncommon .mini-rarity-dot { background: linear-gradient(135deg, #c0c0c0 0%, #666 100%); }
-.db-card:not(.game-card) .mini-rarity.rare .mini-rarity-dot { background: linear-gradient(135deg, #ffd700 0%, #aa8800 100%); box-shadow: 0 0 3px rgba(255, 215, 0, 0.5); }
-.db-card:not(.game-card) .mini-rarity.ultimate .mini-rarity-dot { background: linear-gradient(90deg, #ff6060, #60ff60, #6060ff); }
-
-/* Mythical indicator - centered at art/info border */
-.db-card:not(.game-card) .mini-mythical {
-    position: absolute;
-    top: 70px;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 14px;
-    height: 14px;
-    background: radial-gradient(circle at 50% 50%, 
-        rgba(200, 150, 255, 0.95) 0%, 
-        rgba(100, 50, 150, 0.95) 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Cinzel', serif;
-    font-size: 0.45rem;
-    font-weight: 700;
-    color: #fff;
-    box-shadow: 
-        0 0 6px rgba(180, 130, 255, 0.8),
-        0 0 12px rgba(180, 130, 255, 0.4);
-    z-index: 10;
-    border: 1px solid rgba(255, 200, 255, 0.5);
-}
-
-/* Owned count - bottom left */
-.db-card:not(.game-card) .mini-owned {
-    position: absolute;
-    top: -4px;
-    left: -4px;
-    font-size: 0.5rem;
-    font-weight: 700;
-    color: #fff;
-    background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
-    padding: 2px 6px;
-    border-radius: 4px;
-    z-index: 15;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-    border: 1px solid rgba(255,255,255,0.2);
-}
-
-/* Foil badge */
-.db-card:not(.game-card) .mini-foil {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    font-size: 0.6rem;
-    color: #fff;
-    background: linear-gradient(135deg, #ffd700 0%, #ff6b35 50%, #ff1493 100%);
-    padding: 2px 4px;
-    border-radius: 4px;
-    z-index: 15;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.4), 0 0 6px rgba(255, 215, 0, 0.5);
-    border: 1px solid rgba(255,255,255,0.3);
-}
-
-/* Max copies indicator */
-.db-card:not(.game-card) .mini-max-copies {
-    position: absolute;
-    bottom: -4px;
-    right: -4px;
-    font-size: 0.45rem;
-    font-weight: 700;
-    color: #fff;
-    background: linear-gradient(135deg, #c0392b 0%, #8a2a1a 100%);
-    padding: 2px 5px;
-    border-radius: 4px;
-    z-index: 15;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-    border: 1px solid rgba(255,255,255,0.2);
-}
-
-/* Foil styles */
-.db-card.foil:not(.game-card) .mini-frame {
-    background: linear-gradient(145deg, 
-        #e8e8e8 0%, 
-        #c4d4e4 20%,
-        #7a8b99 50%,
-        #c4d4e4 80%,
-        #e8e8e8 100%);
-    box-shadow: 
-        0 2px 8px rgba(0,0,0,0.4),
-        0 0 15px rgba(192, 192, 192, 0.4),
-        inset 0 1px 0 rgba(255,255,255,0.4);
-}
-
-.db-card.foil:not(.game-card)::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 6px;
-    background: linear-gradient(
-        125deg,
-        transparent 30%,
-        rgba(255, 200, 100, 0.15) 45%,
-        rgba(100, 255, 200, 0.15) 50%,
-        rgba(200, 100, 255, 0.15) 55%,
-        transparent 70%
-    );
-    background-size: 200% 200%;
-    animation: miniShimmer 2s ease-in-out infinite;
-    pointer-events: none;
-    z-index: 10;
-}
-
-@keyframes miniShimmer {
-    0% { background-position: 100% 100%; }
-    100% { background-position: 0% 0%; }
-}
-
-/* Mythical glow */
-.db-card.mythical:not(.game-card)::after {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border-radius: 7px;
-    background: linear-gradient(
-        45deg,
-        rgba(180, 130, 255, 0.4) 0%,
-        rgba(255, 180, 255, 0.5) 50%,
-        rgba(130, 180, 255, 0.4) 100%
-    );
-    background-size: 200% 200%;
-    animation: mythicalGlow 4s ease-in-out infinite;
-    z-index: -1;
-    filter: blur(2px);
-}
-
-@keyframes mythicalGlow {
-    0%, 100% { background-position: 0% 50%; opacity: 0.6; }
-    50% { background-position: 100% 50%; opacity: 1; }
-}
 .db-no-cards {
     grid-column: 1 / -1;
     text-align: center;
@@ -4433,10 +4040,6 @@ div.menu-btn#tile-collection {
         grid-template-columns: repeat(auto-fill, minmax(85px, 105px)); 
         gap: 14px; 
     }
-    /* Legacy mini-card format */
-    .db-card:not(.game-card) { width: 90px; height: 126px; }
-    .db-card:not(.game-card) .mini-art { font-size: 32px; }
-    /* Game card format - use CSS variables */
     .db-card.game-card { --gc-width: 90px; }
 }
 
@@ -4446,11 +4049,6 @@ div.menu-btn#tile-collection {
         gap: 12px; 
         padding: 14px;
     }
-    /* Legacy mini-card format */
-    .db-card:not(.game-card) { width: 80px; height: 112px; }
-    .db-card:not(.game-card) .mini-art { font-size: 28px; }
-    .db-card:not(.game-card) .mini-name-header span { font-size: 0.4rem; }
-    /* Game card format - use CSS variables */
     .db-card.game-card { --gc-width: 80px; }
 }
 
@@ -4468,10 +4066,6 @@ div.menu-btn#tile-collection {
         gap: 10px; 
         padding: 10px; 
     }
-    /* Legacy mini-card format */
-    .db-card:not(.game-card) { width: 75px; height: 105px; }
-    .db-card:not(.game-card) .mini-art { font-size: 26px; }
-    /* Game card format - use CSS variables */
     .db-card.game-card { --gc-width: 75px; }
     
     .db-deck { width: 220px; }
@@ -5222,366 +4816,6 @@ div.menu-btn#tile-collection {
     width: 100%;
 }
 
-/* ========== DEPRECATED - Use .game-card instead ========== */
-/* Legacy styles kept for backward compatibility */
-/* ========== COLLECTION MINI CARD - Collector's Premium Style ========== */
-.coll-card:not(.game-card) {
-    width: 110px;
-    height: 155px;
-    position: relative;
-    cursor: pointer;
-    border-radius: 8px;
-    overflow: visible;
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    transform-style: preserve-3d;
-}
-
-.coll-card:not(.game-card)::before {
-    content: '';
-    position: absolute;
-    inset: -3px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, 
-        rgba(255,255,255,0.1) 0%, 
-        transparent 50%,
-        rgba(255,255,255,0.05) 100%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-}
-
-.coll-card:not(.game-card):hover {
-    transform: translateY(-12px) scale(1.08);
-    z-index: 10;
-}
-
-.coll-card:not(.game-card):hover::before {
-    opacity: 1;
-}
-
-.coll-card:not(.game-card) .mini-frame {
-    position: absolute;
-    inset: 0;
-    border-radius: 8px;
-    padding: 3px;
-    background: linear-gradient(145deg, 
-        #c4d4e4 0%, 
-        #7a8b99 30%,
-        #4a5a68 60%,
-        #2a3a48 100%);
-    box-shadow: 
-        0 4px 12px rgba(0,0,0,0.5),
-        0 0 20px rgba(192, 192, 192, 0.15),
-        inset 0 1px 0 rgba(255,255,255,0.25);
-    transition: box-shadow 0.3s ease;
-}
-
-.coll-card:not(.game-card):hover .mini-frame {
-    box-shadow: 
-        0 8px 25px rgba(0,0,0,0.6),
-        0 0 35px rgba(192, 192, 192, 0.25),
-        0 0 60px rgba(200, 200, 220, 0.15),
-        inset 0 1px 0 rgba(255,255,255,0.3);
-}
-
-.coll-card:not(.game-card) .mini-content {
-    position: absolute;
-    inset: 3px;
-    border-radius: 6px;
-    background: linear-gradient(180deg, #1a1815 0%, #0f0d0b 100%);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-/* Element frame colors */
-.coll-card.element-:not(.game-card)void .mini-frame { background: linear-gradient(145deg, #d8c0f0 0%, #9b59b6 30%, #6a3a8a 60%, #3a1a5a 100%); }
-.coll-card.element-:not(.game-card)blood .mini-frame { background: linear-gradient(145deg, #f0c0c0 0%, #c0392b 30%, #8a2a1a 60%, #4a1510 100%); }
-.coll-card.element-:not(.game-card)water .mini-frame { background: linear-gradient(145deg, #c0e0f0 0%, #3498db 30%, #2070a0 60%, #104060 100%); }
-.coll-card.element-:not(.game-card)steel .mini-frame { background: linear-gradient(145deg, #c4d4e4 0%, #7a8b99 30%, #4a5a68 60%, #2a3a48 100%); }
-.coll-card.element-:not(.game-card)nature .mini-frame { background: linear-gradient(145deg, #c0f0d0 0%, #27ae60 30%, #1a7a40 60%, #0a4a20 100%); }
-
-/* Card type frame colors */
-.coll-card.kindling-card:not(.game-card) .mini-frame { background: linear-gradient(145deg, #f8e8c0 0%, #e8a93e 30%, #c07820 60%, #804810 100%); }
-.coll-card.trap-card:not(.game-card) .mini-frame { background: linear-gradient(145deg, #e0d0f0 0%, #8b5cf6 30%, #5a3aa0 60%, #2a1a60 100%); }
-.coll-card.aura-card:not(.game-card) .mini-frame { background: linear-gradient(145deg, #f8f0c0 0%, #f1c40f 30%, #c09000 60%, #806000 100%); }
-.coll-card.pyre-card:not(.game-card) .mini-frame { background: linear-gradient(145deg, #f0d8c0 0%, #e67e22 30%, #b05010 60%, #703008 100%); }
-.coll-card.burst-card:not(.game-card) .mini-frame { background: linear-gradient(145deg, #c0e0f0 0%, #5dade2 30%, #3080b0 60%, #104060 100%); }
-
-/* Card states */
-.coll-card.unowned:not(.game-card) { filter: grayscale(0.6) brightness(0.5); opacity: 0.5; }
-.coll-card.unowned:not(.game-card):hover { filter: grayscale(0.4) brightness(0.6); opacity: 0.7; }
-
-/* Name header */
-.coll-card:not(.game-card) .mini-name-header {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 20px;
-    background: linear-gradient(180deg, rgba(15,13,11,0.95) 0%, rgba(15,13,11,0.85) 70%, transparent 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 6px;
-    z-index: 6;
-}
-
-.coll-card:not(.game-card) .mini-name-header span {
-    font-family: 'Cinzel', serif;
-    font-weight: 600;
-    font-size: 0.5rem;
-    color: #f4e4c1;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    letter-spacing: 0.5px;
-}
-
-/* Art area (sprite) */
-.coll-card:not(.game-card) .mini-art {
-    width: 100%;
-    height: 72px;
-    margin-top: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 42px;
-    border-bottom: 1px solid rgba(74, 90, 104, 0.6);
-    overflow: hidden;
-    background: radial-gradient(ellipse at 50% 70%, rgba(255,255,255,0.03) 0%, transparent 70%);
-}
-
-.coll-card:not(.game-card) .mini-art .sprite-img {
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
-}
-
-/* Info area (footer with stats) */
-.coll-card:not(.game-card) .mini-info {
-    flex: 1;
-    padding: 4px 5px 5px;
-    background: linear-gradient(180deg, #c4b491 0%, #a89870 100%);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-.coll-card:not(.game-card) .mini-stats {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 2px;
-}
-
-.coll-card:not(.game-card) .mini-stat {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 1px;
-    padding: 2px 5px;
-    border-radius: 3px;
-    font-family: 'Cinzel', serif;
-    font-weight: 700;
-    font-size: 0.55rem;
-    color: #fff;
-}
-
-.coll-card:not(.game-card) .mini-stat.atk {
-    background: linear-gradient(135deg, rgba(180, 60, 60, 0.9) 0%, rgba(120, 40, 40, 0.9) 100%);
-}
-
-.coll-card:not(.game-card) .mini-stat.hp {
-    background: linear-gradient(135deg, rgba(60, 140, 60, 0.9) 0%, rgba(40, 100, 40, 0.9) 100%);
-}
-
-.coll-card:not(.game-card) .mini-stat-icon {
-    font-size: 0.45rem;
-}
-
-.coll-card:not(.game-card) .mini-stat-type {
-    font-family: 'Cinzel', serif;
-    font-size: 0.5rem;
-    font-weight: 600;
-    color: #3a3020;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-/* Pyre cost - positioned at art/info border */
-.coll-card:not(.game-card) .mini-pyre {
-    position: absolute;
-    top: 70px;
-    transform: translateY(-50%);
-    right: 4px;
-    width: 18px;
-    height: 18px;
-    background: radial-gradient(circle at 30% 30%, #ff6b35 0%, #882200 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Cinzel', serif;
-    font-weight: 700;
-    font-size: 0.6rem;
-    color: #fff;
-    z-index: 20;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
-}
-
-/* Element indicator - positioned at art/info border */
-.coll-card:not(.game-card) .mini-element {
-    position: absolute;
-    top: 70px;
-    transform: translateY(-50%);
-    left: 4px;
-    width: 16px;
-    height: 16px;
-    background: linear-gradient(135deg, #7a8b99 0%, #2a3a48 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.55rem;
-    border: 1px solid #c4d4e4;
-    z-index: 20;
-}
-
-.coll-card:not(.game-card) .mini-element.void { background: linear-gradient(135deg, #9b59b6 0%, #3a1a5a 100%); border-color: #d8c0f0; }
-.coll-card:not(.game-card) .mini-element.blood { background: linear-gradient(135deg, #c0392b 0%, #4a1510 100%); border-color: #f0c0c0; }
-.coll-card:not(.game-card) .mini-element.water { background: linear-gradient(135deg, #3498db 0%, #104060 100%); border-color: #c0e0f0; }
-.coll-card:not(.game-card) .mini-element.steel { background: linear-gradient(135deg, #7a8b99 0%, #2a3a48 100%); border-color: #c4d4e4; }
-.coll-card:not(.game-card) .mini-element.nature { background: linear-gradient(135deg, #27ae60 0%, #0a4a20 100%); border-color: #c0f0d0; }
-
-/* Rarity dots */
-.coll-card:not(.game-card) .mini-rarity {
-    position: absolute;
-    bottom: 3px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 2px;
-    z-index: 20;
-}
-
-.coll-card:not(.game-card) .mini-rarity-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #e8e8e8 0%, #888 100%);
-    box-shadow: 0 0 2px rgba(192, 192, 192, 0.5);
-}
-
-.coll-card:not(.game-card) .mini-rarity.uncommon .mini-rarity-dot { background: linear-gradient(135deg, #c0c0c0 0%, #666 100%); }
-.coll-card:not(.game-card) .mini-rarity.rare .mini-rarity-dot { background: linear-gradient(135deg, #ffd700 0%, #aa8800 100%); box-shadow: 0 0 3px rgba(255, 215, 0, 0.5); }
-.coll-card:not(.game-card) .mini-rarity.ultimate .mini-rarity-dot { background: linear-gradient(90deg, #ff6060, #60ff60, #6060ff); }
-
-/* Mythical indicator - centered at art/info border */
-.coll-card:not(.game-card) .mini-mythical {
-    position: absolute;
-    top: 70px;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 14px;
-    height: 14px;
-    background: radial-gradient(circle at 50% 50%, 
-        rgba(200, 150, 255, 0.95) 0%, 
-        rgba(100, 50, 150, 0.95) 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Cinzel', serif;
-    font-size: 0.45rem;
-    font-weight: 700;
-    color: #fff;
-    box-shadow: 
-        0 0 6px rgba(180, 130, 255, 0.8),
-        0 0 12px rgba(180, 130, 255, 0.4);
-    z-index: 10;
-    border: 1px solid rgba(255, 200, 255, 0.5);
-}
-
-/* Owned count - top left tag */
-.coll-card:not(.game-card) .mini-owned {
-    position: absolute;
-    top: -4px;
-    left: -4px;
-    font-size: 0.5rem;
-    font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 4px;
-    z-index: 15;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-    border: 1px solid rgba(255,255,255,0.2);
-}
-
-.coll-card:not(.game-card) .mini-owned.have {
-    color: #fff;
-    background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
-}
-
-.coll-card:not(.game-card) .mini-owned.none {
-    color: #fff;
-    background: linear-gradient(135deg, #c0392b 0%, #962d22 100%);
-}
-
-/* Foil styles */
-.coll-card.foil:not(.game-card) .mini-frame {
-    background: linear-gradient(145deg, 
-        #e8e8e8 0%, 
-        #c4d4e4 20%,
-        #7a8b99 50%,
-        #c4d4e4 80%,
-        #e8e8e8 100%);
-    box-shadow: 
-        0 2px 8px rgba(0,0,0,0.4),
-        0 0 15px rgba(192, 192, 192, 0.4),
-        inset 0 1px 0 rgba(255,255,255,0.4);
-}
-
-.coll-card.foil:not(.game-card)::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 6px;
-    background: linear-gradient(
-        125deg,
-        transparent 30%,
-        rgba(255, 200, 100, 0.15) 45%,
-        rgba(100, 255, 200, 0.15) 50%,
-        rgba(200, 100, 255, 0.15) 55%,
-        transparent 70%
-    );
-    background-size: 200% 200%;
-    animation: miniShimmer 2s ease-in-out infinite;
-    pointer-events: none;
-    z-index: 10;
-}
-
-/* Mythical glow */
-.coll-card.mythical:not(.game-card)::after {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border-radius: 7px;
-    background: linear-gradient(
-        45deg,
-        rgba(180, 130, 255, 0.4) 0%,
-        rgba(255, 180, 255, 0.5) 50%,
-        rgba(130, 180, 255, 0.4) 100%
-    );
-    background-size: 200% 200%;
-    animation: mythicalGlow 4s ease-in-out infinite;
-    z-index: -1;
-    filter: blur(2px);
-}
-
 .coll-empty {
     grid-column: 1 / -1;
     text-align: center;
@@ -5660,12 +4894,6 @@ div.menu-btn#tile-collection {
         padding: 16px;
     }
     
-    /* Legacy mini-card format */
-    .coll-card:not(.game-card) {
-        width: 90px;
-        height: 126px;
-    }
-    /* Game card format - use CSS variables */
     .coll-card.game-card { --gc-width: 90px; }
 }
 
@@ -5676,12 +4904,6 @@ div.menu-btn#tile-collection {
         padding: 12px;
     }
     
-    /* Legacy mini-card format */
-    .coll-card:not(.game-card) {
-        width: 80px;
-        height: 112px;
-    }
-    /* Game card format - use CSS variables */
     .coll-card.game-card { --gc-width: 80px; }
 }
 
@@ -5710,12 +4932,6 @@ div.menu-btn#tile-collection {
         padding: 14px; 
     }
     
-    /* Legacy mini-card format */
-    .coll-card:not(.game-card) {
-        width: 85px;
-        height: 119px;
-    }
-    /* Game card format - use CSS variables */
     .coll-card.game-card { --gc-width: 85px; }
     
     .coll-detail-card { width: 260px; }
@@ -7186,15 +6402,35 @@ div.menu-btn#tile-collection {
 
 /* Metallic effect on card frame - applied via filter on the template itself */
 .game-card.foil::before {
-    animation: metallicPulse 3s ease-in-out infinite;
+    animation: metallicPulse 2.5s ease-in-out infinite;
 }
 
 @keyframes metallicPulse {
     0%, 100% { 
-        filter: saturate(0.8) brightness(1.05) contrast(1.05);
+        filter: saturate(0.75) brightness(1.0) contrast(1.05);
     }
     50% { 
-        filter: saturate(0.9) brightness(1.15) contrast(1.08);
+        filter: saturate(1.0) brightness(1.25) contrast(1.1);
+    }
+}
+
+/* Rarity gems on holo cards - extra sparkle */
+.game-card.foil .gc-rarity {
+    animation: gemSparkle 2s ease-in-out infinite;
+}
+
+@keyframes gemSparkle {
+    0%, 100% { 
+        filter: brightness(1.0) saturate(1.0);
+    }
+    25% {
+        filter: brightness(1.5) saturate(1.3);
+    }
+    50% { 
+        filter: brightness(1.1) saturate(1.1);
+    }
+    75% {
+        filter: brightness(1.6) saturate(1.4);
     }
 }
 
