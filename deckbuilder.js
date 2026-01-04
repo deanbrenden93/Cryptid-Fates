@@ -1215,8 +1215,7 @@ window.DeckBuilder = {
         
         document.getElementById('db-preview-modal').classList.add('open');
         
-        // Add click handlers for variant toggle
-        const content = document.getElementById('db-preview-content');
+        // Add click handlers for variant toggle (content already declared above)
         content.querySelectorAll('.detail-collection-item.clickable').forEach(item => {
             item.addEventListener('click', () => {
                 const variant = item.dataset.variant;
