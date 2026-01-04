@@ -1082,17 +1082,15 @@ window.Shop = {
                             </div>
                         </div>
                         
-                        <!-- Series info -->
-                        <div class="detail-series-badge">
-                            <span class="series-code">${seriesCode}</span>
-                            <span class="series-name">${seriesFullName}</span>
+                        <!-- Series info + Close button (footer row) -->
+                        <div class="detail-footer-row">
+                            <div class="detail-series-badge">
+                                <span class="series-code">${seriesCode}</span>
+                                <span class="series-name">${seriesFullName}</span>
+                            </div>
+                            <button class="detail-btn close" onclick="Shop.closeCardDetail()">Close</button>
                         </div>
                     </div>
-                </div>
-                
-                <!-- Action buttons -->
-                <div class="detail-actions">
-                    <button class="detail-btn close" onclick="Shop.closeCardDetail()">Close</button>
                 </div>
             </div>
         `;

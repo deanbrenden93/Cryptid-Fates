@@ -1187,29 +1187,31 @@ window.DeckBuilder = {
                         </div>
                     </div>
                     
-                    <!-- Series info -->
-                    <div class="detail-series-badge">
-                        <span class="series-code">${seriesCode}</span>
-                        <span class="series-name">${seriesFullName}</span>
+                    <!-- Action buttons (deck operations) -->
+                    <div class="detail-actions">
+                        ${(totalOwned > 0 || isInfinite) && this.currentDeck && available > 0 ? 
+                            `<button class="detail-btn primary" onclick="DeckBuilder.addCard('${cardKey}'); DeckBuilder.closePreview();">
+                                <span class="btn-icon">+</span> Add to Deck
+                            </button>` : ''}
+                        ${normalOwned > 0 && !isInfinite ? 
+                            `<button class="detail-btn incinerate" onclick="DeckBuilder.showIncinerateModal('${cardKey}', false);">
+                                <img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="ember-icon-sm" alt=""> Incinerate
+                            </button>` : ''}
+                        ${holoOwned > 0 ? 
+                            `<button class="detail-btn incinerate holo" onclick="DeckBuilder.showIncinerateModal('${cardKey}', true);">
+                                ✨ Incinerate Holo
+                            </button>` : ''}
+                    </div>
+                    
+                    <!-- Series info + Close button (footer row) -->
+                    <div class="detail-footer-row">
+                        <div class="detail-series-badge">
+                            <span class="series-code">${seriesCode}</span>
+                            <span class="series-name">${seriesFullName}</span>
+                        </div>
+                        <button class="detail-btn close" onclick="DeckBuilder.closePreview()">Close</button>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Action buttons -->
-            <div class="detail-actions">
-                ${(totalOwned > 0 || isInfinite) && this.currentDeck && available > 0 ? 
-                    `<button class="detail-btn primary" onclick="DeckBuilder.addCard('${cardKey}'); DeckBuilder.closePreview();">
-                        <span class="btn-icon">+</span> Add to Deck
-                    </button>` : ''}
-                ${normalOwned > 0 && !isInfinite ? 
-                    `<button class="detail-btn incinerate" onclick="DeckBuilder.showIncinerateModal('${cardKey}', false);">
-                        <img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="ember-icon-sm" alt=""> Incinerate
-                    </button>` : ''}
-                ${holoOwned > 0 ? 
-                    `<button class="detail-btn incinerate holo" onclick="DeckBuilder.showIncinerateModal('${cardKey}', true);">
-                        ✨ Incinerate Holo
-                    </button>` : ''}
-                <button class="detail-btn close" onclick="DeckBuilder.closePreview()">Close</button>
             </div>
         `;
         

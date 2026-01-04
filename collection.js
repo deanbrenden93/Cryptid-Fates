@@ -858,17 +858,15 @@ window.Collection = {
                         </div>
                     </div>
                     
-                    <!-- Series info -->
-                    <div class="detail-series-badge">
-                        <span class="series-code">${seriesCode}</span>
-                        <span class="series-name">${seriesFullName}</span>
+                    <!-- Series info + Close button (third row) -->
+                    <div class="detail-footer-row">
+                        <div class="detail-series-badge">
+                            <span class="series-code">${seriesCode}</span>
+                            <span class="series-name">${seriesFullName}</span>
+                        </div>
+                        <button class="detail-btn close" onclick="Collection.closeDetail()">Close</button>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Action buttons -->
-            <div class="detail-actions">
-                <button class="detail-btn close" onclick="Collection.closeDetail()">Close</button>
             </div>
         `;
         
