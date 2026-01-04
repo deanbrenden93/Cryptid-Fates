@@ -7160,303 +7160,72 @@ div.menu-btn#tile-collection {
 .game-card .gc-owned.none { background: rgba(80, 60, 60, 0.8); color: #a08080; }
 
 /* ============================================================
-   HOLOGRAPHIC / FOIL CARD EFFECT - Premium Prismatic Design
+   HOLOGRAPHIC / FOIL CARD EFFECT
+   WebGL shader effect is primary, CSS is fallback
    ============================================================ */
 
-/* Base foil card setup */
-.game-card.foil {
-    --holo-angle: 125deg;
-    --holo-speed: 3s;
-    --sparkle-x: 50%;
-    --sparkle-y: 50%;
-    position: relative;
-    transition: transform 0.1s ease-out;
-}
-
-/* Prismatic rainbow border glow */
-.game-card.foil::before {
-    content: '';
-    position: absolute;
-    inset: -3px;
-    border-radius: calc(var(--gc-border-radius) + 3px);
-    background: linear-gradient(
-        var(--holo-angle),
-        #ff0080 0%,
-        #ff8c00 14%,
-        #ffd700 28%,
-        #00ff88 42%,
-        #00cfff 56%,
-        #8c00ff 70%,
-        #ff0080 84%,
-        #ff8c00 100%
-    );
-    background-size: 300% 300%;
-    animation: holoBorderFlow 4s linear infinite;
-    z-index: -1;
-    opacity: 0.85;
-    filter: blur(2px);
-}
-
-/* Main holographic overlay on art */
-.game-card.foil .gc-art::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: 
-        /* Prismatic rainbow layer */
-        linear-gradient(
-            var(--holo-angle),
-            rgba(255, 0, 128, 0.15) 0%,
-            rgba(255, 140, 0, 0.15) 16%,
-            rgba(255, 215, 0, 0.2) 32%,
-            rgba(0, 255, 136, 0.2) 48%,
-            rgba(0, 207, 255, 0.2) 64%,
-            rgba(140, 0, 255, 0.15) 80%,
-            rgba(255, 0, 128, 0.15) 100%
-        );
-    background-size: 200% 200%;
-    animation: holoRainbow var(--holo-speed) ease-in-out infinite;
-    pointer-events: none;
-    z-index: 4;
-    mix-blend-mode: color-dodge;
-}
-
-/* Light sweep effect */
+/* When WebGL is available, hide CSS effect (shader handles it) */
 .game-card.foil .gc-art::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-        105deg,
-        transparent 0%,
-        transparent 35%,
-        rgba(255, 255, 255, 0.4) 45%,
-        rgba(255, 255, 255, 0.6) 50%,
-        rgba(255, 255, 255, 0.4) 55%,
-        transparent 65%,
-        transparent 100%
-    );
-    background-size: 250% 100%;
-    animation: holoSweep 2.5s ease-in-out infinite;
+    border-radius: 2px;
     pointer-events: none;
     z-index: 5;
+    opacity: 0; /* Hidden by default when WebGL is active */
 }
 
-/* Sparkle overlay layer - uses card frame pseudo-element */
-.game-card.foil > .gc-header::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 100;
-    background-image: 
-        radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.9) 0%, transparent 0.5%),
-        radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.9) 0%, transparent 0.4%),
-        radial-gradient(circle at 40% 80%, rgba(255, 255, 255, 0.8) 0%, transparent 0.5%),
-        radial-gradient(circle at 70% 60%, rgba(255, 255, 255, 0.9) 0%, transparent 0.3%),
-        radial-gradient(circle at 10% 70%, rgba(255, 255, 255, 0.8) 0%, transparent 0.4%),
-        radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.9) 0%, transparent 0.5%),
-        radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.8) 0%, transparent 0.3%),
-        radial-gradient(circle at 30% 50%, rgba(255, 255, 255, 0.9) 0%, transparent 0.4%),
-        radial-gradient(circle at 60% 40%, rgba(255, 255, 255, 0.8) 0%, transparent 0.5%),
-        radial-gradient(circle at 85% 45%, rgba(255, 255, 255, 0.9) 0%, transparent 0.3%);
-    animation: holoSparkle 2s steps(1) infinite;
-    display: none; /* Hidden by default, enabled below */
-}
-
-/* Sparkle container positioned on card */
-.game-card.foil::after {
-    content: '';
-    position: absolute;
-    inset: 5%;
-    border-radius: calc(var(--gc-border-radius) - 2px);
-    pointer-events: none;
-    z-index: 30;
-    background-image: 
-        radial-gradient(circle at 15% 25%, #fff 0%, transparent 2px),
-        radial-gradient(circle at 75% 15%, #fff 0%, transparent 1.5px),
-        radial-gradient(circle at 35% 75%, #fff 0%, transparent 2px),
-        radial-gradient(circle at 85% 55%, #fff 0%, transparent 1.5px),
-        radial-gradient(circle at 25% 45%, #fff 0%, transparent 1px),
-        radial-gradient(circle at 65% 85%, #fff 0%, transparent 2px),
-        radial-gradient(circle at 55% 35%, #fff 0%, transparent 1.5px),
-        radial-gradient(circle at 95% 25%, #fff 0%, transparent 1px),
-        radial-gradient(circle at 45% 5%, #fff 0%, transparent 2px),
-        radial-gradient(circle at 5% 65%, #fff 0%, transparent 1.5px),
-        radial-gradient(circle at 82% 78%, #fff 0%, transparent 1px),
-        radial-gradient(circle at 18% 92%, #fff 0%, transparent 2px);
-    animation: holoSparkle 1.5s steps(1) infinite;
-    opacity: 0.9;
-}
-
-/* Enhanced frame glow */
-.game-card.foil {
-    box-shadow: 
-        0 0 15px rgba(255, 215, 0, 0.4),
-        0 0 30px rgba(255, 100, 200, 0.2),
-        0 0 45px rgba(100, 200, 255, 0.15);
-}
-
-/* Hover state - intensify all effects */
-.game-card.foil:hover {
-    --holo-speed: 1.5s;
-    box-shadow: 
-        0 0 20px rgba(255, 215, 0, 0.6),
-        0 0 40px rgba(255, 100, 200, 0.35),
-        0 0 60px rgba(100, 200, 255, 0.25);
-    transform: scale(1.02);
-}
-
-.game-card.foil:hover::before {
+/* CSS Fallback - Only shows when WebGL isn't available */
+.holo-css-fallback .game-card.foil .gc-art::after {
     opacity: 1;
-    filter: blur(3px);
-    animation-duration: 2s;
+    /* Layered holographic effect */
+    background: 
+        /* Fine diagonal line texture */
+        repeating-linear-gradient(
+            135deg,
+            transparent 0px,
+            transparent 1px,
+            rgba(255, 255, 255, 0.04) 1px,
+            rgba(255, 255, 255, 0.04) 2px
+        ),
+        /* Primary prismatic gradient */
+        linear-gradient(
+            135deg,
+            hsla(300, 100%, 70%, 0.18) 0%,
+            hsla(350, 100%, 65%, 0.2) 12%,
+            hsla(30, 100%, 60%, 0.22) 24%,
+            hsla(55, 100%, 55%, 0.24) 36%,
+            hsla(120, 80%, 50%, 0.22) 48%,
+            hsla(175, 100%, 45%, 0.24) 60%,
+            hsla(200, 100%, 55%, 0.22) 72%,
+            hsla(250, 100%, 65%, 0.2) 84%,
+            hsla(300, 100%, 70%, 0.18) 100%
+        );
+    background-size: 4px 4px, 250% 250%;
+    animation: holoShimmer 6s ease-in-out infinite;
+    mix-blend-mode: color-dodge;
 }
 
-.game-card.foil:hover .gc-art::before {
-    animation-duration: 1.5s;
+/* Hover intensifies the CSS fallback effect */
+.holo-css-fallback .game-card.foil:hover .gc-art::after {
+    animation-duration: 3s;
 }
 
-.game-card.foil:hover .gc-art::after {
-    animation-duration: 1.5s;
-}
-
-/* Keyframe Animations */
-@keyframes holoBorderFlow {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
-@keyframes holoRainbow {
+@keyframes holoShimmer {
     0%, 100% { 
-        background-position: 0% 0%;
-        filter: hue-rotate(0deg);
+        background-position: 0 0, 0% 0%;
     }
-    25% { 
-        background-position: 100% 0%;
-        filter: hue-rotate(30deg);
+    33% { 
+        background-position: 0 0, 100% 50%;
     }
-    50% { 
-        background-position: 100% 100%;
-        filter: hue-rotate(60deg);
-    }
-    75% { 
-        background-position: 0% 100%;
-        filter: hue-rotate(30deg);
+    66% { 
+        background-position: 0 0, 50% 100%;
     }
 }
 
-@keyframes holoSweep {
-    0%, 100% { 
-        background-position: -100% 0;
-        opacity: 0;
-    }
-    20% { opacity: 1; }
-    50% { 
-        background-position: 100% 0;
-        opacity: 1;
-    }
-    70% { opacity: 0; }
-}
-
-@keyframes holoSparkle {
-    0% { 
-        opacity: 0.7;
-        background-position: 0% 0%;
-    }
-    25% { 
-        opacity: 0.9;
-        background-position: 2% 3%;
-    }
-    50% { 
-        opacity: 0.6;
-        background-position: -1% -2%;
-    }
-    75% { 
-        opacity: 0.85;
-        background-position: 3% 1%;
-    }
-    100% { 
-        opacity: 0.7;
-        background-position: 0% 0%;
-    }
-}
-
-/* Card art shimmer enhancement for textures */
+/* Slightly enhanced colors on foil cards */
 .game-card.foil .gc-art .sprite-img {
-    filter: saturate(1.15) contrast(1.05);
-}
-
-.game-card.foil:hover .gc-art .sprite-img {
-    filter: saturate(1.25) contrast(1.1) brightness(1.08);
-}
-
-/* Dynamic light spot that follows cursor (uses CSS variables set by JS) */
-.game-card.foil .gc-art {
-    position: relative;
-}
-
-.game-card.foil .gc-art > img {
-    position: relative;
-    z-index: 1;
-}
-
-/* Extra shine layer that responds to mouse position */
-.game-card.foil .gc-header::after {
-    content: '';
-    position: absolute;
-    top: calc(-100% - var(--gc-height) * 0.15);
-    left: -20%;
-    width: 140%;
-    height: calc(var(--gc-height) * 0.9);
-    background: radial-gradient(
-        circle at var(--sparkle-x, 50%) var(--sparkle-y, 50%),
-        rgba(255, 255, 255, 0.35) 0%,
-        rgba(255, 255, 255, 0.1) 20%,
-        transparent 50%
-    );
-    pointer-events: none;
-    z-index: 25;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-}
-
-.game-card.foil:hover .gc-header::after {
-    opacity: 1;
-}
-
-/* Extra rainbow refraction line */
-.game-card.foil .gc-cost::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: conic-gradient(
-        from var(--holo-angle),
-        transparent 0%,
-        rgba(255, 100, 100, 0.3) 10%,
-        rgba(255, 255, 100, 0.3) 20%,
-        rgba(100, 255, 100, 0.3) 30%,
-        rgba(100, 255, 255, 0.3) 40%,
-        rgba(100, 100, 255, 0.3) 50%,
-        rgba(255, 100, 255, 0.3) 60%,
-        transparent 70%
-    );
-    border-radius: 50%;
-    mix-blend-mode: overlay;
-    pointer-events: none;
-    animation: holoOrb 3s linear infinite;
-}
-
-@keyframes holoOrb {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    filter: saturate(1.1) contrast(1.05);
 }
 
 /* ============================================================

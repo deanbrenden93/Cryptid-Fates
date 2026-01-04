@@ -457,10 +457,10 @@ window.DeckBuilder = {
         
         container.innerHTML = html;
         
-        // Detect card name overflow for scroll animation and setup holo effects
+        // Detect card name overflow and scan for foil cards
         requestAnimationFrame(() => {
             detectCardNameOverflow(container);
-            if (typeof setupHoloEffect === 'function') setupHoloEffect(container);
+            if (typeof HoloEffect !== 'undefined') HoloEffect.scanForFoilCards(container);
         });
         
         // Add event handlers for click, right-click, and long-press
@@ -1233,13 +1233,21 @@ window.DeckBuilder = {
                 // Toggle foil class on card
                 if (variant === 'holo') {
                     card.classList.add('foil');
+                    // Trigger holo effect
+                    if (typeof HoloEffect !== 'undefined') {
+                        requestAnimationFrame(() => HoloEffect.scanForFoilCards(content));
+                    }
                 } else {
                     card.classList.remove('foil');
+                    // Remove holo effect
+                    if (typeof HoloEffect !== 'undefined') {
+                        HoloEffect.unregisterCard(card);
+                    }
                 }
             });
         });
     },
-    
+
     closePreview() {
         document.getElementById('db-preview-modal').classList.remove('open');
     },
