@@ -736,8 +736,18 @@ CardRegistry.registerCryptid('mothman', {
             // Check if the dead cryptid died from calamity
             if (data.cryptid?.killedBy === 'calamity') {
                 // Mothman gains +1 ATK permanently
-                cryptid.currentAtk += 1;
-                cryptid.baseAtk += 1;
+                cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + 1;
+                cryptid.baseAtk = (cryptid.baseAtk || cryptid.atk) + 1;
+                
+                // Show visual feedback
+                if (typeof queueAbilityAnimation !== 'undefined') {
+                    queueAbilityAnimation({
+                        type: 'buff',
+                        target: cryptid,
+                        message: `🦋 Mothman Harbinger: +1 ATK!`
+                    });
+                }
+                
                 GameEvents.emit('onBuffApplied', { 
                     cryptid, 
                     owner: cryptid.owner, 

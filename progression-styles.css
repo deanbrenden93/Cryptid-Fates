@@ -7742,6 +7742,26 @@ div.menu-btn#tile-collection {
     box-shadow: 0 0 20px rgba(150, 100, 200, 0.3);
 }
 
+/* Dev/Cheat Battle mode button */
+.qp-mode.qp-mode-dev {
+    background: linear-gradient(135deg, rgba(80, 50, 90, 0.6) 0%, rgba(50, 30, 60, 0.6) 100%);
+    border-color: rgba(180, 100, 200, 0.3);
+    margin-top: 8px;
+}
+
+.qp-mode.qp-mode-dev:hover {
+    background: linear-gradient(135deg, rgba(100, 60, 120, 0.7) 0%, rgba(70, 40, 80, 0.7) 100%);
+    border-color: rgba(200, 120, 230, 0.5);
+}
+
+.qp-mode.qp-mode-dev .qp-mode-name {
+    color: #d0a0f0;
+}
+
+.qp-mode.qp-mode-dev .qp-mode-desc {
+    color: #a080c0;
+}
+
 .qp-mode-icon {
     font-size: 32px;
     margin-bottom: 10px;

@@ -119,6 +119,15 @@ window.HomeScreen = {
                             </div>
                         </div>
                     </div>
+                    <div class="qp-mode qp-mode-dev" id="qp-cheat">
+                        <div class="qp-mode-main">
+                            <div class="qp-mode-icon">🔧</div>
+                            <div class="qp-mode-info">
+                                <div class="qp-mode-name">Cheat Battle</div>
+                                <div class="qp-mode-desc">Dev testing mode</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="qp-section">
@@ -369,6 +378,7 @@ window.HomeScreen = {
         };
         
         document.getElementById('qp-ai')?.addEventListener('click', () => this.startAIGame());
+        document.getElementById('qp-cheat')?.addEventListener('click', () => this.startCheatBattle());
         document.getElementById('qp-bo1')?.addEventListener('click', () => this.startQuickPlay('bo1'));
         document.getElementById('qp-bo3')?.addEventListener('click', () => this.startQuickPlay('bo3'));
         
@@ -540,6 +550,26 @@ window.HomeScreen = {
         this.closeQuickPlay();
         this.close();
         this.startGame();
+    },
+    
+    startCheatBattle() {
+        console.log('[QuickPlay] Starting Cheat Battle...');
+        this.closeQuickPlay();
+        this.close();
+        
+        // Enable cheat/test mode
+        window.testMode = true;
+        window.cheatMode = true;
+        
+        // Start the game
+        this.startGame();
+        
+        // Initialize cheat mode panel after game starts
+        setTimeout(() => {
+            if (typeof CheatMode !== 'undefined') {
+                CheatMode.start();
+            }
+        }, 200);
     },
     
     startQuickPlay(mode) {
