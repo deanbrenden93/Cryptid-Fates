@@ -7184,30 +7184,18 @@ div.menu-btn#tile-collection {
     filter: saturate(0.85) brightness(1.1) contrast(1.05);
 }
 
-/* Metallic overlay on entire card frame */
-.game-card.foil::after {
-    content: '';
-    display: block; /* Override the display:none from base .game-card::after */
-    position: absolute;
-    inset: 0;
-    border-radius: var(--gc-border-radius);
-    pointer-events: none;
-    z-index: 11;
-    background: linear-gradient(
-        135deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0.08) 25%,
-        rgba(200, 220, 255, 0.12) 50%,
-        rgba(255, 255, 255, 0.08) 75%,
-        transparent 100%
-    );
-    background-size: 200% 200%;
-    animation: metallicSheen 4s ease-in-out infinite;
+/* Metallic effect on card frame - applied via filter on the template itself */
+.game-card.foil::before {
+    animation: metallicPulse 3s ease-in-out infinite;
 }
 
-@keyframes metallicSheen {
-    0%, 100% { background-position: 0% 0%; }
-    50% { background-position: 100% 100%; }
+@keyframes metallicPulse {
+    0%, 100% { 
+        filter: saturate(0.8) brightness(1.05) contrast(1.05);
+    }
+    50% { 
+        filter: saturate(0.9) brightness(1.15) contrast(1.08);
+    }
 }
 
 /* Holographic shimmer on art area */
