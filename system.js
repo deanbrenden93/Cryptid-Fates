@@ -1924,6 +1924,373 @@ const EventLog = {
                 text: `Toxic mist fades from <span class="name-${isPlayer ? 'enemy' : 'player'}">${rowName} tile</span>`
             });
         });
+        
+        // ==================== CARD-SPECIFIC ABILITIES (Player-Friendly) ====================
+        
+        // Skinwalker Mimic
+        GameEvents.on('onMimic', (data) => {
+            const name = data.cryptid?.name || 'Skinwalker';
+            const copiedName = data.copied?.name || 'enemy';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🎭',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> mimicked ${copiedName}'s attack!`
+            });
+        });
+        
+        // Stormhawk Lone Hunter
+        GameEvents.on('onLoneHunterBonus', (data) => {
+            const name = data.cryptid?.name || 'Stormhawk';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🦅',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> hunts alone: <span class="buff">+1 ATK</span>`
+            });
+        });
+        
+        // Thermal Swap
+        GameEvents.on('onThermalSwap', (data) => {
+            const name = data.cryptid?.name || 'Creature';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🌀',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> thermal swapped & both healed!`
+            });
+        });
+        
+        // Rage abilities
+        GameEvents.on('onRageStack', (data) => {
+            const name = data.cryptid?.name || 'Bigfoot';
+            const newAtk = data.newAtk || '?';
+            const isPlayer = data.cryptid?.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '😤',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> rages! ATK is now <span class="buff">${newAtk}</span>`
+            });
+        });
+        
+        GameEvents.on('onRageHeal', (data) => {
+            const name = data.cryptid?.name || 'Bigfoot';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '💚',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> calmed - rage converted to healing!`
+            });
+        });
+        
+        // Cursed Hybrid Adaptation
+        GameEvents.on('onHybridAdaptation', (data) => {
+            const name = data.cryptid?.name || 'Hybrid';
+            const bonus = data.type === 'atk' ? '+1 ATK' : '+1 HP';
+            const isPlayer = data.cryptid?.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🧬',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> adapted: <span class="buff">${bonus}</span>`
+            });
+        });
+        
+        // Deer Woman Grace & Offering
+        GameEvents.on('onGraceBuff', (data) => {
+            const targetName = data.target?.name || 'ally';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🦌',
+                text: `Grace blessed <span class="name-${isPlayer ? 'player' : 'enemy'}">${targetName}</span>: <span class="buff">+1/+1</span>`
+            });
+        });
+        
+        GameEvents.on('onOfferingPyre', (data) => {
+            const name = data.cryptid?.name || 'Deer Woman';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🔥',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span>'s offering: <span class="pyre">+1 Pyre</span>`
+            });
+        });
+        
+        // Wendigo abilities
+        GameEvents.on('onWendigoHunger', (data) => {
+            const name = data.cryptid?.name || 'Wendigo';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🍖',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span>'s hunger grows: <span class="buff">+1/+1</span>`
+            });
+        });
+        
+        GameEvents.on('onPrimalWendigoAscension', (data) => {
+            const name = data.cryptid?.name || 'Primal Wendigo';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '👁',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> ASCENDED - death denied!`
+            });
+        });
+        
+        // Guardian & Protection
+        GameEvents.on('onGuardianProtect', (data) => {
+            const supportName = data.support?.name || 'Guardian';
+            const combatantName = data.combatant?.name || 'combatant';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🛡️',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> granted protection to ${combatantName}`
+            });
+        });
+        
+        GameEvents.on('onBulwarkTrigger', (data) => {
+            const name = data.cryptid?.name || 'Creature';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🛡️',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span>'s Bulwark: damage reduced to 1!`
+            });
+        });
+        
+        // Primal Wendigo Counter
+        GameEvents.on('onPrimalCounter', (data) => {
+            const name = data.cryptid?.name || 'Primal Wendigo';
+            const attackerName = data.attacker?.name || 'attacker';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '⚡',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> counter-killed ${attackerName}!`
+            });
+        });
+        
+        // Apex Kill
+        GameEvents.on('onApexKill', (data) => {
+            const name = data.cryptid?.name || 'Apex';
+            const victimName = data.victim?.name || 'prey';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🐺',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> devoured ${victimName}!`
+            });
+        });
+        
+        // Cannibalize
+        GameEvents.on('onCannibalizeKill', (data) => {
+            const name = data.cryptid?.name || 'Creature';
+            const supportName = data.support?.name || 'support';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '💀',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> cannibalized ${supportName}!`
+            });
+        });
+        
+        // Thunderbird Storm Call
+        GameEvents.on('onStormCallDamage', (data) => {
+            const sourceName = data.source?.name || 'Thunderbird';
+            const targetName = data.target?.name || 'enemy';
+            const isSourcePlayer = data.source?.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isSourcePlayer ? 'player-action' : 'enemy-action', icon: '⚡',
+                text: `<span class="name-${isSourcePlayer ? 'player' : 'enemy'}">${sourceName}</span> called lightning on ${targetName}!`
+            });
+        });
+        
+        // Thunderbird Tailwind
+        GameEvents.on('onTailwindBuff', (data) => {
+            const supportName = data.support?.name || 'Thunderbird';
+            const combatantName = data.combatant?.name || 'ally';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🌬️',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> gave ${combatantName} Tailwind: <span class="buff">Flight +1/+1</span>`
+            });
+        });
+        
+        // Snipe Hide
+        GameEvents.on('onHide', (data) => {
+            const name = data.cryptid?.name || 'Snipe';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '👁',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> vanished into hiding!`
+            });
+        });
+        
+        GameEvents.on('onReHide', (data) => {
+            const name = data.cryptid?.name || 'Snipe';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '👁',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> re-hid after the kill!`
+            });
+        });
+        
+        // Snipe Mend
+        GameEvents.on('onMendHeal', (data) => {
+            const supportName = data.support?.name || 'Snipe';
+            const combatantName = data.combatant?.name || 'ally';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '💚',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> mended ${combatantName} to full HP!`
+            });
+        });
+        
+        // Werewolf Blood Frenzy
+        GameEvents.on('onBloodFrenzy', (data) => {
+            const name = data.cryptid?.name || 'Werewolf';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🩸',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> entered blood frenzy: <span class="buff">+1 ATK</span>`
+            });
+        });
+        
+        // Razorback abilities
+        GameEvents.on('onSavageBuff', (data) => {
+            const supportName = data.support?.name || 'Razorback';
+            const combatantName = data.combatant?.name || 'ally';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🐗',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> made ${combatantName} savage: <span class="buff">+2 ATK</span>`
+            });
+        });
+        
+        GameEvents.on('onGoreDamage', (data) => {
+            const sourceName = data.source?.name || 'Razorback';
+            const targetName = data.target?.name || 'enemy';
+            const damage = data.damage || 2;
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🐗',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${sourceName}</span> gored ${targetName} for <span class="damage">${damage}</span>!`
+            });
+        });
+        
+        // Iron Hide
+        GameEvents.on('onIronHide', (data) => {
+            const supportName = data.support?.name || 'Support';
+            const combatantName = data.combatant?.name || 'ally';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🛡️',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> gave ${combatantName} Iron Hide!`
+            });
+        });
+        
+        // Not Deer Herd Blessing
+        GameEvents.on('onHerdBlessing', (data) => {
+            const name = data.cryptid?.name || 'Not Deer';
+            const pyres = data.pyresGained || 0;
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🦌',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span>'s Herd Blessing: <span class="pyre">+${pyres} Pyre</span>`
+            });
+        });
+        
+        // Jersey Devil abilities
+        GameEvents.on('onSwoopDamage', (data) => {
+            const sourceName = data.source?.name || 'Jersey Devil';
+            const targetName = data.target?.name || 'enemy';
+            const damage = data.damage || 2;
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🦇',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${sourceName}</span> swooped on ${targetName} for <span class="damage">${damage}</span>!`
+            });
+        });
+        
+        GameEvents.on('onPyreSteal', (data) => {
+            const sourceName = data.source?.name || 'Jersey Devil';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🔥',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${sourceName}</span> stole <span class="pyre">1 Pyre</span>!`
+            });
+        });
+        
+        // Baba Yaga abilities
+        GameEvents.on('onInfernalWard', (data) => {
+            const supportName = data.support?.name || 'Baba Yaga';
+            const combatantName = data.combatant?.name || 'ally';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🏚️',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> warded ${combatantName} from spells!`
+            });
+        });
+        
+        GameEvents.on('onHexKill', (data) => {
+            const sourceName = data.source?.name || 'Baba Yaga';
+            const victimName = data.victim?.name || 'victim';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '💀',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${sourceName}</span>'s hex killed ${victimName}!`
+            });
+        });
+        
+        // Crone's Blessing
+        GameEvents.on('onCronesBlessing', (data) => {
+            const supportName = data.support?.name || 'Crone';
+            const combatantName = data.combatant?.name || 'ally';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🧙',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> blessed ${combatantName}: <span class="pyre">+1 Pyre</span> & healed!`
+            });
+        });
+        
+        // Hunt trap
+        GameEvents.on('onHuntSteal', (data) => {
+            const stolenPyre = data.stolenPyre || 0;
+            const isPlayer = data.to === 'player';
+            this.addEntry({
+                type: 'trap', ownerClass: 'trap', icon: '🎯',
+                text: `Hunt triggered! Stole <span class="pyre">${stolenPyre} Pyre</span>!`
+            });
+        });
+        
+        // Full Moon burst
+        GameEvents.on('onFullMoonEvolve', (data) => {
+            const targetName = data.target?.name || 'creature';
+            const evolutionName = data.evolution?.name || 'new form';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'spell', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🌕',
+                text: `Full Moon forced <span class="name-${isPlayer ? 'player' : 'enemy'}">${targetName}</span> to evolve into ${evolutionName}!`
+            });
+        });
+        
+        // Skinwalker Inherit
+        GameEvents.on('onSkinwalkerInherit', (data) => {
+            const supportName = data.support?.name || 'Skinwalker';
+            const deadName = data.deadCombatant?.name || 'fallen';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🎭',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> inherited ${deadName}'s power!`
+            });
+        });
+        
+        // Evolution stat bonus
+        GameEvents.on('onEvolutionBonus', (data) => {
+            const name = data.cryptid?.name || 'Creature';
+            const bonus = data.bonus || 2;
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '⬆️',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> evolution bonus: <span class="buff">+${bonus} ATK</span>`
+            });
+        });
+        
+        // Curse Heal
+        GameEvents.on('onCurseHeal', (data) => {
+            const name = data.combatant?.name || 'Creature';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '💚',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> healed from curse tokens!`
+            });
+        });
     },
     
     addTurnSeparator(isPlayerTurn) {
