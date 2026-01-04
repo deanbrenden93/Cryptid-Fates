@@ -1086,45 +1086,58 @@ const loginStyles = `
 /* ===== LANDSCAPE MODE (short height) ===== */
 @media (max-height: 500px) and (orientation: landscape) {
     #login-screen {
-        padding: clamp(8px, 2vh, 16px) clamp(16px, 3vw, 32px);
+        padding: 10px 20px;
     }
     
     .login-container {
-        gap: clamp(10px, 2.5vh, 18px);
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 16px 32px;
+        max-width: 900px;
     }
     
-    /* Logo scales to height in landscape */
+    /* Logo - hero element, takes up good space */
     .login-logo-img {
         width: auto;
-        height: clamp(80px, 22vh, 140px);
-        max-width: 90vw;
+        height: clamp(100px, 35vh, 180px);
+        max-width: 45vw;
     }
     
-    /* Login box proportionate to logo */
+    /* Right side content */
     .login-box {
-        max-width: clamp(300px, 50vw, 420px);
+        max-width: 280px;
+        flex: 0 0 auto;
     }
     
-    /* Hide the welcome text in landscape - logo says it all */
-    .login-box h2,
+    /* Show welcome text - adds context */
+    .login-box h2 {
+        display: block;
+        font-size: 14px;
+        margin-bottom: 4px;
+    }
+    
     .login-prompt {
-        display: none;
+        display: block;
+        font-size: 10px;
+        margin-bottom: 10px;
     }
     
-    /* Buttons side by side */
+    /* Buttons stacked but compact */
     .login-buttons {
-        flex-direction: row;
-        gap: clamp(10px, 2vw, 16px);
+        flex-direction: column;
+        gap: 8px;
     }
     
     .login-btn {
-        padding: clamp(10px, 2.5vh, 14px) clamp(20px, 3vw, 28px);
-        font-size: clamp(11px, 2.8vh, 13px);
+        padding: 10px 20px;
+        font-size: 11px;
     }
     
     .login-icon {
-        width: clamp(14px, 3.5vh, 18px);
-        height: clamp(14px, 3.5vh, 18px);
+        width: 16px;
+        height: 16px;
     }
     
     /* Hide features in landscape */
@@ -1132,44 +1145,57 @@ const loginStyles = `
         display: none;
     }
     
-    /* Bottom buttons inline */
+    /* Bottom buttons - full width row */
     .login-bottom-btns {
         flex-direction: row;
-        gap: clamp(10px, 2vw, 16px);
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        flex-basis: 100%;
     }
     
     .skip-login-btn {
-        padding: clamp(6px, 1.5vh, 10px) clamp(14px, 2.5vw, 20px);
-        font-size: clamp(9px, 2.2vh, 11px);
+        padding: 8px 16px;
+        font-size: 9px;
     }
 }
 
 /* ===== VERY SHORT LANDSCAPE (iPhone SE, small phones) ===== */
 @media (max-height: 380px) and (orientation: landscape) {
     #login-screen {
-        padding: 6px 12px;
+        padding: 8px 16px;
     }
     
     .login-container {
-        gap: clamp(6px, 1.5vh, 10px);
+        gap: 10px 24px;
     }
     
     .login-logo-img {
-        height: clamp(60px, 18vh, 100px);
+        height: clamp(80px, 30vh, 140px);
+        max-width: 40vw;
     }
     
     .login-box {
-        max-width: clamp(280px, 45vw, 380px);
+        max-width: 240px;
+    }
+    
+    .login-box h2 {
+        font-size: 12px;
+    }
+    
+    .login-prompt {
+        font-size: 9px;
     }
     
     .login-btn {
-        padding: clamp(8px, 2vh, 12px) clamp(16px, 2.5vw, 24px);
-        font-size: clamp(10px, 2.5vh, 12px);
+        padding: 8px 16px;
+        font-size: 10px;
     }
     
     .skip-login-btn {
-        padding: 5px 12px;
-        font-size: 9px;
+        padding: 6px 12px;
+        font-size: 8px;
     }
 }
 

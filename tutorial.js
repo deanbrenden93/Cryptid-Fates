@@ -2465,150 +2465,222 @@ const TutorialRewards = {
         100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
       }
       
-      /* ==================== RESPONSIVE ADJUSTMENTS ==================== */
+      /* ==================== RESPONSIVE - CLEAN MOBILE LAYOUTS ==================== */
       
-      /* Short landscape (mobile landscape) */
-      @media (max-height: 500px) {
+      /* LANDSCAPE MODE - Two-column layout with everything visible */
+      @media (max-height: 500px) and (orientation: landscape) {
         .tutorial-rewards-screen {
-          padding: min(2vh, 10px) min(2vw, 15px);
+          padding: 8px 16px;
+          overflow-y: auto;
         }
+        
         .rewards-content {
-          gap: min(1.5vh, 10px);
-          flex-direction: row;
-          flex-wrap: wrap;
-          justify-content: center;
-          align-content: center;
-        }
-        .rewards-header {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          grid-template-rows: auto auto auto;
+          gap: 8px 20px;
+          align-items: center;
+          justify-items: start;
+          max-width: 100%;
           width: 100%;
-          flex-shrink: 0;
+        }
+        
+        /* Header spans full width */
+        .rewards-header {
+          grid-column: 1 / -1;
+          text-align: center;
+          width: 100%;
+          margin-bottom: 4px;
         }
         .rewards-title {
-          font-size: min(4vh, 24px);
+          font-size: clamp(18px, 4vh, 26px);
           margin-bottom: 2px;
         }
         .rewards-subtitle {
-          font-size: min(2vh, 11px);
+          font-size: clamp(10px, 2vh, 12px);
         }
+        
+        /* Rewards in left column */
         .rewards-container {
-          gap: min(2vw, 12px);
+          grid-column: 1;
+          flex-direction: column;
+          gap: 8px;
         }
         .reward-item {
-          padding: min(1.5vh, 10px) min(2vw, 16px);
-          gap: min(0.5vh, 4px);
+          padding: 8px 12px;
+          flex-direction: row;
+          gap: 10px;
+          min-width: 130px;
         }
         .reward-icon {
-          font-size: min(5vh, 32px);
+          font-size: clamp(24px, 5vh, 36px);
         }
         .reward-name {
-          font-size: min(1.5vh, 10px);
+          font-size: 9px;
         }
         .reward-value {
-          font-size: min(3vh, 18px);
+          font-size: clamp(14px, 3vh, 20px);
         }
+        
+        /* Deck selection header above deck cards */
         .deck-selection-header {
-          font-size: min(2vh, 12px);
+          grid-column: 2;
+          grid-row: 2;
+          align-self: end;
+          font-size: 11px;
           margin: 0;
         }
+        
+        /* Deck cards in right area */
         .rewards-deck-selection {
-          gap: min(1.5vw, 12px);
-          flex: none;
-          height: auto;
+          grid-column: 2;
+          grid-row: 2 / 4;
+          align-self: center;
+          gap: 10px;
+          flex-wrap: nowrap;
         }
         .rewards-deck {
-          padding: min(1.5vh, 10px) min(1vw, 10px);
-          gap: min(0.5vh, 4px);
-          max-width: min(200px, 28vw);
-          min-width: min(120px, 22vw);
+          padding: 10px 12px;
+          gap: 4px;
+          max-width: 160px;
+          min-width: 120px;
         }
         .deck-icon {
-          font-size: min(6vh, 36px);
+          font-size: clamp(28px, 6vh, 40px);
         }
         .deck-name {
-          font-size: min(2vh, 13px);
+          font-size: clamp(11px, 2.5vh, 14px);
         }
         .deck-desc {
           display: none;
         }
         .deck-theme {
-          font-size: min(1.5vh, 9px);
-          padding-top: min(0.5vh, 4px);
+          font-size: 8px;
+          padding-top: 4px;
         }
+        .rewards-deck.selected::after {
+          width: 20px;
+          height: 20px;
+          font-size: 11px;
+          top: 6px;
+          right: 6px;
+        }
+        
+        /* Claim button at bottom */
         .rewards-claim-btn {
-          margin-top: min(1vh, 8px);
-          padding: min(1.5vh, 10px) min(4vw, 32px);
-          font-size: min(2vh, 12px);
+          grid-column: 1 / -1;
+          justify-self: center;
+          margin-top: 4px;
+          padding: 10px 32px;
+          font-size: 11px;
         }
       }
       
-      /* Very short landscape */
-      @media (max-height: 380px) {
+      /* Very short landscape - even more compact */
+      @media (max-height: 380px) and (orientation: landscape) {
+        .tutorial-rewards-screen {
+          padding: 6px 12px;
+        }
+        .rewards-content {
+          gap: 6px 16px;
+        }
         .rewards-title {
-          font-size: min(3.5vh, 20px);
+          font-size: clamp(16px, 4vh, 22px);
         }
         .rewards-subtitle {
           display: none;
         }
+        .reward-item {
+          padding: 6px 10px;
+          min-width: 110px;
+        }
         .reward-icon {
-          font-size: min(4vh, 28px);
+          font-size: clamp(20px, 4.5vh, 28px);
+        }
+        .rewards-deck {
+          padding: 8px 10px;
+          max-width: 140px;
+          min-width: 100px;
         }
         .deck-icon {
-          font-size: min(5vh, 32px);
+          font-size: clamp(24px, 5vh, 32px);
         }
         .deck-theme {
           display: none;
         }
+        .rewards-claim-btn {
+          padding: 8px 24px;
+          font-size: 10px;
+        }
       }
       
-      /* Portrait mode */
+      /* PORTRAIT MODE - Clean vertical stack */
       @media (orientation: portrait) {
         .rewards-content {
-          justify-content: space-evenly;
+          justify-content: center;
+          gap: 16px;
         }
+        
+        .rewards-header {
+          margin-bottom: 8px;
+        }
+        
+        .rewards-container {
+          gap: 12px;
+        }
+        .reward-item {
+          padding: 12px 20px;
+        }
+        
         .rewards-deck-selection {
           flex-direction: column;
-          gap: min(2vh, 12px);
-          max-width: min(350px, 90vw);
+          gap: 10px;
+          max-width: min(340px, 90vw);
+          width: 100%;
         }
         .rewards-deck {
           max-width: 100%;
           min-width: 100%;
           flex-direction: row;
-          padding: min(2vh, 12px) min(4vw, 16px);
-          gap: min(3vw, 12px);
+          padding: 12px 16px;
+          gap: 12px;
+          text-align: left;
         }
         .deck-icon {
-          font-size: min(12vw, 48px);
+          font-size: clamp(36px, 10vw, 48px);
+          flex-shrink: 0;
         }
         .deck-name {
-          font-size: min(4vw, 16px);
+          font-size: clamp(14px, 4vw, 16px);
         }
         .deck-desc {
-          font-size: min(3vw, 11px);
+          font-size: clamp(10px, 2.5vw, 12px);
           text-align: left;
         }
         .deck-theme {
+          font-size: clamp(9px, 2vw, 11px);
           border-top: none;
           padding-top: 0;
-          border-left: 1px solid rgba(140, 130, 160, 0.2);
-          padding-left: min(2vw, 10px);
           text-align: left;
           width: auto;
         }
         .rewards-deck.selected::after {
           top: 50%;
-          right: min(2vw, 12px);
+          right: 12px;
           transform: translateY(-50%);
         }
       }
       
-      /* Narrow portrait */
+      /* Narrow portrait - hide descriptions */
       @media (max-width: 400px) and (orientation: portrait) {
         .rewards-title {
-          font-size: min(7vw, 24px);
+          font-size: clamp(20px, 6vw, 28px);
+        }
+        .reward-item {
+          padding: 10px 16px;
         }
         .reward-icon {
-          font-size: min(12vw, 40px);
+          font-size: clamp(32px, 10vw, 44px);
         }
         .deck-desc {
           display: none;
