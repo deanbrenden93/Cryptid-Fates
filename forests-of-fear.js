@@ -844,8 +844,8 @@ CardRegistry.registerCryptid('adultBigfoot', {
     combatAbility: "Rampage: Attacks hit combatant AND support. Auras cost -1 pyre",
     supportAbility: "Bulwark: When Adult Bigfoot or combatant targeted, both gain +1 HP",
     
-    // Aura cost reduction
-    modifyAuraCost: -1,
+    // Aura cost reduction (matches system.js auraCostModifier)
+    auraCostModifier: -1,
     
     // Cleave attack flag
     hasCleave: true,

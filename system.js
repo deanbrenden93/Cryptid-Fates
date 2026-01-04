@@ -7346,7 +7346,18 @@ function playAttackAnimation(attackerSprite, owner, onComplete) {
 }
 
 function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
+    // Capture target info BEFORE attack for multiplayer death tracking
+    const targetBeforeAttack = game.getFieldCryptid(targetOwner, targetCol, targetRow);
+    const targetKey = targetBeforeAttack?.key || null;
+    const supportCol = game.getSupportCol(targetOwner);
+    const supportBeforeAttack = game.getFieldCryptid(targetOwner, supportCol, targetRow);
+    
     const result = game.attack(attacker, targetOwner, targetCol, targetRow);
+    
+    // Track deaths for multiplayer
+    const targetDied = result.killed || false;
+    const supportDied = supportBeforeAttack && !game.getFieldCryptid(targetOwner, supportCol, targetRow);
+    
     const targetSprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`);
     const attackerSprite = document.querySelector(`.cryptid-sprite[data-owner="${attacker.owner}"][data-col="${attacker.col}"][data-row="${attacker.row}"]`);
     
@@ -7375,7 +7386,7 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
     // Helper to send multiplayer hook after everything completes
     function sendMultiplayerHook() {
         if (game.isMultiplayer && attacker.owner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onAttack(attacker, targetOwner, targetCol, targetRow);
+            window.multiplayerHook.onAttack(attacker, targetOwner, targetCol, targetRow, targetKey, targetDied, supportDied);
         }
     }
     

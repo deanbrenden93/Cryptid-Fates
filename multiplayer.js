@@ -199,16 +199,21 @@ window.Multiplayer = {
             savedAtk: cryptid.savedAtk,
             burnTurns: cryptid.burnTurns || 0,
             bleedTurns: cryptid.bleedTurns || 0,
+            bleedStacks: cryptid.bleedStacks || 0,
             paralyzed: cryptid.paralyzed || false,
             paralyzeTurns: cryptid.paralyzeTurns || 0,
             calamityCounters: cryptid.calamityCounters || 0,
             curseTokens: cryptid.curseTokens || 0,
+            hadCalamity: cryptid.hadCalamity || false,
             
             // Protection and damage modification
             protectionCharges: cryptid.protectionCharges || 0,
             damageReduction: cryptid.damageReduction || 0,
             blockFirstHit: cryptid.blockFirstHit || false,
             bonusDamage: cryptid.bonusDamage || 0,
+            protectedFromAttack: cryptid.protectedFromAttack || false,
+            negateIncomingAttack: cryptid.negateIncomingAttack || false,
+            preventDeath: cryptid.preventDeath || false,
             
             // Healing and regeneration
             regeneration: cryptid.regeneration || 0,
@@ -217,7 +222,7 @@ window.Multiplayer = {
             // Debuffs
             atkDebuff: cryptid.atkDebuff || 0,
             
-            // Support-granted abilities (flags)
+            // Core combat flags
             noTapOnAttack: cryptid.noTapOnAttack || false,
             hasFocus: cryptid.hasFocus || false,
             grantsFocus: cryptid.grantsFocus || false,
@@ -227,28 +232,190 @@ window.Multiplayer = {
             hasMultiAttack: cryptid.hasMultiAttack || false,
             canTargetAny: cryptid.canTargetAny || false,
             hasFlight: cryptid.hasFlight || false,
+            canAttackAgain: cryptid.canAttackAgain || false,
+            
+            // Immunity flags
             immuneToTraps: cryptid.immuneToTraps || false,
             immuneToBursts: cryptid.immuneToBursts || false,
+            trapImmune: cryptid.trapImmune || false,
+            burstImmune: cryptid.burstImmune || false,
+            curseImmune: cryptid.curseImmune || false,
+            instantDeathImmune: cryptid.instantDeathImmune || false,
+            
+            // Attack effect application
             curseHealing: cryptid.curseHealing || false,
             attacksApplyCalamity: cryptid.attacksApplyCalamity || 0,
             attacksApplyParalyze: cryptid.attacksApplyParalyze || false,
             attacksApplyBleed: cryptid.attacksApplyBleed || false,
             attacksApplyBurn: cryptid.attacksApplyBurn || false,
             attacksApplyCurse: cryptid.attacksApplyCurse || 0,
+            
+            // Conditional damage bonuses
             bonusVsParalyzed: cryptid.bonusVsParalyzed || 0,
             bonusVsAilment: cryptid.bonusVsAilment || 0,
             doubleDamageVsTapped: cryptid.doubleDamageVsTapped || false,
             
-            // Activated ability state
-            bloodPactAvailable: cryptid.bloodPactAvailable || false,
+            // ==================== FORESTS OF FEAR ====================
+            // Stormhawk/Thunderbird
+            hasThermalAbility: cryptid.hasThermalAbility || false,
             thermalAvailable: cryptid.thermalAvailable || false,
+            hasStormCall: cryptid.hasStormCall || false,
+            
+            // Adolescent Bigfoot
+            hasRageHealAbility: cryptid.hasRageHealAbility || false,
             rageHealAvailable: cryptid.rageHealAvailable || false,
+            
+            // Adult Bigfoot
+            hasBulwark: cryptid.hasBulwark || false,
+            
+            // Cursed Hybrid
+            curseType: cryptid.curseType || null,
+            
+            // Deer Woman
+            hasOfferingAbility: cryptid.hasOfferingAbility || false,
+            
+            // Mature Wendigo
+            hasGuardianAbility: cryptid.hasGuardianAbility || false,
+            guardianAvailable: cryptid.guardianAvailable || false,
+            
+            // Primal Wendigo
+            hasCannibalize: cryptid.hasCannibalize || false,
+            
+            // Werewolf
+            hasBloodFrenzyAbility: cryptid.hasBloodFrenzyAbility || false,
+            bloodFrenzyAvailable: cryptid.bloodFrenzyAvailable || false,
+            cursedToDie: cryptid.cursedToDie || false,
+            
+            // Lycanthrope
+            hasPackGrowth: cryptid.hasPackGrowth || false,
+            hasPackLeader: cryptid.hasPackLeader || false,
+            
+            // Not-Deer
+            hasDeathWatch: cryptid.hasDeathWatch || false,
+            
+            // Jersey Devil
+            stealsOnAttack: cryptid.stealsOnAttack || false,
+            
+            // Baba Yaga
+            hasCronesBlessing: cryptid.hasCronesBlessing || false,
+            
+            // Snipe
+            isHidden: cryptid.isHidden || false,
+            
+            // Skinwalker
+            hasInherit: cryptid.hasInherit || false,
+            
+            // Auras (Forests of Fear)
+            hasInsatiableHunger: cryptid.hasInsatiableHunger || false,
+            
+            // ==================== CITY OF FLESH ====================
+            // Hellhound Pup
+            hasHellhoundPupSupport: cryptid.hasHellhoundPupSupport || false,
+            
+            // El Duende
+            hasElDuendeSupport: cryptid.hasElDuendeSupport || false,
+            protectsTraps: cryptid.protectsTraps || false,
+            protectedTrapSide: cryptid.protectedTrapSide || null,
+            
+            // Library Gargoyle
+            libraryGargoyleBuff: cryptid.libraryGargoyleBuff || false,
+            
+            // Sewer Alligator
+            hasSewerAlligatorSupport: cryptid.hasSewerAlligatorSupport || false,
+            
+            // Fire Imp
+            hasSacrificeAbility: cryptid.hasSacrificeAbility || false,
+            sacrificeAbilityAvailable: cryptid.sacrificeAbilityAvailable || false,
+            sacrificeActivated: cryptid.sacrificeActivated || false,
+            
+            // Vampire Lord (kill reward tracking)
+            rewardOnKill: cryptid.rewardOnKill || false,
+            
+            // Vampire Initiate
+            hasBloodPactAbility: cryptid.hasBloodPactAbility || false,
+            bloodPactAvailable: cryptid.bloodPactAvailable || false,
+            
+            // Mutated Rat support tracking
+            mutatedRatSupport: cryptid.mutatedRatSupport ? { col: cryptid.mutatedRatSupport.col, row: cryptid.mutatedRatSupport.row } : null,
+            
+            // Other City of Flesh
             radianceActive: cryptid.radianceActive || false,
             regenActive: cryptid.regenActive || false,
             
-            // Hidden state (Snipe)
-            isHidden: cryptid.isHidden || false,
+            // ==================== PUTRID SWAMP ====================
+            // Swamp Rat
+            hasSwampRatSupport: cryptid.hasSwampRatSupport || false,
             
+            // Bayou Sprite
+            hasBayouSpriteSupport: cryptid.hasBayouSpriteSupport || false,
+            
+            // Voodoo Doll
+            hasVoodooDollSupport: cryptid.hasVoodooDollSupport || false,
+            voodooDollRedirectAvailable: cryptid.voodooDollRedirectAvailable || false,
+            mirrorDamageTarget: cryptid.mirrorDamageTarget ? { col: cryptid.mirrorDamageTarget.col, row: cryptid.mirrorDamageTarget.row } : null,
+            
+            // Swamp Haint
+            hasHaintSupport: cryptid.hasHaintSupport || false,
+            undyingUsed: cryptid.undyingUsed || false,
+            
+            // Letiche
+            hasLeticheSupport: cryptid.hasLeticheSupport || false,
+            
+            // Ignis Fatuus
+            hasIgnisFatuusSupport: cryptid.hasIgnisFatuusSupport || false,
+            
+            // Plague Rat
+            hasPlagueRatSupport: cryptid.hasPlagueRatSupport || false,
+            
+            // Swamp Hag
+            hasSwampHagSupport: cryptid.hasSwampHagSupport || false,
+            
+            // Effigy
+            hasEffigySupport: cryptid.hasEffigySupport || false,
+            soulLinkedTo: cryptid.soulLinkedTo ? { col: cryptid.soulLinkedTo.col, row: cryptid.soulLinkedTo.row } : null,
+            splitDamageActive: cryptid.splitDamageActive || false,
+            
+            // Graveyard Guardian
+            negatesEnemySupport: cryptid.negatesEnemySupport || false,
+            
+            // Spirit Fire
+            hasSpiritFireSupport: cryptid.hasSpiritFireSupport || false,
+            explodeOnDeath: cryptid.explodeOnDeath || false,
+            
+            // Boo Hag (ability copying)
+            hasBooHagSupport: cryptid.hasBooHagSupport || false,
+            booHagRedirectAvailable: cryptid.booHagRedirectAvailable || false,
+            copiedAbilityName: cryptid.copiedAbilityName || null,
+            copiedAbilityTurns: cryptid.copiedAbilityTurns || 0,
+            
+            // Revenant
+            hasRevenantSupport: cryptid.hasRevenantSupport || false,
+            grudgeUsed: cryptid.grudgeUsed || false,
+            deathCount: cryptid.deathCount || 0,
+            
+            // Loup Garou
+            moonFrenzyActive: cryptid.moonFrenzyActive || false,
+            
+            // Swamp Stalker
+            hasSwampStalkerSupport: cryptid.hasSwampStalkerSupport || false,
+            ambushReady: cryptid.ambushReady || false,
+            firstAttack: cryptid.firstAttack || false,
+            
+            // Mama Brigitte
+            hasMamaBrigitteSupport: cryptid.hasMamaBrigitteSupport || false,
+            
+            // Draugr Lord
+            hasDraugrLordSupport: cryptid.hasDraugrLordSupport || false,
+            undeathUsed: cryptid.undeathUsed || false,
+            cannotDie: cryptid.cannotDie || false,
+            
+            // Baron Samedi
+            hasBaronSamediSupport: cryptid.hasBaronSamediSupport || false,
+            
+            // Curse Vessel aura
+            hasCurseVessel: cryptid.hasCurseVessel || false,
+            
+            // ==================== TRACKING ====================
             // Support relationship tracking
             bigfootBulkApplied: cryptid.bigfootBulkApplied || false,
             wendigoBondApplied: cryptid.wendigoBondApplied || false,
@@ -356,32 +523,145 @@ window.Multiplayer = {
                     // PRESERVE local tracking values that opponent doesn't know about
                     const localLastBuffed = ourCryptid._lastBuffedCombatant;
                     
+                    // Core stats
                     ourCryptid.currentAtk = theirView.currentAtk;
                     ourCryptid.currentHp = theirView.currentHp;
                     ourCryptid.maxHp = theirView.maxHp;
+                    ourCryptid.baseAtk = theirView.baseAtk;
+                    ourCryptid.baseHp = theirView.baseHp;
                     ourCryptid.tapped = theirView.tapped;
                     ourCryptid.canAttack = theirView.canAttack;
                     ourCryptid.attackedThisTurn = theirView.attackedThisTurn;
+                    
+                    // Status effects
                     ourCryptid.terrified = theirView.terrified;
                     ourCryptid.savedAtk = theirView.savedAtk;
                     ourCryptid.burnTurns = theirView.burnTurns;
                     ourCryptid.bleedTurns = theirView.bleedTurns;
+                    ourCryptid.bleedStacks = theirView.bleedStacks;
                     ourCryptid.paralyzed = theirView.paralyzed;
                     ourCryptid.paralyzeTurns = theirView.paralyzeTurns;
                     ourCryptid.calamityCounters = theirView.calamityCounters;
                     ourCryptid.curseTokens = theirView.curseTokens;
+                    ourCryptid.hadCalamity = theirView.hadCalamity;
+                    
+                    // Protection and damage modification
                     ourCryptid.protectionCharges = theirView.protectionCharges;
                     ourCryptid.damageReduction = theirView.damageReduction;
                     ourCryptid.blockFirstHit = theirView.blockFirstHit;
                     ourCryptid.bonusDamage = theirView.bonusDamage;
+                    ourCryptid.protectedFromAttack = theirView.protectedFromAttack;
+                    ourCryptid.negateIncomingAttack = theirView.negateIncomingAttack;
+                    ourCryptid.preventDeath = theirView.preventDeath;
+                    
+                    // Healing and regeneration
                     ourCryptid.regeneration = theirView.regeneration;
                     ourCryptid.healOnKill = theirView.healOnKill;
                     ourCryptid.atkDebuff = theirView.atkDebuff;
+                    
+                    // Core combat flags
                     ourCryptid.hasFlight = theirView.hasFlight;
+                    ourCryptid.hasCleave = theirView.hasCleave;
+                    ourCryptid.hasDestroyer = theirView.hasDestroyer;
+                    ourCryptid.hasMultiAttack = theirView.hasMultiAttack;
+                    ourCryptid.canAttackAgain = theirView.canAttackAgain;
+                    ourCryptid.noTapOnAttack = theirView.noTapOnAttack;
+                    ourCryptid.hasFocus = theirView.hasFocus;
+                    ourCryptid.doubleDamageVsTapped = theirView.doubleDamageVsTapped;
+                    
+                    // Immunity flags
                     ourCryptid.immuneToTraps = theirView.immuneToTraps;
                     ourCryptid.immuneToBursts = theirView.immuneToBursts;
+                    ourCryptid.trapImmune = theirView.trapImmune;
+                    ourCryptid.burstImmune = theirView.burstImmune;
+                    ourCryptid.curseImmune = theirView.curseImmune;
+                    ourCryptid.instantDeathImmune = theirView.instantDeathImmune;
+                    
+                    // Attack effect application
                     ourCryptid.attacksApplyCurse = theirView.attacksApplyCurse;
+                    ourCryptid.attacksApplyParalyze = theirView.attacksApplyParalyze;
+                    ourCryptid.attacksApplyBleed = theirView.attacksApplyBleed;
+                    ourCryptid.attacksApplyBurn = theirView.attacksApplyBurn;
+                    ourCryptid.attacksApplyCalamity = theirView.attacksApplyCalamity;
+                    
+                    // Conditional damage bonuses
+                    ourCryptid.bonusVsParalyzed = theirView.bonusVsParalyzed;
                     ourCryptid.bonusVsAilment = theirView.bonusVsAilment;
+                    
+                    // Forests of Fear abilities
+                    ourCryptid.hasThermalAbility = theirView.hasThermalAbility;
+                    ourCryptid.thermalAvailable = theirView.thermalAvailable;
+                    ourCryptid.hasStormCall = theirView.hasStormCall;
+                    ourCryptid.hasRageHealAbility = theirView.hasRageHealAbility;
+                    ourCryptid.rageHealAvailable = theirView.rageHealAvailable;
+                    ourCryptid.hasBulwark = theirView.hasBulwark;
+                    ourCryptid.curseType = theirView.curseType;
+                    ourCryptid.hasOfferingAbility = theirView.hasOfferingAbility;
+                    ourCryptid.hasGuardianAbility = theirView.hasGuardianAbility;
+                    ourCryptid.guardianAvailable = theirView.guardianAvailable;
+                    ourCryptid.hasCannibalize = theirView.hasCannibalize;
+                    ourCryptid.hasBloodFrenzyAbility = theirView.hasBloodFrenzyAbility;
+                    ourCryptid.bloodFrenzyAvailable = theirView.bloodFrenzyAvailable;
+                    ourCryptid.cursedToDie = theirView.cursedToDie;
+                    ourCryptid.hasPackGrowth = theirView.hasPackGrowth;
+                    ourCryptid.hasPackLeader = theirView.hasPackLeader;
+                    ourCryptid.hasDeathWatch = theirView.hasDeathWatch;
+                    ourCryptid.stealsOnAttack = theirView.stealsOnAttack;
+                    ourCryptid.hasCronesBlessing = theirView.hasCronesBlessing;
+                    ourCryptid.isHidden = theirView.isHidden;
+                    ourCryptid.hasInherit = theirView.hasInherit;
+                    ourCryptid.hasInsatiableHunger = theirView.hasInsatiableHunger;
+                    
+                    // City of Flesh abilities
+                    ourCryptid.hasHellhoundPupSupport = theirView.hasHellhoundPupSupport;
+                    ourCryptid.hasElDuendeSupport = theirView.hasElDuendeSupport;
+                    ourCryptid.protectsTraps = theirView.protectsTraps;
+                    ourCryptid.protectedTrapSide = theirView.protectedTrapSide;
+                    ourCryptid.libraryGargoyleBuff = theirView.libraryGargoyleBuff;
+                    ourCryptid.hasSewerAlligatorSupport = theirView.hasSewerAlligatorSupport;
+                    ourCryptid.hasSacrificeAbility = theirView.hasSacrificeAbility;
+                    ourCryptid.sacrificeAbilityAvailable = theirView.sacrificeAbilityAvailable;
+                    ourCryptid.sacrificeActivated = theirView.sacrificeActivated;
+                    ourCryptid.rewardOnKill = theirView.rewardOnKill;
+                    ourCryptid.hasBloodPactAbility = theirView.hasBloodPactAbility;
+                    ourCryptid.bloodPactAvailable = theirView.bloodPactAvailable;
+                    ourCryptid.radianceActive = theirView.radianceActive;
+                    ourCryptid.regenActive = theirView.regenActive;
+                    ourCryptid.curseHealing = theirView.curseHealing;
+                    
+                    // Putrid Swamp abilities
+                    ourCryptid.hasSwampRatSupport = theirView.hasSwampRatSupport;
+                    ourCryptid.hasBayouSpriteSupport = theirView.hasBayouSpriteSupport;
+                    ourCryptid.hasVoodooDollSupport = theirView.hasVoodooDollSupport;
+                    ourCryptid.voodooDollRedirectAvailable = theirView.voodooDollRedirectAvailable;
+                    ourCryptid.hasHaintSupport = theirView.hasHaintSupport;
+                    ourCryptid.undyingUsed = theirView.undyingUsed;
+                    ourCryptid.hasLeticheSupport = theirView.hasLeticheSupport;
+                    ourCryptid.hasIgnisFatuusSupport = theirView.hasIgnisFatuusSupport;
+                    ourCryptid.hasPlagueRatSupport = theirView.hasPlagueRatSupport;
+                    ourCryptid.hasSwampHagSupport = theirView.hasSwampHagSupport;
+                    ourCryptid.hasEffigySupport = theirView.hasEffigySupport;
+                    ourCryptid.splitDamageActive = theirView.splitDamageActive;
+                    ourCryptid.negatesEnemySupport = theirView.negatesEnemySupport;
+                    ourCryptid.hasSpiritFireSupport = theirView.hasSpiritFireSupport;
+                    ourCryptid.explodeOnDeath = theirView.explodeOnDeath;
+                    ourCryptid.hasBooHagSupport = theirView.hasBooHagSupport;
+                    ourCryptid.booHagRedirectAvailable = theirView.booHagRedirectAvailable;
+                    ourCryptid.copiedAbilityName = theirView.copiedAbilityName;
+                    ourCryptid.copiedAbilityTurns = theirView.copiedAbilityTurns;
+                    ourCryptid.hasRevenantSupport = theirView.hasRevenantSupport;
+                    ourCryptid.grudgeUsed = theirView.grudgeUsed;
+                    ourCryptid.deathCount = theirView.deathCount;
+                    ourCryptid.moonFrenzyActive = theirView.moonFrenzyActive;
+                    ourCryptid.hasSwampStalkerSupport = theirView.hasSwampStalkerSupport;
+                    ourCryptid.ambushReady = theirView.ambushReady;
+                    ourCryptid.firstAttack = theirView.firstAttack;
+                    ourCryptid.hasMamaBrigitteSupport = theirView.hasMamaBrigitteSupport;
+                    ourCryptid.hasDraugrLordSupport = theirView.hasDraugrLordSupport;
+                    ourCryptid.undeathUsed = theirView.undeathUsed;
+                    ourCryptid.cannotDie = theirView.cannotDie;
+                    ourCryptid.hasBaronSamediSupport = theirView.hasBaronSamediSupport;
+                    ourCryptid.hasCurseVessel = theirView.hasCurseVessel;
                     
                     // RESTORE local tracking values
                     ourCryptid._lastBuffedCombatant = localLastBuffed;
@@ -491,37 +771,62 @@ window.Multiplayer = {
         this.isPlayingAnimation = true;
         const { action, state } = this.animationQueue.shift();
         
-        // FIRST: Apply state so positions are correct
-        if (state) {
-            this.applyReceivedState(state);
-        }
+        // For attacks that killed something, we need to animate BEFORE state change
+        // so the death animation shows the correct cryptid
+        const shouldAnimateBeforeState = action.type === 'attack' && (action.targetDied || action.supportDied);
         
-        // Force render with requestAnimationFrame for reliable browser repaint
-        requestAnimationFrame(() => {
-            if (typeof renderAll === 'function') renderAll();
-            
-            // Small delay to ensure DOM is fully updated before animation
-            setTimeout(() => {
-                // THEN: Play animation on the now-stable DOM
-                this.playAnimation(action, () => {
-                    // After animation, update buttons
+        if (shouldAnimateBeforeState) {
+            // Play animation FIRST on current DOM state
+            this.playAnimation(action, () => {
+                // THEN apply state after animation shows the death
+                if (state) {
+                    this.applyReceivedState(state);
+                }
+                
+                requestAnimationFrame(() => {
+                    if (typeof renderAll === 'function') renderAll();
                     requestAnimationFrame(() => {
                         if (typeof updateButtons === 'function') updateButtons();
                     });
                     
-                    if (action.type === 'endPhase') {
-                        this.handleOpponentEndTurn();
-                    }
-                    
-                    // Mark animation complete and process next in queue
                     this.isPlayingAnimation = false;
                     this.processingOpponentAction = this.animationQueue.length > 0;
-                    
-                    // Process next queued action
                     setTimeout(() => this.processAnimationQueue(), 50);
                 });
-            }, 50); // 50ms delay for DOM to settle
-        });
+            });
+        } else {
+            // For non-death actions, apply state first (original behavior)
+            if (state) {
+                this.applyReceivedState(state);
+            }
+            
+            // Force render with requestAnimationFrame for reliable browser repaint
+            requestAnimationFrame(() => {
+                if (typeof renderAll === 'function') renderAll();
+                
+                // Small delay to ensure DOM is fully updated before animation
+                setTimeout(() => {
+                    // THEN: Play animation on the now-stable DOM
+                    this.playAnimation(action, () => {
+                        // After animation, update buttons
+                        requestAnimationFrame(() => {
+                            if (typeof updateButtons === 'function') updateButtons();
+                        });
+                        
+                        if (action.type === 'endPhase') {
+                            this.handleOpponentEndTurn();
+                        }
+                        
+                        // Mark animation complete and process next in queue
+                        this.isPlayingAnimation = false;
+                        this.processingOpponentAction = this.animationQueue.length > 0;
+                        
+                        // Process next queued action
+                        setTimeout(() => this.processAnimationQueue(), 50);
+                    });
+                }, 50); // 50ms delay for DOM to settle
+            });
+        }
     },
     
     playAnimation(action, onComplete) {
@@ -582,15 +887,38 @@ window.Multiplayer = {
                 }
                 
                 // Target damage animation (delayed slightly)
+                // Since we now animate BEFORE state change for deaths, the target sprite is correct
                 setTimeout(() => {
                     const tgtSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${tgtCol}"][data-row="${action.targetRow}"]`);
+                    
                     if (tgtSprite) {
                         tgtSprite.classList.add('taking-damage');
                         setTimeout(() => tgtSprite.classList.remove('taking-damage'), 400);
+                        
+                        // Show death animation if target died
+                        if (action.targetDied) {
+                            setTimeout(() => {
+                                tgtSprite.classList.add('dying-left');
+                            }, 300);
+                        }
+                    }
+                    
+                    // Handle support death from cleave/destroyer
+                    if (action.supportDied) {
+                        // Support col is opposite of combat col
+                        const supportCol = tgtCol === 1 ? 0 : 1;
+                        const supportSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${supportCol}"][data-row="${action.targetRow}"]`);
+                        if (supportSprite) {
+                            setTimeout(() => {
+                                supportSprite.classList.add('dying-left');
+                            }, 400);
+                        }
                     }
                 }, 250);
                 
-                setTimeout(safeComplete, TIMING.attack);
+                // Longer delay if deaths need to animate
+                const deathDelay = (action.targetDied || action.supportDied) ? 500 : 0;
+                setTimeout(safeComplete, TIMING.attack + deathDelay);
                 break;
             }
             
@@ -1313,14 +1641,17 @@ window.multiplayerHook = {
         });
     },
     
-    onAttack(attacker, targetOwner, targetCol, targetRow) {
+    onAttack(attacker, targetOwner, targetCol, targetRow, targetKey, targetDied, supportDied) {
         if (!this.shouldSend() || attacker.owner !== 'player') return;
         Multiplayer.sendGameAction('attack', {
             attackerCol: attacker.col,
             attackerRow: attacker.row,
             targetOwner: targetOwner,
             targetCol: targetCol,
-            targetRow: targetRow
+            targetRow: targetRow,
+            targetKey: targetKey || null,
+            targetDied: targetDied || false,
+            supportDied: supportDied || false
         });
     },
     

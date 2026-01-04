@@ -1,0 +1,877 @@
+/**
+ * Cryptid Fates - Cheat Battle Mode
+ * Full dev testing mode with visual UI for controlling both players
+ */
+
+window.CheatMode = {
+    isActive: false,
+    aiEnabled: false,
+    controllingPlayer: 'player', // Which side is currently being controlled
+    
+    // ==================== INITIALIZATION ====================
+    
+    start() {
+        this.isActive = true;
+        this.aiEnabled = false;
+        window.cheatMode = true;
+        
+        // Inject cheat panel into game container
+        this.createCheatPanel();
+        
+        // Override turn system to allow controlling both sides
+        this.setupDualControl();
+        
+        // Start with generous resources
+        if (window.game) {
+            game.playerPyre = 15;
+            game.enemyPyre = 15;
+        }
+        
+        console.log('🎮 Cheat Mode Active');
+    },
+    
+    stop() {
+        this.isActive = false;
+        window.cheatMode = false;
+        this.removeCheatPanel();
+    },
+    
+    // ==================== CHEAT PANEL UI ====================
+    
+    createCheatPanel() {
+        // Remove existing if present
+        this.removeCheatPanel();
+        
+        const panel = document.createElement('div');
+        panel.id = 'cheat-panel';
+        panel.innerHTML = `
+            <div class="cheat-header">
+                <span class="cheat-title">🔧 Dev Tools</span>
+                <button class="cheat-minimize" id="cheat-minimize">−</button>
+            </div>
+            <div class="cheat-body" id="cheat-body">
+                <!-- Control Toggle -->
+                <div class="cheat-section">
+                    <div class="cheat-section-title">Control</div>
+                    <div class="cheat-row">
+                        <button class="cheat-btn active" id="cheat-control-player" data-side="player">👤 Player</button>
+                        <button class="cheat-btn" id="cheat-control-enemy" data-side="enemy">👹 Enemy</button>
+                    </div>
+                    <div class="cheat-row">
+                        <label class="cheat-toggle">
+                            <input type="checkbox" id="cheat-ai-toggle">
+                            <span>AI Plays Enemy</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Resources -->
+                <div class="cheat-section">
+                    <div class="cheat-section-title">Resources</div>
+                    <div class="cheat-row">
+                        <span>Player Pyre:</span>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustPyre('player', -1)">−</button>
+                        <span id="cheat-player-pyre">0</span>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustPyre('player', 1)">+</button>
+                        <button class="cheat-btn-small" onclick="CheatMode.setPyre('player', 20)">20</button>
+                    </div>
+                    <div class="cheat-row">
+                        <span>Enemy Pyre:</span>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustPyre('enemy', -1)">−</button>
+                        <span id="cheat-enemy-pyre">0</span>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustPyre('enemy', 1)">+</button>
+                        <button class="cheat-btn-small" onclick="CheatMode.setPyre('enemy', 20)">20</button>
+                    </div>
+                </div>
+                
+                <!-- Deaths -->
+                <div class="cheat-section">
+                    <div class="cheat-section-title">Death Counters</div>
+                    <div class="cheat-row">
+                        <span>Player Deaths:</span>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustDeaths('player', -1)">−</button>
+                        <span id="cheat-player-deaths">0</span>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustDeaths('player', 1)">+</button>
+                    </div>
+                    <div class="cheat-row">
+                        <span>Enemy Deaths:</span>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustDeaths('enemy', -1)">−</button>
+                        <span id="cheat-enemy-deaths">0</span>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustDeaths('enemy', 1)">+</button>
+                    </div>
+                </div>
+                
+                <!-- Card Browser -->
+                <div class="cheat-section">
+                    <div class="cheat-section-title">Add Card to Hand</div>
+                    <div class="cheat-row">
+                        <select id="cheat-card-series" onchange="CheatMode.updateCardList()">
+                            <option value="all">All Cards</option>
+                            <option value="city-of-flesh">City of Flesh</option>
+                            <option value="forests-of-fear">Forests of Fear</option>
+                            <option value="putrid-swamp">Putrid Swamp</option>
+                            <option value="abhorrent-armory">Abhorrent Armory</option>
+                        </select>
+                    </div>
+                    <div class="cheat-row">
+                        <select id="cheat-card-type" onchange="CheatMode.updateCardList()">
+                            <option value="all">All Types</option>
+                            <option value="cryptid">Cryptids</option>
+                            <option value="kindling">Kindling</option>
+                            <option value="pyre">Pyres</option>
+                            <option value="trap">Traps</option>
+                            <option value="burst">Bursts</option>
+                            <option value="aura">Auras</option>
+                        </select>
+                    </div>
+                    <div class="cheat-row">
+                        <select id="cheat-card-select" style="flex:1">
+                            <option value="">Select card...</option>
+                        </select>
+                        <button class="cheat-btn" onclick="CheatMode.addSelectedCard()">Add</button>
+                    </div>
+                </div>
+                
+                <!-- Quick Actions -->
+                <div class="cheat-section">
+                    <div class="cheat-section-title">Quick Actions</div>
+                    <div class="cheat-row">
+                        <button class="cheat-btn" onclick="CheatMode.loadSeries()">Load Series</button>
+                        <button class="cheat-btn" onclick="CheatMode.clearHand()">Clear Hand</button>
+                    </div>
+                    <div class="cheat-row">
+                        <button class="cheat-btn" onclick="CheatMode.drawCard()">Draw Card</button>
+                        <button class="cheat-btn" onclick="CheatMode.endTurn()">End Turn</button>
+                    </div>
+                    <div class="cheat-row">
+                        <button class="cheat-btn" onclick="CheatMode.resetKindling()">Reset Kindling</button>
+                        <button class="cheat-btn" onclick="CheatMode.killSelected()">Kill Selected</button>
+                    </div>
+                </div>
+                
+                <!-- Field Manipulation -->
+                <div class="cheat-section">
+                    <div class="cheat-section-title">Selected Cryptid</div>
+                    <div id="cheat-selected-info" class="cheat-selected-info">
+                        Click a cryptid on field to select
+                    </div>
+                    <div class="cheat-row" id="cheat-cryptid-controls" style="display:none">
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustStat('hp', -1)">HP−</button>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustStat('hp', 1)">HP+</button>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustStat('atk', -1)">ATK−</button>
+                        <button class="cheat-btn-small" onclick="CheatMode.adjustStat('atk', 1)">ATK+</button>
+                    </div>
+                    <div class="cheat-row" id="cheat-cryptid-actions" style="display:none">
+                        <button class="cheat-btn-small" onclick="CheatMode.healFull()">Full Heal</button>
+                        <button class="cheat-btn-small" onclick="CheatMode.killSelected()">Kill</button>
+                        <button class="cheat-btn-small" onclick="CheatMode.untap()">Untap</button>
+                    </div>
+                </div>
+                
+                <!-- Event Log Toggle -->
+                <div class="cheat-section">
+                    <div class="cheat-row">
+                        <label class="cheat-toggle">
+                            <input type="checkbox" id="cheat-log-toggle" onchange="CheatMode.toggleEventLog()">
+                            <span>Event Logging</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(panel);
+        
+        // Add styles
+        this.injectStyles();
+        
+        // Bind events
+        this.bindEvents();
+        
+        // Populate card list
+        this.updateCardList();
+        
+        // Update display
+        this.updateDisplay();
+    },
+    
+    removeCheatPanel() {
+        document.getElementById('cheat-panel')?.remove();
+        document.getElementById('cheat-mode-styles')?.remove();
+    },
+    
+    injectStyles() {
+        if (document.getElementById('cheat-mode-styles')) return;
+        
+        const style = document.createElement('style');
+        style.id = 'cheat-mode-styles';
+        style.textContent = `
+            #cheat-panel {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                width: 280px;
+                background: rgba(20, 20, 30, 0.95);
+                border: 2px solid #4a3f6a;
+                border-radius: 8px;
+                z-index: 10000;
+                font-family: 'Source Sans Pro', sans-serif;
+                font-size: 12px;
+                color: #ddd;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            }
+            
+            .cheat-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 8px 12px;
+                background: linear-gradient(135deg, #3a2f5a, #2a1f4a);
+                border-bottom: 1px solid #4a3f6a;
+                border-radius: 6px 6px 0 0;
+                cursor: move;
+            }
+            
+            .cheat-title {
+                font-weight: bold;
+                color: #ffd700;
+            }
+            
+            .cheat-minimize {
+                background: none;
+                border: none;
+                color: #aaa;
+                font-size: 18px;
+                cursor: pointer;
+                padding: 0 5px;
+            }
+            .cheat-minimize:hover { color: #fff; }
+            
+            .cheat-body {
+                padding: 8px;
+                max-height: 70vh;
+                overflow-y: auto;
+            }
+            
+            .cheat-body.collapsed {
+                display: none;
+            }
+            
+            .cheat-section {
+                margin-bottom: 10px;
+                padding: 8px;
+                background: rgba(255,255,255,0.05);
+                border-radius: 4px;
+            }
+            
+            .cheat-section-title {
+                font-size: 11px;
+                color: #888;
+                text-transform: uppercase;
+                margin-bottom: 6px;
+                border-bottom: 1px solid #333;
+                padding-bottom: 4px;
+            }
+            
+            .cheat-row {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-bottom: 6px;
+            }
+            
+            .cheat-btn {
+                padding: 5px 10px;
+                background: linear-gradient(135deg, #4a3f6a, #3a2f5a);
+                border: 1px solid #5a4f7a;
+                border-radius: 4px;
+                color: #ddd;
+                cursor: pointer;
+                font-size: 11px;
+                transition: all 0.2s;
+            }
+            .cheat-btn:hover {
+                background: linear-gradient(135deg, #5a4f7a, #4a3f6a);
+                border-color: #7a6f9a;
+            }
+            .cheat-btn.active {
+                background: linear-gradient(135deg, #6a5f8a, #5a4f7a);
+                border-color: #ffd700;
+                color: #ffd700;
+            }
+            
+            .cheat-btn-small {
+                padding: 3px 8px;
+                background: #333;
+                border: 1px solid #555;
+                border-radius: 3px;
+                color: #ddd;
+                cursor: pointer;
+                font-size: 11px;
+            }
+            .cheat-btn-small:hover {
+                background: #444;
+                border-color: #777;
+            }
+            
+            .cheat-toggle {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+            }
+            .cheat-toggle input {
+                width: 16px;
+                height: 16px;
+                cursor: pointer;
+            }
+            
+            #cheat-panel select {
+                padding: 4px;
+                background: #2a2a3a;
+                border: 1px solid #444;
+                border-radius: 3px;
+                color: #ddd;
+                font-size: 11px;
+            }
+            
+            .cheat-selected-info {
+                padding: 6px;
+                background: rgba(0,0,0,0.3);
+                border-radius: 3px;
+                font-size: 11px;
+                color: #aaa;
+                margin-bottom: 6px;
+            }
+            
+            /* Highlight controlled side */
+            .cheat-control-enemy .player-info.enemy {
+                box-shadow: 0 0 10px #ffd700;
+            }
+            .cheat-control-player .player-info.player {
+                box-shadow: 0 0 10px #ffd700;
+            }
+            
+            /* Make enemy hand visible in cheat mode */
+            .cheat-mode-active #enemy-hand-area {
+                opacity: 1 !important;
+                pointer-events: auto !important;
+            }
+            .cheat-mode-active .enemy-card {
+                transform: rotateX(0deg) !important;
+            }
+        `;
+        document.head.appendChild(style);
+    },
+    
+    bindEvents() {
+        // Minimize toggle
+        document.getElementById('cheat-minimize')?.addEventListener('click', () => {
+            const body = document.getElementById('cheat-body');
+            body.classList.toggle('collapsed');
+            document.getElementById('cheat-minimize').textContent = body.classList.contains('collapsed') ? '+' : '−';
+        });
+        
+        // Control toggle
+        document.getElementById('cheat-control-player')?.addEventListener('click', () => this.setControl('player'));
+        document.getElementById('cheat-control-enemy')?.addEventListener('click', () => this.setControl('enemy'));
+        
+        // AI toggle
+        document.getElementById('cheat-ai-toggle')?.addEventListener('change', (e) => {
+            this.aiEnabled = e.target.checked;
+            console.log('AI:', this.aiEnabled ? 'Enabled' : 'Disabled');
+        });
+        
+        // Make panel draggable
+        this.makeDraggable();
+        
+        // Click on field cryptids to select them
+        this.setupFieldSelection();
+    },
+    
+    makeDraggable() {
+        const panel = document.getElementById('cheat-panel');
+        const header = panel.querySelector('.cheat-header');
+        let isDragging = false;
+        let startX, startY, startLeft, startTop;
+        
+        header.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startLeft = panel.offsetLeft;
+            startTop = panel.offsetTop;
+            panel.style.transition = 'none';
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            panel.style.left = (startLeft + e.clientX - startX) + 'px';
+            panel.style.top = (startTop + e.clientY - startY) + 'px';
+            panel.style.right = 'auto';
+        });
+        
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            panel.style.transition = '';
+        });
+    },
+    
+    // ==================== CONTROL SYSTEM ====================
+    
+    setControl(side) {
+        this.controllingPlayer = side;
+        
+        // Update button states
+        document.getElementById('cheat-control-player').classList.toggle('active', side === 'player');
+        document.getElementById('cheat-control-enemy').classList.toggle('active', side === 'enemy');
+        
+        // Update body class for visual feedback
+        document.body.classList.toggle('cheat-control-player', side === 'player');
+        document.body.classList.toggle('cheat-control-enemy', side === 'enemy');
+        
+        // Enable enemy hand interaction when controlling enemy
+        document.body.classList.toggle('cheat-mode-active', side === 'enemy');
+        
+        console.log('Controlling:', side);
+    },
+    
+    setupDualControl() {
+        // Override AI behavior
+        const originalAiPlayCards = window.aiPlayCards;
+        window.aiPlayCards = (onComplete) => {
+            if (this.isActive && !this.aiEnabled) {
+                // AI disabled - just complete immediately
+                console.log('[Cheat] AI skipped - manual control');
+                if (onComplete) onComplete();
+                return;
+            }
+            // AI enabled or not in cheat mode
+            if (originalAiPlayCards) originalAiPlayCards(onComplete);
+        };
+        
+        const originalAiCombat = window.aiCombat;
+        window.aiCombat = (onComplete) => {
+            if (this.isActive && !this.aiEnabled) {
+                console.log('[Cheat] AI combat skipped - manual control');
+                if (onComplete) onComplete();
+                return;
+            }
+            if (originalAiCombat) originalAiCombat(onComplete);
+        };
+    },
+    
+    setupFieldSelection() {
+        // Add click handlers to field cryptids
+        document.addEventListener('click', (e) => {
+            if (!this.isActive) return;
+            
+            const sprite = e.target.closest('.cryptid-sprite');
+            if (sprite) {
+                const owner = sprite.dataset.owner;
+                const col = parseInt(sprite.dataset.col);
+                const row = parseInt(sprite.dataset.row);
+                this.selectCryptid(owner, col, row);
+            }
+        });
+    },
+    
+    selectedCryptid: null,
+    
+    selectCryptid(owner, col, row) {
+        const field = owner === 'player' ? game.playerField : game.enemyField;
+        const cryptid = field[col]?.[row];
+        
+        if (cryptid) {
+            this.selectedCryptid = { cryptid, owner, col, row };
+            
+            // Update info display
+            const info = document.getElementById('cheat-selected-info');
+            info.innerHTML = `
+                <strong>${cryptid.name}</strong> (${owner})<br>
+                HP: ${cryptid.currentHp}/${cryptid.maxHp || cryptid.hp} | ATK: ${cryptid.currentAtk || cryptid.atk}<br>
+                Position: Col ${col}, Row ${row}
+            `;
+            
+            // Show controls
+            document.getElementById('cheat-cryptid-controls').style.display = 'flex';
+            document.getElementById('cheat-cryptid-actions').style.display = 'flex';
+            
+            // Highlight selected
+            document.querySelectorAll('.cryptid-sprite').forEach(s => s.classList.remove('cheat-selected'));
+            const sprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`);
+            sprite?.classList.add('cheat-selected');
+        }
+    },
+    
+    // ==================== RESOURCE MANIPULATION ====================
+    
+    adjustPyre(owner, amount) {
+        if (!window.game) return;
+        if (owner === 'player') {
+            game.playerPyre = Math.max(0, game.playerPyre + amount);
+        } else {
+            game.enemyPyre = Math.max(0, game.enemyPyre + amount);
+        }
+        this.updateDisplay();
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    setPyre(owner, amount) {
+        if (!window.game) return;
+        if (owner === 'player') {
+            game.playerPyre = amount;
+        } else {
+            game.enemyPyre = amount;
+        }
+        this.updateDisplay();
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    adjustDeaths(owner, amount) {
+        if (!window.game) return;
+        if (owner === 'player') {
+            game.playerDeaths = Math.max(0, Math.min(10, game.playerDeaths + amount));
+        } else {
+            game.enemyDeaths = Math.max(0, Math.min(10, game.enemyDeaths + amount));
+        }
+        this.updateDisplay();
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    // ==================== CARD MANAGEMENT ====================
+    
+    cardSeries: {
+        'city-of-flesh': {
+            cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'vampireInitiate', 'elderVampire', 
+                       'sewerAlligator', 'kuchisakeOnna', 'hellhound', 'mothman', 'bogeyman', 
+                       'theFlayer', 'mutatedRat'],
+            kindling: ['myling', 'shadowPerson', 'hellhoundPup', 'elDuende', 'boggart'],
+            pyres: ['ratKing', 'bloodMoon', 'infernalRitual'],
+            traps: ['soulSnare', 'mirrorTrap', 'faceOff'],
+            bursts: ['exsanguinate', 'mindShatter', 'corpseExplosion'],
+            auras: ['bloodPact', 'darkAura', 'chainedSoul']
+        },
+        'forests-of-fear': {
+            cryptids: ['matureWendigo', 'primalWendigo', 'thunderbird', 'snipe', 'adultBigfoot', 
+                       'werewolf', 'lycanthrope', 'rogueRazorback', 'notDeer', 'jerseyDevil', 
+                       'babaYaga', 'skinwalker'],
+            kindling: ['newbornWendigo', 'stormhawk', 'adolescentBigfoot', 'cursedHybrid', 'deerWoman'],
+            pyres: ['burialGround', 'cursedWoods', 'animalPelts'],
+            traps: ['terrify', 'hunt'],
+            bursts: ['fullMoon'],
+            auras: ['dauntingPresence', 'sproutWings', 'weaponizedTree', 'insatiableHunger']
+        },
+        'putrid-swamp': {
+            cryptids: ['swampRat', 'plagueRat', 'bayouSprite', 'haint', 'letiche', 
+                       'ignisFatuus', 'swampHag', 'effigy', 'booHag', 'revenant',
+                       'rougarou', 'swampStalker', 'mamaBrigitte', 'draugrLord', 'baronSamedi'],
+            kindling: ['voodooDoll', 'spiritFire', 'willOWisp'],
+            pyres: ['swampGas', 'ritualSacrifice', 'toxicMiasma'],
+            traps: ['quicksand', 'venomTrap', 'curseWard'],
+            bursts: ['hexBolt', 'soulDrain', 'plagueCloud'],
+            auras: ['toxicAura', 'spiritLink', 'deathMark']
+        },
+        'abhorrent-armory': {
+            cryptids: ['hauntedArmor', 'cursedBlade', 'phantomKnight', 'wraith',
+                       'soulForge', 'darksmith', 'ironGolem'],
+            kindling: ['armorFragment', 'soulShard'],
+            pyres: ['forgeFlame', 'ancientRelic'],
+            traps: ['bearTrap', 'spikeWall'],
+            bursts: ['armorPierce', 'soulStrike'],
+            auras: ['steelSkin', 'bladeEnchant']
+        }
+    },
+    
+    updateCardList() {
+        const seriesSelect = document.getElementById('cheat-card-series');
+        const typeSelect = document.getElementById('cheat-card-type');
+        const cardSelect = document.getElementById('cheat-card-select');
+        
+        if (!seriesSelect || !cardSelect) return;
+        
+        const series = seriesSelect.value;
+        const type = typeSelect.value;
+        
+        let cards = [];
+        
+        // Get cards based on series filter
+        if (series === 'all') {
+            // Get all cards from registry
+            if (type === 'all' || type === 'cryptid') {
+                CardRegistry.getAllCryptidKeys().forEach(key => {
+                    const card = CardRegistry.getCryptid(key);
+                    if (card) cards.push({ key, name: card.name, type: 'cryptid' });
+                });
+            }
+            if (type === 'all' || type === 'kindling') {
+                CardRegistry.getAllKindlingKeys().forEach(key => {
+                    const card = CardRegistry.getKindling(key);
+                    if (card) cards.push({ key, name: card.name, type: 'kindling' });
+                });
+            }
+            if (type === 'all' || type === 'pyre') {
+                CardRegistry.getAllPyreKeys().forEach(key => {
+                    const card = CardRegistry.getPyre(key);
+                    if (card) cards.push({ key, name: card.name, type: 'pyre' });
+                });
+            }
+            if (type === 'all' || type === 'trap') {
+                CardRegistry.getAllTrapKeys().forEach(key => {
+                    const card = CardRegistry.getTrap(key);
+                    if (card) cards.push({ key, name: card.name, type: 'trap' });
+                });
+            }
+            if (type === 'all' || type === 'burst') {
+                CardRegistry.getAllBurstKeys().forEach(key => {
+                    const card = CardRegistry.getBurst(key);
+                    if (card) cards.push({ key, name: card.name, type: 'burst' });
+                });
+            }
+            if (type === 'all' || type === 'aura') {
+                CardRegistry.getAllAuraKeys().forEach(key => {
+                    const card = CardRegistry.getAura(key);
+                    if (card) cards.push({ key, name: card.name, type: 'aura' });
+                });
+            }
+        } else {
+            // Get cards from specific series
+            const seriesData = this.cardSeries[series];
+            if (seriesData) {
+                if (type === 'all' || type === 'cryptid') {
+                    seriesData.cryptids?.forEach(key => {
+                        const card = CardRegistry.getCryptid(key);
+                        if (card) cards.push({ key, name: card.name, type: 'cryptid' });
+                    });
+                }
+                if (type === 'all' || type === 'kindling') {
+                    seriesData.kindling?.forEach(key => {
+                        const card = CardRegistry.getKindling(key);
+                        if (card) cards.push({ key, name: card.name, type: 'kindling' });
+                    });
+                }
+                if (type === 'all' || type === 'pyre') {
+                    seriesData.pyres?.forEach(key => {
+                        const card = CardRegistry.getPyre(key);
+                        if (card) cards.push({ key, name: card.name, type: 'pyre' });
+                    });
+                }
+                if (type === 'all' || type === 'trap') {
+                    seriesData.traps?.forEach(key => {
+                        const card = CardRegistry.getTrap(key);
+                        if (card) cards.push({ key, name: card.name, type: 'trap' });
+                    });
+                }
+                if (type === 'all' || type === 'burst') {
+                    seriesData.bursts?.forEach(key => {
+                        const card = CardRegistry.getBurst(key);
+                        if (card) cards.push({ key, name: card.name, type: 'burst' });
+                    });
+                }
+                if (type === 'all' || type === 'aura') {
+                    seriesData.auras?.forEach(key => {
+                        const card = CardRegistry.getAura(key);
+                        if (card) cards.push({ key, name: card.name, type: 'aura' });
+                    });
+                }
+            }
+        }
+        
+        // Sort alphabetically
+        cards.sort((a, b) => a.name.localeCompare(b.name));
+        
+        // Populate select
+        cardSelect.innerHTML = '<option value="">Select card...</option>';
+        cards.forEach(card => {
+            const opt = document.createElement('option');
+            opt.value = card.key + '|' + card.type;
+            opt.textContent = `${card.name} (${card.type})`;
+            cardSelect.appendChild(opt);
+        });
+    },
+    
+    addSelectedCard() {
+        const select = document.getElementById('cheat-card-select');
+        const value = select.value;
+        if (!value) return;
+        
+        const [key, type] = value.split('|');
+        this.addCard(key, type);
+    },
+    
+    addCard(key, type) {
+        if (!window.game) return;
+        
+        let card = null;
+        switch (type) {
+            case 'cryptid': card = CardRegistry.getCryptid(key); break;
+            case 'kindling': card = CardRegistry.getKindling(key); break;
+            case 'pyre': card = CardRegistry.getPyre(key); break;
+            case 'trap': card = CardRegistry.getTrap(key); break;
+            case 'burst': card = CardRegistry.getBurst(key); break;
+            case 'aura': card = CardRegistry.getAura(key); break;
+        }
+        
+        if (!card) {
+            console.warn('Card not found:', key);
+            return;
+        }
+        
+        const owner = this.controllingPlayer;
+        const hand = owner === 'player' ? game.playerHand : game.enemyHand;
+        hand.push({...card});
+        
+        if (typeof renderAll === 'function') renderAll();
+        console.log(`Added ${card.name} to ${owner} hand`);
+    },
+    
+    loadSeries() {
+        const series = document.getElementById('cheat-card-series').value;
+        if (series === 'all') {
+            alert('Select a specific series first');
+            return;
+        }
+        
+        const owner = this.controllingPlayer;
+        const hand = owner === 'player' ? game.playerHand : game.enemyHand;
+        
+        // Clear hand
+        hand.length = 0;
+        
+        // Add all cards from series
+        const seriesData = this.cardSeries[series];
+        if (!seriesData) return;
+        
+        const addCards = (keys, getter) => {
+            keys?.forEach(key => {
+                const card = getter(key);
+                if (card) hand.push({...card});
+            });
+        };
+        
+        addCards(seriesData.cryptids, k => CardRegistry.getCryptid(k));
+        addCards(seriesData.kindling, k => CardRegistry.getKindling(k));
+        addCards(seriesData.pyres, k => CardRegistry.getPyre(k));
+        addCards(seriesData.traps, k => CardRegistry.getTrap(k));
+        addCards(seriesData.bursts, k => CardRegistry.getBurst(k));
+        addCards(seriesData.auras, k => CardRegistry.getAura(k));
+        
+        // Give generous pyre
+        if (owner === 'player') game.playerPyre = 20;
+        else game.enemyPyre = 20;
+        
+        this.updateDisplay();
+        if (typeof renderAll === 'function') renderAll();
+        console.log(`Loaded ${series} for ${owner}`);
+    },
+    
+    clearHand() {
+        const owner = this.controllingPlayer;
+        const hand = owner === 'player' ? game.playerHand : game.enemyHand;
+        hand.length = 0;
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    drawCard() {
+        const owner = this.controllingPlayer;
+        game.drawCard(owner);
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    endTurn() {
+        if (window.game) {
+            game.endTurn();
+            if (typeof renderAll === 'function') renderAll();
+        }
+    },
+    
+    resetKindling() {
+        if (!window.game) return;
+        
+        // Rebuild kindling pools
+        if (typeof DeckBuilder !== 'undefined' && DeckBuilder.buildKindlingPool) {
+            game.playerKindling = DeckBuilder.buildKindlingPool();
+            game.enemyKindling = DeckBuilder.buildKindlingPool();
+            console.log('Kindling pools reset');
+        }
+    },
+    
+    // ==================== CRYPTID MANIPULATION ====================
+    
+    adjustStat(stat, amount) {
+        if (!this.selectedCryptid) return;
+        const { cryptid } = this.selectedCryptid;
+        
+        if (stat === 'hp') {
+            cryptid.currentHp = Math.max(1, (cryptid.currentHp || cryptid.hp) + amount);
+            if (amount > 0) {
+                cryptid.maxHp = Math.max(cryptid.maxHp || cryptid.hp, cryptid.currentHp);
+            }
+        } else if (stat === 'atk') {
+            cryptid.currentAtk = Math.max(0, (cryptid.currentAtk || cryptid.atk) + amount);
+        }
+        
+        this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    healFull() {
+        if (!this.selectedCryptid) return;
+        const { cryptid } = this.selectedCryptid;
+        cryptid.currentHp = cryptid.maxHp || cryptid.hp;
+        this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    killSelected() {
+        if (!this.selectedCryptid) return;
+        const { cryptid, owner } = this.selectedCryptid;
+        game.killCryptid(cryptid, owner === 'player' ? 'enemy' : 'player');
+        this.selectedCryptid = null;
+        document.getElementById('cheat-selected-info').textContent = 'Click a cryptid on field to select';
+        document.getElementById('cheat-cryptid-controls').style.display = 'none';
+        document.getElementById('cheat-cryptid-actions').style.display = 'none';
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    untap() {
+        if (!this.selectedCryptid) return;
+        const { cryptid } = this.selectedCryptid;
+        cryptid.tapped = false;
+        cryptid.canAttack = true;
+        cryptid.attackedThisTurn = false;
+        this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    // ==================== DISPLAY ====================
+    
+    updateDisplay() {
+        if (!window.game) return;
+        
+        const playerPyre = document.getElementById('cheat-player-pyre');
+        const enemyPyre = document.getElementById('cheat-enemy-pyre');
+        const playerDeaths = document.getElementById('cheat-player-deaths');
+        const enemyDeaths = document.getElementById('cheat-enemy-deaths');
+        
+        if (playerPyre) playerPyre.textContent = game.playerPyre;
+        if (enemyPyre) enemyPyre.textContent = game.enemyPyre;
+        if (playerDeaths) playerDeaths.textContent = game.playerDeaths;
+        if (enemyDeaths) enemyDeaths.textContent = game.enemyDeaths;
+    },
+    
+    toggleEventLog() {
+        window.DEBUG_MATCH_LOG = document.getElementById('cheat-log-toggle')?.checked || false;
+        console.log('Event logging:', window.DEBUG_MATCH_LOG ? 'ON' : 'OFF');
+    }
+};
+
+// Update display periodically
+setInterval(() => {
+    if (CheatMode.isActive) {
+        CheatMode.updateDisplay();
+    }
+}, 500);
+
+console.log('🔧 Cheat Mode module loaded');
+

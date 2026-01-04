@@ -218,6 +218,30 @@ window.MainMenu = {
                 background: rgba(160, 144, 128, 0.05);
             }
             
+            .menu-btn.dev {
+                background: linear-gradient(180deg, 
+                    rgba(80, 50, 90, 0.9) 0%, 
+                    rgba(50, 30, 60, 0.95) 50%,
+                    rgba(40, 25, 50, 0.95) 100%);
+                border-color: rgba(180, 100, 200, 0.4);
+                color: #c090d0;
+                box-shadow: 
+                    0 4px 15px rgba(0, 0, 0, 0.4),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+                margin-top: 20px;
+                font-size: clamp(12px, 3vw, 14px);
+                padding: 12px 24px;
+            }
+            
+            .menu-btn.dev:hover {
+                transform: translateY(-2px);
+                border-color: rgba(200, 120, 230, 0.6);
+                color: #e0b0f0;
+                box-shadow: 
+                    0 0 30px rgba(180, 100, 200, 0.2),
+                    0 6px 20px rgba(0, 0, 0, 0.5);
+            }
+            
             .menu-btn.disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
@@ -705,6 +729,10 @@ window.MainMenu = {
                         📖 How to Play
                         <span class="btn-subtitle">Learn the Basics</span>
                     </button>
+                    <button class="menu-btn dev" id="cheat-battle-btn">
+                        🔧 Cheat Battle
+                        <span class="btn-subtitle">Dev Testing Mode</span>
+                    </button>
                 </div>
                 
                 <div class="menu-footer">
@@ -822,6 +850,11 @@ window.MainMenu = {
         // VS AI Button
         document.getElementById('vs-ai-btn').addEventListener('click', () => {
             this.startVsAI();
+        });
+        
+        // Cheat Battle Button
+        document.getElementById('cheat-battle-btn')?.addEventListener('click', () => {
+            this.startCheatBattle();
         });
         
         // VS Human Button - Open Quick Play
@@ -952,6 +985,26 @@ window.MainMenu = {
         this.showTurnOrderAnimation(() => {
             this.startGame();
         });
+    },
+    
+    startCheatBattle() {
+        this.selectedMode = 'cheat';
+        
+        // Enable test mode for full card access
+        window.testMode = true;
+        window.cheatMode = true;
+        
+        this.hide();
+        
+        // Skip turn order animation, just start
+        this.startGame();
+        
+        // Initialize cheat mode panel after game starts
+        setTimeout(() => {
+            if (typeof CheatMode !== 'undefined') {
+                CheatMode.start();
+            }
+        }, 100);
     },
     
     showTurnOrderAnimation(onComplete) {
