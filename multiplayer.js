@@ -68,7 +68,14 @@ window.Multiplayer = {
         
         return new Promise((resolve, reject) => {
             try {
-                this.ws = new WebSocket(this.serverUrl);
+                // Build WebSocket URL with auth token for server-side session validation
+                let wsUrl = this.serverUrl;
+                const token = window.Auth?.getToken?.();
+                if (token) {
+                    wsUrl += `?token=${encodeURIComponent(token)}`;
+                }
+                
+                this.ws = new WebSocket(wsUrl);
                 
                 this.ws.onopen = () => {
                     console.log('[MP] Connected');

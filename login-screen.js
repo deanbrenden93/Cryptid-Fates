@@ -389,6 +389,10 @@ const LoginScreen = {
      */
     testRewardsScreen() {
         console.log('[LoginScreen] Testing rewards screen...');
+        
+        // IMPORTANT: Set offline mode so the game doesn't redirect back to login
+        window.isOfflineMode = true;
+        
         this.hide();
         
         // Hide other screens
