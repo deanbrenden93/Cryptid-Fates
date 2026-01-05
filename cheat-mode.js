@@ -6,6 +6,8 @@
 window.CheatMode = {
     isActive: false,
     aiEnabled: false,
+    aiSummonEnabled: true,  // When AI is on, can it summon?
+    aiCombatEnabled: true,  // When AI is on, can it attack?
     controllingPlayer: 'player', // Which side is currently being controlled
     
     // ==================== INITIALIZATION ====================
@@ -13,6 +15,8 @@ window.CheatMode = {
     start() {
         this.isActive = true;
         this.aiEnabled = false;
+        this.aiSummonEnabled = true;  // Reset to match checkbox default
+        this.aiCombatEnabled = true;  // Reset to match checkbox default
         window.cheatMode = true;
         
         // Inject cheat panel into game container
@@ -60,7 +64,17 @@ window.CheatMode = {
                     <div class="cheat-row">
                         <label class="cheat-toggle">
                             <input type="checkbox" id="cheat-ai-toggle">
-                            <span>AI Plays Enemy</span>
+                            <span>AI Enabled</span>
+                        </label>
+                    </div>
+                    <div class="cheat-row" id="cheat-ai-options" style="display: none;">
+                        <label class="cheat-toggle">
+                            <input type="checkbox" id="cheat-ai-summon-toggle" checked>
+                            <span>AI Summons</span>
+                        </label>
+                        <label class="cheat-toggle">
+                            <input type="checkbox" id="cheat-ai-combat-toggle" checked>
+                            <span>AI Attacks</span>
                         </label>
                     </div>
                 </div>
@@ -379,7 +393,24 @@ window.CheatMode = {
         // AI toggle
         document.getElementById('cheat-ai-toggle')?.addEventListener('change', (e) => {
             this.aiEnabled = e.target.checked;
+            // Show/hide granular options
+            const optionsRow = document.getElementById('cheat-ai-options');
+            if (optionsRow) {
+                optionsRow.style.display = this.aiEnabled ? 'flex' : 'none';
+            }
             console.log('AI:', this.aiEnabled ? 'Enabled' : 'Disabled');
+        });
+        
+        // AI summon toggle
+        document.getElementById('cheat-ai-summon-toggle')?.addEventListener('change', (e) => {
+            this.aiSummonEnabled = e.target.checked;
+            console.log('AI Summons:', this.aiSummonEnabled ? 'Enabled' : 'Disabled');
+        });
+        
+        // AI combat toggle
+        document.getElementById('cheat-ai-combat-toggle')?.addEventListener('change', (e) => {
+            this.aiCombatEnabled = e.target.checked;
+            console.log('AI Combat:', this.aiCombatEnabled ? 'Enabled' : 'Disabled');
         });
         
         // Make panel draggable
@@ -437,14 +468,22 @@ window.CheatMode = {
     },
     
     setupDualControl() {
-        // Override AI behavior
+        // Override AI behavior with granular control
         const originalAiPlayCards = window.aiPlayCards;
         window.aiPlayCards = (onComplete) => {
-            if (this.isActive && !this.aiEnabled) {
-                // AI disabled - just complete immediately
-                console.log('[Cheat] AI skipped - manual control');
-                if (onComplete) onComplete();
-                return;
+            if (this.isActive) {
+                if (!this.aiEnabled) {
+                    // AI fully disabled
+                    console.log('[Cheat] AI skipped - manual control');
+                    if (onComplete) onComplete();
+                    return;
+                }
+                if (!this.aiSummonEnabled) {
+                    // AI enabled but summoning disabled
+                    console.log('[Cheat] AI summoning skipped');
+                    if (onComplete) onComplete();
+                    return;
+                }
             }
             // AI enabled or not in cheat mode
             if (originalAiPlayCards) originalAiPlayCards(onComplete);
@@ -452,10 +491,19 @@ window.CheatMode = {
         
         const originalAiCombat = window.aiCombat;
         window.aiCombat = (onComplete) => {
-            if (this.isActive && !this.aiEnabled) {
-                console.log('[Cheat] AI combat skipped - manual control');
-                if (onComplete) onComplete();
-                return;
+            if (this.isActive) {
+                if (!this.aiEnabled) {
+                    // AI fully disabled
+                    console.log('[Cheat] AI combat skipped - manual control');
+                    if (onComplete) onComplete();
+                    return;
+                }
+                if (!this.aiCombatEnabled) {
+                    // AI enabled but combat disabled
+                    console.log('[Cheat] AI combat skipped - attacks disabled');
+                    if (onComplete) onComplete();
+                    return;
+                }
             }
             if (originalAiCombat) originalAiCombat(onComplete);
         };
@@ -705,7 +753,9 @@ window.CheatMode = {
         
         const owner = this.controllingPlayer;
         const hand = owner === 'player' ? game.playerHand : game.enemyHand;
-        hand.push({...card});
+        // Generate unique ID for each card added to hand
+        const cardCopy = {...card, id: Math.random().toString(36).substr(2, 9)};
+        hand.push(cardCopy);
         
         if (typeof renderAll === 'function') renderAll();
         console.log(`Added ${card.name} to ${owner} hand`);
@@ -731,7 +781,8 @@ window.CheatMode = {
         const addCards = (keys, getter) => {
             keys?.forEach(key => {
                 const card = getter(key);
-                if (card) hand.push({...card});
+                // Generate unique ID for each card added to hand
+                if (card) hand.push({...card, id: Math.random().toString(36).substr(2, 9)});
             });
         };
         

@@ -117,11 +117,8 @@ CardRegistry.registerKindling('myling', {
     rarity: "uncommon",
     combatAbility: "Paralyze enemy cryptid upon damage",
     supportAbility: "Cleanse combatant ailments on summon, +1/+1 per ailment cleansed",
-    // COMBAT: Paralyze enemy on damage
-    onCombatAttack: (attacker, target, game) => {
-        game.applyParalyze(target);
-        return 0;
-    },
+    // COMBAT: Paralyze enemy on damage - uses existing flag that's inside damage > 0 check
+    attacksApplyParalyze: true,
     // SUPPORT: On summon, cleanse all status ailments from combatant, gain +1/+1 per ailment
     onSupport: (cryptid, owner, game) => {
         const combatant = game.getCombatant(cryptid);
@@ -171,11 +168,13 @@ CardRegistry.registerKindling('shadowPerson', {
     evolvesInto: 'bogeyman',
     combatAbility: "Enemies who damage Shadow Person become paralyzed. +2 damage vs paralyzed",
     supportAbility: "Combatant doesn't tap after attacking. +1 damage to paralyzed",
-    // COMBAT: Paralyze attackers, bonus vs paralyzed
+    // COMBAT: Paralyze attackers when they deal damage, bonus vs paralyzed
     bonusVsParalyzed: 2,
-    onBeforeDefend: (cryptid, attacker, game) => {
-        // Paralyze the attacker when they damage Shadow Person
-        game.applyParalyze(attacker);
+    onTakeDamage: (cryptid, attacker, damage, game) => {
+        // Only paralyze if actually took damage
+        if (damage > 0 && attacker) {
+            game.applyParalyze(attacker);
+        }
     },
     // SUPPORT: Combatant doesn't tap, bonus vs paralyzed
     onSupport: (cryptid, owner, game) => {

@@ -3575,7 +3575,8 @@ class Game {
                     cryptid.currentHp -= 1;
                     cryptid.burnTurns--;
                     GameEvents.emit('onBurnDamage', { cryptid, owner, damage: 1, turnsRemaining: cryptid.burnTurns });
-                    if (cryptid.currentHp <= 0) deaths.push({ cryptid, col: c, row: r });
+                    // Use getEffectiveHp to consider support HP pooling for combatants
+                    if (this.getEffectiveHp(cryptid) <= 0) deaths.push({ cryptid, col: c, row: r });
                 }
             }
         }
@@ -3773,7 +3774,10 @@ class Game {
                 });
             }
             
-            if (enemyCombatant.currentHp <= 0) {
+            // Use getEffectiveHp to properly consider support HP pooling
+            if (this.getEffectiveHp(enemyCombatant) <= 0) {
+                enemyCombatant.killedBy = 'snipe';
+                enemyCombatant.killedBySource = cryptid;
                 this.killCryptid(enemyCombatant, owner);
             }
         }
@@ -3987,6 +3991,27 @@ class Game {
             GameEvents.emit('onCardCallback', { type: 'onCombatAttack', card: attacker, owner: attacker.owner, target, col: attacker.col, row: attacker.row });
             damage += attacker.onCombatAttack(attacker, target, this) || 0;
         }
+        
+        // Check if target was killed during onCombatAttack (e.g., Snipe reveal damage)
+        // If so, abort the rest of the attack - target is already dead
+        // Use getEffectiveHp to properly consider support HP pooling
+        if (this.getEffectiveHp(target) <= 0 && target.killedBy) {
+            // Still tap the attacker
+            const preventTap = support?.preventCombatantTap || attacker.noTapOnAttack;
+            const hasFocus = attacker.hasFocus || (support?.grantsFocus && !this.isSupportNegated(support));
+            
+            if (attacker.canAttackAgain) {
+                attacker.canAttackAgain = false;
+            } else if (hasFocus || preventTap) {
+                attacker.canAttack = false;
+            } else {
+                attacker.tapped = true;
+                attacker.canAttack = false;
+            }
+            attacker.attackedThisTurn = true;
+            
+            return { killed: true, damage: 0, protectionBlocked: false, target, killedDuringCallback: true };
+        }
         damage += this.getAuraAttackBonus(attacker, target);
         if (target.paralyzed && attacker.bonusVsParalyzed) damage += attacker.bonusVsParalyzed;
         if (attacker.bonusVsAilment && this.hasStatusAilment(target)) damage += attacker.bonusVsAilment;
@@ -4127,7 +4152,8 @@ class Game {
                         message: `⚔ ${attacker.name} cleaves!`
                     });
                     
-                    if (combatTarget.currentHp <= 0) {
+                    // Use getEffectiveHp to consider combatant's support HP pooling
+                    if (this.getEffectiveHp(combatTarget) <= 0) {
                         combatTarget.killedBy = 'cleave';
                         combatTarget.killedBySource = attacker;
                         this.killCryptid(combatTarget, attacker.owner);
@@ -4260,7 +4286,8 @@ class Game {
                         damage: damage
                     });
                     
-                    if (otherTarget.currentHp <= 0) {
+                    // Use getEffectiveHp to consider support HP pooling
+                    if (this.getEffectiveHp(otherTarget) <= 0) {
                         otherTarget.killedBy = 'multiAttack';
                         this.killCryptid(otherTarget, attacker.owner);
                         if (attacker.onKill) {
@@ -4520,7 +4547,8 @@ class Game {
     }
 
     checkDeath(cryptid) {
-        if (cryptid?.currentHp <= 0) return this.killCryptid(cryptid);
+        // Use getEffectiveHp to consider support HP pooling for combatants
+        if (cryptid && this.getEffectiveHp(cryptid) <= 0) return this.killCryptid(cryptid);
         return null;
     }
 
@@ -5003,7 +5031,8 @@ class Game {
                 cryptid.currentHp -= 1;
                 cryptid.burnTurns--;
                 GameEvents.emit('onBurnDamage', { cryptid, owner: effect.owner, damage: 1, turnsRemaining: cryptid.burnTurns });
-                if (cryptid.currentHp <= 0) {
+                // Use getEffectiveHp to consider support HP pooling for combatants
+                if (this.getEffectiveHp(cryptid) <= 0) {
                     cryptid.killedBy = 'burn';
                     const killResult = this.killCryptid(cryptid, null);
                     // If killResult is null, death was prevented (e.g., evolution occurred)
@@ -5330,22 +5359,25 @@ function initGame() {
         console.log('TEST MODE ENABLED - Granting all cards and 10 pyre');
         game.playerPyre = 10;
         
+        // Helper to generate unique card ID
+        const generateCardId = () => Math.random().toString(36).substr(2, 9);
+        
         // Add one of each cryptid to hand
         for (const key of CardRegistry.getAllCryptidKeys()) {
             const card = CardRegistry.getCryptid(key);
-            if (card) game.playerHand.push(card);
+            if (card) game.playerHand.push({...card, id: generateCardId()});
         }
         
         // Add one of each instant (bursts, traps, auras)
         for (const key of CardRegistry.getAllInstantKeys()) {
             const card = CardRegistry.getInstant(key);
-            if (card) game.playerHand.push(card);
+            if (card) game.playerHand.push({...card, id: generateCardId()});
         }
         
         // Add some pyres
         for (const key of CardRegistry.getAllPyreKeys()) {
             const card = CardRegistry.getPyre(key);
-            if (card) game.playerHand.push(card);
+            if (card) game.playerHand.push({...card, id: generateCardId()});
         }
         
         // Give enemy normal hand
@@ -6585,6 +6617,9 @@ function endDrag(e) {
 // ==================== CARD ACTIONS ====================
 function selectCard(card) {
     if (isAnimating) return;
+    
+    // Prevent selecting if detail view was just triggered by long-press
+    if (window.CardDetail?.wasJustTriggered?.()) return;
     
     // Prevent selecting if card is blocked by tutorial
     const cardWrapper = document.querySelector(`#hand-container .card-wrapper[data-card-id="${card.id}"]`);
@@ -8304,6 +8339,8 @@ document.getElementById('battlefield-area').onclick = (e) => {
 
 function handleTileClick(owner, col, row) {
     if (isAnimating) return;
+    // Prevent tile click if detail view was just triggered by long-press
+    if (window.CardDetail?.wasJustTriggered?.()) return;
     hideTooltip();
     
     // Pyre cards activate when clicking anywhere on battlefield
