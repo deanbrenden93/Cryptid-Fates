@@ -5827,11 +5827,15 @@ function updateHandCardStates() {
     const cards = ui.showingKindling ? game.playerKindling : game.playerHand;
     const isKindling = ui.showingKindling;
     
+    console.log('[updateHandCardStates] Called - turn:', game.currentTurn, 'phase:', game.phase, 'isKindling:', isKindling);
+    
     // Handle turn-based interactivity
     if (game.currentTurn !== 'player') {
         container.classList.add('not-turn');
+        console.log('[updateHandCardStates] Added not-turn class');
     } else {
         container.classList.remove('not-turn');
+        console.log('[updateHandCardStates] Removed not-turn class, container classes:', container.className);
     }
     
     // Just update classes on existing cards - DON'T touch positions
@@ -5865,8 +5869,13 @@ function updateHandCardStates() {
         }
         
         // Update classes only
+        const wasUnplayable = cardEl.classList.contains('unplayable');
         cardEl.classList.toggle('unplayable', !canPlay);
         cardEl.classList.toggle('selected', ui.selectedCard?.id === card.id);
+        
+        if (wasUnplayable !== !canPlay) {
+            console.log('[updateHandCardStates] Card', card.name, 'canPlay changed:', wasUnplayable, '->', !canPlay ? 'unplayable' : 'playable');
+        }
     });
     
     updateKindlingButton();
@@ -5880,6 +5889,7 @@ function renderHand() {
     
     // During animation, don't clear/rebuild
     if (isAnimating) {
+        console.log('[renderHand] Skipping - isAnimating is true');
         return;
     }
     
@@ -5898,11 +5908,24 @@ function renderHand() {
     const sameCards = newCardIds.join(',') === currentHandCardIds.join(',');
     const sameView = isKindling === currentHandIsKindling;
     
+    console.log('[renderHand] Check:', { 
+        isKindling, 
+        currentIsKindling: currentHandIsKindling,
+        sameCards, 
+        sameView, 
+        childCount: container.children.length,
+        turn: game.currentTurn,
+        phase: game.phase
+    });
+    
     if (sameCards && sameView && container.children.length > 0) {
         // Same cards, same view - just update states, don't touch layout
+        console.log('[renderHand] Calling updateHandCardStates() - lightweight update');
         updateHandCardStates();
         return;
     }
+    
+    console.log('[renderHand] Doing full rebuild');
     
     // Track new state
     currentHandCardIds = newCardIds;
@@ -6030,6 +6053,8 @@ function renderHandAnimated() {
     // Guard against uninitialized game
     if (!game) return;
     
+    console.log('[renderHandAnimated] Called - showingKindling:', ui.showingKindling, 'turn:', game.currentTurn);
+    
     // Clear the container
     container.innerHTML = '';
     
@@ -6044,6 +6069,11 @@ function renderHandAnimated() {
     
     const cards = ui.showingKindling ? game.playerKindling : game.playerHand;
     const isKindling = ui.showingKindling;
+    
+    // Update tracking variables so renderHand() knows the current state
+    currentHandCardIds = cards.map(c => c.id);
+    currentHandIsKindling = isKindling;
+    console.log('[renderHandAnimated] Updated tracking - cardIds:', currentHandCardIds.length, 'isKindling:', currentHandIsKindling);
     
     let delayIndex = 0;
     cards.forEach((card) => {
@@ -6162,6 +6192,13 @@ function renderHandAnimated() {
 }
 
 function setupCardInteractions(wrapper, cardEl, card, canPlay) {
+    // Helper to check if card is currently playable (dynamic check)
+    function isCurrentlyPlayable() {
+        if (game.currentTurn !== 'player') return false;
+        if (cardEl.classList.contains('unplayable')) return false;
+        return true;
+    }
+    
     // Right-click / long-press inspect - brings card forward, shows tooltip
     function inspectCard(e, clientX, clientY) {
         e.preventDefault();
@@ -6200,114 +6237,113 @@ function setupCardInteractions(wrapper, cardEl, card, canPlay) {
         }, 100);
     };
     
-    if (canPlay) {
-        let touchStartPos = null, touchMoved = false, dragStarted = false, scrollDetected = false;
-        let longPressTriggered = false, touchStartTime = 0;
+    // ALWAYS set up interaction handlers - they check playability dynamically
+    let touchStartPos = null, touchMoved = false, dragStarted = false, scrollDetected = false;
+    let longPressTriggered = false, touchStartTime = 0;
+    
+    // Desktop: click to select, hover for tooltip
+    wrapper.onclick = (e) => { 
+        console.log('[CardClick] Clicked card:', card.name, 'turn:', game.currentTurn, 'hasUnplayable:', cardEl.classList.contains('unplayable'), 'isPlayable:', isCurrentlyPlayable());
+        e.stopPropagation();
+        // Don't select if we just showed tooltip via long press or inspecting
+        if (longPressTriggered || wrapper.classList.contains('inspecting')) {
+            longPressTriggered = false;
+            endInspect();
+            return;
+        }
+        if (ui.cardTooltipVisible) { hideTooltip(); ui.cardTooltipVisible = false; }
+        // Check playability dynamically
+        if (!isCurrentlyPlayable()) {
+            console.log('[CardClick] Blocked - not playable');
+            return;
+        }
+        selectCard(card); 
+    };
+    wrapper.onmousedown = (e) => {
+        if (e.button === 0 && isCurrentlyPlayable()) startDrag(e, card, cardEl); // Only left-click starts drag
+    };
+    
+    // Touch handlers - always set up, check playability dynamically
+    wrapper.ontouchstart = (e) => {
+        const touch = e.touches[0];
+        touchStartPos = { x: touch.clientX, y: touch.clientY };
+        touchStartTime = Date.now();
+        touchMoved = false; dragStarted = false; scrollDetected = false; longPressTriggered = false;
         
-        // Desktop: click to select, hover for tooltip
-        wrapper.onclick = (e) => { 
-            e.stopPropagation();
-            // Don't select if we just showed tooltip via long press or inspecting
-            if (longPressTriggered || wrapper.classList.contains('inspecting')) {
-                longPressTriggered = false;
-                endInspect();
-                return;
-            }
-            if (ui.cardTooltipVisible) { hideTooltip(); ui.cardTooltipVisible = false; }
-            selectCard(card); 
-        };
-        wrapper.onmousedown = (e) => {
-            if (e.button === 0) startDrag(e, card, cardEl); // Only left-click starts drag
-        };
+        // DON'T prevent default here - allow scroll to work naturally
         
-        wrapper.ontouchstart = (e) => {
-            const touch = e.touches[0];
-            touchStartPos = { x: touch.clientX, y: touch.clientY };
-            touchStartTime = Date.now();
-            touchMoved = false; dragStarted = false; scrollDetected = false; longPressTriggered = false;
-            
-            // DON'T prevent default here - allow scroll to work naturally
-            
-            if (ui.cardTooltipTimer) clearTimeout(ui.cardTooltipTimer);
-            // Long press (400ms) inspects card (brings forward, straightens, shows tooltip)
-            ui.cardTooltipTimer = setTimeout(() => {
-                if (!touchMoved && !scrollDetected && !dragStarted) {
-                    longPressTriggered = true;
-                    inspectCard(e, touch.clientX, touch.clientY);
-                    if (navigator.vibrate) navigator.vibrate(30);
-                }
-            }, 400);
-        };
-        
-        wrapper.ontouchmove = (e) => {
-            if (touchStartPos && e.touches[0]) {
-                const touch = e.touches[0];
-                const dx = touch.clientX - touchStartPos.x;
-                const dy = touch.clientY - touchStartPos.y;
-                const absDx = Math.abs(dx), absDy = Math.abs(dy);
-                
-                if (absDx > 8 || absDy > 8) {
-                    touchMoved = true;
-                    if (ui.cardTooltipTimer) { clearTimeout(ui.cardTooltipTimer); ui.cardTooltipTimer = null; }
-                    if (ui.cardTooltipVisible && !wrapper.classList.contains('inspecting')) { 
-                        hideTooltip(); ui.cardTooltipVisible = false; 
-                    }
-                    
-                    // Determine intent: horizontal = scroll, vertical up = drag
-                    if (!dragStarted && !scrollDetected) {
-                        if (absDx > absDy * 1.5) {
-                            // Clearly horizontal - let scroll happen
-                            scrollDetected = true;
-                        } else if (absDy > absDx * 1.5 && dy < -15) {
-                            // Clearly vertical upward drag - initiate drag
-                            e.preventDefault();
-                            dragStarted = true;
-                            startDrag(touch, card, cardEl);
-                        }
-                        // If movement is diagonal, keep waiting for clearer direction
-                    }
-                    
-                    // If we're dragging, keep preventing default
-                    if (dragStarted) {
-                        e.preventDefault();
-                    }
-                }
-            }
-        };
-        
-        wrapper.ontouchend = (e) => {
-            if (ui.cardTooltipTimer) { clearTimeout(ui.cardTooltipTimer); ui.cardTooltipTimer = null; }
-            const touchDuration = Date.now() - touchStartTime;
-            
-            // If long press showed inspect, end it after a delay
-            if (longPressTriggered) {
-                setTimeout(endInspect, 2500);
-                touchStartPos = null; dragStarted = false; scrollDetected = false;
-                return;
-            }
-            
-            // Quick tap on stationary finger = select card (no tooltip)
-            if (!touchMoved && touchStartPos && !scrollDetected && !dragStarted && touchDuration < 350) {
-                hideTooltip(); ui.cardTooltipVisible = false;
-                selectCard(card);
-            }
-            
-            touchStartPos = null; dragStarted = false; scrollDetected = false;
-        };
-    } else {
-        // Unplayable cards: tap/long-press shows inspect
-        wrapper.ontouchstart = (e) => {
-            const touch = e.touches[0];
-            ui.cardTooltipTimer = setTimeout(() => {
+        if (ui.cardTooltipTimer) clearTimeout(ui.cardTooltipTimer);
+        // Long press (400ms) inspects card (brings forward, straightens, shows tooltip)
+        ui.cardTooltipTimer = setTimeout(() => {
+            if (!touchMoved && !scrollDetected && !dragStarted) {
+                longPressTriggered = true;
                 inspectCard(e, touch.clientX, touch.clientY);
                 if (navigator.vibrate) navigator.vibrate(30);
-            }, 200);
-        };
-        wrapper.ontouchend = () => {
-            if (ui.cardTooltipTimer) { clearTimeout(ui.cardTooltipTimer); ui.cardTooltipTimer = null; }
-            setTimeout(endInspect, 3000);
-        };
-    }
+            }
+        }, 400);
+    };
+    
+    wrapper.ontouchmove = (e) => {
+        if (touchStartPos && e.touches[0]) {
+            const touch = e.touches[0];
+            const dx = touch.clientX - touchStartPos.x;
+            const dy = touch.clientY - touchStartPos.y;
+            const absDx = Math.abs(dx), absDy = Math.abs(dy);
+            
+            if (absDx > 8 || absDy > 8) {
+                touchMoved = true;
+                if (ui.cardTooltipTimer) { clearTimeout(ui.cardTooltipTimer); ui.cardTooltipTimer = null; }
+                if (ui.cardTooltipVisible && !wrapper.classList.contains('inspecting')) { 
+                    hideTooltip(); ui.cardTooltipVisible = false; 
+                }
+                
+                // Determine intent: horizontal = scroll, vertical up = drag
+                // Only allow drag if card is currently playable
+                if (!dragStarted && !scrollDetected && isCurrentlyPlayable()) {
+                    if (absDx > absDy * 1.5) {
+                        // Clearly horizontal - let scroll happen
+                        scrollDetected = true;
+                    } else if (absDy > absDx * 1.5 && dy < -15) {
+                        // Clearly vertical upward drag - initiate drag
+                        e.preventDefault();
+                        dragStarted = true;
+                        startDrag(touch, card, cardEl);
+                    }
+                    // If movement is diagonal, keep waiting for clearer direction
+                } else if (!isCurrentlyPlayable()) {
+                    // If not playable, just treat any movement as scroll intent
+                    scrollDetected = true;
+                }
+                
+                // If we're dragging, keep preventing default
+                if (dragStarted) {
+                    e.preventDefault();
+                }
+            }
+        }
+    };
+    
+    wrapper.ontouchend = (e) => {
+        if (ui.cardTooltipTimer) { clearTimeout(ui.cardTooltipTimer); ui.cardTooltipTimer = null; }
+        const touchDuration = Date.now() - touchStartTime;
+        
+        // If long press showed inspect, end it after a delay
+        if (longPressTriggered) {
+            setTimeout(endInspect, 2500);
+            touchStartPos = null; dragStarted = false; scrollDetected = false;
+            return;
+        }
+        
+        // Quick tap on stationary finger = select card (if playable)
+        if (!touchMoved && touchStartPos && !scrollDetected && !dragStarted && touchDuration < 350) {
+            hideTooltip(); ui.cardTooltipVisible = false;
+            if (isCurrentlyPlayable()) {
+                selectCard(card);
+            }
+        }
+        
+        touchStartPos = null; dragStarted = false; scrollDetected = false;
+    };
     wrapper.onmouseenter = (e) => showCardTooltip(card, e);
     wrapper.onmouseleave = () => {
         if (!wrapper.classList.contains('inspecting')) hideTooltip();

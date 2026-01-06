@@ -166,11 +166,12 @@ window.CardDetail = {
             }
             .battle-detail-content {
                 position: relative;
-                max-width: 600px;
-                width: 95%;
-                max-height: 90vh;
+                max-width: 640px;
+                width: 92%;
+                max-height: 85vh;
                 overflow-y: auto;
                 animation: detailSlideIn 0.25s ease;
+                margin: 16px;
             }
             @keyframes detailSlideIn {
                 from {
@@ -186,8 +187,8 @@ window.CardDetail = {
             /* Detail Layout - reuse collection styles */
             .battle-detail-content .detail-view-layout {
                 display: flex;
-                gap: 20px;
-                padding: 20px;
+                gap: 32px;
+                padding: 24px 28px;
                 background: linear-gradient(145deg, #1a1a2e, #16213e);
                 border-radius: 12px;
                 border: 1px solid rgba(255,255,255,0.1);
@@ -198,6 +199,8 @@ window.CardDetail = {
                 .battle-detail-content .detail-view-layout {
                     flex-direction: column;
                     align-items: center;
+                    gap: 24px;
+                    padding: 20px;
                 }
             }
             
@@ -207,11 +210,11 @@ window.CardDetail = {
                 flex-direction: column;
                 align-items: center;
                 gap: 8px;
+                padding: 4px;
             }
             .battle-detail-content .detail-card-wrapper .game-card {
-                transform: scale(1.3);
-                transform-origin: top center;
-                margin-bottom: 20px;
+                transform: scale(1.2);
+                transform-origin: center center;
             }
             
             .battle-detail-content .detail-info-panel {
@@ -220,18 +223,21 @@ window.CardDetail = {
                 display: flex;
                 flex-direction: column;
                 gap: 12px;
+                overflow: hidden;
             }
             
             .battle-detail-content .detail-title-bar {
                 display: flex;
                 flex-direction: column;
-                gap: 4px;
+                gap: 6px;
             }
             .battle-detail-content .detail-card-name {
                 margin: 0;
-                font-size: 1.4rem;
+                font-size: 1.5rem;
                 font-weight: bold;
                 color: #fff;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
             }
             .battle-detail-content .detail-card-meta {
                 display: flex;
@@ -709,24 +715,29 @@ window.CardDetail = {
             const col = tileTarget.dataset.col;
             const row = parseInt(tileTarget.dataset.row);
             
-            console.log('[CardDetail] Tile press:', { owner, col, row });
+            console.log('[CardDetail] Tile press:', { owner, col, row, tile: tileTarget.className });
             
             if (col === 'trap') {
                 // Trap tile - only show player's traps
-                if (owner === 'player' && window.game?.playerTraps?.[row]) {
+                const trap = window.game?.playerTraps?.[row];
+                console.log('[CardDetail] Trap tile check - owner:', owner, 'trap:', trap?.name || 'none');
+                if (owner === 'player' && trap) {
                     actualTarget = tileTarget;
                     targetType = 'trap';
-                    console.log('[CardDetail] Found player trap target');
+                    console.log('[CardDetail] Found player trap target:', trap.name);
                 }
-            } else if (col !== undefined && !isNaN(parseInt(col))) {
+            } else if (col !== undefined && col !== 'trap' && !isNaN(parseInt(col))) {
                 // Cryptid tile - check if there's a cryptid
-                const cryptid = window.game?.getFieldCryptid?.(owner, parseInt(col), row);
-                console.log('[CardDetail] Checking for cryptid:', cryptid?.name || 'none');
+                const colNum = parseInt(col);
+                const cryptid = window.game?.getFieldCryptid?.(owner, colNum, row);
+                console.log('[CardDetail] Cryptid tile check - owner:', owner, 'col:', colNum, 'row:', row, 'cryptid:', cryptid?.name || 'none', 'isKindling:', cryptid?.isKindling);
                 if (cryptid) {
                     actualTarget = tileTarget;
                     targetType = 'cryptid';
-                    console.log('[CardDetail] Found cryptid target:', cryptid.name);
+                    console.log('[CardDetail] Found cryptid target:', cryptid.name, '(kindling:', cryptid.isKindling, ')');
                 }
+            } else {
+                console.log('[CardDetail] Tile not recognized as trap or cryptid tile');
             }
         } else if (trapTarget) {
             // Direct trap sprite click (if pointer-events enabled)
@@ -838,9 +849,14 @@ window.CardDetail = {
             // Hand card - get from data attribute or find in hand
             const cardId = target.dataset.cardId;
             const cards = window.ui?.showingKindling ? game.playerKindling : game.playerHand;
-            const card = cards?.find(c => c.id === cardId);
+            console.log('[CardDetail] Looking for card ID:', cardId, 'in', window.ui?.showingKindling ? 'kindling' : 'hand', 'cards:', cards?.map(c => ({ id: c.id, name: c.name })));
+            // Try both string and number comparison since IDs might be stored differently
+            const card = cards?.find(c => c.id == cardId || String(c.id) === String(cardId));
             if (card) {
                 cardData = card;
+                console.log('[CardDetail] Found card:', card.name);
+            } else {
+                console.log('[CardDetail] Card not found in list');
             }
         } else if (targetType === 'cryptid' || target.classList.contains('tile')) {
             // Field cryptid - get from tile data
