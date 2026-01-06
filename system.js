@@ -27,10 +27,17 @@ const GameEvents = {
     },
     
     emit(event, data = {}) {
+        console.log('[GameEvents.emit] Called with event:', event);
+        if (event === 'onDeath') {
+            console.log('[GameEvents] Emitting onDeath, listener count:', this.listeners[event]?.length || 0);
+        }
         if (!this.listeners[event]) return;
         const eventData = { ...data, eventName: event, timestamp: Date.now() };
         for (const listener of this.listeners[event]) {
             try {
+                if (event === 'onDeath') {
+                    console.log('[GameEvents] Calling onDeath listener');
+                }
                 if (listener.context) {
                     listener.callback.call(listener.context, eventData);
                 } else {
@@ -4065,21 +4072,26 @@ class Game {
     }
     
     setupTrapListeners() {
+        console.log('[Trap Setup] Setting up trap listeners');
+        
         // Create named listener functions so we can remove only trap listeners
         this._trapListeners = this._trapListeners || {};
+        this._trapUnsubscribers = this._trapUnsubscribers || {};
         
-        // Remove only our trap listeners, not all listeners for these events
+        // Remove old listeners using stored unsubscribe functions
         const events = ['onDamageTaken', 'onDeath', 'onSummon', 'onAttackDeclared', 'onHit', 'onSpellCast', 'onTurnStart', 'onPyreSpent'];
         events.forEach(event => {
-            if (this._trapListeners[event]) {
-                const idx = GameEvents.listeners[event]?.indexOf(this._trapListeners[event]);
-                if (idx > -1) GameEvents.listeners[event].splice(idx, 1);
+            if (this._trapUnsubscribers[event]) {
+                this._trapUnsubscribers[event]();
             }
         });
         
         // Create and register new trap listeners
         this._trapListeners.onDamageTaken = (data) => this.checkTraps('onDamageTaken', data);
-        this._trapListeners.onDeath = (data) => this.checkTraps('onDeath', data);
+        this._trapListeners.onDeath = (data) => {
+            console.log('[Trap Listener] onDeath listener invoked');
+            this.checkTraps('onDeath', data);
+        };
         this._trapListeners.onSummon = (data) => this.checkTraps('onSummon', data);
         this._trapListeners.onAttackDeclared = (data) => this.checkTraps('onAttackDeclared', data);
         this._trapListeners.onHit = (data) => this.checkTraps('onHit', data);
@@ -4087,14 +4099,16 @@ class Game {
         this._trapListeners.onTurnStart = (data) => this.checkTraps('onTurnStart', data);
         this._trapListeners.onPyreSpent = (data) => this.checkTraps('onPyreSpent', data);
         
-        GameEvents.on('onDamageTaken', this._trapListeners.onDamageTaken);
-        GameEvents.on('onDeath', this._trapListeners.onDeath);
-        GameEvents.on('onSummon', this._trapListeners.onSummon);
-        GameEvents.on('onAttackDeclared', this._trapListeners.onAttackDeclared);
-        GameEvents.on('onHit', this._trapListeners.onHit);
-        GameEvents.on('onSpellCast', this._trapListeners.onSpellCast);
-        GameEvents.on('onTurnStart', this._trapListeners.onTurnStart);
-        GameEvents.on('onPyreSpent', this._trapListeners.onPyreSpent);
+        this._trapUnsubscribers.onDamageTaken = GameEvents.on('onDamageTaken', this._trapListeners.onDamageTaken);
+        this._trapUnsubscribers.onDeath = GameEvents.on('onDeath', this._trapListeners.onDeath);
+        this._trapUnsubscribers.onSummon = GameEvents.on('onSummon', this._trapListeners.onSummon);
+        this._trapUnsubscribers.onAttackDeclared = GameEvents.on('onAttackDeclared', this._trapListeners.onAttackDeclared);
+        this._trapUnsubscribers.onHit = GameEvents.on('onHit', this._trapListeners.onHit);
+        this._trapUnsubscribers.onSpellCast = GameEvents.on('onSpellCast', this._trapListeners.onSpellCast);
+        this._trapUnsubscribers.onTurnStart = GameEvents.on('onTurnStart', this._trapListeners.onTurnStart);
+        this._trapUnsubscribers.onPyreSpent = GameEvents.on('onPyreSpent', this._trapListeners.onPyreSpent);
+        
+        console.log('[Trap Setup] Registered listeners. onDeath listener count:', GameEvents.listenerCount('onDeath'));
     }
     
     checkTraps(eventType, eventData) {
@@ -5484,8 +5498,8 @@ class Game {
         // Track deaths this turn for Rat King pyre card
         this.deathsThisTurn[owner] += deathCount;
         
-        console.log('[Death] Emitting onDeath for', cryptid.name, 'killedBy:', cryptid.killedBy);
-        GameEvents.emit('onDeath', { cryptid, owner, col, row, killerOwner, deathCount });
+        console.log('[Death] Emitting onDeath for', cryptid.name, 'killedBy:', cryptid.killedBy, 'killedBySource:', cryptid.killedBySource?.name || 'none');
+        GameEvents.emit('onDeath', { cryptid, owner, col, row, killerOwner, deathCount, killedBySource: cryptid.killedBySource });
         
         // Skinwalker inherit - if combatant dies, check if support has hasInherit
         if (col === combatCol) {

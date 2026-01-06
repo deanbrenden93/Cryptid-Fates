@@ -1132,13 +1132,16 @@ CardRegistry.registerTrap('bloodCovenant', {
     triggerDescription: "Triggers: When your cryptid dies from enemy attack",
     triggerEvent: 'onDeath',
     triggerCondition: (trap, owner, eventData, game) => {
+        // Get killedBySource from either explicit event data or from cryptid object
+        const killedBySource = eventData.killedBySource || eventData.cryptid?.killedBySource;
+        
         console.log('[Blood Covenant] Checking condition:', {
             trapOwner: owner,
             eventOwner: eventData.owner,
             cryptidName: eventData.cryptid?.name,
             killedBy: eventData.cryptid?.killedBy,
-            killedBySource: eventData.cryptid?.killedBySource?.name || 'none',
-            killedBySourceOwner: eventData.cryptid?.killedBySource?.owner || 'none'
+            killedBySource: killedBySource?.name || 'none',
+            killedBySourceOwner: killedBySource?.owner || 'none'
         });
         // Check if it's our cryptid that died (trap owner matches dead cryptid owner)
         if (eventData.owner !== owner) {
@@ -1146,18 +1149,18 @@ CardRegistry.registerTrap('bloodCovenant', {
             return false;
         }
         // Check if it was killed by an attacker (not burn, calamity, etc.)
-        if (!eventData.cryptid?.killedBySource) {
-            console.log('[Blood Covenant] FAILED: No killedBySource on cryptid');
+        if (!killedBySource) {
+            console.log('[Blood Covenant] FAILED: No killedBySource - cryptid was killed by burn/calamity/other');
             return false;
         }
-        const killer = eventData.cryptid.killedBySource;
         // The killer must belong to the enemy (not self-inflicted)
-        const result = killer.owner !== owner;
-        console.log('[Blood Covenant] Final check: killer.owner', killer.owner, '!== owner', owner, '=', result);
+        const result = killedBySource.owner !== owner;
+        console.log('[Blood Covenant] Final check: killer.owner', killedBySource.owner, '!== owner', owner, '=', result);
         return result;
     },
     effect: (game, owner, row, eventData) => {
-        const killer = eventData.cryptid.killedBySource;
+        // Get killedBySource from either explicit event data or from cryptid object
+        const killer = eventData.killedBySource || eventData.cryptid?.killedBySource;
         if (killer && killer.currentHp > 0) {
             killer.killedBy = 'bloodCovenant';
             game.killCryptid(killer, owner);
@@ -1166,6 +1169,8 @@ CardRegistry.registerTrap('bloodCovenant', {
             if (typeof EventFeedback !== 'undefined') {
                 EventFeedback.showFloatingMessage(`🩸 Blood Covenant!`, killer, '#dc143c', '⚰️');
             }
+        } else if (killer) {
+            console.log('[Blood Covenant] Killer already dead (HP:', killer.currentHp, ')');
         }
     }
 });
