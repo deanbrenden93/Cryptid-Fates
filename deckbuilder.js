@@ -479,7 +479,7 @@ window.DeckBuilder = {
             // Right-click for preview
             cardEl.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
-                this.showPreview(cardKey);
+                this.showPreview(cardKey, isFoil);
             });
             
             // Long press for preview on mobile
@@ -488,7 +488,7 @@ window.DeckBuilder = {
                 if (cardKey) {
                     longPressTimer = setTimeout(() => {
                         isLongPress = true;
-                        this.showPreview(cardKey);
+                        this.showPreview(cardKey, isFoil);
                     }, 500);
                 }
             }, { passive: true });
@@ -800,7 +800,7 @@ window.DeckBuilder = {
             // Right-click - show detail view
             item.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
-                this.showCardDetail(cardKey);
+                this.showCardDetail(cardKey, foil);
             });
             
             // Long press start (touch)
@@ -808,7 +808,7 @@ window.DeckBuilder = {
                 isLongPress = false;
                 longPressTimer = setTimeout(() => {
                     isLongPress = true;
-                    this.showCardDetail(cardKey);
+                    this.showCardDetail(cardKey, foil);
                 }, 500);
             }, { passive: true });
             
@@ -827,9 +827,9 @@ window.DeckBuilder = {
         });
     },
     
-    showCardDetail(cardKey) {
+    showCardDetail(cardKey, isHolo = false) {
         // Use deckbuilder's own preview
-        this.showPreview(cardKey);
+        this.showPreview(cardKey, isHolo);
     },
     
     renderCurve() {
@@ -1167,12 +1167,12 @@ window.DeckBuilder = {
                                     <span class="collection-value">∞</span>
                                 </div>
                             ` : `
-                                <div class="detail-collection-item clickable active ${normalOwned > 0 ? 'owned' : 'empty'}" data-variant="normal">
+                                <div class="detail-collection-item clickable ${!isHolo ? 'active' : ''} ${normalOwned > 0 ? 'owned' : 'empty'}" data-variant="normal">
                                     <span class="collection-label">Normal</span>
                                     <span class="collection-value">${normalOwned}</span>
                                     ${normalOwned > 0 ? `<span class="collection-ember"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="ember-icon-sm" alt="">${normalValue}</span>` : ''}
                                 </div>
-                                <div class="detail-collection-item clickable holo ${holoOwned > 0 ? 'owned' : 'empty'}" data-variant="holo">
+                                <div class="detail-collection-item clickable holo ${isHolo ? 'active' : ''} ${holoOwned > 0 ? 'owned' : 'empty'}" data-variant="holo">
                                     <span class="collection-label">✨ Holo</span>
                                     <span class="collection-value">${holoOwned}</span>
                                     ${holoOwned > 0 ? `<span class="collection-ember"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="ember-icon-sm" alt="">${holoValue}</span>` : ''}
@@ -1216,6 +1216,11 @@ window.DeckBuilder = {
         `;
         
         document.getElementById('db-preview-modal').classList.add('open');
+        
+        // Detect card name overflow for scroll animation
+        if (typeof detectCardNameOverflow === 'function') {
+            requestAnimationFrame(() => detectCardNameOverflow(content));
+        }
         
         // Add click handlers for variant toggle (content already declared above)
         content.querySelectorAll('.detail-collection-item.clickable').forEach(item => {

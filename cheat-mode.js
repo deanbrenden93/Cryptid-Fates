@@ -163,6 +163,35 @@ window.CheatMode = {
                     </div>
                 </div>
                 
+                <!-- Summon to Field -->
+                <div class="cheat-section">
+                    <div class="cheat-section-title">Summon to Field</div>
+                    <div class="cheat-row">
+                        <select id="cheat-summon-cryptid" style="flex:1">
+                            <option value="">Select cryptid...</option>
+                        </select>
+                    </div>
+                    <div class="cheat-row">
+                        <select id="cheat-summon-owner" onchange="CheatMode.updateColLabels()">
+                            <option value="player">Player</option>
+                            <option value="enemy">Enemy</option>
+                        </select>
+                        <select id="cheat-summon-col">
+                            <option value="0">Support</option>
+                            <option value="1">Combat</option>
+                        </select>
+                        <select id="cheat-summon-row">
+                            <option value="0">Row 0</option>
+                            <option value="1">Row 1</option>
+                            <option value="2">Row 2</option>
+                        </select>
+                    </div>
+                    <div class="cheat-row">
+                        <button class="cheat-btn" onclick="CheatMode.summonToField()">Summon</button>
+                        <button class="cheat-btn" onclick="CheatMode.clearSlot()">Clear Slot</button>
+                    </div>
+                </div>
+                
                 <!-- Field Manipulation -->
                 <div class="cheat-section">
                     <div class="cheat-section-title">Selected Cryptid</div>
@@ -176,9 +205,25 @@ window.CheatMode = {
                         <button class="cheat-btn-small" onclick="CheatMode.adjustStat('atk', 1)">ATK+</button>
                     </div>
                     <div class="cheat-row" id="cheat-cryptid-actions" style="display:none">
-                        <button class="cheat-btn-small" onclick="CheatMode.healFull()">Full Heal</button>
+                        <button class="cheat-btn-small" onclick="CheatMode.healFull()">Heal</button>
                         <button class="cheat-btn-small" onclick="CheatMode.killSelected()">Kill</button>
-                        <button class="cheat-btn-small" onclick="CheatMode.untap()">Untap</button>
+                        <button class="cheat-btn-small" onclick="CheatMode.toggleTap()">Tap/Untap</button>
+                    </div>
+                    <!-- Status Ailments -->
+                    <div id="cheat-status-section" style="display:none">
+                        <div class="cheat-row" style="flex-wrap: wrap;">
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatus('burn')" title="Burn">🔥</button>
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatus('bleed')" title="Bleed">🩸</button>
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatus('paralyze')" title="Paralyze">⚡</button>
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatus('calamity')" title="Calamity">💀</button>
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatus('protect')" title="Protect">🛡️</button>
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatus('focus')" title="Focus">🎯</button>
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatus('flight')" title="Flight">🦅</button>
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatus('hidden')" title="Hidden">👁️</button>
+                        </div>
+                        <div class="cheat-row">
+                            <button class="cheat-btn-small" onclick="CheatMode.clearAllStatuses()">Clear All Status</button>
+                        </div>
                     </div>
                 </div>
                 
@@ -204,6 +249,9 @@ window.CheatMode = {
         
         // Populate card list
         this.updateCardList();
+        
+        // Populate summon dropdown
+        this.populateSummonDropdown();
         
         // Update display
         this.updateDisplay();
@@ -374,6 +422,24 @@ window.CheatMode = {
             .cheat-mode-active .enemy-card {
                 transform: rotateX(0deg) !important;
             }
+            
+            /* Selected cryptid highlight */
+            .cryptid-sprite.cheat-selected {
+                outline: 3px solid #ffd700 !important;
+                outline-offset: 2px;
+                animation: cheatSelectedPulse 1s ease-in-out infinite;
+            }
+            
+            @keyframes cheatSelectedPulse {
+                0%, 100% { outline-color: #ffd700; }
+                50% { outline-color: #ff8800; }
+            }
+            
+            /* Status button styling */
+            #cheat-status-section .cheat-btn-small {
+                min-width: 32px;
+                font-size: 14px;
+            }
         `;
         document.head.appendChild(style);
     },
@@ -510,16 +576,47 @@ window.CheatMode = {
     },
     
     setupFieldSelection() {
-        // Add click handlers to field cryptids
+        // Add click handlers to field tiles (sprites have pointer-events: none)
         document.addEventListener('click', (e) => {
             if (!this.isActive) return;
             
-            const sprite = e.target.closest('.cryptid-sprite');
+            // Debug: Log what element was clicked
+            console.log('[CheatMode] Click target:', e.target.className, e.target);
+            
+            // First try direct sprite click (in case pointer-events is enabled)
+            let sprite = e.target.closest('.cryptid-sprite');
             if (sprite) {
                 const owner = sprite.dataset.owner;
                 const col = parseInt(sprite.dataset.col);
                 const row = parseInt(sprite.dataset.row);
+                console.log('[CheatMode] Sprite click:', { owner, col, row });
                 this.selectCryptid(owner, col, row);
+                return;
+            }
+            
+            // Otherwise check if we clicked a tile that has a cryptid
+            const tile = e.target.closest('.tile');
+            if (tile) {
+                console.log('[CheatMode] Tile click:', tile.dataset);
+                
+                if (tile.dataset.col !== 'trap') {
+                    const owner = tile.dataset.owner;
+                    const col = parseInt(tile.dataset.col);
+                    const row = parseInt(tile.dataset.row);
+                    
+                    console.log('[CheatMode] Parsed:', { owner, col, row });
+                    
+                    // Check if there's a cryptid in this position
+                    if (window.game) {
+                        const field = owner === 'player' ? game.playerField : game.enemyField;
+                        console.log('[CheatMode] Field lookup:', field[col], 'cryptid at row:', field[col]?.[row]?.name);
+                        if (field[col]?.[row]) {
+                            this.selectCryptid(owner, col, row);
+                        }
+                    }
+                }
+            } else {
+                console.log('[CheatMode] No tile found from click');
             }
         });
     },
@@ -533,17 +630,36 @@ window.CheatMode = {
         if (cryptid) {
             this.selectedCryptid = { cryptid, owner, col, row };
             
-            // Update info display
+            // Build status string
+            const statuses = [];
+            if (cryptid.tapped) statuses.push('Tapped');
+            if (cryptid.burnTurns > 0) statuses.push(`Burn(${cryptid.burnTurns})`);
+            if (cryptid.bleedTurns > 0) statuses.push(`Bleed(${cryptid.bleedTurns})`);
+            if (cryptid.paralyzed) statuses.push('Paralyzed');
+            if (cryptid.calamityCounters > 0) statuses.push(`Calamity(${cryptid.calamityCounters})`);
+            if (cryptid.protectionCharges > 0) statuses.push(`Protected(${cryptid.protectionCharges})`);
+            if (cryptid.hasFocus) statuses.push('Focus');
+            if (cryptid.hasFlight) statuses.push('Flight');
+            if (cryptid.isHidden) statuses.push('Hidden');
+            
+            // Update info display (col depends on owner)
+            // Player: col 0 = Support, col 1 = Combat
+            // Enemy: col 0 = Combat, col 1 = Support
+            const colName = owner === 'player' 
+                ? (col === 0 ? 'Support' : 'Combat')
+                : (col === 0 ? 'Combat' : 'Support');
             const info = document.getElementById('cheat-selected-info');
             info.innerHTML = `
                 <strong>${cryptid.name}</strong> (${owner})<br>
                 HP: ${cryptid.currentHp}/${cryptid.maxHp || cryptid.hp} | ATK: ${cryptid.currentAtk || cryptid.atk}<br>
-                Position: Col ${col}, Row ${row}
+                Pos: ${colName} col, Row ${row}<br>
+                ${statuses.length ? `<span style="color:#f90">${statuses.join(', ')}</span>` : '<span style="color:#888">No statuses</span>'}
             `;
             
             // Show controls
             document.getElementById('cheat-cryptid-controls').style.display = 'flex';
             document.getElementById('cheat-cryptid-actions').style.display = 'flex';
+            document.getElementById('cheat-status-section').style.display = 'block';
             
             // Highlight selected
             document.querySelectorAll('.cryptid-sprite').forEach(s => s.classList.remove('cheat-selected'));
@@ -871,12 +987,226 @@ window.CheatMode = {
         if (typeof renderAll === 'function') renderAll();
     },
     
+    toggleTap() {
+        if (!this.selectedCryptid) return;
+        const { cryptid } = this.selectedCryptid;
+        if (cryptid.tapped) {
+            // Untap
+            cryptid.tapped = false;
+            cryptid.canAttack = true;
+            cryptid.attackedThisTurn = false;
+        } else {
+            // Tap
+            cryptid.tapped = true;
+            cryptid.canAttack = false;
+        }
+        this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    // Keep old untap for compatibility
     untap() {
         if (!this.selectedCryptid) return;
         const { cryptid } = this.selectedCryptid;
         cryptid.tapped = false;
         cryptid.canAttack = true;
         cryptid.attackedThisTurn = false;
+        this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    // ==================== SUMMON TO FIELD ====================
+    
+    populateSummonDropdown() {
+        const select = document.getElementById('cheat-summon-cryptid');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">Select cryptid...</option>';
+        
+        // Get all cryptids
+        const cryptids = [];
+        CardRegistry.getAllCryptidKeys().forEach(key => {
+            const card = CardRegistry.getCryptid(key);
+            if (card) cryptids.push({ key, name: card.name });
+        });
+        // Also add kindling (they can be summoned too)
+        CardRegistry.getAllKindlingKeys().forEach(key => {
+            const card = CardRegistry.getKindling(key);
+            if (card) cryptids.push({ key, name: card.name + ' (K)', isKindling: true });
+        });
+        
+        cryptids.sort((a, b) => a.name.localeCompare(b.name));
+        
+        cryptids.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.key + (c.isKindling ? '|kindling' : '');
+            opt.textContent = c.name;
+            select.appendChild(opt);
+        });
+    },
+    
+    updateColLabels() {
+        const ownerSelect = document.getElementById('cheat-summon-owner');
+        const colSelect = document.getElementById('cheat-summon-col');
+        if (!ownerSelect || !colSelect) return;
+        
+        const owner = ownerSelect.value;
+        // Player: col 0 = Support, col 1 = Combat
+        // Enemy: col 0 = Combat, col 1 = Support
+        if (owner === 'player') {
+            colSelect.options[0].textContent = 'Support';
+            colSelect.options[1].textContent = 'Combat';
+        } else {
+            colSelect.options[0].textContent = 'Combat';
+            colSelect.options[1].textContent = 'Support';
+        }
+    },
+    
+    summonToField() {
+        if (!window.game) return;
+        
+        const cryptidSelect = document.getElementById('cheat-summon-cryptid');
+        const ownerSelect = document.getElementById('cheat-summon-owner');
+        const colSelect = document.getElementById('cheat-summon-col');
+        const rowSelect = document.getElementById('cheat-summon-row');
+        
+        if (!cryptidSelect.value) {
+            alert('Select a cryptid first');
+            return;
+        }
+        
+        const [key, type] = cryptidSelect.value.split('|');
+        const owner = ownerSelect.value;
+        const col = parseInt(colSelect.value);
+        const row = parseInt(rowSelect.value);
+        
+        // Get card data
+        let cardData = type === 'kindling' 
+            ? CardRegistry.getKindling(key) 
+            : CardRegistry.getCryptid(key);
+        
+        if (!cardData) {
+            console.warn('Card not found:', key);
+            return;
+        }
+        
+        // Create cryptid instance
+        const cryptid = {
+            ...cardData,
+            id: Math.random().toString(36).substr(2, 9),
+            currentHp: cardData.hp,
+            currentAtk: cardData.atk,
+            maxHp: cardData.hp,
+            tapped: false,
+            canAttack: false, // Just summoned
+            summonedThisTurn: true,
+            attackedThisTurn: false,
+            owner: owner
+        };
+        
+        // Place on field
+        const field = owner === 'player' ? game.playerField : game.enemyField;
+        if (!field[col]) field[col] = [];
+        
+        // If slot occupied, remove existing
+        // Player: col 0 = Support, col 1 = Combat
+        // Enemy: col 0 = Combat, col 1 = Support
+        const colName = owner === 'player' 
+            ? (col === 0 ? 'Support' : 'Combat')
+            : (col === 0 ? 'Combat' : 'Support');
+        if (field[col][row]) {
+            console.log(`Replacing ${field[col][row].name} at ${owner} ${colName} row ${row}`);
+        }
+        
+        field[col][row] = cryptid;
+        
+        console.log(`Summoned ${cryptid.name} to ${owner} ${colName} row ${row}`);
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    clearSlot() {
+        const ownerSelect = document.getElementById('cheat-summon-owner');
+        const colSelect = document.getElementById('cheat-summon-col');
+        const rowSelect = document.getElementById('cheat-summon-row');
+        
+        const owner = ownerSelect.value;
+        const col = parseInt(colSelect.value);
+        const row = parseInt(rowSelect.value);
+        
+        const field = owner === 'player' ? game.playerField : game.enemyField;
+        const colName = owner === 'player' 
+            ? (col === 0 ? 'Support' : 'Combat')
+            : (col === 0 ? 'Combat' : 'Support');
+        if (field[col] && field[col][row]) {
+            console.log(`Removed ${field[col][row].name} from ${owner} ${colName} row ${row}`);
+            field[col][row] = null;
+        }
+        
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    // ==================== STATUS EFFECTS ====================
+    
+    applyStatus(status) {
+        if (!this.selectedCryptid) return;
+        const { cryptid } = this.selectedCryptid;
+        
+        switch (status) {
+            case 'burn':
+                cryptid.burnTurns = (cryptid.burnTurns || 0) + 2;
+                console.log(`Applied burn to ${cryptid.name} (${cryptid.burnTurns} turns)`);
+                break;
+            case 'bleed':
+                cryptid.bleedTurns = (cryptid.bleedTurns || 0) + 2;
+                console.log(`Applied bleed to ${cryptid.name} (${cryptid.bleedTurns} turns)`);
+                break;
+            case 'paralyze':
+                cryptid.paralyzed = !cryptid.paralyzed;
+                console.log(`${cryptid.paralyzed ? 'Paralyzed' : 'Un-paralyzed'} ${cryptid.name}`);
+                break;
+            case 'calamity':
+                cryptid.calamityCounters = (cryptid.calamityCounters || 0) + 1;
+                console.log(`Applied calamity to ${cryptid.name} (${cryptid.calamityCounters} stacks)`);
+                break;
+            case 'protect':
+                cryptid.protectionCharges = (cryptid.protectionCharges || 0) + 1;
+                console.log(`Protected ${cryptid.name} (${cryptid.protectionCharges} charges)`);
+                break;
+            case 'focus':
+                cryptid.hasFocus = !cryptid.hasFocus;
+                console.log(`${cryptid.hasFocus ? 'Gave focus to' : 'Removed focus from'} ${cryptid.name}`);
+                break;
+            case 'flight':
+                cryptid.hasFlight = !cryptid.hasFlight;
+                console.log(`${cryptid.hasFlight ? 'Gave flight to' : 'Removed flight from'} ${cryptid.name}`);
+                break;
+            case 'hidden':
+                cryptid.isHidden = !cryptid.isHidden;
+                console.log(`${cryptid.isHidden ? 'Hid' : 'Revealed'} ${cryptid.name}`);
+                break;
+        }
+        
+        // Refresh display
+        this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    clearAllStatuses() {
+        if (!this.selectedCryptid) return;
+        const { cryptid } = this.selectedCryptid;
+        
+        cryptid.burnTurns = 0;
+        cryptid.bleedTurns = 0;
+        cryptid.paralyzed = false;
+        cryptid.calamityCounters = 0;
+        cryptid.protectionCharges = 0;
+        cryptid.hasFocus = false;
+        cryptid.hasFlight = false;
+        cryptid.isHidden = false;
+        cryptid.tapped = false;
+        cryptid.canAttack = true;
+        
+        console.log(`Cleared all statuses from ${cryptid.name}`);
         this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
         if (typeof renderAll === 'function') renderAll();
     },

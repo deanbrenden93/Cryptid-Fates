@@ -2800,7 +2800,8 @@ function renderSprite(sprite, isFieldSprite = false, spriteScale = null, cardSpr
 }
 
 // Detect card name overflow and add scroll animation class
-function detectCardNameOverflow(container = document) {
+// Exposed globally so other modules (collection, deckbuilder, shop) can use it
+window.detectCardNameOverflow = function detectCardNameOverflow(container = document) {
     const headers = container.querySelectorAll('.game-card .gc-header');
     headers.forEach(header => {
         const name = header.querySelector('.gc-name');
@@ -5893,6 +5894,10 @@ function renderHand() {
         return;
     }
     
+    // Check if container was blocked BEFORE we update its state
+    const containerWasBlocked = container.classList.contains('not-turn');
+    const isNowPlayerTurn = game.currentTurn === 'player';
+    
     // Handle turn-based interactivity
     if (game.currentTurn !== 'player') {
         container.classList.add('not-turn');
@@ -5908,6 +5913,10 @@ function renderHand() {
     const sameCards = newCardIds.join(',') === currentHandCardIds.join(',');
     const sameView = isKindling === currentHandIsKindling;
     
+    // Force rebuild if turn just changed to player while viewing kindling
+    // This ensures event handlers are properly set up for the new turn state
+    const needsRebuildForTurnChange = containerWasBlocked && isNowPlayerTurn && isKindling;
+    
     console.log('[renderHand] Check:', { 
         isKindling, 
         currentIsKindling: currentHandIsKindling,
@@ -5915,14 +5924,20 @@ function renderHand() {
         sameView, 
         childCount: container.children.length,
         turn: game.currentTurn,
-        phase: game.phase
+        phase: game.phase,
+        containerWasBlocked,
+        needsRebuildForTurnChange
     });
     
-    if (sameCards && sameView && container.children.length > 0) {
+    if (sameCards && sameView && container.children.length > 0 && !needsRebuildForTurnChange) {
         // Same cards, same view - just update states, don't touch layout
         console.log('[renderHand] Calling updateHandCardStates() - lightweight update');
         updateHandCardStates();
         return;
+    }
+    
+    if (needsRebuildForTurnChange) {
+        console.log('[renderHand] Forcing rebuild - turn changed to player while viewing kindling');
     }
     
     console.log('[renderHand] Doing full rebuild');

@@ -877,7 +877,7 @@ window.Shop = {
     },
     
     // Standalone card detail modal for shop context
-    showCardDetail(cardKey) {
+    showCardDetail(cardKey, isHolo = false) {
         // Get card data
         let card = null;
         let cardType = null;
@@ -1037,7 +1037,7 @@ window.Shop = {
                 <div class="detail-view-layout">
                     <!-- Scaled up game card using actual template -->
                     <div class="detail-card-wrapper">
-                        <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${mythicalClass}">
+                        <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${mythicalClass} ${isHolo ? 'foil' : ''}">
                             <span class="gc-cost">${card.cost}</span>
                             <div class="gc-header"><span class="gc-name">${card.name}</span></div>
                             <div class="gc-art">${spriteHTML}</div>
@@ -1071,11 +1071,11 @@ window.Shop = {
                         <div class="detail-section collection-section">
                             <div class="detail-section-title">Collection</div>
                             <div class="detail-collection-grid">
-                                <div class="detail-collection-item clickable active ${normalOwned > 0 ? 'owned' : 'empty'}" data-variant="normal">
+                                <div class="detail-collection-item clickable ${!isHolo ? 'active' : ''} ${normalOwned > 0 ? 'owned' : 'empty'}" data-variant="normal">
                                     <span class="collection-label">Normal</span>
                                     <span class="collection-value">${normalOwned}</span>
                                 </div>
-                                <div class="detail-collection-item clickable holo ${holoOwned > 0 ? 'owned' : 'empty'}" data-variant="holo">
+                                <div class="detail-collection-item clickable holo ${isHolo ? 'active' : ''} ${holoOwned > 0 ? 'owned' : 'empty'}" data-variant="holo">
                                     <span class="collection-label">✨ Holo</span>
                                     <span class="collection-value">${holoOwned}</span>
                                 </div>
@@ -1100,6 +1100,10 @@ window.Shop = {
         // Animate in
         requestAnimationFrame(() => {
             modal.classList.add('open');
+            // Detect card name overflow for scroll animation
+            if (typeof detectCardNameOverflow === 'function') {
+                detectCardNameOverflow(modal);
+            }
         });
         
         // Click backdrop to close
@@ -1139,6 +1143,34 @@ window.Shop = {
     skipAnimations: false,
     flipTimeouts: [],
     allRevealedCards: [],
+    cardsFlipped: 0,
+    bestCard: null,
+    
+    // Get rarity rank for comparison
+    getRarityRank(rarity) {
+        const ranks = { common: 1, rare: 2, ultimate: 3, mythical: 4 };
+        return ranks[rarity] || 0;
+    },
+    
+    // Determine the best card in pack for teasing and hero moment
+    getBestCard(cards) {
+        return cards.reduce((best, card) => {
+            const cardScore = this.getRarityRank(card.rarity) + (card.isHolo ? 0.5 : 0) + (card.mythical ? 1 : 0);
+            const bestScore = best ? this.getRarityRank(best.rarity) + (best.isHolo ? 0.5 : 0) + (best.mythical ? 1 : 0) : 0;
+            return cardScore > bestScore ? card : best;
+        }, null);
+    },
+    
+    // Get tease color based on best rarity in pack
+    getTeaseColor(cards) {
+        const best = this.getBestCard(cards);
+        if (!best) return 'rgba(200, 200, 200, 0.6)';
+        if (best.mythical) return 'rgba(255, 215, 0, 0.9)'; // Gold
+        if (best.rarity === 'ultimate') return 'rgba(168, 85, 247, 0.8)'; // Purple
+        if (best.rarity === 'rare') return 'rgba(59, 130, 246, 0.7)'; // Blue
+        if (best.isHolo) return 'rgba(255, 215, 0, 0.6)'; // Gold hint for holo
+        return 'rgba(200, 200, 200, 0.5)'; // Silver for common
+    },
     
     startPackOpening() {
         if (!this.packsToOpen.length) return;
@@ -1146,6 +1178,8 @@ window.Shop = {
         this.openingPack = true;
         this.skipAnimations = false;
         this.allRevealedCards = [];
+        this.cardsFlipped = 0;
+        this.bestCard = null;
         
         // Determine how many packs to open at once
         const batchSize = Math.min(this.packsToOpen.length, 10);
@@ -1161,21 +1195,29 @@ window.Shop = {
             }
         });
         
+        // Determine best card for tease and hero moment
+        this.bestCard = this.getBestCard(this.allRevealedCards);
+        const teaseColor = this.getTeaseColor(this.allRevealedCards);
+        const hasRare = this.allRevealedCards.some(c => c.rarity === 'rare' || c.rarity === 'ultimate' || c.mythical || c.isHolo);
+        
         const stage = document.getElementById('pack-stage');
         const mainBooster = this.boosters[packsForThisBatch[0]];
         
-        // Epic pack opening intro - only show ONE pack icon to prevent stuttering
+        // Epic pack opening intro with rarity tease particles
         stage.innerHTML = `
-            <div class="pack-epic-intro">
+            <div class="pack-epic-intro" style="--tease-color: ${teaseColor}">
                 <div class="pack-burst"></div>
                 <div class="pack-glow-ring"></div>
+                <div class="pack-tease-particles ${hasRare ? 'has-rare' : ''}">
+                    ${hasRare ? '<span class="tease-particle"></span>' : ''}
+                </div>
                 <div class="packs-stack">
                     <div class="pack-unopened" style="--glow-color: ${mainBooster.glowColor}">
                         <span class="pack-emoji">${mainBooster.icon}</span>
                     </div>
+                    ${batchSize > 1 ? `<div class="pack-count-badge">×${batchSize}</div>` : ''}
                 </div>
-                ${batchSize > 1 ? `<div class="pack-count-badge">×${batchSize}</div>` : ''}
-                <div class="pack-hint">Tap anywhere to open</div>
+                <div class="pack-hint">Tap to open</div>
             </div>
         `;
         
@@ -1195,8 +1237,17 @@ window.Shop = {
         intro.classList.add('opening');
         stage.onclick = null;
         
-        // Epic burst animation
-        setTimeout(() => this.revealCards(), 1200);
+        // Screen shake effect
+        document.getElementById('pack-overlay').classList.add('shake');
+        setTimeout(() => document.getElementById('pack-overlay').classList.remove('shake'), 500);
+        
+        // Haptic feedback on mobile
+        if (navigator.vibrate) {
+            navigator.vibrate([50, 30, 100]);
+        }
+        
+        // Epic burst animation then reveal
+        setTimeout(() => this.revealCards(), 1000);
     },
     
     revealCards() {
@@ -1204,15 +1255,15 @@ window.Shop = {
         this.revealComplete = false;
         this.skipAnimations = false;
         this.flipTimeouts = [];
-        
-        // Element icons matching battle cards
-        const elementIcons = { void: '◈', blood: '◉', water: '◎', steel: '⬡', nature: '❖' };
+        this.cardsFlipped = 0;
         
         let html = `
             <div class="cards-reveal-epic" id="cards-reveal-container">
                 <div class="reveal-header-epic">
                     <span class="reveal-count">${this.allRevealedCards.length} Cards</span>
-                    <span class="reveal-skip-hint" id="reveal-skip-hint">Tap anywhere to skip</span>
+                    <button class="reveal-all-btn" id="reveal-all-btn">
+                        <span class="reveal-all-icon">✦</span> Reveal All
+                    </button>
                 </div>
                 <div class="cards-grid-reveal" id="cards-grid-reveal">
         `;
@@ -1227,6 +1278,7 @@ window.Shop = {
             const rarityClass = card.rarity || 'common';
             const foilClass = card.isHolo ? 'foil' : '';
             const mythicalClass = card.mythical ? 'mythical' : '';
+            const isBestCard = card === this.bestCard;
             
             // Stats display
             let statsHTML = '';
@@ -1251,17 +1303,40 @@ window.Shop = {
                 ? Collection.renderSprite(card.sprite)
                 : this.renderSprite(card.sprite);
             
-            // Game card with reveal-card animation class
+            // Card type label
+            let cardTypeLabel;
+            if (card.type === 'cryptid') {
+                cardTypeLabel = card.isKindling ? 'Kindling' : 'Cryptid';
+            } else {
+                const spellTypeLabels = { trap: 'Trap', aura: 'Aura', pyre: 'Pyre', burst: 'Burst' };
+                cardTypeLabel = spellTypeLabels[card.type] || 'Spell';
+            }
+            
+            // Face-down card with flip wrapper and rarity-glowing edge
             html += `
-                <div class="game-card reveal-card ${cardTypeClass} ${rarityClass} ${elementClass} ${typeClass} ${mythicalClass} ${foilClass}" 
-                     data-index="${i}" data-key="${card.key}" data-holo="${card.isHolo ? '1' : '0'}"
-                     style="--delay: ${i * 0.08}s">
-                    <span class="gc-cost">${cost}</span>
-                    <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-                    <div class="gc-art">${spriteHTML}</div>
-                    <div class="gc-stats">${statsHTML}</div>
-                    ${rarityGems}
-                    ${newBadge}
+                <div class="card-flip-wrapper ${rarityClass} ${card.isHolo ? 'holo-edge' : ''} ${isBestCard ? 'best-card' : ''}" 
+                     data-index="${i}" data-key="${card.key}" data-rarity="${rarityClass}"
+                     style="--appear-delay: ${i * 0.05}s">
+                    <div class="card-flip-inner">
+                        <div class="card-back">
+                            <div class="card-back-design">
+                                <div class="card-back-pattern"></div>
+                                <div class="card-back-glow"></div>
+                            </div>
+                        </div>
+                        <div class="card-front">
+                            <div class="game-card reveal-card ${cardTypeClass} ${rarityClass} ${elementClass} ${typeClass} ${mythicalClass} ${foilClass}" 
+                                 data-index="${i}" data-key="${card.key}" data-holo="${card.isHolo ? '1' : '0'}">
+                                <span class="gc-cost">${cost}</span>
+                                <div class="gc-header"><span class="gc-name">${card.name}</span></div>
+                                <div class="gc-art">${spriteHTML}</div>
+                                <div class="gc-stats">${statsHTML}</div>
+                                <div class="gc-card-type">${cardTypeLabel}</div>
+                                ${rarityGems}
+                                ${newBadge}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             `;
         });
@@ -1272,56 +1347,171 @@ window.Shop = {
         `;
         stage.innerHTML = html;
         
-        // Setup click handlers for each card (for detail view)
-        document.querySelectorAll('.game-card.reveal-card').forEach(el => {
-            el.addEventListener('click', (e) => {
+        // Detect card name overflow for scroll animation
+        if (typeof detectCardNameOverflow === 'function') {
+            requestAnimationFrame(() => detectCardNameOverflow(stage));
+        }
+        
+        // Setup flip handlers for each card
+        document.querySelectorAll('.card-flip-wrapper').forEach(wrapper => {
+            wrapper.addEventListener('click', (e) => {
                 e.stopPropagation();
-                if (el.classList.contains('revealed')) {
-                    Shop.showCardDetail(el.dataset.key);
-                }
+                this.flipCard(wrapper);
             });
+        });
+        
+        // Reveal All button handler
+        document.getElementById('reveal-all-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.revealAllCards();
+        });
+        
+        // Staggered card appearance (face-down)
+        const wrappers = document.querySelectorAll('.card-flip-wrapper');
+        wrappers.forEach((wrapper, i) => {
+            setTimeout(() => {
+                wrapper.classList.add('appeared');
+            }, 100 + i * 60);
+        });
+        
+        // Add 'settled' class after all entrance animations complete
+        // This enables smooth transitions for hero spotlight
+        const totalEntranceTime = 100 + (wrappers.length * 60) + 400; // last card delay + animation duration
+        setTimeout(() => {
+            wrappers.forEach(w => w.classList.add('settled'));
+        }, totalEntranceTime);
+    },
+    
+    flipCard(wrapper) {
+        if (wrapper.classList.contains('flipped')) {
+            // Already flipped - show detail view
+            const cardKey = wrapper.dataset.key;
+            const cardEl = wrapper.querySelector('.game-card');
+            const isHolo = cardEl?.dataset.holo === '1';
+            Shop.showCardDetail(cardKey, isHolo);
+            return;
+        }
+        
+        // Flip the card
+        wrapper.classList.add('flipping');
+        
+        // Haptic feedback
+        if (navigator.vibrate) {
+            navigator.vibrate(15);
+        }
+        
+        // Add card to collection
+        const cardIndex = parseInt(wrapper.dataset.index);
+        const card = this.allRevealedCards[cardIndex];
+        if (card && typeof PlayerData !== 'undefined') {
+            PlayerData.addToCollection(card.key, 1, null, card.isHolo);
+        }
+        
+        // Complete flip after animation
+        setTimeout(() => {
+            wrapper.classList.remove('flipping');
+            wrapper.classList.add('flipped');
             
-            el.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                if (el.classList.contains('revealed')) {
-                    Shop.showCardDetail(el.dataset.key);
-                }
-            });
-        });
-        
-        // Skip handler - click anywhere except on cards
-        const skipArea = document.getElementById('cards-reveal-container');
-        skipArea.addEventListener('click', (e) => {
-            if (e.target.closest('.game-card')) return;
-            if (!this.revealComplete && !this.skipAnimations) {
-                this.skipAnimations = true;
-                this.finishAllReveals();
+            // Add rarity-specific celebration effect
+            const rarity = wrapper.dataset.rarity;
+            if (rarity === 'ultimate' || rarity === 'mythical' || wrapper.classList.contains('holo-edge')) {
+                wrapper.classList.add('celebrate');
+                // Screen pulse for epic cards
+                document.getElementById('pack-overlay').classList.add('pulse-' + rarity);
+                setTimeout(() => document.getElementById('pack-overlay').classList.remove('pulse-' + rarity), 400);
             }
-        });
+            
+            this.cardsFlipped++;
+            this.checkAllFlipped();
+        }, 300);
+    },
+    
+    revealAllCards() {
+        const unflipped = document.querySelectorAll('.card-flip-wrapper:not(.flipped)');
         
-        // Staggered reveal animation
-        this.allRevealedCards.forEach((card, i) => {
-            const timeout = setTimeout(() => {
-                if (this.skipAnimations) return;
-                const el = document.querySelector(`.reveal-card[data-index="${i}"]`);
-                if (el) {
-                    el.classList.add('revealed');
-                    if (typeof PlayerData !== 'undefined') {
+        // Hide reveal all button
+        const btn = document.getElementById('reveal-all-btn');
+        if (btn) btn.style.display = 'none';
+        
+        // Rapid cascade flip
+        unflipped.forEach((wrapper, i) => {
+            setTimeout(() => {
+                if (!wrapper.classList.contains('flipped')) {
+                    wrapper.classList.add('flipping');
+                    
+                    // Add card to collection
+                    const cardIndex = parseInt(wrapper.dataset.index);
+                    const card = this.allRevealedCards[cardIndex];
+                    if (card && typeof PlayerData !== 'undefined') {
                         PlayerData.addToCollection(card.key, 1, null, card.isHolo);
                     }
+                    
+                    setTimeout(() => {
+                        wrapper.classList.remove('flipping');
+                        wrapper.classList.add('flipped');
+                        this.cardsFlipped++;
+                        this.checkAllFlipped();
+                    }, 250);
                 }
-            }, 300 + i * 100);
-            this.flipTimeouts.push(timeout);
+            }, i * 80);
         });
         
-        // Show summary after all cards revealed
-        const totalTime = 300 + this.allRevealedCards.length * 100 + 500;
-        const summaryTimeout = setTimeout(() => {
-            if (!this.skipAnimations) {
-                this.showPackSummary();
-            }
-        }, totalTime);
-        this.flipTimeouts.push(summaryTimeout);
+        // Haptic burst
+        if (navigator.vibrate) {
+            navigator.vibrate([20, 30, 20, 30, 40]);
+        }
+    },
+    
+    checkAllFlipped() {
+        if (this.cardsFlipped >= this.allRevealedCards.length) {
+            // All cards flipped - show hero moment then summary
+            setTimeout(() => this.showHeroMoment(), 400);
+        }
+    },
+    
+    showHeroMoment() {
+        // Only show hero moment for rare+ cards
+        if (!this.bestCard || (this.bestCard.rarity === 'common' && !this.bestCard.isHolo && !this.bestCard.mythical)) {
+            this.showPackSummary();
+            return;
+        }
+        
+        // Find the best card wrapper and spotlight it
+        const bestIndex = this.allRevealedCards.indexOf(this.bestCard);
+        const bestWrapper = document.querySelector(`.card-flip-wrapper[data-index="${bestIndex}"]`);
+        
+        if (bestWrapper) {
+            // Scroll the card into view smoothly before spotlight
+            bestWrapper.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            
+            // Small delay to let scroll complete, then spotlight
+            setTimeout(() => {
+                // Add spotlight class (smooth transition in)
+                bestWrapper.classList.add('hero-spotlight');
+                
+                // Create spotlight overlay
+                const spotlight = document.createElement('div');
+                spotlight.className = 'hero-spotlight-overlay';
+                spotlight.innerHTML = `<div class="hero-rays"></div>`;
+                document.getElementById('cards-reveal-container').appendChild(spotlight);
+                
+                // Hold the spotlight, then smoothly transition out
+                setTimeout(() => {
+                    spotlight.classList.add('fade-out');
+                    // Swap to exit class for smooth return
+                    bestWrapper.classList.remove('hero-spotlight');
+                    bestWrapper.classList.add('hero-spotlight-exit');
+                    
+                    setTimeout(() => {
+                        spotlight.remove();
+                        bestWrapper.classList.remove('hero-spotlight-exit');
+                        this.showPackSummary();
+                    }, 400);
+                }, 1200);
+            }, 300);
+        } else {
+            this.showPackSummary();
+        }
     },
     
     finishAllReveals() {
@@ -1332,22 +1522,8 @@ window.Shop = {
             this.flipTimeouts = [];
         }
         
-        const skipHint = document.getElementById('reveal-skip-hint');
-        if (skipHint) skipHint.style.display = 'none';
-        
-        // Instantly reveal all cards
-        this.allRevealedCards.forEach((card, i) => {
-            const el = document.querySelector(`.reveal-card[data-index="${i}"]`);
-            if (el && !el.classList.contains('revealed')) {
-                el.style.setProperty('--delay', '0s');
-                el.classList.add('revealed');
-                if (typeof PlayerData !== 'undefined') {
-                    PlayerData.addToCollection(card.key, 1, null, card.isHolo);
-                }
-            }
-        });
-        
-        setTimeout(() => this.showPackSummary(), 150);
+        // Use revealAllCards for instant flip
+        this.revealAllCards();
     },
     
     getCardTypeClass(card) {
@@ -1362,9 +1538,9 @@ window.Shop = {
     showPackSummary() {
         this.revealComplete = true;
         
-        // Hide skip hint
-        const skipHint = document.getElementById('reveal-skip-hint');
-        if (skipHint) skipHint.style.display = 'none';
+        // Hide reveal all button
+        const revealBtn = document.getElementById('reveal-all-btn');
+        if (revealBtn) revealBtn.style.display = 'none';
         
         const stats = document.getElementById('summary-stats');
         

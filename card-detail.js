@@ -187,6 +187,7 @@ window.CardDetail = {
             /* Detail Layout - reuse collection styles */
             .battle-detail-content .detail-view-layout {
                 display: flex;
+                align-items: center; /* Vertically center the card */
                 gap: 32px;
                 padding: 24px 28px;
                 background: linear-gradient(145deg, #1a1a2e, #16213e);
@@ -195,12 +196,47 @@ window.CardDetail = {
                 box-shadow: 0 20px 60px rgba(0,0,0,0.5);
             }
             
-            @media (max-width: 600px) {
+            /* Portrait mobile - stack vertically */
+            @media (max-width: 600px) and (orientation: portrait) {
                 .battle-detail-content .detail-view-layout {
                     flex-direction: column;
                     align-items: center;
-                    gap: 24px;
-                    padding: 20px;
+                    gap: 20px;
+                    padding: 16px;
+                }
+                .battle-detail-content .detail-card-wrapper .game-card {
+                    transform: scale(1.0);
+                }
+            }
+            
+            /* Landscape mobile - side by side but smaller card */
+            @media (max-height: 500px) and (orientation: landscape) {
+                .battle-detail-content {
+                    max-width: 90%;
+                    max-height: 95vh;
+                }
+                .battle-detail-content .detail-view-layout {
+                    gap: 20px;
+                    padding: 12px 16px;
+                }
+                .battle-detail-content .detail-card-wrapper .game-card {
+                    transform: scale(0.75);
+                }
+                .battle-detail-content .detail-card-name {
+                    font-size: 1.2rem;
+                }
+                .battle-detail-content .detail-ability {
+                    padding: 8px;
+                    margin-bottom: 6px;
+                }
+                .battle-detail-content .detail-ability-name {
+                    font-size: 0.85rem;
+                }
+                .battle-detail-content .detail-ability-desc {
+                    font-size: 0.8rem;
+                }
+                .battle-detail-content .detail-section {
+                    padding: 8px;
                 }
             }
             
@@ -209,11 +245,12 @@ window.CardDetail = {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
+                justify-content: center;
                 gap: 8px;
                 padding: 4px;
             }
             .battle-detail-content .detail-card-wrapper .game-card {
-                transform: scale(1.2);
+                transform: scale(1.1);
                 transform-origin: center center;
             }
             
@@ -397,6 +434,8 @@ window.CardDetail = {
         const rarityClass = card.rarity || 'common';
         const cardTypeClass = isCryptid ? 'cryptid-card' : 'spell-card';
         const typeClass = isCryptid ? '' : card.type;
+        const isHolo = card.isHolo || false;
+        const foilClass = isHolo ? 'foil' : '';
         
         // Card type label
         let cardTypeLabel;
@@ -539,7 +578,7 @@ window.CardDetail = {
         content.innerHTML = `
             <div class="detail-view-layout">
                 <div class="detail-card-wrapper">
-                    <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass}">
+                    <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${foilClass}">
                         <span class="gc-cost">${card.cost}</span>
                         <div class="gc-header"><span class="gc-name">${card.name}</span></div>
                         <div class="gc-art">${spriteHTML}</div>

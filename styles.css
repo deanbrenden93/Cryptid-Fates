@@ -1579,8 +1579,8 @@ body {
     overflow-y: visible;
     /* Padding must be larger than fade zone so cards can scroll into full view */
     padding: 0 8%;
-    /* Extra top padding inside scroll container for hover lift */
-    padding-top: 30px;
+    /* Extra top padding inside scroll container for hover lift + scale */
+    padding-top: 45px;
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
@@ -1597,7 +1597,7 @@ body {
     width: 100%;
     overflow: visible;
     /* Negative margin to offset the extra padding in hand-container */
-    margin-top: -30px;
+    margin-top: -45px;
 }
 
 .hand-scroll-wrapper::-webkit-scrollbar {

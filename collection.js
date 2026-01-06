@@ -630,7 +630,7 @@ window.Collection = {
 
         return `
             <div class="game-card coll-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${unownedClass} ${mythicalClass} ${foilClass}"
-                 onclick="Collection.showDetail('${card.key}')">
+                 onclick="Collection.showDetail('${card.key}', ${card.foil ? 'true' : 'false'})">
                 <span class="gc-cost">${card.cost}</span>
                 <div class="gc-header"><span class="gc-name">${card.name}</span></div>
                 <div class="gc-art">${Collection.renderSprite(card.sprite, card.cardSpriteScale)}</div>
@@ -708,7 +708,7 @@ window.Collection = {
         return 'city-of-flesh';
     },
     
-    showDetail(cardKey) {
+    showDetail(cardKey, isHolo = false) {
         const card = this.getCard(cardKey);
         if (!card) return;
         
@@ -813,7 +813,7 @@ window.Collection = {
             <div class="detail-view-layout">
                 <!-- Scaled up game card using actual template -->
                 <div class="detail-card-wrapper">
-                    <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${mythicalClass}">
+                    <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${mythicalClass} ${isHolo ? 'foil' : ''}">
                         <span class="gc-cost">${card.cost}</span>
                         <div class="gc-header"><span class="gc-name">${card.name}</span></div>
                         <div class="gc-art">${Collection.renderSprite(card.sprite, card.cardSpriteScale)}</div>
@@ -847,11 +847,11 @@ window.Collection = {
                     <div class="detail-section collection-section">
                         <div class="detail-section-title">Collection</div>
                         <div class="detail-collection-grid">
-                            <div class="detail-collection-item clickable active ${normalOwned > 0 ? 'owned' : 'empty'}" data-variant="normal">
+                            <div class="detail-collection-item clickable ${!isHolo ? 'active' : ''} ${normalOwned > 0 ? 'owned' : 'empty'}" data-variant="normal">
                                 <span class="collection-label">Normal</span>
                                 <span class="collection-value">${normalOwned}</span>
                             </div>
-                            <div class="detail-collection-item clickable holo ${holoOwned > 0 ? 'owned' : 'empty'}" data-variant="holo">
+                            <div class="detail-collection-item clickable holo ${isHolo ? 'active' : ''} ${holoOwned > 0 ? 'owned' : 'empty'}" data-variant="holo">
                                 <span class="collection-label">✨ Holo</span>
                                 <span class="collection-value">${holoOwned}</span>
                             </div>
@@ -871,6 +871,11 @@ window.Collection = {
         `;
         
         document.getElementById('coll-detail-modal').classList.add('open');
+        
+        // Detect card name overflow for scroll animation
+        if (typeof detectCardNameOverflow === 'function') {
+            requestAnimationFrame(() => detectCardNameOverflow(content));
+        }
         
         // Add click handlers for variant toggle
         content.querySelectorAll('.detail-collection-item.clickable').forEach(item => {
