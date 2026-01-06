@@ -1120,6 +1120,36 @@ window.CheatMode = {
         
         field[col][row] = cryptid;
         
+        // Call appropriate callbacks like normal summonCryptid does
+        const supportCol = game.getSupportCol(owner);
+        const combatCol = game.getCombatCol(owner);
+        
+        // onSummon callback
+        if (cryptid.onSummon) {
+            cryptid.onSummon(cryptid, owner, game);
+        }
+        
+        // onSupport callback (when placed in support column)
+        if (col === supportCol && cryptid.onSupport) {
+            cryptid.onSupport(cryptid, owner, game);
+        }
+        
+        // onCombat / onEnterCombat callbacks (when placed in combat column)
+        if (col === combatCol) {
+            if (cryptid.onCombat) {
+                cryptid.onCombat(cryptid, owner, game);
+            }
+            if (cryptid.onEnterCombat) {
+                cryptid.onEnterCombat(cryptid, owner, game);
+            }
+            
+            // Re-apply support abilities from existing support in same row
+            const existingSupport = game.getFieldCryptid(owner, supportCol, row);
+            if (existingSupport?.onSupport && !game.isSupportNegated?.(existingSupport)) {
+                existingSupport.onSupport(existingSupport, owner, game);
+            }
+        }
+        
         console.log(`Summoned ${cryptid.name} to ${owner} ${colName} row ${row}`);
         if (typeof renderAll === 'function') renderAll();
     },

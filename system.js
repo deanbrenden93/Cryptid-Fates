@@ -57,6 +57,1107 @@ const GameEvents = {
 
 window.GameEvents = GameEvents;
 
+// ==================== EFFECT STACK SYSTEM ====================
+// Unified queue for all game effects with proper resolution order
+// Inspired by MTG's stack but adapted for Cryptid Fates' mechanics
+
+const EffectStack = {
+    // Priority levels - higher numbers resolve first
+    PRIORITY: {
+        IMMEDIATE: 10,      // Replacement effects (damage prevention, redirection)
+        STATE_CHECK: 8,     // State-based actions (death checks)
+        HIGH: 7,            // High priority triggers (protection, counters)
+        NORMAL: 5,          // Standard triggered abilities
+        LOW: 3,             // Delayed/end-of-resolution effects
+        ANIMATION: 2,       // Visual effects (don't change game state)
+        CLEANUP: 1          // Cleanup effects
+    },
+    
+    // Effect types for categorization
+    TYPE: {
+        REPLACEMENT: 'replacement',     // Modifies/prevents another effect
+        TRIGGERED: 'triggered',         // Ability triggered by event
+        STATE_BASED: 'state_based',     // State checks (death, promotion)
+        GAME_ACTION: 'game_action',     // Core game actions (damage, heal)
+        ANIMATION: 'animation',         // Visual effect only
+        CALLBACK: 'callback'            // Card ability callback
+    },
+    
+    // The stack itself
+    stack: [],
+    
+    // Currently resolving - prevents re-entry
+    resolving: false,
+    
+    // Resolution history for debugging
+    history: [],
+    maxHistorySize: 100,
+    
+    // Pending triggered abilities waiting to be added
+    pendingTriggers: [],
+    
+    // Flag to pause resolution (for animations)
+    paused: false,
+    
+    // Resolution callbacks
+    onResolutionComplete: null,
+    
+    // Debug mode
+    debug: false,
+    
+    /**
+     * Push an effect onto the stack
+     * @param {Object} effect - The effect to queue
+     * @param {string} effect.type - Effect type (from TYPE enum)
+     * @param {number} effect.priority - Priority level (from PRIORITY enum)
+     * @param {string} effect.name - Human-readable name for debugging
+     * @param {Function} effect.execute - Function to execute the effect
+     * @param {Object} effect.data - Associated data
+     * @param {Object} effect.source - Source card/ability
+     * @param {string} effect.owner - 'player' or 'enemy'
+     * @param {boolean} effect.canBeResponded - Whether other effects can respond
+     */
+    push(effect) {
+        // Validate effect
+        if (!effect.execute || typeof effect.execute !== 'function') {
+            console.error('[EffectStack] Effect must have an execute function:', effect);
+            return;
+        }
+        
+        // Set defaults
+        effect.priority = effect.priority ?? this.PRIORITY.NORMAL;
+        effect.type = effect.type ?? this.TYPE.GAME_ACTION;
+        effect.name = effect.name ?? 'Unknown Effect';
+        effect.timestamp = Date.now();
+        effect.id = `effect_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        effect.canBeResponded = effect.canBeResponded ?? true;
+        
+        // Add to stack
+        this.stack.push(effect);
+        
+        // Sort by priority (higher first), then by timestamp (FIFO within same priority)
+        this.stack.sort((a, b) => {
+            if (b.priority !== a.priority) return b.priority - a.priority;
+            return a.timestamp - b.timestamp;
+        });
+        
+        if (this.debug) {
+            console.log(`[EffectStack] Pushed: ${effect.name} (priority: ${effect.priority}, type: ${effect.type})`);
+        }
+        
+        // Start resolution if not already resolving
+        if (!this.resolving && !this.paused) {
+            this.resolve();
+        }
+    },
+    
+    /**
+     * Queue multiple effects at once
+     */
+    pushMultiple(effects) {
+        effects.forEach(e => {
+            e.priority = e.priority ?? this.PRIORITY.NORMAL;
+            e.type = e.type ?? this.TYPE.GAME_ACTION;
+            e.name = e.name ?? 'Unknown Effect';
+            e.timestamp = Date.now();
+            e.id = `effect_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            this.stack.push(e);
+        });
+        
+        this.stack.sort((a, b) => {
+            if (b.priority !== a.priority) return b.priority - a.priority;
+            return a.timestamp - b.timestamp;
+        });
+        
+        if (!this.resolving && !this.paused) {
+            this.resolve();
+        }
+    },
+    
+    /**
+     * Main resolution loop
+     */
+    async resolve() {
+        if (this.resolving || this.paused) return;
+        this.resolving = true;
+        
+        try {
+            while (this.stack.length > 0) {
+                // Get the highest priority effect
+                const effect = this.stack.shift();
+                
+                if (this.debug) {
+                    console.log(`[EffectStack] Resolving: ${effect.name}`);
+                }
+                
+                // Execute the effect
+                try {
+                    const result = await this.executeEffect(effect);
+                    
+                    // Log to history
+                    this.addToHistory(effect, result);
+                    
+                    // Check for state-based actions after each resolution
+                    await this.checkStateBasedActions();
+                    
+                    // Process any pending triggers that were added during execution
+                    this.processPendingTriggers();
+                    
+                } catch (error) {
+                    console.error(`[EffectStack] Error executing ${effect.name}:`, error);
+                    this.addToHistory(effect, { error: error.message });
+                }
+                
+                // Brief yield to allow UI updates
+                if (effect.type === this.TYPE.ANIMATION) {
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
+        } finally {
+            this.resolving = false;
+            
+            // Call completion callback if set
+            if (this.onResolutionComplete) {
+                const callback = this.onResolutionComplete;
+                this.onResolutionComplete = null;
+                callback();
+            }
+        }
+    },
+    
+    /**
+     * Execute a single effect
+     */
+    async executeEffect(effect) {
+        // Emit pre-resolution event for potential responses
+        if (effect.canBeResponded) {
+            GameEvents.emit('onEffectAboutToResolve', { effect });
+        }
+        
+        // Check if effect was cancelled during response window
+        if (effect.cancelled) {
+            if (this.debug) {
+                console.log(`[EffectStack] Effect cancelled: ${effect.name}`);
+            }
+            return { cancelled: true };
+        }
+        
+        // Execute the effect
+        const result = await effect.execute(effect.data, effect);
+        
+        // Emit post-resolution event
+        GameEvents.emit('onEffectResolved', { effect, result });
+        
+        return result;
+    },
+    
+    /**
+     * Check for state-based actions (deaths, etc.)
+     * These are checked between each effect resolution
+     */
+    async checkStateBasedActions() {
+        if (!window.game) return;
+        
+        const deaths = [];
+        
+        // Check all cryptids for death (HP <= 0)
+        for (const owner of ['player', 'enemy']) {
+            const field = owner === 'player' ? game.playerField : game.enemyField;
+            for (let col = 0; col < 2; col++) {
+                for (let row = 0; row < 3; row++) {
+                    const cryptid = field[col]?.[row];
+                    if (cryptid && game.getEffectiveHp(cryptid) <= 0 && !cryptid._deathPending) {
+                        cryptid._deathPending = true;
+                        deaths.push({ cryptid, owner, col, row });
+                    }
+                }
+            }
+        }
+        
+        // Queue death effects
+        for (const { cryptid, owner, col, row } of deaths) {
+            this.queueTrigger({
+                type: this.TYPE.STATE_BASED,
+                priority: this.PRIORITY.STATE_CHECK,
+                name: `Death: ${cryptid.name}`,
+                source: cryptid,
+                owner,
+                data: { cryptid, owner, col, row },
+                execute: async (data) => {
+                    // The actual death handling is done by killCryptid
+                    // This just ensures it's properly queued
+                    if (data.cryptid._deathPending) {
+                        delete data.cryptid._deathPending;
+                        // Death will be handled by existing death check system
+                        // We just mark it for processing
+                        data.cryptid._markedForDeath = true;
+                    }
+                }
+            });
+        }
+    },
+    
+    /**
+     * Queue a triggered ability (will be processed after current effect resolves)
+     */
+    queueTrigger(trigger) {
+        this.pendingTriggers.push(trigger);
+    },
+    
+    /**
+     * Process pending triggers - add them to the main stack
+     */
+    processPendingTriggers() {
+        if (this.pendingTriggers.length === 0) return;
+        
+        const triggers = [...this.pendingTriggers];
+        this.pendingTriggers = [];
+        
+        for (const trigger of triggers) {
+            this.push(trigger);
+        }
+    },
+    
+    /**
+     * Add effect to history for debugging
+     */
+    addToHistory(effect, result) {
+        this.history.push({
+            id: effect.id,
+            name: effect.name,
+            type: effect.type,
+            priority: effect.priority,
+            owner: effect.owner,
+            timestamp: effect.timestamp,
+            resolvedAt: Date.now(),
+            result
+        });
+        
+        // Trim history if too large
+        if (this.history.length > this.maxHistorySize) {
+            this.history = this.history.slice(-this.maxHistorySize);
+        }
+    },
+    
+    /**
+     * Pause resolution (for animations or user input)
+     */
+    pause() {
+        this.paused = true;
+    },
+    
+    /**
+     * Resume resolution
+     */
+    resume() {
+        this.paused = false;
+        if (this.stack.length > 0 && !this.resolving) {
+            this.resolve();
+        }
+    },
+    
+    /**
+     * Wait for current resolution to complete
+     */
+    waitForResolution() {
+        return new Promise(resolve => {
+            if (!this.resolving && this.stack.length === 0) {
+                resolve();
+            } else {
+                this.onResolutionComplete = resolve;
+            }
+        });
+    },
+    
+    /**
+     * Clear the stack (emergency use only)
+     */
+    clear() {
+        this.stack = [];
+        this.pendingTriggers = [];
+        this.resolving = false;
+        this.paused = false;
+    },
+    
+    /**
+     * Get current stack state for debugging
+     */
+    getState() {
+        return {
+            stackSize: this.stack.length,
+            resolving: this.resolving,
+            paused: this.paused,
+            pendingTriggers: this.pendingTriggers.length,
+            stack: this.stack.map(e => ({ name: e.name, priority: e.priority, type: e.type })),
+            recentHistory: this.history.slice(-10)
+        };
+    },
+    
+    /**
+     * Enable/disable debug mode
+     */
+    setDebug(enabled) {
+        this.debug = enabled;
+        console.log(`[EffectStack] Debug mode: ${enabled ? 'ON' : 'OFF'}`);
+    }
+};
+
+// ==================== EFFECT STACK HELPERS ====================
+// Convenience functions for common effect patterns
+
+const EffectHelpers = {
+    /**
+     * Queue a damage effect
+     */
+    queueDamage(source, target, damage, options = {}) {
+        EffectStack.push({
+            type: EffectStack.TYPE.GAME_ACTION,
+            priority: options.priority ?? EffectStack.PRIORITY.NORMAL,
+            name: `Damage: ${source?.name || 'Unknown'} → ${target?.name || 'Unknown'} (${damage})`,
+            source,
+            owner: source?.owner,
+            data: { source, target, damage, ...options },
+            execute: async (data) => {
+                if (!data.target || data.target.currentHp === undefined) return { skipped: true };
+                
+                const hpBefore = data.target.currentHp;
+                data.target.currentHp -= data.damage;
+                
+                GameEvents.emit('onDamageTaken', {
+                    target: data.target,
+                    damage: data.damage,
+                    source: data.source,
+                    sourceType: data.sourceType || 'effect',
+                    hpBefore,
+                    hpAfter: data.target.currentHp
+                });
+                
+                return { damage: data.damage, hpBefore, hpAfter: data.target.currentHp };
+            }
+        });
+    },
+    
+    /**
+     * Queue a heal effect
+     */
+    queueHeal(target, amount, source, options = {}) {
+        EffectStack.push({
+            type: EffectStack.TYPE.GAME_ACTION,
+            priority: options.priority ?? EffectStack.PRIORITY.NORMAL,
+            name: `Heal: ${target?.name || 'Unknown'} (+${amount})`,
+            source,
+            owner: target?.owner,
+            data: { target, amount, source, ...options },
+            execute: async (data) => {
+                if (!data.target) return { skipped: true };
+                
+                const hpBefore = data.target.currentHp;
+                data.target.currentHp = Math.min(data.target.maxHp, data.target.currentHp + data.amount);
+                const actualHeal = data.target.currentHp - hpBefore;
+                
+                if (actualHeal > 0) {
+                    GameEvents.emit('onHeal', {
+                        cryptid: data.target,
+                        amount: actualHeal,
+                        source: data.healSource || 'effect'
+                    });
+                }
+                
+                return { healed: actualHeal, hpBefore, hpAfter: data.target.currentHp };
+            }
+        });
+    },
+    
+    /**
+     * Queue a status effect application
+     */
+    queueStatus(target, status, options = {}) {
+        EffectStack.push({
+            type: EffectStack.TYPE.GAME_ACTION,
+            priority: options.priority ?? EffectStack.PRIORITY.NORMAL,
+            name: `Status: ${status} → ${target?.name || 'Unknown'}`,
+            owner: target?.owner,
+            data: { target, status, ...options },
+            execute: async (data) => {
+                if (!data.target || !window.game) return { skipped: true };
+                
+                switch (data.status) {
+                    case 'burn':
+                        game.applyBurn(data.target);
+                        break;
+                    case 'bleed':
+                        game.applyBleed(data.target);
+                        break;
+                    case 'paralyze':
+                        game.applyParalyze(data.target);
+                        break;
+                    case 'calamity':
+                        game.applyCalamity(data.target, data.count || 1);
+                        break;
+                    case 'curse':
+                        game.applyCurse(data.target, data.tokens || 1);
+                        break;
+                    case 'protection':
+                        game.grantProtection(data.target, data.charges || 1);
+                        break;
+                }
+                
+                return { applied: data.status };
+            }
+        });
+    },
+    
+    /**
+     * Queue an animation effect (doesn't change game state)
+     */
+    queueAnimation(name, animFn, options = {}) {
+        EffectStack.push({
+            type: EffectStack.TYPE.ANIMATION,
+            priority: options.priority ?? EffectStack.PRIORITY.ANIMATION,
+            name: `Animation: ${name}`,
+            canBeResponded: false,
+            data: { animFn, ...options },
+            execute: async (data) => {
+                if (data.animFn) {
+                    await data.animFn();
+                }
+                return { animated: true };
+            }
+        });
+    },
+    
+    /**
+     * Queue a card ability callback
+     */
+    queueCallback(card, callbackType, args, options = {}) {
+        const callback = card[callbackType];
+        if (!callback || typeof callback !== 'function') return;
+        
+        EffectStack.push({
+            type: EffectStack.TYPE.CALLBACK,
+            priority: options.priority ?? EffectStack.PRIORITY.NORMAL,
+            name: `Callback: ${card.name}.${callbackType}`,
+            source: card,
+            owner: card.owner,
+            data: { card, callbackType, args, ...options },
+            execute: async (data) => {
+                try {
+                    GameEvents.emit('onCardCallback', {
+                        type: data.callbackType,
+                        card: data.card,
+                        owner: data.card.owner,
+                        ...data.args
+                    });
+                    
+                    const result = data.card[data.callbackType](...Object.values(data.args));
+                    return { result };
+                } catch (error) {
+                    console.error(`[EffectStack] Callback error ${data.card.name}.${data.callbackType}:`, error);
+                    return { error: error.message };
+                }
+            }
+        });
+    },
+    
+    /**
+     * Queue pyre gain
+     */
+    queuePyreGain(owner, amount, source, options = {}) {
+        EffectStack.push({
+            type: EffectStack.TYPE.GAME_ACTION,
+            priority: options.priority ?? EffectStack.PRIORITY.NORMAL,
+            name: `Pyre Gain: ${owner} +${amount}`,
+            owner,
+            data: { owner, amount, source, ...options },
+            execute: async (data) => {
+                if (!window.game) return { skipped: true };
+                
+                const oldPyre = data.owner === 'player' ? game.playerPyre : game.enemyPyre;
+                if (data.owner === 'player') {
+                    game.playerPyre += data.amount;
+                } else {
+                    game.enemyPyre += data.amount;
+                }
+                const newPyre = data.owner === 'player' ? game.playerPyre : game.enemyPyre;
+                
+                GameEvents.emit('onPyreGained', {
+                    owner: data.owner,
+                    amount: data.amount,
+                    source: data.source,
+                    oldValue: oldPyre,
+                    newValue: newPyre
+                });
+                
+                return { gained: data.amount, oldPyre, newPyre };
+            }
+        });
+    },
+    
+    /**
+     * Queue a triggered ability from a card
+     * This is the proper way to queue ability effects that result from triggers
+     */
+    queueTriggeredAbility(card, triggerType, context, options = {}) {
+        const callback = card[triggerType];
+        if (!callback || typeof callback !== 'function') return;
+        
+        EffectStack.push({
+            type: EffectStack.TYPE.TRIGGERED,
+            priority: options.priority ?? EffectStack.PRIORITY.NORMAL,
+            name: `Trigger: ${card.name}.${triggerType}`,
+            source: card,
+            owner: card.owner,
+            data: { card, triggerType, context, ...options },
+            execute: async (data) => {
+                try {
+                    // Emit the callback event
+                    GameEvents.emit('onCardCallback', {
+                        type: data.triggerType,
+                        card: data.card,
+                        owner: data.card.owner,
+                        ...data.context
+                    });
+                    
+                    // Execute the ability
+                    const result = data.card[data.triggerType](data.card, ...Object.values(data.context));
+                    return { result, triggered: true };
+                } catch (error) {
+                    console.error(`[EffectStack] Triggered ability error ${data.card.name}.${data.triggerType}:`, error);
+                    return { error: error.message };
+                }
+            }
+        });
+    },
+    
+    /**
+     * Queue a death trigger
+     */
+    queueDeathTrigger(cryptid, owner, killerOwner, options = {}) {
+        if (!cryptid.onDeath) return;
+        
+        EffectStack.push({
+            type: EffectStack.TYPE.TRIGGERED,
+            priority: EffectStack.PRIORITY.NORMAL,
+            name: `Death Trigger: ${cryptid.name}`,
+            source: cryptid,
+            owner,
+            data: { cryptid, owner, killerOwner, ...options },
+            execute: async (data) => {
+                try {
+                    if (data.cryptid.onDeath && window.game) {
+                        GameEvents.emit('onCardCallback', { 
+                            type: 'onDeath', 
+                            card: data.cryptid, 
+                            owner: data.owner 
+                        });
+                        data.cryptid.onDeath(data.cryptid, game);
+                    }
+                    return { triggered: true };
+                } catch (error) {
+                    console.error(`[EffectStack] Death trigger error ${data.cryptid.name}:`, error);
+                    return { error: error.message };
+                }
+            }
+        });
+    },
+    
+    /**
+     * Queue a kill trigger
+     */
+    queueKillTrigger(killer, victim, options = {}) {
+        if (!killer.onKill) return;
+        
+        EffectStack.push({
+            type: EffectStack.TYPE.TRIGGERED,
+            priority: EffectStack.PRIORITY.NORMAL,
+            name: `Kill Trigger: ${killer.name} killed ${victim.name}`,
+            source: killer,
+            owner: killer.owner,
+            data: { killer, victim, ...options },
+            execute: async (data) => {
+                try {
+                    if (data.killer.onKill && window.game) {
+                        GameEvents.emit('onCardCallback', { 
+                            type: 'onKill', 
+                            card: data.killer, 
+                            owner: data.killer.owner,
+                            victim: data.victim
+                        });
+                        data.killer.onKill(data.killer, data.victim, game);
+                    }
+                    return { triggered: true };
+                } catch (error) {
+                    console.error(`[EffectStack] Kill trigger error ${data.killer.name}:`, error);
+                    return { error: error.message };
+                }
+            }
+        });
+    }
+};
+
+// Make EffectStack globally available
+window.EffectStack = EffectStack;
+window.EffectHelpers = EffectHelpers;
+
+/**
+ * Wait for all effects to resolve (EffectStack + legacy queues)
+ * Use this to ensure all triggered abilities and animations complete
+ */
+async function waitForAllEffects() {
+    // Wait for EffectStack
+    await EffectStack.waitForResolution();
+    
+    // Wait for legacy animation queue
+    if (window.processingAbilityAnimations || (window.abilityAnimationQueue && window.abilityAnimationQueue.length > 0)) {
+        await new Promise(resolve => {
+            const check = () => {
+                if (window.processingAbilityAnimations || (window.abilityAnimationQueue && window.abilityAnimationQueue.length > 0)) {
+                    setTimeout(check, 50);
+                } else {
+                    resolve();
+                }
+            };
+            check();
+        });
+    }
+    
+    // Wait for trap queue
+    if (window.processingTraps || (window.pendingTraps && window.pendingTraps.length > 0)) {
+        await new Promise(resolve => {
+            const check = () => {
+                if (window.processingTraps || (window.pendingTraps && window.pendingTraps.length > 0)) {
+                    setTimeout(check, 50);
+                } else {
+                    resolve();
+                }
+            };
+            check();
+        });
+    }
+}
+
+window.waitForAllEffects = waitForAllEffects;
+
+// ==================== EVENT FEEDBACK SYSTEM ====================
+// Provides clear, queued visual feedback for ALL game events
+// Ensures players always know what's happening and why
+
+const EventFeedback = {
+    // Message queue for sequential display
+    messageQueue: [],
+    isProcessing: false,
+    
+    // Timing constants (ms)
+    TIMING: {
+        MESSAGE_DISPLAY: 1200,      // How long each message shows
+        MESSAGE_GAP: 200,           // Gap between messages
+        FLOATING_DURATION: 1500,    // Floating indicator duration
+        FLOATING_RISE: 40           // How far floating text rises
+    },
+    
+    // Message types with icons
+    ICONS: {
+        damage: '💥',
+        heal: '💚',
+        burn: '🔥',
+        bleed: '🩸',
+        paralyze: '⚡',
+        calamity: '💀',
+        curse: '🔮',
+        protection: '🛡️',
+        toxic: '☠️',
+        pyre: '🔥',
+        ability: '✨',
+        summon: '⬆️',
+        death: '☠️',
+        evolve: '🔄',
+        cleanse: '✨',
+        buff: '⬆️',
+        debuff: '⬇️',
+        trap: '⚡',
+        draw: '🃏'
+    },
+    
+    /**
+     * Queue a message for display
+     * @param {string} text - The message text
+     * @param {string} type - Message type for icon selection
+     * @param {number} duration - Optional custom duration
+     */
+    queue(text, type = 'ability', duration = null) {
+        const icon = this.ICONS[type] || '•';
+        this.messageQueue.push({
+            text: `${icon} ${text}`,
+            duration: duration || this.TIMING.MESSAGE_DISPLAY,
+            type
+        });
+        
+        if (!this.isProcessing) {
+            this.processQueue();
+        }
+    },
+    
+    /**
+     * Process the message queue sequentially
+     */
+    async processQueue() {
+        if (this.isProcessing || this.messageQueue.length === 0) return;
+        this.isProcessing = true;
+        
+        while (this.messageQueue.length > 0) {
+            const msg = this.messageQueue.shift();
+            this.showCenterMessage(msg.text, msg.duration);
+            await new Promise(r => setTimeout(r, msg.duration + this.TIMING.MESSAGE_GAP));
+        }
+        
+        this.isProcessing = false;
+    },
+    
+    /**
+     * Show a centered message (uses existing message overlay)
+     */
+    showCenterMessage(text, duration) {
+        const overlay = document.getElementById('message-overlay');
+        const textEl = document.getElementById('message-text');
+        if (!overlay || !textEl) return;
+        
+        textEl.textContent = text;
+        overlay.classList.add('show');
+        setTimeout(() => overlay.classList.remove('show'), duration);
+    },
+    
+    /**
+     * Show a floating indicator on a specific cryptid
+     * @param {Object} cryptid - The cryptid to show indicator on
+     * @param {string} text - The indicator text
+     * @param {string} color - CSS color for the text
+     */
+    showFloatingIndicator(cryptid, text, color = '#ffffff') {
+        if (!cryptid) return;
+        
+        const sprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
+        );
+        if (!sprite) return;
+        
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield) return;
+        
+        const rect = sprite.getBoundingClientRect();
+        const bfRect = battlefield.getBoundingClientRect();
+        
+        const indicator = document.createElement('div');
+        indicator.className = 'floating-event-indicator';
+        indicator.textContent = text;
+        indicator.style.cssText = `
+            position: absolute;
+            left: ${rect.left - bfRect.left + rect.width/2}px;
+            top: ${rect.top - bfRect.top}px;
+            color: ${color};
+            font-size: 16px;
+            font-weight: bold;
+            text-shadow: 0 0 4px black, 0 0 8px black;
+            pointer-events: none;
+            z-index: 1000;
+            transform: translateX(-50%);
+            animation: floatUp ${this.TIMING.FLOATING_DURATION}ms ease-out forwards;
+        `;
+        
+        battlefield.appendChild(indicator);
+        setTimeout(() => indicator.remove(), this.TIMING.FLOATING_DURATION);
+    },
+    
+    /**
+     * Show floating indicator on a tile position
+     */
+    showFloatingAtTile(owner, col, row, text, color = '#ffffff') {
+        const key = `${owner}-${col}-${row}`;
+        const pos = window.tilePositions?.[key];
+        if (!pos) return;
+        
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield) return;
+        
+        const indicator = document.createElement('div');
+        indicator.className = 'floating-event-indicator';
+        indicator.textContent = text;
+        indicator.style.cssText = `
+            position: absolute;
+            left: ${pos.x}px;
+            top: ${pos.y - 20}px;
+            color: ${color};
+            font-size: 16px;
+            font-weight: bold;
+            text-shadow: 0 0 4px black, 0 0 8px black;
+            pointer-events: none;
+            z-index: 1000;
+            transform: translateX(-50%);
+            animation: floatUp ${this.TIMING.FLOATING_DURATION}ms ease-out forwards;
+        `;
+        
+        battlefield.appendChild(indicator);
+        setTimeout(() => indicator.remove(), this.TIMING.FLOATING_DURATION);
+    },
+    
+    /**
+     * Clear all pending messages
+     */
+    clear() {
+        this.messageQueue = [];
+    },
+    
+    /**
+     * Subscribe to game events and provide automatic feedback
+     */
+    subscribeToEvents() {
+        // === DAMAGE MODIFIERS ===
+        GameEvents.on('onDamageReduced', (data) => {
+            const source = data.source || 'effect';
+            const amount = data.reduction || data.originalDamage - data.finalDamage || 0;
+            if (data.target) {
+                this.showFloatingIndicator(data.target, `BLOCKED -${amount}`, '#4488ff');
+            }
+        });
+        
+        // Toxic tile damage reduction (attacker penalty)
+        GameEvents.on('onAttackDeclared', (data) => {
+            if (data.attacker && window.game) {
+                const { owner, col, row } = data.attacker;
+                if (game.isTileToxic(owner, col, row)) {
+                    this.queue(`${data.attacker.name} weakened by toxic! (-1 damage)`, 'toxic');
+                    this.showFloatingIndicator(data.attacker, '☠️ -1 DMG', '#88ff88');
+                }
+            }
+        });
+        
+        // === STATUS EFFECTS ===
+        GameEvents.on('onStatusApplied', (data) => {
+            const name = data.cryptid?.name || 'Cryptid';
+            const status = data.status;
+            
+            switch(status) {
+                case 'burn':
+                    this.queue(`${name} is burning!`, 'burn');
+                    if (data.cryptid) this.showFloatingIndicator(data.cryptid, '🔥 BURN', '#ff6600');
+                    break;
+                case 'bleed':
+                    this.queue(`${name} is bleeding!`, 'bleed');
+                    if (data.cryptid) this.showFloatingIndicator(data.cryptid, '🩸 BLEED', '#cc0000');
+                    break;
+                case 'paralyze':
+                    this.queue(`${name} is paralyzed!`, 'paralyze');
+                    if (data.cryptid) this.showFloatingIndicator(data.cryptid, '⚡ PARALYZED', '#ffff00');
+                    break;
+                case 'calamity':
+                    this.queue(`${name} afflicted with Calamity (${data.count || 1})!`, 'calamity');
+                    if (data.cryptid) this.showFloatingIndicator(data.cryptid, `💀 CALAMITY ${data.count || 1}`, '#8800ff');
+                    break;
+                case 'curse':
+                    this.queue(`${name} cursed! (-${data.tokens || 1} ATK)`, 'curse');
+                    if (data.cryptid) this.showFloatingIndicator(data.cryptid, `🔮 -${data.tokens || 1} ATK`, '#aa00ff');
+                    break;
+                case 'protection':
+                    this.queue(`${name} protected!`, 'protection');
+                    if (data.cryptid) this.showFloatingIndicator(data.cryptid, '🛡️ PROTECTED', '#4488ff');
+                    break;
+            }
+        });
+        
+        // Burn damage
+        GameEvents.on('onBurnDamage', (data) => {
+            const name = data.cryptid?.name || 'Cryptid';
+            this.queue(`${name} takes burn damage!`, 'burn');
+        });
+        
+        // Bleed damage (if we have this event)
+        GameEvents.on('onBleedDamage', (data) => {
+            const name = data.target?.name || 'Cryptid';
+            this.queue(`${name} bleeds from wounds!`, 'bleed');
+        });
+        
+        // Toxic damage
+        GameEvents.on('onToxicDamage', (data) => {
+            const name = data.target?.name || 'Cryptid';
+            this.queue(`${name} takes toxic damage! (+1)`, 'toxic');
+            if (data.target) this.showFloatingIndicator(data.target, '☠️ +1 DMG', '#88ff88');
+        });
+        
+        // Toxic tile created
+        GameEvents.on('onToxicApplied', (data) => {
+            this.queue(`Toxic swamp spreads!`, 'toxic');
+            this.showFloatingAtTile(data.owner, data.col, data.row, '☠️ TOXIC', '#88ff88');
+        });
+        
+        // Calamity tick
+        GameEvents.on('onCalamityTick', (data) => {
+            const name = data.cryptid?.name || 'Cryptid';
+            this.queue(`${name} Calamity: ${data.countersRemaining} turns remain`, 'calamity');
+        });
+        
+        // Status wear off
+        GameEvents.on('onStatusWearOff', (data) => {
+            const name = data.cryptid?.name || 'Cryptid';
+            const statusNames = { burn: 'burning', bleed: 'bleeding', curse: 'curse' };
+            this.queue(`${name} is no longer ${statusNames[data.status] || data.status}!`, 'cleanse');
+        });
+        
+        // === HEALING ===
+        GameEvents.on('onHeal', (data) => {
+            const name = data.cryptid?.name || 'Cryptid';
+            const amount = data.amount || 0;
+            if (amount > 0) {
+                this.showFloatingIndicator(data.cryptid, `+${amount} HP`, '#44ff44');
+            }
+        });
+        
+        // === CLEANSE ===
+        GameEvents.on('onCleanse', (data) => {
+            const name = data.cryptid?.name || 'Cryptid';
+            const count = data.count || data.ailmentsCleared || 0;
+            if (count > 0) {
+                this.queue(`${name} cleansed of ${count} ailment${count > 1 ? 's' : ''}!`, 'cleanse');
+                if (data.cryptid) this.showFloatingIndicator(data.cryptid, '✨ CLEANSED', '#ffffff');
+            }
+        });
+        
+        // === ABILITY TRIGGERS ===
+        GameEvents.on('onCardCallback', (data) => {
+            const card = data.card;
+            const type = data.type;
+            if (!card) return;
+            
+            // Only show feedback for significant ability triggers
+            switch(type) {
+                case 'onCombat':
+                    if (card.combatAbility) {
+                        this.queue(`${card.name}: ${card.combatAbility.split(':')[0]}!`, 'ability');
+                    }
+                    break;
+                case 'onEnterCombat':
+                    // Don't double-announce if onCombat already fired
+                    break;
+                case 'onDeath':
+                    if (card.supportAbility?.includes('On death') || card.combatAbility?.includes('On death')) {
+                        this.queue(`${card.name} death trigger!`, 'death');
+                    }
+                    break;
+                case 'onKill':
+                    const victimName = data.victim?.name || 'enemy';
+                    // Don't spam for basic kills, only special kill effects
+                    break;
+            }
+        });
+        
+        // === PROTECTION ===
+        GameEvents.on('onProtectionBlock', (data) => {
+            const name = data.target?.name || 'Cryptid';
+            this.queue(`${name}'s protection absorbs the hit!`, 'protection');
+            if (data.target) this.showFloatingIndicator(data.target, '🛡️ BLOCKED', '#4488ff');
+        });
+        
+        // === PYRE CHANGES ===
+        GameEvents.on('onPyreGained', (data) => {
+            const isPlayer = data.owner === 'player';
+            const amount = data.amount || 0;
+            if (amount > 0 && data.source) {
+                // Only show message for significant pyre gains (not normal turn gain)
+                if (data.source !== 'turnStart') {
+                    this.queue(`${isPlayer ? 'You' : 'Enemy'} gained ${amount} Pyre!`, 'pyre');
+                }
+            }
+        });
+        
+        // === EVOLUTION ===
+        GameEvents.on('onEvolution', (data) => {
+            const from = data.from?.name || 'Cryptid';
+            const to = data.to?.name || 'evolved form';
+            this.queue(`${from} evolves into ${to}!`, 'evolve');
+        });
+        
+        // === DEATH ===
+        GameEvents.on('onDeath', (data) => {
+            const name = data.cryptid?.name || 'Cryptid';
+            const isPlayer = data.owner === 'player';
+            // Death counter increase is important info
+            this.queue(`${name} was slain! (${isPlayer ? 'Your' : 'Enemy'} deaths: ${data.deathCount || '?'})`, 'death');
+        });
+        
+        // === KILL ===
+        GameEvents.on('onKill', (data) => {
+            const killerName = data.killer?.name || 'Attacker';
+            const victimName = data.victim?.name || 'target';
+            // Only show if killer has onKill ability
+            if (data.killer?.onKill) {
+                this.queue(`${killerName} slays ${victimName}!`, 'death');
+            }
+        });
+        
+        // === LATCH ===
+        GameEvents.on('onLatch', (data) => {
+            const attackerName = data.attacker?.name || 'Cryptid';
+            const targetName = data.target?.name || 'target';
+            this.queue(`${attackerName} latched onto ${targetName}!`, 'ability');
+        });
+        
+        // === DESTROYER ===
+        GameEvents.on('onDestroyerDamage', (data) => {
+            const attackerName = data.attacker?.name || 'Attacker';
+            const supportName = data.target?.name || 'support';
+            this.queue(`${attackerName} destroys ${supportName}!`, 'damage');
+        });
+        
+        // === SPECIAL ABILITIES ===
+        GameEvents.on('onActivatedAbility', (data) => {
+            const cardName = data.card?.name || 'Cryptid';
+            const abilityNames = {
+                'bloodPact': 'Blood Pact',
+                'sacrifice': 'Sacrifice',
+                'thermal': 'Thermal Swap'
+            };
+            const abilityName = abilityNames[data.ability] || data.ability;
+            this.queue(`${cardName} activates ${abilityName}!`, 'ability');
+        });
+        
+        // === SNIPE ===
+        GameEvents.on('onSnipeReveal', (data) => {
+            const name = data.cryptid?.name || 'Snipe';
+            this.queue(`${name} reveals itself!`, 'ability');
+        });
+        
+        GameEvents.on('onSnipeDamage', (data) => {
+            const sourceName = data.source?.name || 'Snipe';
+            const targetName = data.target?.name || 'target';
+            this.queue(`${sourceName} deals snipe damage to ${targetName}!`, 'damage');
+        });
+        
+        // === MULTI-ATTACK / CLEAVE ===
+        GameEvents.on('onCleaveDamage', (data) => {
+            const attackerName = data.attacker?.name || 'Attacker';
+            const targetName = data.target?.name || 'target';
+            this.queue(`${attackerName} cleaves ${targetName}!`, 'damage');
+        });
+        
+        GameEvents.on('onMultiAttackDamage', (data) => {
+            const attackerName = data.attacker?.name || 'Attacker';
+            const targetName = data.target?.name || 'target';
+            this.queue(`${attackerName} strikes ${targetName}!`, 'damage');
+        });
+        
+        console.log('[EventFeedback] Subscribed to game events');
+    },
+    
+    /**
+     * Initialize the EventFeedback system
+     */
+    init() {
+        this.subscribeToEvents();
+        console.log('[EventFeedback] System initialized');
+    }
+};
+
+// Make globally available
+window.EventFeedback = EventFeedback;
+
 // ==================== AUTO-SCALE TEXT UTILITY ====================
 // Shrinks text to fit within its container
 function autoScaleAbilityText(container) {
@@ -124,7 +1225,19 @@ function setupFanHoverEffects() {
             if (handContainer.scrollWidth > handContainer.clientWidth) {
                 e.preventDefault();
                 // Use deltaY for vertical scroll wheel, deltaX for horizontal (trackpad)
-                const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+                let delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+                
+                // deltaMode: 0 = pixels (touchpad), 1 = lines (mouse wheel), 2 = pages
+                // Touchpad pixel deltas are tiny (1-5px), mouse wheel line deltas are large (100+)
+                // Apply multiplier for touchpad to make scrolling feel responsive
+                if (e.deltaMode === 0) {
+                    // Pixel mode (touchpad) - amplify the scroll amount
+                    delta *= 2.5;
+                } else if (e.deltaMode === 1) {
+                    // Line mode (mouse wheel) - convert to reasonable pixel amount
+                    delta *= 30;
+                }
+                
                 handContainer.scrollLeft += delta;
             }
         }, { passive: false });
@@ -2458,6 +3571,7 @@ async function playTrapTriggerAnimation(owner, row, trap) {
 }
 
 // ==================== ABILITY ANIMATION QUEUE ====================
+// Kept as legacy system - EffectStack integration is optional for animations
 window.abilityAnimationQueue = [];
 window.processingAbilityAnimations = false;
 
@@ -2984,10 +4098,14 @@ class Game {
     }
     
     checkTraps(eventType, eventData) {
+        console.log(`[Trap Check] Event: ${eventType}`, eventData);
         for (let row = 0; row < 2; row++) {
             const trap = this.playerTraps[row];
             if (trap && trap.triggerEvent === eventType) {
-                if (this.shouldTriggerTrap(trap, 'player', eventData)) {
+                console.log(`[Trap Check] Player trap ${trap.name} matches event type ${eventType}`);
+                const shouldTrigger = this.shouldTriggerTrap(trap, 'player', eventData);
+                console.log(`[Trap Check] Player trap ${trap.name} shouldTrigger: ${shouldTrigger}`);
+                if (shouldTrigger) {
                     this.queueTrapTrigger('player', row, eventData);
                 }
             }
@@ -2995,7 +4113,10 @@ class Game {
         for (let row = 0; row < 2; row++) {
             const trap = this.enemyTraps[row];
             if (trap && trap.triggerEvent === eventType) {
-                if (this.shouldTriggerTrap(trap, 'enemy', eventData)) {
+                console.log(`[Trap Check] Enemy trap ${trap.name} matches event type ${eventType}`);
+                const shouldTrigger = this.shouldTriggerTrap(trap, 'enemy', eventData);
+                console.log(`[Trap Check] Enemy trap ${trap.name} shouldTrigger: ${shouldTrigger}`);
+                if (shouldTrigger) {
                     this.queueTrapTrigger('enemy', row, eventData);
                 }
             }
@@ -3004,24 +4125,45 @@ class Game {
     
     shouldTriggerTrap(trap, trapOwner, eventData) {
         if (!trap.triggerCondition) return true;
-        return trap.triggerCondition(trap, trapOwner, eventData, this);
+        const result = trap.triggerCondition(trap, trapOwner, eventData, this);
+        if (!result) {
+            console.log(`[Trap Condition] ${trap.name} condition failed. trapOwner: ${trapOwner}, eventData:`, {
+                owner: eventData.owner,
+                cryptidName: eventData.cryptid?.name,
+                killedBySource: eventData.cryptid?.killedBySource?.name || 'none',
+                killedBy: eventData.cryptid?.killedBy
+            });
+        }
+        return result;
     }
     
     queueTrapTrigger(owner, row, eventData) {
         const trap = (owner === 'player' ? this.playerTraps : this.enemyTraps)[row];
-        if (!trap) return;
+        console.log(`[Trap Queue] Attempting to queue trap at ${owner} row ${row}:`, trap?.name);
+        if (!trap) {
+            console.log(`[Trap Queue] No trap found at ${owner} row ${row}`);
+            return;
+        }
         if (!window.pendingTraps) window.pendingTraps = [];
         
         // Prevent duplicate trap triggers
         const trapKey = `${owner}-trap-${row}`;
         const alreadyQueued = window.pendingTraps.some(p => p.owner === owner && p.row === row);
         const alreadyAnimating = window.animatingTraps?.has(trapKey);
-        if (alreadyQueued || alreadyAnimating) return;
+        console.log(`[Trap Queue] ${trap.name}: alreadyQueued=${alreadyQueued}, alreadyAnimating=${alreadyAnimating}`);
+        if (alreadyQueued || alreadyAnimating) {
+            console.log(`[Trap Queue] Skipping duplicate trap`);
+            return;
+        }
         
+        console.log(`[Trap Queue] Queueing ${trap.name}, processingTraps=${window.processingTraps}`);
         window.pendingTraps.push({ owner, row, trap, eventData });
         if (!window.processingTraps) {
             window.processingTraps = true;
+            console.log(`[Trap Queue] Starting trap queue processing`);
             setTimeout(() => processTrapQueue(), 50);
+        } else {
+            console.log(`[Trap Queue] Already processing, trap will be picked up on next iteration`);
         }
     }
     
@@ -4290,6 +5432,7 @@ class Game {
                     // Use getEffectiveHp to consider support HP pooling
                     if (this.getEffectiveHp(otherTarget) <= 0) {
                         otherTarget.killedBy = 'multiAttack';
+                        otherTarget.killedBySource = attacker;
                         this.killCryptid(otherTarget, attacker.owner);
                         if (attacker.onKill) {
                             GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: otherTarget, col: attacker.col, row: attacker.row, isMultiAttack: true });
@@ -5334,6 +6477,20 @@ function initGame() {
     window.pendingTraps = [];
     window.processingTraps = false;
     window.animatingTraps = new Set();
+    
+    // Reset EffectStack for new game
+    EffectStack.clear();
+    EffectStack.history = [];
+    
+    // Initialize EventFeedback system (only once)
+    if (!window._eventFeedbackInitialized) {
+        EventFeedback.init();
+        window._eventFeedbackInitialized = true;
+    } else {
+        // Clear any pending messages from previous game
+        EventFeedback.clear();
+    }
+    
     EventLog.init();
     MatchLog.init(); // Initialize detailed match logging
     
@@ -8582,6 +9739,29 @@ function showCryptidTooltip(cryptid, col, row, owner) {
                     window.Multiplayer.actionActivateAbility('bloodPact', cryptid.col, cryptid.row);
                 }
                 
+                // Show activation message
+                showMessage(`🩸 ${cryptid.name} uses Blood Pact!`, 1000);
+                
+                // Add damage animation to combatant
+                const combatCol = game.getCombatCol(owner);
+                const combatantSprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${cryptid.row}"]`);
+                if (combatantSprite) {
+                    combatantSprite.classList.add('hit-recoil');
+                    setTimeout(() => combatantSprite.classList.remove('hit-recoil'), 250);
+                    
+                    // Show floating damage on combatant
+                    if (window.CombatEffects && combatant) {
+                        CombatEffects.showDamageNumber(combatant, 1, false);
+                    }
+                }
+                
+                // Add blood effect on vampire
+                const vampireSprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`);
+                if (vampireSprite) {
+                    vampireSprite.classList.add('ability-activate');
+                    setTimeout(() => vampireSprite.classList.remove('ability-activate'), 500);
+                }
+                
                 GameEvents.emit('onActivatedAbility', { ability: 'bloodPact', card: cryptid, owner, col: cryptid.col, row: cryptid.row, target: combatant, willKill });
                 cryptid.activateBloodPact(cryptid, game);
                 hideTooltip();
@@ -8590,7 +9770,7 @@ function showCryptidTooltip(cryptid, col, row, owner) {
                     // Combatant will die - delay for death + promotion
                     setTimeout(() => renderAll(), TIMING.deathAnim + TIMING.promoteAnim + 200);
                 } else {
-                    renderAll();
+                    setTimeout(() => renderAll(), 400);
                 }
             }
         };
@@ -9076,6 +10256,18 @@ window.calculateTilePositions = calculateTilePositions;
 window.performAttackOnTarget = performAttackOnTarget;
 window.playAttackAnimation = playAttackAnimation;
 
+// Debug commands for EffectStack
+window.debugEffectStack = () => {
+    console.log('=== EffectStack Debug ===');
+    console.log('State:', EffectStack.getState());
+    console.log('Recent History:', EffectStack.history.slice(-10));
+    return EffectStack.getState();
+};
+
+window.setEffectStackDebug = (enabled) => {
+    EffectStack.setDebug(enabled);
+};
+
 // Game initialization is handled by HomeScreen or MainMenu - no auto-init here
 
-console.log('Game System loaded');
+console.log('Game System loaded (with EffectStack v1.0)');

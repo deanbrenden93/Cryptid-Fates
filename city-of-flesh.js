@@ -1132,18 +1132,40 @@ CardRegistry.registerTrap('bloodCovenant', {
     triggerDescription: "Triggers: When your cryptid dies from enemy attack",
     triggerEvent: 'onDeath',
     triggerCondition: (trap, owner, eventData, game) => {
-        // Check if it's our cryptid that died
-        if (eventData.owner !== owner) return false;
-        // Check if it was killed by enemy attack
-        if (!eventData.cryptid?.killedBySource) return false;
+        console.log('[Blood Covenant] Checking condition:', {
+            trapOwner: owner,
+            eventOwner: eventData.owner,
+            cryptidName: eventData.cryptid?.name,
+            killedBy: eventData.cryptid?.killedBy,
+            killedBySource: eventData.cryptid?.killedBySource?.name || 'none',
+            killedBySourceOwner: eventData.cryptid?.killedBySource?.owner || 'none'
+        });
+        // Check if it's our cryptid that died (trap owner matches dead cryptid owner)
+        if (eventData.owner !== owner) {
+            console.log('[Blood Covenant] FAILED: Dead cryptid owner', eventData.owner, '!== trap owner', owner);
+            return false;
+        }
+        // Check if it was killed by an attacker (not burn, calamity, etc.)
+        if (!eventData.cryptid?.killedBySource) {
+            console.log('[Blood Covenant] FAILED: No killedBySource on cryptid');
+            return false;
+        }
         const killer = eventData.cryptid.killedBySource;
-        return killer.owner !== owner;
+        // The killer must belong to the enemy (not self-inflicted)
+        const result = killer.owner !== owner;
+        console.log('[Blood Covenant] Final check: killer.owner', killer.owner, '!== owner', owner, '=', result);
+        return result;
     },
     effect: (game, owner, row, eventData) => {
         const killer = eventData.cryptid.killedBySource;
         if (killer && killer.currentHp > 0) {
             killer.killedBy = 'bloodCovenant';
             game.killCryptid(killer, owner);
+            
+            // Visual feedback
+            if (typeof EventFeedback !== 'undefined') {
+                EventFeedback.showFloatingMessage(`🩸 Blood Covenant!`, killer, '#dc143c', '⚰️');
+            }
         }
     }
 });
