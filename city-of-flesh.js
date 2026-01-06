@@ -1166,8 +1166,8 @@ CardRegistry.registerTrap('bloodCovenant', {
             game.killCryptid(killer, owner);
             
             // Visual feedback
-            if (typeof EventFeedback !== 'undefined') {
-                EventFeedback.showFloatingMessage(`🩸 Blood Covenant!`, killer, '#dc143c', '⚰️');
+            if (typeof EventFeedback !== 'undefined' && EventFeedback.showFloatingIndicator) {
+                EventFeedback.showFloatingIndicator(killer, `🩸 Blood Covenant!`, '#dc143c');
             }
         } else if (killer) {
             console.log('[Blood Covenant] Killer already dead (HP:', killer.currentHp, ')');

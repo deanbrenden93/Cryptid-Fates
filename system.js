@@ -14,6 +14,7 @@ const GameEvents = {
         const listener = { callback, context };
         this.listeners[event].push(listener);
         return () => {
+            if (!this.listeners[event]) return; // Guard against cleared listeners
             const idx = this.listeners[event].indexOf(listener);
             if (idx > -1) this.listeners[event].splice(idx, 1);
         };
@@ -4185,9 +4186,13 @@ class Game {
         const traps = owner === 'player' ? this.playerTraps : this.enemyTraps;
         const trap = traps[row];
         if (!trap) return;
+        
+        // Remove trap from slot BEFORE executing effect to prevent re-triggering
+        // if the effect causes another death/event
+        traps[row] = null;
+        
         GameEvents.emit('onTrapTriggered', { trap, owner, row, triggerEvent: eventData });
         if (trap.effect) trap.effect(this, owner, row, eventData);
-        traps[row] = null;
     }
     
     setTrap(owner, row, trapCard) {
@@ -5499,7 +5504,10 @@ class Game {
         this.deathsThisTurn[owner] += deathCount;
         
         console.log('[Death] Emitting onDeath for', cryptid.name, 'killedBy:', cryptid.killedBy, 'killedBySource:', cryptid.killedBySource?.name || 'none');
-        GameEvents.emit('onDeath', { cryptid, owner, col, row, killerOwner, deathCount, killedBySource: cryptid.killedBySource });
+        const deathEventData = { cryptid, owner, col, row, killerOwner, deathCount, killedBySource: cryptid.killedBySource };
+        
+        // Emit event for listeners - trap listener handles checkTraps
+        GameEvents.emit('onDeath', deathEventData);
         
         // Skinwalker inherit - if combatant dies, check if support has hasInherit
         if (col === combatCol) {
@@ -10068,6 +10076,11 @@ function setupGameEventListeners() {
     // Clear ALL previous game event listeners to avoid duplicates
     // This is important when starting a new game after a previous one
     GameEvents.off();
+    
+    // Re-register trap listeners (they were cleared by GameEvents.off())
+    if (game && game.setupTrapListeners) {
+        game.setupTrapListeners();
+    }
     
     // Reset EventLog subscribed flag so it will re-subscribe
     EventLog.subscribed = false;
