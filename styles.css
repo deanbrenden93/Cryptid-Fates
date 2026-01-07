@@ -1626,7 +1626,8 @@ body {
     padding: 0 8%;
     /* Extra top padding inside scroll container for hover lift + scale */
     padding-top: 45px;
-    scroll-behavior: smooth;
+    /* NOTE: Do NOT use scroll-behavior: smooth here - it conflicts with manual JS scroll handling
+       and makes touchpad scrolling janky because it fights the rapid small pixel deltas */
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     -ms-overflow-style: none;
