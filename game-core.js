@@ -3561,7 +3561,17 @@ async function playTrapTriggerAnimation(owner, row, trap) {
     showMessage(`⚡ ${trap.name}! ⚡`, TIMING.trapTriggerAnim);
     
     const trapSprite = document.querySelector(`.trap-sprite[data-owner="${owner}"][data-row="${row}"]`);
-    if (trapSprite) trapSprite.classList.add('trap-triggering');
+    if (trapSprite) {
+        trapSprite.classList.add('trap-triggering');
+        // After animation completes, mark as "animation-done" to prevent re-animation
+        // if renderAll() is called. This is a safety net - the main fix is in renderSprites()
+        // which no longer removes/re-appends animating sprites (which restarts animations)
+        setTimeout(() => {
+            if (trapSprite.isConnected) { // Only if still in DOM
+                trapSprite.classList.add('trap-animation-done');
+            }
+        }, TIMING.trapTriggerAnim);
+    }
     
     const trapTile = document.querySelector(`.tile.trap[data-owner="${owner}"][data-row="${row}"]`);
     if (trapTile) {
@@ -4115,13 +4125,27 @@ class Game {
     
     checkTraps(eventType, eventData) {
         console.log(`[Trap Check] Event: ${eventType}`, eventData);
+        
+        // Track which trap keys have already been queued for THIS event
+        // If two copies of the SAME trap are in both slots, only the TOP slot (row 0) triggers
+        // Different traps can both trigger for the same event
+        const playerTriggeredKeys = new Set();
+        const enemyTriggeredKeys = new Set();
+        
         for (let row = 0; row < 2; row++) {
             const trap = this.playerTraps[row];
             if (trap && trap.triggerEvent === eventType) {
+                // Skip if this trap key already triggered for this event
+                if (playerTriggeredKeys.has(trap.key)) {
+                    console.log(`[Trap Check] Player trap ${trap.name} at row ${row} skipped - same trap already triggered at earlier row`);
+                    continue;
+                }
+                
                 console.log(`[Trap Check] Player trap ${trap.name} matches event type ${eventType}`);
                 const shouldTrigger = this.shouldTriggerTrap(trap, 'player', eventData);
                 console.log(`[Trap Check] Player trap ${trap.name} shouldTrigger: ${shouldTrigger}`);
                 if (shouldTrigger) {
+                    playerTriggeredKeys.add(trap.key);
                     this.queueTrapTrigger('player', row, eventData);
                 }
             }
@@ -4129,10 +4153,17 @@ class Game {
         for (let row = 0; row < 2; row++) {
             const trap = this.enemyTraps[row];
             if (trap && trap.triggerEvent === eventType) {
+                // Skip if this trap key already triggered for this event
+                if (enemyTriggeredKeys.has(trap.key)) {
+                    console.log(`[Trap Check] Enemy trap ${trap.name} at row ${row} skipped - same trap already triggered at earlier row`);
+                    continue;
+                }
+                
                 console.log(`[Trap Check] Enemy trap ${trap.name} matches event type ${eventType}`);
                 const shouldTrigger = this.shouldTriggerTrap(trap, 'enemy', eventData);
                 console.log(`[Trap Check] Enemy trap ${trap.name} shouldTrigger: ${shouldTrigger}`);
                 if (shouldTrigger) {
+                    enemyTriggeredKeys.add(trap.key);
                     this.queueTrapTrigger('enemy', row, eventData);
                 }
             }

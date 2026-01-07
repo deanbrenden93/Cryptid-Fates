@@ -1162,12 +1162,28 @@ CardRegistry.registerTrap('bloodCovenant', {
         // Get killedBySource from either explicit event data or from cryptid object
         const killer = eventData.killedBySource || eventData.cryptid?.killedBySource;
         if (killer && killer.currentHp > 0) {
+            // Store killer info before it's removed from game state
+            const killerOwner = killer.owner;
+            const killerCol = killer.col;
+            const killerRow = killer.row;
+            
+            // STEP 1: Prepare death animation BEFORE killing (captures sprite while still in DOM)
+            const deathData = window.CombatEffects?.prepareInstantKillDeath?.(killerOwner, killerCol, killerRow);
+            
+            // Kill immediately (removes from game state) 
             killer.killedBy = 'bloodCovenant';
             game.killCryptid(killer, owner);
             
-            // Visual feedback
-            if (typeof EventFeedback !== 'undefined' && EventFeedback.showFloatingIndicator) {
-                EventFeedback.showFloatingIndicator(killer, `🩸 Blood Covenant!`, '#dc143c');
+            // STEP 2: Play lightning strike effect, then the prepared death animation
+            if (window.CombatEffects?.strikeCryptid) {
+                const targetPos = { owner: killerOwner, col: killerCol, row: killerRow };
+                window.CombatEffects.strikeCryptid(targetPos, () => {
+                    // After lightning: play the prepared death animation
+                    window.CombatEffects.playPreparedDeath(deathData);
+                });
+            } else {
+                // Fallback - just play death animation
+                window.CombatEffects?.playPreparedDeath?.(deathData);
             }
         } else if (killer) {
             console.log('[Blood Covenant] Killer already dead (HP:', killer.currentHp, ')');

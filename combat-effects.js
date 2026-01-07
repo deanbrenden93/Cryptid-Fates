@@ -1,6 +1,19 @@
 /**
  * Cryptid Fates - Combat Effects System
  * Satisfying, weighty combat feedback with screen shake, particles, and dynamic stat bars
+ * 
+ * === INSTANT KILL EFFECTS ===
+ * For any card ability that says "instantly kill" (not "deal damage"), use:
+ * 
+ *   // BEFORE calling game.killCryptid:
+ *   const deathData = CombatEffects.prepareInstantKillDeath(owner, col, row);
+ *   game.killCryptid(cryptid, killer);
+ *   
+ *   // AFTER any preceding effects (lightning, animations, etc):
+ *   CombatEffects.playPreparedDeath(deathData);
+ * 
+ * This ensures the death animation plays correctly even after the sprite
+ * is removed from the game state and DOM.
  */
 
 window.CombatEffects = {
@@ -183,6 +196,571 @@ window.CombatEffects = {
         
         battlefield.appendChild(container);
         setTimeout(() => container.remove(), 1000);
+    },
+    
+    // ==================== LIGHTNING STRIKE EFFECT ====================
+    
+    createLightningStrike(targetX, targetY, onComplete) {
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield) {
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        const battlefieldRect = battlefield.getBoundingClientRect();
+        
+        // Pre-flash - entire screen flashes white/blue
+        const skyFlash = document.createElement('div');
+        skyFlash.className = 'lightning-sky-flash';
+        battlefield.appendChild(skyFlash);
+        
+        // Create the lightning bolt container - starts from top of battlefield
+        const container = document.createElement('div');
+        container.className = 'lightning-container';
+        container.style.left = targetX + 'px';
+        container.style.top = '0px';
+        battlefield.appendChild(container);
+        
+        // Generate multiple lightning segments (CSS-based for reliability)
+        // Lightning goes from top of battlefield down to target
+        const boltHeight = targetY;
+        const numSegments = 8 + Math.floor(Math.random() * 4);
+        const segmentHeight = Math.max(boltHeight / numSegments, 15);
+        
+        console.log('[Lightning] Creating bolt from (0,0) to', targetX, targetY, 'height:', boltHeight, 'segments:', numSegments);
+        
+        // Use a single SVG path for guaranteed connectivity
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'lightning-svg');
+        svg.style.position = 'absolute';
+        svg.style.left = '-100px';
+        svg.style.top = '0';
+        svg.style.width = '200px';
+        svg.style.height = (boltHeight + 50) + 'px';
+        svg.style.overflow = 'visible';
+        svg.style.pointerEvents = 'none';
+        
+        // Build the lightning path as connected points
+        // Start at center top, end exactly at center (where target is)
+        const centerX = 100; // Center of SVG
+        const points = [{x: centerX, y: 0}];
+        
+        for (let i = 0; i < numSegments; i++) {
+            const prev = points[points.length - 1];
+            const isLastSegment = (i === numSegments - 1);
+            
+            if (isLastSegment) {
+                // Final point lands exactly on target center
+                points.push({
+                    x: centerX,
+                    y: boltHeight
+                });
+            } else {
+                // Intermediate points have random jag, but gradually pull toward center
+                const progress = i / numSegments;
+                const maxJag = 70 * (1 - progress * 0.5); // Less jag as we approach target
+                const jag = (Math.random() - 0.5) * maxJag;
+                // Bias toward center as we get closer
+                const pullToCenter = (prev.x - centerX) * 0.2;
+                points.push({
+                    x: prev.x + jag - pullToCenter,
+                    y: prev.y + segmentHeight
+                });
+            }
+        }
+        
+        // Create SVG path string
+        let pathD = `M ${points[0].x} ${points[0].y}`;
+        for (let i = 1; i < points.length; i++) {
+            pathD += ` L ${points[i].x} ${points[i].y}`;
+        }
+        
+        // Main glow bolt (thick, blurred)
+        const glowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        glowPath.setAttribute('d', pathD);
+        glowPath.setAttribute('stroke', 'rgba(150, 180, 255, 0.8)');
+        glowPath.setAttribute('stroke-width', '8');
+        glowPath.setAttribute('fill', 'none');
+        glowPath.setAttribute('stroke-linecap', 'round');
+        glowPath.setAttribute('stroke-linejoin', 'round');
+        glowPath.setAttribute('filter', 'blur(4px)');
+        glowPath.setAttribute('class', 'lightning-glow-path');
+        
+        // Outer glow
+        const outerGlow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        outerGlow.setAttribute('d', pathD);
+        outerGlow.setAttribute('stroke', 'rgba(100, 150, 255, 0.5)');
+        outerGlow.setAttribute('stroke-width', '16');
+        outerGlow.setAttribute('fill', 'none');
+        outerGlow.setAttribute('stroke-linecap', 'round');
+        outerGlow.setAttribute('stroke-linejoin', 'round');
+        outerGlow.setAttribute('filter', 'blur(8px)');
+        outerGlow.setAttribute('class', 'lightning-outer-path');
+        
+        // Core bright bolt (thin, sharp)
+        const corePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        corePath.setAttribute('d', pathD);
+        corePath.setAttribute('stroke', '#ffffff');
+        corePath.setAttribute('stroke-width', '2');
+        corePath.setAttribute('fill', 'none');
+        corePath.setAttribute('stroke-linecap', 'round');
+        corePath.setAttribute('stroke-linejoin', 'round');
+        corePath.setAttribute('class', 'lightning-core-path');
+        
+        // Add branches
+        for (let i = 2; i < points.length - 2; i++) {
+            if (Math.random() > 0.5) {
+                const start = points[i];
+                const branchDir = Math.random() > 0.5 ? 1 : -1;
+                const branchEndX = start.x + branchDir * (20 + Math.random() * 30);
+                const branchEndY = start.y + (15 + Math.random() * 25);
+                
+                const branchPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                branchPath.setAttribute('d', `M ${start.x} ${start.y} L ${branchEndX} ${branchEndY}`);
+                branchPath.setAttribute('stroke', 'rgba(200, 220, 255, 0.7)');
+                branchPath.setAttribute('stroke-width', '1.5');
+                branchPath.setAttribute('fill', 'none');
+                branchPath.setAttribute('stroke-linecap', 'round');
+                branchPath.setAttribute('filter', 'blur(1px)');
+                branchPath.setAttribute('class', 'lightning-branch-path');
+                svg.appendChild(branchPath);
+            }
+        }
+        
+        svg.appendChild(outerGlow);
+        svg.appendChild(glowPath);
+        svg.appendChild(corePath);
+        container.appendChild(svg);
+        
+        console.log('[Lightning] Created SVG bolt with', points.length, 'points');
+        
+        // Impact effects at target
+        setTimeout(() => {
+            // Big impact flash
+            const impactFlash = document.createElement('div');
+            impactFlash.className = 'lightning-impact';
+            impactFlash.style.left = targetX + 'px';
+            impactFlash.style.top = targetY + 'px';
+            battlefield.appendChild(impactFlash);
+            
+            // Sparks flying everywhere
+            this.createSparks(targetX, targetY, 25);
+            this.createImpactParticles(targetX, targetY, '#88ccff', 18);
+            this.createImpactParticles(targetX, targetY, '#ffffff', 10);
+            
+            // Heavy screen shake
+            this.heavyImpact(10);
+            
+            setTimeout(() => impactFlash.remove(), 500);
+        }, 60);
+        
+        // Second flash for drama
+        setTimeout(() => {
+            const secondFlash = document.createElement('div');
+            secondFlash.className = 'lightning-sky-flash secondary';
+            battlefield.appendChild(secondFlash);
+            setTimeout(() => secondFlash.remove(), 200);
+        }, 120);
+        
+        // Thunder rumble (third flash)
+        setTimeout(() => {
+            const thirdFlash = document.createElement('div');
+            thirdFlash.className = 'lightning-sky-flash tertiary';
+            battlefield.appendChild(thirdFlash);
+            setTimeout(() => thirdFlash.remove(), 100);
+        }, 250);
+        
+        // Cleanup
+        setTimeout(() => {
+            skyFlash.remove();
+            container.remove();
+            if (onComplete) onComplete();
+        }, 600);
+    },
+    
+    // Lightning strike on a specific cryptid
+    strikeCryptid(target, onComplete) {
+        console.log('[Lightning] strikeCryptid called with target:', target);
+        if (!target) {
+            console.log('[Lightning] No target, skipping');
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        const key = `${target.owner}-${target.col}-${target.row}`;
+        const pos = window.tilePositions?.[key];
+        console.log('[Lightning] Position key:', key, 'pos:', pos);
+        if (!pos) {
+            console.log('[Lightning] No position found, skipping');
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        console.log('[Lightning] Striking at', pos.x, pos.y);
+        this.createLightningStrike(pos.x, pos.y, onComplete);
+    },
+    
+    // ==================== INSTANT KILL DEATH ANIMATION ====================
+    // Universal death animation for instant-kill effects (not damage-based)
+    // Use this for Blood Covenant, sacrifice effects, or any "instantly kill" ability
+    //
+    // IMPORTANT: Call prepareInstantKillDeath BEFORE removing the cryptid from game state,
+    // then call playPreparedDeath AFTER any effects (like lightning) complete.
+    
+    // Step 1: Capture sprite before kill (call this BEFORE killCryptid)
+    prepareInstantKillDeath(cryptidOwner, cryptidCol, cryptidRow) {
+        const spriteSelector = `.cryptid-sprite[data-owner="${cryptidOwner}"][data-col="${cryptidCol}"][data-row="${cryptidRow}"]`;
+        const originalSprite = document.querySelector(spriteSelector);
+        
+        if (!originalSprite) {
+            console.log('[InstantKill] No sprite found for', cryptidOwner, cryptidCol, cryptidRow);
+            return null;
+        }
+        
+        // Create a clean death sprite with just the visual
+        const deathSprite = document.createElement('div');
+        deathSprite.className = 'cryptid-sprite death-effect-sprite';
+        
+        // Copy only the visual sprite element
+        const spriteEl = originalSprite.querySelector('.sprite');
+        if (spriteEl) {
+            const clonedSprite = spriteEl.cloneNode(true);
+            // Preserve the correct horizontal orientation
+            // Enemy sprites face left (scaleX(1)), player sprites are flipped (scaleX(-1))
+            if (cryptidOwner === 'enemy') {
+                clonedSprite.style.transform = 'scaleX(1)';
+            } else {
+                clonedSprite.style.transform = 'scaleX(-1)';
+            }
+            deathSprite.appendChild(clonedSprite);
+        }
+        
+        // Position exactly where the original was
+        deathSprite.style.left = originalSprite.style.left;
+        deathSprite.style.top = originalSprite.style.top;
+        deathSprite.style.transform = 'translate(-50%, -50%)';
+        deathSprite.style.zIndex = '1500';
+        deathSprite.style.pointerEvents = 'none';
+        
+        return {
+            deathSprite,
+            owner: cryptidOwner
+        };
+    },
+    
+    // Step 2: Play the prepared death animation (call this AFTER effects complete)
+    playPreparedDeath(preparedData, onComplete) {
+        if (!preparedData || !preparedData.deathSprite) {
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        const spriteLayer = document.getElementById('sprite-layer');
+        if (!spriteLayer) {
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        const { deathSprite, owner } = preparedData;
+        
+        // Add to sprite layer and trigger death animation
+        spriteLayer.appendChild(deathSprite);
+        
+        // Use appropriate death direction based on owner
+        const deathClass = owner === 'enemy' ? 'dying-right' : 'dying-left';
+        deathSprite.classList.add(deathClass);
+        
+        // Remove after animation
+        const TIMING = window.TIMING || { deathAnim: 700 };
+        setTimeout(() => {
+            if (deathSprite.isConnected) {
+                deathSprite.remove();
+            }
+            if (onComplete) onComplete();
+        }, TIMING.deathAnim);
+        
+        return deathSprite;
+    },
+    
+    // Convenience: One-step version if sprite is still in DOM (call BEFORE killCryptid)
+    playInstantKillDeath(cryptidOwner, cryptidCol, cryptidRow, onComplete) {
+        const preparedData = this.prepareInstantKillDeath(cryptidOwner, cryptidCol, cryptidRow);
+        return this.playPreparedDeath(preparedData, onComplete);
+    },
+    
+    // ==================== DRAMATIC DEATH ANIMATION ====================
+    // Climactic death animation that scales with rarity
+    // common -> uncommon -> rare -> ULTIMATE (most dramatic)
+    
+    // Rarity configuration for death drama
+    deathDramaConfig: {
+        common: {
+            zoomScale: 1.05,
+            zoomDuration: 400,
+            pauseDuration: 150,
+            shakeIntensity: 0.6,
+            particleCount: 8,
+            vignette: false,
+            slowMo: false,
+            flashColor: 'rgba(255, 100, 100, 0.3)'
+        },
+        uncommon: {
+            zoomScale: 1.1,
+            zoomDuration: 500,
+            pauseDuration: 250,
+            shakeIntensity: 0.9,
+            particleCount: 15,
+            vignette: true,
+            vignetteOpacity: 0.3,
+            slowMo: false,
+            flashColor: 'rgba(100, 200, 255, 0.4)'
+        },
+        rare: {
+            zoomScale: 1.15,
+            zoomDuration: 650,
+            pauseDuration: 400,
+            shakeIntensity: 1.3,
+            particleCount: 25,
+            vignette: true,
+            vignetteOpacity: 0.5,
+            slowMo: true,
+            slowMoDuration: 300,
+            flashColor: 'rgba(200, 150, 255, 0.5)'
+        },
+        ultimate: {
+            zoomScale: 1.25,
+            zoomDuration: 900,
+            pauseDuration: 600,
+            shakeIntensity: 2.0,
+            particleCount: 40,
+            vignette: true,
+            vignetteOpacity: 0.7,
+            slowMo: true,
+            slowMoDuration: 500,
+            flashColor: 'rgba(255, 215, 0, 0.6)',
+            screenFlash: true,
+            radialBurst: true
+        }
+    },
+    
+    // Main dramatic death function - call this instead of just adding dying class
+    playDramaticDeath(sprite, owner, rarity = 'common', onComplete) {
+        if (!sprite) {
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        const config = this.deathDramaConfig[rarity] || this.deathDramaConfig.common;
+        const battlefield = document.getElementById('battlefield-area');
+        const spriteLayer = document.getElementById('sprite-layer');
+        
+        if (!battlefield || !spriteLayer) {
+            // Fallback to basic death
+            sprite.classList.add(owner === 'enemy' ? 'dying-right' : 'dying-left');
+            const TIMING = window.TIMING || { deathAnim: 700 };
+            setTimeout(() => onComplete?.(), TIMING.deathAnim);
+            return;
+        }
+        
+        // IMPORTANT: Clone the sprite immediately so it persists after game state changes
+        const deathClone = sprite.cloneNode(true);
+        deathClone.className = 'cryptid-sprite death-drama-sprite';
+        if (owner === 'enemy') deathClone.classList.add('enemy');
+        
+        // Copy the exact position - DON'T set transform here as the animation handles it
+        deathClone.style.left = sprite.style.left;
+        deathClone.style.top = sprite.style.top;
+        deathClone.style.zIndex = '1500';
+        deathClone.style.pointerEvents = 'none';
+        deathClone.style.position = 'absolute'; // Ensure absolute positioning
+        
+        // Preserve correct sprite orientation on the inner .sprite element
+        const spriteImg = deathClone.querySelector('.sprite');
+        if (spriteImg) {
+            spriteImg.style.transform = owner === 'enemy' ? 'scaleX(1)' : 'scaleX(-1)';
+        }
+        
+        // Remove data attributes so renderSprites doesn't interfere
+        deathClone.removeAttribute('data-owner');
+        deathClone.removeAttribute('data-col');
+        deathClone.removeAttribute('data-row');
+        deathClone.removeAttribute('data-cryptid-key');
+        
+        // Remove any inline animation-duration that might have been copied
+        deathClone.style.animationDuration = '';
+        
+        // Add clone to sprite layer
+        spriteLayer.appendChild(deathClone);
+        console.log('[DramaticDeath] Clone created and added to sprite layer');
+        
+        // Hide original sprite immediately (it will be removed by renderAll anyway)
+        sprite.style.opacity = '0';
+        sprite.style.pointerEvents = 'none';
+        
+        // Get clone position for zoom focus
+        const spriteRect = deathClone.getBoundingClientRect();
+        const battlefieldRect = battlefield.getBoundingClientRect();
+        const focusX = spriteRect.left + spriteRect.width/2 - battlefieldRect.left;
+        const focusY = spriteRect.top + spriteRect.height/2 - battlefieldRect.top;
+        const focusXPercent = (focusX / battlefieldRect.width) * 100;
+        const focusYPercent = (focusY / battlefieldRect.height) * 100;
+        
+        // Create overlay container for effects
+        const overlay = document.createElement('div');
+        overlay.className = 'death-drama-overlay';
+        overlay.style.cssText = `
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 2000;
+            overflow: hidden;
+        `;
+        battlefield.appendChild(overlay);
+        
+        // Add vignette effect
+        if (config.vignette) {
+            const vignette = document.createElement('div');
+            vignette.className = 'death-vignette';
+            vignette.style.cssText = `
+                position: absolute;
+                top: 0; left: 0; right: 0; bottom: 0;
+                background: radial-gradient(circle at ${focusXPercent}% ${focusYPercent}%, 
+                    transparent 20%, 
+                    rgba(0,0,0,${config.vignetteOpacity * 0.5}) 50%, 
+                    rgba(0,0,0,${config.vignetteOpacity}) 100%);
+                opacity: 0;
+                animation: vignetteIn ${config.zoomDuration * 0.5}ms ease-out forwards;
+            `;
+            overlay.appendChild(vignette);
+        }
+        
+        // Screen flash for ultimate
+        if (config.screenFlash) {
+            const flash = document.createElement('div');
+            flash.style.cssText = `
+                position: absolute;
+                top: 0; left: 0; right: 0; bottom: 0;
+                background: ${config.flashColor};
+                opacity: 0;
+                animation: deathFlash ${config.zoomDuration}ms ease-out forwards;
+            `;
+            overlay.appendChild(flash);
+        }
+        
+        // Radial burst for ultimate
+        if (config.radialBurst) {
+            for (let i = 0; i < 12; i++) {
+                const ray = document.createElement('div');
+                const angle = (i / 12) * 360;
+                ray.style.cssText = `
+                    position: absolute;
+                    left: ${focusX}px;
+                    top: ${focusY}px;
+                    width: 4px;
+                    height: 0;
+                    background: linear-gradient(to bottom, 
+                        rgba(255, 215, 0, 0.9), 
+                        rgba(255, 100, 50, 0.6), 
+                        transparent);
+                    transform-origin: center top;
+                    transform: translate(-50%, 0) rotate(${angle}deg);
+                    animation: deathRayBurst ${config.zoomDuration}ms ease-out forwards;
+                    animation-delay: ${i * 20}ms;
+                `;
+                overlay.appendChild(ray);
+            }
+        }
+        
+        // Set up zoom with proper transition sequencing
+        console.log(`[DramaticDeath] Playing for ${rarity} cryptid, zoom: ${config.zoomScale}, duration: ${config.zoomDuration}ms`);
+        
+        // Step 1: Set origin (no transition yet)
+        battlefield.style.transition = 'none';
+        battlefield.style.transformOrigin = `${focusXPercent}% ${focusYPercent}%`;
+        battlefield.style.transform = 'scale(1)'; // Ensure starting state
+        
+        // Step 2: Force browser to apply the starting state
+        void battlefield.offsetWidth;
+        
+        // Step 3: Now set transition and apply zoom (use setTimeout for reliability)
+        setTimeout(() => {
+            battlefield.style.transition = `transform ${config.zoomDuration}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`;
+            battlefield.style.transform = `scale(${config.zoomScale})`;
+            console.log('[DramaticDeath] Zoom applied');
+        }, 16); // One frame delay
+        
+        // Initial impact shake
+        this.screenShake(config.shakeIntensity * 0.5, 150);
+        
+        // Calculate death animation duration (slow-mo makes it longer)
+        const TIMING = window.TIMING || { deathAnim: 700 };
+        const deathAnimDuration = config.slowMo ? TIMING.deathAnim * 1.5 : TIMING.deathAnim;
+        console.log(`[DramaticDeath] Death anim duration: ${deathAnimDuration}ms, slowMo: ${config.slowMo}`);
+        
+        // Dramatic pause before death animation starts
+        setTimeout(() => {
+            console.log(`[DramaticDeath] Pause complete, triggering death animation after ${config.pauseDuration}ms`);
+            
+            // Create particles from the dying cryptid
+            this.createImpactParticles(focusX, focusY, config.flashColor.replace(/[\d.]+\)$/, '1)'), config.particleCount);
+            
+            // Second shake at death moment
+            this.screenShake(config.shakeIntensity, 300);
+            
+            // Trigger the actual death animation on the CLONE
+            const deathClass = owner === 'enemy' ? 'dying-right' : 'dying-left';
+            console.log(`[DramaticDeath] Adding class: ${deathClass} to clone`);
+            
+            // Set slow-mo duration if applicable (must be set before animation starts)
+            if (config.slowMo) {
+                deathClone.style.animationDuration = `${deathAnimDuration}ms`;
+            }
+            
+            deathClone.classList.add(deathClass);
+            
+            // For higher rarities, add extra particles during death
+            if (rarity === 'rare' || rarity === 'ultimate') {
+                const burstInterval = setInterval(() => {
+                    this.createSparks(focusX + (Math.random() - 0.5) * 40, focusY + (Math.random() - 0.5) * 40, 5);
+                }, 100);
+                setTimeout(() => clearInterval(burstInterval), deathAnimDuration);
+            }
+            
+        }, config.pauseDuration);
+        
+        // Calculate total duration
+        const totalDuration = config.pauseDuration + deathAnimDuration + 50;
+        
+        // Reset zoom and cleanup
+        setTimeout(() => {
+            battlefield.style.transition = 'transform 350ms ease-out';
+            battlefield.style.transform = 'scale(1)';
+            
+            setTimeout(() => {
+                battlefield.style.transition = '';
+                battlefield.style.transformOrigin = '';
+                battlefield.style.transform = '';
+                overlay.remove();
+                
+                // Remove death clone
+                if (deathClone.isConnected) {
+                    deathClone.remove();
+                }
+                
+                if (onComplete) onComplete();
+            }, 400);
+        }, totalDuration);
+    },
+    
+    // Helper to get rarity color for particles
+    getRarityColor(rarity) {
+        const colors = {
+            common: '#888888',
+            uncommon: '#4da6ff',
+            rare: '#b366ff',
+            ultimate: '#ffd700'
+        };
+        return colors[rarity] || colors.common;
     },
     
     // ==================== COMBO ATTACK EFFECT ====================
@@ -854,6 +1432,192 @@ window.CombatEffects = {
         /* Hide old stat bar */
         .cryptid-sprite .stat-bar {
             display: none !important;
+        }
+        
+        /* ==================== LIGHTNING STRIKE ==================== */
+        .lightning-container {
+            position: absolute;
+            z-index: 2000;
+            pointer-events: none;
+        }
+        
+        .lightning-svg {
+            animation: lightningFlicker 0.5s ease-out forwards;
+        }
+        
+        .lightning-core-path {
+            animation: coreFlash 0.5s ease-out forwards;
+        }
+        
+        .lightning-glow-path {
+            animation: glowFlash 0.5s ease-out forwards;
+        }
+        
+        .lightning-outer-path {
+            animation: outerFlash 0.5s ease-out forwards;
+        }
+        
+        .lightning-branch-path {
+            animation: branchFlash 0.4s ease-out forwards;
+        }
+        
+        @keyframes lightningFlicker {
+            0% { opacity: 0; }
+            5% { opacity: 1; }
+            8% { opacity: 0.3; }
+            12% { opacity: 1; }
+            20% { opacity: 0.5; }
+            25% { opacity: 1; }
+            40% { opacity: 0.8; }
+            60% { opacity: 0.6; }
+            100% { opacity: 0; }
+        }
+        
+        @keyframes coreFlash {
+            0% { stroke-width: 2; opacity: 1; }
+            10% { stroke-width: 3; }
+            20% { stroke-width: 2; }
+            30% { stroke-width: 4; }
+            40% { stroke-width: 2; }
+            100% { stroke-width: 2; opacity: 1; }
+        }
+        
+        @keyframes glowFlash {
+            0% { stroke-width: 8; }
+            15% { stroke-width: 12; }
+            30% { stroke-width: 6; }
+            45% { stroke-width: 10; }
+            100% { stroke-width: 8; }
+        }
+        
+        @keyframes outerFlash {
+            0% { stroke-width: 16; opacity: 0.5; }
+            20% { stroke-width: 24; opacity: 0.7; }
+            40% { stroke-width: 12; opacity: 0.4; }
+            100% { stroke-width: 16; opacity: 0.5; }
+        }
+        
+        @keyframes branchFlash {
+            0% { opacity: 0; }
+            15% { opacity: 0.8; }
+            30% { opacity: 0.3; }
+            45% { opacity: 0.7; }
+            100% { opacity: 0; }
+        }
+        
+        .lightning-sky-flash {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(ellipse at 50% 20%, 
+                rgba(200, 220, 255, 0.6) 0%, 
+                rgba(150, 180, 255, 0.3) 30%,
+                transparent 70%);
+            pointer-events: none;
+            z-index: 1999;
+            animation: skyFlash 0.35s ease-out forwards;
+        }
+        
+        .lightning-sky-flash.secondary {
+            animation: skyFlashSecond 0.2s ease-out forwards;
+            background: radial-gradient(ellipse at 50% 30%, 
+                rgba(255, 255, 255, 0.5) 0%, 
+                rgba(180, 200, 255, 0.25) 40%,
+                transparent 70%);
+        }
+        
+        .lightning-sky-flash.tertiary {
+            animation: skyFlashSecond 0.15s ease-out forwards;
+            background: radial-gradient(ellipse at 50% 40%, 
+                rgba(180, 200, 255, 0.3) 0%, 
+                transparent 60%);
+        }
+        
+        @keyframes skyFlash {
+            0% { opacity: 0; }
+            10% { opacity: 1; }
+            30% { opacity: 0.5; }
+            50% { opacity: 0.8; }
+            100% { opacity: 0; }
+        }
+        
+        @keyframes skyFlashSecond {
+            0% { opacity: 0; }
+            20% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        
+        .lightning-impact {
+            position: absolute;
+            width: 250px;
+            height: 250px;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, 
+                rgba(255, 255, 255, 1) 0%, 
+                rgba(180, 200, 255, 0.9) 15%, 
+                rgba(100, 150, 255, 0.6) 35%, 
+                rgba(80, 120, 255, 0.3) 55%,
+                transparent 75%);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 2001;
+            animation: lightningImpact 0.5s ease-out forwards;
+        }
+        
+        @keyframes lightningImpact {
+            0% { 
+                transform: translate(-50%, -50%) scale(0.2);
+                opacity: 1;
+                filter: brightness(2);
+            }
+            20% {
+                transform: translate(-50%, -50%) scale(1.2);
+                opacity: 1;
+                filter: brightness(1.5);
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.5);
+                opacity: 0.8;
+            }
+            100% { 
+                transform: translate(-50%, -50%) scale(2);
+                opacity: 0;
+            }
+        }
+        
+        /* Dramatic Death Animations */
+        @keyframes vignetteIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        
+        @keyframes deathFlash {
+            0% { opacity: 0; }
+            15% { opacity: 1; }
+            40% { opacity: 0.6; }
+            100% { opacity: 0; }
+        }
+        
+        @keyframes deathRayBurst {
+            0% { 
+                height: 0;
+                opacity: 1;
+            }
+            30% {
+                height: 300px;
+                opacity: 1;
+            }
+            100% { 
+                height: 500px;
+                opacity: 0;
+            }
+        }
+        
+        /* Dramatic death slow-mo effect on battlefield */
+        .death-slowmo .cryptid-sprite {
+            transition: all 0.3s ease-out;
         }
     `;
     

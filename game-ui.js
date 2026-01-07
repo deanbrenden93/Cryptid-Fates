@@ -344,21 +344,14 @@ function renderSprites() {
     calculateTilePositions();
     const spriteLayer = document.getElementById('sprite-layer');
     
-    // Preserve animating trap sprites by removing them BEFORE clearing innerHTML
-    // Using the original elements (not clones) preserves CSS animation state
-    const animatingSprites = [];
-    if (window.animatingTraps?.size > 0) {
-        document.querySelectorAll('.trap-sprite.trap-triggering').forEach(sprite => {
-            const key = `${sprite.dataset.owner}-trap-${sprite.dataset.row}`;
-            if (window.animatingTraps.has(key)) {
-                sprite.remove(); // Remove from parent before innerHTML clear
-                animatingSprites.push(sprite); // Keep original, NOT clone
-            }
-        });
-    }
+    // Track which sprite keys we've rendered this pass (to remove stale sprites at the end)
+    const renderedKeys = new Set();
     
-    spriteLayer.innerHTML = '';
-    animatingSprites.forEach(sprite => spriteLayer.appendChild(sprite));
+    // For animating trap sprites, we need to skip them entirely
+    const animatingTrapKeys = new Set();
+    if (window.animatingTraps?.size > 0) {
+        window.animatingTraps.forEach(key => animatingTrapKeys.add(key));
+    }
     
     for (const owner of ['player', 'enemy']) {
         const field = owner === 'player' ? game.playerField : game.enemyField;
@@ -373,6 +366,8 @@ function renderSprites() {
                     const pos = tilePositions[key];
                     if (!pos) continue;
                     
+                    renderedKeys.add(key);
+                    
                     let classes = 'cryptid-sprite';
                     if (cryptid.tapped) classes += ' tapped';
                     if (owner === 'enemy') classes += ' enemy';
@@ -385,33 +380,47 @@ function renderSprites() {
                         setTimeout(() => { cryptid.justSummoned = false; }, 50);
                     }
                     
-                    const sprite = document.createElement('div');
+                    // Try to find existing sprite to update in place (prevents flickering)
+                    let sprite = spriteLayer.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`);
+                    const isNewSprite = !sprite;
+                    
+                    // Track if this is a different cryptid than before (to avoid image reload flicker)
+                    const cryptidKey = cryptid.key + (cryptid.evolutionChain?.length || 0);
+                    const needsContentUpdate = isNewSprite || sprite.dataset.cryptidKey !== cryptidKey;
+                    
+                    if (isNewSprite) {
+                        sprite = document.createElement('div');
+                        sprite.dataset.owner = owner;
+                        sprite.dataset.col = col;
+                        sprite.dataset.row = row;
+                    }
+                    
+                    sprite.dataset.cryptidKey = cryptidKey;
                     sprite.className = classes;
-                    sprite.dataset.owner = owner;
-                    sprite.dataset.col = col;
-                    sprite.dataset.row = row;
                     
                     // Hidden enemy cryptids show "?" to opponent
                     if (cryptid.isHidden && owner === 'enemy') {
-                        sprite.innerHTML = `
-                            <span class="sprite hidden-sprite">❓</span>
-                            <div class="combat-stats">
-                                <div class="crescent-bg"></div>
-                                <div class="hp-arc" style="clip-path: inset(5% 0 5% 50%)"></div>
-                                <div class="stat-badge atk-badge">
-                                    <span class="stat-icon">⚔</span>
-                                    <span class="stat-value">?</span>
+                        if (needsContentUpdate) {
+                            sprite.innerHTML = `
+                                <span class="sprite hidden-sprite">❓</span>
+                                <div class="combat-stats">
+                                    <div class="crescent-bg"></div>
+                                    <div class="hp-arc" style="clip-path: inset(5% 0 5% 50%)"></div>
+                                    <div class="stat-badge atk-badge">
+                                        <span class="stat-icon">⚔</span>
+                                        <span class="stat-value">?</span>
+                                    </div>
+                                    <div class="stat-badge hp-badge">
+                                        <span class="stat-icon">♥</span>
+                                        <span class="stat-value">?</span>
+                                    </div>
                                 </div>
-                                <div class="stat-badge hp-badge">
-                                    <span class="stat-icon">♥</span>
-                                    <span class="stat-value">?</span>
-                                </div>
-                            </div>
-                        `;
+                            `;
+                        }
                         sprite.style.left = pos.x + 'px';
                         sprite.style.top = pos.y + 'px';
                         sprite.style.transform = 'translate(-50%, -50%)';
-                        spriteLayer.appendChild(sprite);
+                        if (isNewSprite) spriteLayer.appendChild(sprite);
                         continue;
                     }
                     
@@ -423,12 +432,6 @@ function renderSprites() {
                             displayAtk += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0);
                             displayHp += support.currentHp;
                         }
-                    }
-                    
-                    let html = `<span class="sprite">${renderSprite(cryptid.sprite, true, cryptid.spriteScale, null, cryptid.spriteFlip)}</span>`;
-                    // Show hidden indicator for own hidden cryptids
-                    if (cryptid.isHidden && owner === 'player') {
-                        html = `<span class="sprite hidden-own">${renderSprite(cryptid.sprite, true, cryptid.spriteScale, null, cryptid.spriteFlip)}<span class="hidden-badge">👁️</span></span>`;
                     }
                     
                     // Calculate HP percentage for the arc
@@ -445,8 +448,6 @@ function renderSprites() {
                     }
                     
                     // Calculate clip-path to shrink arc toward center based on HP
-                    // At 100% HP: inset 5% from top/bottom (full arc)
-                    // At 0% HP: inset 50% from top/bottom (no arc, converges to center)
                     const arcInset = 5 + (45 * (1 - hpPercent / 100));
                     const arcClipPath = owner === 'player' 
                         ? `inset(${arcInset}% 50% ${arcInset}% 0)`
@@ -462,31 +463,69 @@ function renderSprites() {
                         evoPipsHtml += '</div>';
                     }
                     
-                    // Crescent Moon combat stats design
-                    html += `
-                        <div class="combat-stats">
-                            <div class="crescent-bg"></div>
-                            <div class="${hpArcClass}" style="clip-path: ${arcClipPath}"></div>
-                            <div class="stat-badge atk-badge">
-                                <span class="stat-icon">⚔</span>
-                                <span class="stat-value">${Math.max(0, displayAtk)}</span>
-                            </div>
-                            <div class="stat-badge hp-badge">
-                                <span class="stat-icon">♥</span>
-                                <span class="stat-value">${displayHp}</span>
-                            </div>
-                            ${evoPipsHtml}
-                        </div>
-                    `;
-                    
                     const statusIcons = game.getStatusIcons(cryptid);
-                    if (statusIcons.length > 0) html += `<div class="status-icons">${statusIcons.join('')}</div>`;
                     
-                    sprite.innerHTML = html;
+                    // For existing sprites with image-based cryptids, update stats without replacing the image
+                    // This prevents flickering caused by image reload
+                    if (!needsContentUpdate) {
+                        // Just update the dynamic parts: stats and status icons
+                        const atkValue = sprite.querySelector('.atk-badge .stat-value');
+                        const hpValue = sprite.querySelector('.hp-badge .stat-value');
+                        const hpArc = sprite.querySelector('.hp-arc');
+                        const statusDiv = sprite.querySelector('.status-icons');
+                        
+                        if (atkValue) atkValue.textContent = Math.max(0, displayAtk);
+                        if (hpValue) hpValue.textContent = displayHp;
+                        if (hpArc) {
+                            hpArc.className = hpArcClass;
+                            hpArc.style.clipPath = arcClipPath;
+                        }
+                        
+                        // Update status icons
+                        if (statusIcons.length > 0) {
+                            if (statusDiv) {
+                                statusDiv.innerHTML = statusIcons.join('');
+                            } else {
+                                const newStatusDiv = document.createElement('div');
+                                newStatusDiv.className = 'status-icons';
+                                newStatusDiv.innerHTML = statusIcons.join('');
+                                sprite.appendChild(newStatusDiv);
+                            }
+                        } else if (statusDiv) {
+                            statusDiv.remove();
+                        }
+                    } else {
+                        // Full rebuild for new sprites or changed cryptids
+                        let html = `<span class="sprite">${renderSprite(cryptid.sprite, true, cryptid.spriteScale, null, cryptid.spriteFlip)}</span>`;
+                        // Show hidden indicator for own hidden cryptids
+                        if (cryptid.isHidden && owner === 'player') {
+                            html = `<span class="sprite hidden-own">${renderSprite(cryptid.sprite, true, cryptid.spriteScale, null, cryptid.spriteFlip)}<span class="hidden-badge">👁️</span></span>`;
+                        }
+                        
+                        html += `
+                            <div class="combat-stats">
+                                <div class="crescent-bg"></div>
+                                <div class="${hpArcClass}" style="clip-path: ${arcClipPath}"></div>
+                                <div class="stat-badge atk-badge">
+                                    <span class="stat-icon">⚔</span>
+                                    <span class="stat-value">${Math.max(0, displayAtk)}</span>
+                                </div>
+                                <div class="stat-badge hp-badge">
+                                    <span class="stat-icon">♥</span>
+                                    <span class="stat-value">${displayHp}</span>
+                                </div>
+                                ${evoPipsHtml}
+                            </div>
+                        `;
+                        
+                        if (statusIcons.length > 0) html += `<div class="status-icons">${statusIcons.join('')}</div>`;
+                        
+                        sprite.innerHTML = html;
+                    }
                     sprite.style.left = pos.x + 'px';
                     sprite.style.top = pos.y + 'px';
                     sprite.style.transform = 'translate(-50%, -50%)';
-                    spriteLayer.appendChild(sprite);
+                    if (isNewSprite) spriteLayer.appendChild(sprite);
                 }
             }
         }
@@ -495,11 +534,19 @@ function renderSprites() {
         for (let row = 0; row < 2; row++) {
             const trap = traps[row];
             const trapKey = `${owner}-trap-${row}`;
-            if (window.animatingTraps?.has(trapKey)) continue;
+            
+            // Skip animating traps entirely
+            if (animatingTrapKeys.has(trapKey)) {
+                renderedKeys.add(trapKey);
+                continue;
+            }
+            
             if (trap) {
-                const key = `${owner}-trap-${row}`;
+                const key = trapKey;
                 const pos = tilePositions[key];
                 if (!pos) continue;
+                
+                renderedKeys.add(key);
                 
                 let classes = 'trap-sprite';
                 // In multiplayer, enemy traps are always face-down (hidden) until triggered
@@ -513,11 +560,18 @@ function renderSprites() {
                     classes += ' spawning';
                 }
                 
-                const sprite = document.createElement('div');
+                // Try to find existing sprite to update in place (prevents flickering)
+                let sprite = spriteLayer.querySelector(`.trap-sprite[data-owner="${owner}"][data-row="${row}"]`);
+                const isNewSprite = !sprite;
+                
+                if (isNewSprite) {
+                    sprite = document.createElement('div');
+                    sprite.dataset.owner = owner;
+                    sprite.dataset.col = 'trap';
+                    sprite.dataset.row = row;
+                }
+                
                 sprite.className = classes;
-                sprite.dataset.owner = owner;
-                sprite.dataset.col = 'trap';
-                sprite.dataset.row = row;
                 
                 let html;
                 // In multiplayer, enemy traps are always hidden until triggered
@@ -531,13 +585,32 @@ function renderSprites() {
                 sprite.style.left = pos.x + 'px';
                 sprite.style.top = pos.y + 'px';
                 sprite.style.transform = 'translate(-50%, -50%)';
-                spriteLayer.appendChild(sprite);
+                if (isNewSprite) spriteLayer.appendChild(sprite);
                 
                 const tile = document.querySelector(`.tile[data-owner="${owner}"][data-col="trap"][data-row="${row}"]`);
                 if (tile) tile.classList.add('has-trap');
             }
         }
     }
+    
+    // Clean up stale sprites (cryptids/traps that no longer exist)
+    Array.from(spriteLayer.children).forEach(child => {
+        // Skip death effect sprites and dramatic death sprites (they clean themselves up)
+        if (child.classList.contains('death-effect-sprite')) return;
+        if (child.classList.contains('death-drama-sprite')) return;
+        
+        const owner = child.dataset.owner;
+        const col = child.dataset.col;
+        const row = child.dataset.row;
+        
+        // Build the key based on sprite type
+        const key = col === 'trap' ? `${owner}-trap-${row}` : `${owner}-${col}-${row}`;
+        
+        // If this sprite wasn't rendered this pass, remove it
+        if (!renderedKeys.has(key)) {
+            child.remove();
+        }
+    });
     
     document.querySelectorAll('.tile.trap').forEach(tile => {
         const owner = tile.dataset.owner;
@@ -2015,19 +2088,40 @@ function executePyreCardWithAnimation(card, dropX, dropY) {
 
 function handleDeathAndPromotion(targetOwner, targetCol, targetRow, deadCryptid, killerOwner, onComplete) {
     const targetSprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`);
-    if (targetSprite) targetSprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
-    setTimeout(() => game.killCryptid(deadCryptid, killerOwner), 100);
-    setTimeout(() => {
-        renderAll();
-        processPendingPromotions(() => {
-            checkCascadingDeaths(() => { 
-                onComplete?.(); // Call optional callback
-                isAnimating = false; 
-                renderAll(); 
-                updateButtons(); 
+    const rarity = deadCryptid?.rarity || 'common';
+    
+    // Use dramatic death animation scaled by rarity
+    if (targetSprite && window.CombatEffects?.playDramaticDeath) {
+        // Kill cryptid slightly into the animation
+        setTimeout(() => game.killCryptid(deadCryptid, killerOwner), 100);
+        
+        window.CombatEffects.playDramaticDeath(targetSprite, targetOwner, rarity, () => {
+            renderAll();
+            processPendingPromotions(() => {
+                checkCascadingDeaths(() => { 
+                    onComplete?.();
+                    isAnimating = false; 
+                    renderAll(); 
+                    updateButtons(); 
+                });
             });
         });
-    }, TIMING.deathAnim);
+    } else {
+        // Fallback to basic death
+        if (targetSprite) targetSprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
+        setTimeout(() => game.killCryptid(deadCryptid, killerOwner), 100);
+        setTimeout(() => {
+            renderAll();
+            processPendingPromotions(() => {
+                checkCascadingDeaths(() => { 
+                    onComplete?.();
+                    isAnimating = false; 
+                    renderAll(); 
+                    updateButtons(); 
+                });
+            });
+        }, TIMING.deathAnim);
+    }
 }
 
 function checkCascadingDeaths(onComplete) {
@@ -2049,8 +2143,18 @@ function checkCascadingDeaths(onComplete) {
         if (index >= deathsToProcess.length) { onComplete?.(); return; }
         const { owner, col, row, cryptid } = deathsToProcess[index];
         const sprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`);
-        if (sprite) sprite.classList.add(owner === 'enemy' ? 'dying-right' : 'dying-left');
-        setTimeout(() => { game.killCryptid(cryptid); renderAll(); setTimeout(() => processNextDeath(index + 1), 200); }, TIMING.deathAnim);
+        const rarity = cryptid?.rarity || 'common';
+        
+        if (sprite && window.CombatEffects?.playDramaticDeath) {
+            game.killCryptid(cryptid);
+            window.CombatEffects.playDramaticDeath(sprite, owner, rarity, () => {
+                renderAll();
+                setTimeout(() => processNextDeath(index + 1), 200);
+            });
+        } else {
+            if (sprite) sprite.classList.add(owner === 'enemy' ? 'dying-right' : 'dying-left');
+            setTimeout(() => { game.killCryptid(cryptid); renderAll(); setTimeout(() => processNextDeath(index + 1), 200); }, TIMING.deathAnim);
+        }
     }
     showMessage("Soul bond severed!", TIMING.messageDisplay);
     processNextDeath(0);
@@ -2080,13 +2184,22 @@ function checkAllCreaturesForDeath(onComplete) {
         const { owner, col, row, cryptid } = deathsToProcess[index];
         if (!game.getFieldCryptid(owner, col, row)) { processNextDeath(index + 1); return; }
         const sprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`);
-        if (sprite) sprite.classList.add(owner === 'enemy' ? 'dying-right' : 'dying-left');
-        setTimeout(() => {
+        const rarity = cryptid?.rarity || 'common';
+        
+        if (sprite && window.CombatEffects?.playDramaticDeath) {
             game.killCryptid(cryptid);
-            // Note: killCryptid now handles promotion internally
-            renderAll();
-            setTimeout(() => processNextDeath(index + 1), 200);
-        }, TIMING.deathAnim);
+            window.CombatEffects.playDramaticDeath(sprite, owner, rarity, () => {
+                renderAll();
+                setTimeout(() => processNextDeath(index + 1), 200);
+            });
+        } else {
+            if (sprite) sprite.classList.add(owner === 'enemy' ? 'dying-right' : 'dying-left');
+            setTimeout(() => {
+                game.killCryptid(cryptid);
+                renderAll();
+                setTimeout(() => processNextDeath(index + 1), 200);
+            }, TIMING.deathAnim);
+        }
     }
     processNextDeath(0);
 }
@@ -2255,10 +2368,13 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         
         // Only show death animation if attacker was actually killed by a counter-attack
         if (result.attackerKilled) {
-            if (attackerSprite) {
+            const attackerRarity = attacker?.rarity || 'common';
+            if (attackerSprite && window.CombatEffects?.playDramaticDeath) {
+                window.CombatEffects.playDramaticDeath(attackerSprite, attacker.owner, attackerRarity);
+            } else if (attackerSprite) {
                 attackerSprite.classList.add(attacker.owner === 'player' ? 'dying-left' : 'dying-right');
             }
-            // Screen shake for counter-kill
+            // Screen shake for counter-kill (dramatic death includes this, but add extra for counter-kills)
             if (window.CombatEffects) {
                 CombatEffects.heavyImpact(5);
                 CombatEffects.createImpactParticles(impactX, impactY, '#ff4444', 12);
@@ -2329,10 +2445,19 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         }
     }
     
+    // Track if we're using dramatic death (affects timing)
+    let usingDramaticDeath = false;
+    const targetRarity = result.target?.rarity || 'common';
+    
     if (targetSprite) {
         if (result.killed) {
-            targetSprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
-            // killCryptid now handles promotion internally
+            // Use dramatic death animation for combat kills
+            if (window.CombatEffects?.playDramaticDeath) {
+                usingDramaticDeath = true;
+                window.CombatEffects.playDramaticDeath(targetSprite, targetOwner, targetRarity);
+            } else {
+                targetSprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
+            }
         } else if (result.protectionBlocked) {
             // Protection blocked the attack - show shield animation
             console.log('[Protection] Block detected, adding animation to sprite:', targetSprite);
@@ -2352,8 +2477,18 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
     
     ui.attackingCryptid = null;
     document.getElementById('cancel-target').classList.remove('show');
-    // Use longer wait time for protection block animation
-    const waitTime = result.killed ? TIMING.deathAnim + 100 : (result.protectionBlocked ? TIMING.protectionAnim : TIMING.postAttackDelay);
+    
+    // Calculate wait time - dramatic deaths take longer based on rarity
+    const getDramaticDeathTime = (rarity) => {
+        const config = window.CombatEffects?.deathDramaConfig?.[rarity] || {};
+        const pauseDuration = config.pauseDuration || 150;
+        const zoomDuration = config.zoomDuration || 400;
+        return pauseDuration + TIMING.deathAnim + zoomDuration + 100;
+    };
+    
+    const waitTime = result.killed 
+        ? (usingDramaticDeath ? getDramaticDeathTime(targetRarity) : TIMING.deathAnim + 100)
+        : (result.protectionBlocked ? TIMING.protectionAnim : TIMING.postAttackDelay);
     
     // Wait for ability animations first, then proceed
     waitForAbilityAnimations(() => {
@@ -2802,15 +2937,23 @@ function animateTurnStartEffects(owner, onComplete) {
             setTimeout(() => {
                 const result = game.processSingleStatusEffect(effect);
                 if (result.died) {
-                    if (sprite) {
-                        sprite.classList.add('dying-left');
-                    }
-                    setTimeout(() => {
-                        renderAll();
-                        processPendingPromotions(() => {
-                            setTimeout(() => { currentIndex++; processNextEffect(); }, 100);
+                    const rarity = effect.cryptid?.rarity || 'common';
+                    if (sprite && window.CombatEffects?.playDramaticDeath) {
+                        window.CombatEffects.playDramaticDeath(sprite, effect.owner, rarity, () => {
+                            renderAll();
+                            processPendingPromotions(() => {
+                                setTimeout(() => { currentIndex++; processNextEffect(); }, 100);
+                            });
                         });
-                    }, TIMING.deathAnim);
+                    } else {
+                        if (sprite) sprite.classList.add('dying-left');
+                        setTimeout(() => {
+                            renderAll();
+                            processPendingPromotions(() => {
+                                setTimeout(() => { currentIndex++; processNextEffect(); }, 100);
+                            });
+                        }, TIMING.deathAnim);
+                    }
                 } else if (result.evolved) {
                     // Cryptid evolved instead of dying (e.g., Hellhound Pup -> Hellhound)
                     showMessage(`✨ Evolved from the flames!`, 1000);
@@ -2855,15 +2998,23 @@ function animateTurnStartEffects(owner, onComplete) {
             setTimeout(() => {
                 const result = game.processSingleStatusEffect(effect);
                 if (result.died) {
-                    if (sprite) {
-                        sprite.classList.add('dying-left');
-                    }
-                    setTimeout(() => {
-                        renderAll();
-                        processPendingPromotions(() => {
-                            setTimeout(() => { currentIndex++; processNextEffect(); }, 100);
+                    const rarity = effect.cryptid?.rarity || 'common';
+                    if (sprite && window.CombatEffects?.playDramaticDeath) {
+                        window.CombatEffects.playDramaticDeath(sprite, effect.owner, rarity, () => {
+                            renderAll();
+                            processPendingPromotions(() => {
+                                setTimeout(() => { currentIndex++; processNextEffect(); }, 100);
+                            });
                         });
-                    }, TIMING.deathAnim);
+                    } else {
+                        if (sprite) sprite.classList.add('dying-left');
+                        setTimeout(() => {
+                            renderAll();
+                            processPendingPromotions(() => {
+                                setTimeout(() => { currentIndex++; processNextEffect(); }, 100);
+                            });
+                        }, TIMING.deathAnim);
+                    }
                 } else if (result.evolved) {
                     // Cryptid evolved instead of dying
                     showMessage(`✨ Transformed from calamity!`, 1000);
@@ -3832,6 +3983,7 @@ function setupGameEventListeners() {
 }
 
 window.calculateTilePositions = calculateTilePositions;
+window.tilePositions = tilePositions;
 window.performAttackOnTarget = performAttackOnTarget;
 window.playAttackAnimation = playAttackAnimation;
 

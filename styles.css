@@ -687,6 +687,15 @@ body {
     animation: trapTrigger 0.8s ease-out forwards !important;
 }
 
+/* Prevents re-animation if sprite is re-rendered after animation completes */
+.trap-sprite.trap-animation-done {
+    animation: none !important;
+    transform: translate(-50%, -50%) scale(0.3) translateY(-30px);
+    opacity: 0;
+    filter: blur(4px);
+    pointer-events: none;
+}
+
 .tile.can-attack .tile-base {
     border-color: rgba(180, 200, 160, 0.6) !important;
     box-shadow: 0 4px 0 rgba(30, 40, 25, 0.9), 0 0 15px rgba(180, 200, 160, 0.3);
