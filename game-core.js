@@ -4984,6 +4984,11 @@ class Game {
 
     setFieldCryptid(owner, col, row, cryptid) {
         const field = owner === 'player' ? this.playerField : this.enemyField;
+        // Defensive check for invalid col/row
+        if (col === undefined || row === undefined || col < 0 || col > 1 || row < 0 || row > 2) {
+            console.error('[setFieldCryptid] Invalid position:', { owner, col, row, cryptid: cryptid?.name });
+            return;
+        }
         field[col][row] = cryptid;
     }
 

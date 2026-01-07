@@ -30,6 +30,13 @@ window.CombatEffects = {
         const battlefield = document.getElementById('battlefield-area');
         if (!battlefield) return;
         
+        // If we're in a dramatic death zoom, use JS-based shake that preserves the transform
+        if (this._dramaticDeathZoomActive) {
+            this._screenShakeJS(intensity, duration);
+            return;
+        }
+        
+        // Normal CSS-based shake
         const baseIntensity = 6 * intensity * this.config.screenShakeIntensity;
         battlefield.classList.add('screen-shaking');
         battlefield.style.setProperty('--shake-intensity', baseIntensity + 'px');
@@ -38,6 +45,53 @@ window.CombatEffects = {
             battlefield.classList.remove('screen-shaking');
             battlefield.style.removeProperty('--shake-intensity');
         }, duration);
+    },
+    
+    // JavaScript-based screen shake that preserves existing transform (for use during zoom)
+    _screenShakeJS(intensity = 1, duration = 300) {
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield) return;
+        
+        const baseIntensity = 6 * intensity * this.config.screenShakeIntensity;
+        const startTime = performance.now();
+        const baseTransform = this._dramaticDeathBaseTransform || '';
+        
+        console.log(`[ScreenShakeJS] Starting: intensity=${baseIntensity}, duration=${duration}, baseTransform=${baseTransform}`);
+        
+        // Use very fast transition instead of none - this prevents interrupting the zoom
+        // but still makes shake movements quick enough to feel sharp
+        const savedTransition = battlefield.style.transition;
+        battlefield.style.transition = 'transform 16ms linear';
+        
+        const shake = (currentTime) => {
+            const elapsed = currentTime - startTime;
+            if (elapsed >= duration) {
+                // Restore base transform with smooth transition back
+                battlefield.style.transition = 'transform 100ms ease-out';
+                battlefield.style.transform = baseTransform;
+                // Restore original transition after settling
+                setTimeout(() => {
+                    battlefield.style.transition = savedTransition;
+                }, 100);
+                return;
+            }
+            
+            // Decay intensity over time
+            const progress = elapsed / duration;
+            const decay = 1 - Math.pow(progress, 0.5); // Square root for nice falloff
+            const currentIntensity = baseIntensity * decay;
+            
+            // Random offset
+            const offsetX = (Math.random() - 0.5) * 2 * currentIntensity;
+            const offsetY = (Math.random() - 0.5) * 2 * currentIntensity;
+            
+            // Combine with base transform (zoom)
+            battlefield.style.transform = `${baseTransform} translate(${offsetX}px, ${offsetY}px)`;
+            
+            requestAnimationFrame(shake);
+        };
+        
+        requestAnimationFrame(shake);
     },
     
     // Heavy impact shake for big hits
@@ -492,58 +546,64 @@ window.CombatEffects = {
     // Climactic death animation that scales with rarity
     // common -> uncommon -> rare -> ULTIMATE (most dramatic)
     
-    // Rarity configuration for death drama
+    // Rarity configuration for death drama - Hollywood-style cinematic deaths
     deathDramaConfig: {
         common: {
-            zoomScale: 1.05,
-            zoomDuration: 400,
-            pauseDuration: 150,
-            shakeIntensity: 0.6,
-            particleCount: 8,
+            zoomScale: 1.08,
+            zoomInDuration: 200,    // Fast zoom in
+            holdDuration: 100,      // Brief pause at zoom
+            zoomOutDuration: 300,   // Slower zoom out
+            shakeIntensity: 0.5,
+            particleCount: 6,
+            deathAnimSpeed: 1.0,    // Normal speed
             vignette: false,
-            slowMo: false,
-            flashColor: 'rgba(255, 100, 100, 0.3)'
+            desaturate: false,
+            flashColor: 'rgba(255, 80, 80, 0.4)'
         },
         uncommon: {
-            zoomScale: 1.1,
-            zoomDuration: 500,
-            pauseDuration: 250,
-            shakeIntensity: 0.9,
-            particleCount: 15,
+            zoomScale: 1.12,
+            zoomInDuration: 250,
+            holdDuration: 200,
+            zoomOutDuration: 400,
+            shakeIntensity: 0.8,
+            particleCount: 12,
+            deathAnimSpeed: 0.85,   // Slightly slower
             vignette: true,
-            vignetteOpacity: 0.3,
-            slowMo: false,
-            flashColor: 'rgba(100, 200, 255, 0.4)'
+            vignetteOpacity: 0.35,
+            desaturate: false,
+            flashColor: 'rgba(80, 180, 255, 0.5)'
         },
         rare: {
-            zoomScale: 1.15,
-            zoomDuration: 650,
-            pauseDuration: 400,
-            shakeIntensity: 1.3,
-            particleCount: 25,
+            zoomScale: 1.18,
+            zoomInDuration: 300,
+            holdDuration: 350,      // Longer dramatic pause
+            zoomOutDuration: 500,
+            shakeIntensity: 1.2,
+            particleCount: 20,
+            deathAnimSpeed: 0.65,   // Slow motion
             vignette: true,
             vignetteOpacity: 0.5,
-            slowMo: true,
-            slowMoDuration: 300,
-            flashColor: 'rgba(200, 150, 255, 0.5)'
+            desaturate: true,       // Desaturate for drama
+            flashColor: 'rgba(180, 120, 255, 0.6)'
         },
         ultimate: {
-            zoomScale: 1.25,
-            zoomDuration: 900,
-            pauseDuration: 600,
+            zoomScale: 1.28,
+            zoomInDuration: 400,
+            holdDuration: 550,      // Maximum drama
+            zoomOutDuration: 700,
             shakeIntensity: 2.0,
-            particleCount: 40,
+            particleCount: 35,
+            deathAnimSpeed: 0.5,    // Half speed for max drama
             vignette: true,
             vignetteOpacity: 0.7,
-            slowMo: true,
-            slowMoDuration: 500,
-            flashColor: 'rgba(255, 215, 0, 0.6)',
+            desaturate: true,
             screenFlash: true,
-            radialBurst: true
+            radialBurst: true,
+            flashColor: 'rgba(255, 200, 50, 0.7)'
         }
     },
     
-    // Main dramatic death function - call this instead of just adding dying class
+    // Main dramatic death function - Hollywood-style cinematic death sequence
     playDramaticDeath(sprite, owner, rarity = 'common', onComplete) {
         if (!sprite) {
             if (onComplete) onComplete();
@@ -553,6 +613,7 @@ window.CombatEffects = {
         const config = this.deathDramaConfig[rarity] || this.deathDramaConfig.common;
         const battlefield = document.getElementById('battlefield-area');
         const spriteLayer = document.getElementById('sprite-layer');
+        const gameScreen = document.getElementById('game-screen');
         
         if (!battlefield || !spriteLayer) {
             // Fallback to basic death
@@ -562,193 +623,256 @@ window.CombatEffects = {
             return;
         }
         
-        // IMPORTANT: Clone the sprite immediately so it persists after game state changes
+        console.log(`[DramaticDeath] Starting ${rarity} death for ${owner}`);
+        
+        // Guard against multiple calls for the same sprite
+        if (sprite.dataset.dramaticDeathStarted) {
+            console.log('[DramaticDeath] Already started for this sprite, skipping');
+            if (onComplete) onComplete();
+            return;
+        }
+        sprite.dataset.dramaticDeathStarted = 'true';
+        
+        // ==================== IMMEDIATE: START ZOOM ON IMPACT ====================
+        // Calculate focus point from ORIGINAL sprite position FIRST
+        const spriteRect = sprite.getBoundingClientRect();
+        const battlefieldRect = battlefield.getBoundingClientRect();
+        const focusX = spriteRect.left + spriteRect.width/2 - battlefieldRect.left;
+        const focusY = spriteRect.top + spriteRect.height/2 - battlefieldRect.top;
+        const focusXPct = (focusX / battlefieldRect.width) * 100;
+        const focusYPct = (focusY / battlefieldRect.height) * 100;
+        
+        // START ZOOM IMMEDIATELY - this is the first thing that happens on impact!
+        battlefield.style.transformOrigin = `${focusXPct}% ${focusYPct}%`;
+        battlefield.style.transition = `transform ${config.zoomInDuration}ms cubic-bezier(0.2, 0, 0.3, 1)`;
+        void battlefield.offsetWidth; // Force reflow
+        
+        const zoomTransform = `scale(${config.zoomScale})`;
+        battlefield.style.transform = zoomTransform;
+        
+        // Track that we're in a zoomed state (for screenShake compatibility)
+        this._dramaticDeathZoomActive = true;
+        this._dramaticDeathBaseTransform = zoomTransform;
+        
+        // IMPACT SHAKE - happens shortly after impact
+        setTimeout(() => {
+            this.screenShake(config.shakeIntensity * 2.5, 250);
+        }, 80); // Small delay for zoom to establish
+        
+        // ==================== SETUP (happens in parallel with zoom) ====================
+        // Clone sprite for death animation
         const deathClone = sprite.cloneNode(true);
         deathClone.className = 'cryptid-sprite death-drama-sprite';
+        deathClone.dataset.dramaticDeathStarted = 'true'; // Prevent re-animation of clone
         if (owner === 'enemy') deathClone.classList.add('enemy');
         
-        // Copy the exact position - DON'T set transform here as the animation handles it
-        deathClone.style.left = sprite.style.left;
-        deathClone.style.top = sprite.style.top;
-        deathClone.style.zIndex = '1500';
-        deathClone.style.pointerEvents = 'none';
-        deathClone.style.position = 'absolute'; // Ensure absolute positioning
+        // Position clone exactly where original was
+        deathClone.style.cssText = `
+            position: absolute;
+            left: ${sprite.style.left};
+            top: ${sprite.style.top};
+            transform: translate(-50%, -50%);
+            z-index: 1500;
+            pointer-events: none;
+        `;
         
-        // Preserve correct sprite orientation on the inner .sprite element
+        // Fix sprite orientation
         const spriteImg = deathClone.querySelector('.sprite');
         if (spriteImg) {
             spriteImg.style.transform = owner === 'enemy' ? 'scaleX(1)' : 'scaleX(-1)';
         }
         
-        // Remove data attributes so renderSprites doesn't interfere
-        deathClone.removeAttribute('data-owner');
-        deathClone.removeAttribute('data-col');
-        deathClone.removeAttribute('data-row');
-        deathClone.removeAttribute('data-cryptid-key');
+        // Remove combat stats and status icons
+        const combatStats = deathClone.querySelector('.combat-stats');
+        if (combatStats) combatStats.remove();
+        const statusIcons = deathClone.querySelector('.status-icons');
+        if (statusIcons) statusIcons.remove();
         
-        // Remove any inline animation-duration that might have been copied
-        deathClone.style.animationDuration = '';
+        // Remove data attributes
+        ['data-owner', 'data-col', 'data-row', 'data-cryptid-key'].forEach(attr => {
+            deathClone.removeAttribute(attr);
+        });
         
-        // Add clone to sprite layer
         spriteLayer.appendChild(deathClone);
-        console.log('[DramaticDeath] Clone created and added to sprite layer');
         
-        // Hide original sprite immediately (it will be removed by renderAll anyway)
+        // Hide original sprite
         sprite.style.opacity = '0';
         sprite.style.pointerEvents = 'none';
         
-        // Get clone position for zoom focus
-        const spriteRect = deathClone.getBoundingClientRect();
-        const battlefieldRect = battlefield.getBoundingClientRect();
-        const focusX = spriteRect.left + spriteRect.width/2 - battlefieldRect.left;
-        const focusY = spriteRect.top + spriteRect.height/2 - battlefieldRect.top;
-        const focusXPercent = (focusX / battlefieldRect.width) * 100;
-        const focusYPercent = (focusY / battlefieldRect.height) * 100;
-        
-        // Create overlay container for effects
+        // Create overlay for effects
         const overlay = document.createElement('div');
         overlay.className = 'death-drama-overlay';
         overlay.style.cssText = `
             position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
+            inset: 0;
             pointer-events: none;
-            z-index: 2000;
+            z-index: 1400;
             overflow: hidden;
         `;
         battlefield.appendChild(overlay);
         
-        // Add vignette effect
+        // Calculate timeline
+        const TIMING = window.TIMING || { deathAnim: 700 };
+        const baseDeathDuration = TIMING.deathAnim;
+        const actualDeathDuration = baseDeathDuration / config.deathAnimSpeed;
+        
+        const zoomInEnd = config.zoomInDuration;
+        const holdEnd = zoomInEnd + config.holdDuration;
+        const deathStart = holdEnd;
+        const deathEnd = deathStart + actualDeathDuration;
+        const zoomOutStart = deathEnd - 200;
+        const totalDuration = deathEnd + 100;
+        
+        console.log(`[DramaticDeath] Timeline: zoomIn=${zoomInEnd}ms, hold=${holdEnd}ms, death=${deathEnd}ms, total=${totalDuration}ms`);
+        
+        // ==================== PHASE 1: IMPACT EFFECTS (parallel with zoom) ====================
+        
+        // Edge-only impact flash (epilepsy-safe)
+        const impactFlash = document.createElement('div');
+        impactFlash.style.cssText = `
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at ${focusXPct}% ${focusYPct}%, 
+                transparent 20%, 
+                ${config.flashColor.replace(/[\d.]+\)$/, '0.3)')} 50%, 
+                ${config.flashColor} 100%);
+            opacity: 0;
+            animation: dramaticDeathFlash ${config.zoomInDuration}ms ease-out forwards;
+        `;
+        overlay.appendChild(impactFlash);
+        
+        // Vignette effect
         if (config.vignette) {
             const vignette = document.createElement('div');
-            vignette.className = 'death-vignette';
             vignette.style.cssText = `
                 position: absolute;
-                top: 0; left: 0; right: 0; bottom: 0;
-                background: radial-gradient(circle at ${focusXPercent}% ${focusYPercent}%, 
-                    transparent 20%, 
-                    rgba(0,0,0,${config.vignetteOpacity * 0.5}) 50%, 
-                    rgba(0,0,0,${config.vignetteOpacity}) 100%);
+                inset: 0;
+                background: radial-gradient(circle at ${focusXPct}% ${focusYPct}%, 
+                    transparent 15%, 
+                    rgba(0,0,0,${config.vignetteOpacity * 0.4}) 40%, 
+                    rgba(0,0,0,${config.vignetteOpacity}) 80%);
                 opacity: 0;
-                animation: vignetteIn ${config.zoomDuration * 0.5}ms ease-out forwards;
+                animation: vignetteIn ${config.zoomInDuration}ms ease-out forwards;
             `;
             overlay.appendChild(vignette);
         }
         
-        // Screen flash for ultimate
-        if (config.screenFlash) {
-            const flash = document.createElement('div');
-            flash.style.cssText = `
-                position: absolute;
-                top: 0; left: 0; right: 0; bottom: 0;
-                background: ${config.flashColor};
-                opacity: 0;
-                animation: deathFlash ${config.zoomDuration}ms ease-out forwards;
-            `;
-            overlay.appendChild(flash);
+        // Desaturation (rare+)
+        if (config.desaturate && gameScreen) {
+            gameScreen.style.transition = `filter ${config.zoomInDuration}ms ease-out`;
+            gameScreen.style.filter = 'saturate(0.4) contrast(1.1)';
         }
         
-        // Radial burst for ultimate
-        if (config.radialBurst) {
-            for (let i = 0; i < 12; i++) {
-                const ray = document.createElement('div');
-                const angle = (i / 12) * 360;
-                ray.style.cssText = `
-                    position: absolute;
-                    left: ${focusX}px;
-                    top: ${focusY}px;
-                    width: 4px;
-                    height: 0;
-                    background: linear-gradient(to bottom, 
-                        rgba(255, 215, 0, 0.9), 
-                        rgba(255, 100, 50, 0.6), 
-                        transparent);
-                    transform-origin: center top;
-                    transform: translate(-50%, 0) rotate(${angle}deg);
-                    animation: deathRayBurst ${config.zoomDuration}ms ease-out forwards;
-                    animation-delay: ${i * 20}ms;
-                `;
-                overlay.appendChild(ray);
-            }
-        }
+        // IMPACT HIT ANIMATION on sprite - knockback recoil
+        const impactAnim = owner === 'enemy' ? 'deathImpactHitRight' : 'deathImpactHitLeft';
+        deathClone.style.transition = 'none';
+        deathClone.style.animation = `${impactAnim} 180ms ease-out forwards`;
         
-        // Set up zoom with proper transition sequencing
-        console.log(`[DramaticDeath] Playing for ${rarity} cryptid, zoom: ${config.zoomScale}, duration: ${config.zoomDuration}ms`);
-        
-        // Step 1: Set origin (no transition yet)
-        battlefield.style.transition = 'none';
-        battlefield.style.transformOrigin = `${focusXPercent}% ${focusYPercent}%`;
-        battlefield.style.transform = 'scale(1)'; // Ensure starting state
-        
-        // Step 2: Force browser to apply the starting state
-        void battlefield.offsetWidth;
-        
-        // Step 3: Now set transition and apply zoom (use setTimeout for reliability)
+        // ==================== PHASE 2: DRAMATIC HOLD ====================
         setTimeout(() => {
-            battlefield.style.transition = `transform ${config.zoomDuration}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`;
-            battlefield.style.transform = `scale(${config.zoomScale})`;
-            console.log('[DramaticDeath] Zoom applied');
-        }, 16); // One frame delay
-        
-        // Initial impact shake
-        this.screenShake(config.shakeIntensity * 0.5, 150);
-        
-        // Calculate death animation duration (slow-mo makes it longer)
-        const TIMING = window.TIMING || { deathAnim: 700 };
-        const deathAnimDuration = config.slowMo ? TIMING.deathAnim * 1.5 : TIMING.deathAnim;
-        console.log(`[DramaticDeath] Death anim duration: ${deathAnimDuration}ms, slowMo: ${config.slowMo}`);
-        
-        // Dramatic pause before death animation starts
-        setTimeout(() => {
-            console.log(`[DramaticDeath] Pause complete, triggering death animation after ${config.pauseDuration}ms`);
+            console.log('[DramaticDeath] Hold phase started');
             
-            // Create particles from the dying cryptid
+            // Add subtle pulse during hold
+            if (rarity === 'rare' || rarity === 'ultimate') {
+                deathClone.style.animation = `deathPulse ${config.holdDuration}ms ease-in-out`;
+            }
+        }, zoomInEnd);
+        
+        // ==================== PHASE 3: DEATH ANIMATION ====================
+        setTimeout(() => {
+            console.log('[DramaticDeath] Death animation started');
+            
+            // Particles burst
             this.createImpactParticles(focusX, focusY, config.flashColor.replace(/[\d.]+\)$/, '1)'), config.particleCount);
             
-            // Second shake at death moment
-            this.screenShake(config.shakeIntensity, 300);
-            
-            // Trigger the actual death animation on the CLONE
+            // Apply death animation with custom speed
             const deathClass = owner === 'enemy' ? 'dying-right' : 'dying-left';
-            console.log(`[DramaticDeath] Adding class: ${deathClass} to clone`);
-            
-            // Set slow-mo duration if applicable (must be set before animation starts)
-            if (config.slowMo) {
-                deathClone.style.animationDuration = `${deathAnimDuration}ms`;
-            }
-            
+            deathClone.style.animation = ''; // Clear any previous animation
+            deathClone.style.animationDuration = `${actualDeathDuration}ms`;
+            deathClone.style.animationTimingFunction = 'ease-out';
+            deathClone.style.animationFillMode = 'forwards';
             deathClone.classList.add(deathClass);
             
-            // For higher rarities, add extra particles during death
+            // Extra particles during death for higher rarities
             if (rarity === 'rare' || rarity === 'ultimate') {
                 const burstInterval = setInterval(() => {
-                    this.createSparks(focusX + (Math.random() - 0.5) * 40, focusY + (Math.random() - 0.5) * 40, 5);
-                }, 100);
-                setTimeout(() => clearInterval(burstInterval), deathAnimDuration);
+                    this.createSparks(
+                        focusX + (Math.random() - 0.5) * 50, 
+                        focusY + (Math.random() - 0.5) * 50, 
+                        4
+                    );
+                }, 80);
+                setTimeout(() => clearInterval(burstInterval), actualDeathDuration);
             }
             
-        }, config.pauseDuration);
-        
-        // Calculate total duration
-        const totalDuration = config.pauseDuration + deathAnimDuration + 50;
-        
-        // Reset zoom and cleanup
-        setTimeout(() => {
-            battlefield.style.transition = 'transform 350ms ease-out';
-            battlefield.style.transform = 'scale(1)';
-            
-            setTimeout(() => {
-                battlefield.style.transition = '';
-                battlefield.style.transformOrigin = '';
-                battlefield.style.transform = '';
-                overlay.remove();
-                
-                // Remove death clone
-                if (deathClone.isConnected) {
-                    deathClone.remove();
+            // Radial burst for ultimate
+            if (config.radialBurst) {
+                for (let i = 0; i < 16; i++) {
+                    const ray = document.createElement('div');
+                    const angle = (i / 16) * 360;
+                    ray.style.cssText = `
+                        position: absolute;
+                        left: ${focusX}px;
+                        top: ${focusY}px;
+                        width: 3px;
+                        height: 0;
+                        background: linear-gradient(to bottom, 
+                            rgba(255, 220, 100, 0.95), 
+                            rgba(255, 100, 50, 0.7), 
+                            transparent);
+                        transform-origin: center top;
+                        transform: translate(-50%, 0) rotate(${angle}deg);
+                        animation: deathRayBurst ${actualDeathDuration * 0.6}ms ease-out forwards;
+                        animation-delay: ${i * 15}ms;
+                    `;
+                    overlay.appendChild(ray);
                 }
-                
-                if (onComplete) onComplete();
-            }, 400);
+            }
+        }, deathStart);
+        
+        // ==================== PHASE 4: ZOOM OUT ====================
+        setTimeout(() => {
+            console.log('[DramaticDeath] Zoom out started');
+            
+            // Update base transform for any ongoing shakes
+            this._dramaticDeathBaseTransform = 'scale(1)';
+            
+            // Restore saturation
+            if (config.desaturate && gameScreen) {
+                gameScreen.style.transition = `filter ${config.zoomOutDuration}ms ease-out`;
+                gameScreen.style.filter = '';
+            }
+            
+            // Smooth zoom out
+            battlefield.style.transition = `transform ${config.zoomOutDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+            battlefield.style.transform = 'scale(1)';
+        }, zoomOutStart);
+        
+        // ==================== CLEANUP ====================
+        setTimeout(() => {
+            console.log('[DramaticDeath] Cleanup');
+            
+            // Clear zoom tracking
+            this._dramaticDeathZoomActive = false;
+            this._dramaticDeathBaseTransform = '';
+            
+            // Reset all styles
+            battlefield.style.transition = '';
+            battlefield.style.transform = '';
+            battlefield.style.transformOrigin = '';
+            
+            if (gameScreen) {
+                gameScreen.style.transition = '';
+                gameScreen.style.filter = '';
+            }
+            
+            // Remove overlay and clone
+            overlay.remove();
+            if (deathClone.isConnected) {
+                deathClone.remove();
+            }
+            
+            if (onComplete) onComplete();
         }, totalDuration);
     },
     
@@ -1593,11 +1717,81 @@ window.CombatEffects = {
             100% { opacity: 1; }
         }
         
+        @keyframes dramaticDeathFlash {
+            0% { opacity: 0; }
+            20% { opacity: 1; }
+            60% { opacity: 0.5; }
+            100% { opacity: 0; }
+        }
+        
         @keyframes deathFlash {
             0% { opacity: 0; }
             15% { opacity: 1; }
             40% { opacity: 0.6; }
             100% { opacity: 0; }
+        }
+        
+        @keyframes deathPulse {
+            0% { 
+                transform: translate(-50%, -50%) scale(1);
+                filter: brightness(1);
+            }
+            50% { 
+                transform: translate(-50%, -50%) scale(1.08);
+                filter: brightness(1.3) drop-shadow(0 0 15px rgba(255,255,255,0.8));
+            }
+            100% { 
+                transform: translate(-50%, -50%) scale(1);
+                filter: brightness(1);
+            }
+        }
+        
+        /* Impact hit animation - knockback recoil for enemies (hit from left) */
+        @keyframes deathImpactHitRight {
+            0% { 
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+                filter: brightness(1);
+            }
+            15% { 
+                transform: translate(calc(-50% + 12px), calc(-50% - 4px)) scale(1.05) rotate(8deg);
+                filter: brightness(2.5) saturate(0);
+            }
+            30% { 
+                transform: translate(calc(-50% + 8px), calc(-50% - 2px)) scale(0.98) rotate(5deg);
+                filter: brightness(1.8) saturate(0.3);
+            }
+            50% { 
+                transform: translate(calc(-50% + 4px), -50%) scale(1.02) rotate(2deg);
+                filter: brightness(1.4) saturate(0.6);
+            }
+            100% { 
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+                filter: brightness(1.1);
+            }
+        }
+        
+        /* Impact hit animation - knockback recoil for player (hit from right) */
+        @keyframes deathImpactHitLeft {
+            0% { 
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+                filter: brightness(1);
+            }
+            15% { 
+                transform: translate(calc(-50% - 12px), calc(-50% - 4px)) scale(1.05) rotate(-8deg);
+                filter: brightness(2.5) saturate(0);
+            }
+            30% { 
+                transform: translate(calc(-50% - 8px), calc(-50% - 2px)) scale(0.98) rotate(-5deg);
+                filter: brightness(1.8) saturate(0.3);
+            }
+            50% { 
+                transform: translate(calc(-50% - 4px), -50%) scale(1.02) rotate(-2deg);
+                filter: brightness(1.4) saturate(0.6);
+            }
+            100% { 
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+                filter: brightness(1.1);
+            }
         }
         
         @keyframes deathRayBurst {
@@ -1615,9 +1809,9 @@ window.CombatEffects = {
             }
         }
         
-        /* Dramatic death slow-mo effect on battlefield */
-        .death-slowmo .cryptid-sprite {
-            transition: all 0.3s ease-out;
+        /* Death drama sprite styling */
+        .death-drama-sprite {
+            will-change: transform, opacity;
         }
     `;
     

@@ -1101,7 +1101,9 @@ window.CheatMode = {
             canAttack: false, // Just summoned
             summonedThisTurn: true,
             attackedThisTurn: false,
-            owner: owner
+            owner: owner,
+            col: col,  // REQUIRED for killCryptid and other position-based logic
+            row: row   // REQUIRED for killCryptid and other position-based logic
         };
         
         // Place on field

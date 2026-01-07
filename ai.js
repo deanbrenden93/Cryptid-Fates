@@ -380,9 +380,9 @@ function aiCombat(onComplete) {
                         const attackerSprite = document.querySelector(
                             `.cryptid-sprite[data-owner="enemy"][data-col="${combatCol}"][data-row="${row}"]`
                         );
-                        // Use new attack animation system
+                        // Use new attack animation system - pass as onImpact (4th arg) for proper timing
                         if (typeof window.playAttackAnimation === 'function') {
-                            window.playAttackAnimation(attackerSprite, 'enemy', () => {
+                            window.playAttackAnimation(attackerSprite, 'enemy', null, () => {
                                 aiPerformAttackOnTarget(attacker, playerCombatCol, target.row, index, processNextAttack);
                             });
                         } else {
@@ -402,9 +402,9 @@ function aiCombat(onComplete) {
                 const attackerSprite = document.querySelector(
                     `.cryptid-sprite[data-owner="enemy"][data-col="${combatCol}"][data-row="${row}"]`
                 );
-                // Use new attack animation system
+                // Use new attack animation system - pass as onImpact (4th arg) for proper timing
                 if (typeof window.playAttackAnimation === 'function') {
-                    window.playAttackAnimation(attackerSprite, 'enemy', () => {
+                    window.playAttackAnimation(attackerSprite, 'enemy', null, () => {
                         aiPerformAttackOnTarget(attacker, target.col, target.row, index, processNextAttack);
                     });
                 } else {
@@ -442,13 +442,34 @@ function aiCombat(onComplete) {
             impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
         }
         
-        // Apply combat effects for successful hit
+        // IMMEDIATELY update the target's health bar so damage shows at impact
+        if (result.target && window.updateSpriteHealthBar) {
+            window.updateSpriteHealthBar('player', targetCol, targetRow);
+        }
+        
+        // Track if using dramatic death
+        let usingDramaticDeath = false;
+        const targetRarity = result.target?.rarity || 'common';
+        
+        // IF KILLED: Start dramatic death FIRST so zoom begins at impact!
+        if (result.killed && targetSprite && !result.negated && !result.protectionBlocked) {
+            if (window.CombatEffects?.playDramaticDeath) {
+                usingDramaticDeath = true;
+                window.CombatEffects.playDramaticDeath(targetSprite, 'player', targetRarity);
+            } else {
+                targetSprite.classList.add('dying-left');
+            }
+        }
+        
+        // Apply combat effects for successful hit (plays in parallel with death zoom)
         if (!result.negated && !result.protectionBlocked && window.CombatEffects) {
             const damage = result.damage || 0;
             const isCrit = damage >= 5;
             
-            // Screen shake scales with damage (still some feedback even for 0 damage)
-            CombatEffects.heavyImpact(Math.max(damage, 1));
+            // Screen shake only if NOT using dramatic death
+            if (!usingDramaticDeath) {
+                CombatEffects.heavyImpact(Math.max(damage, 1));
+            }
             
             // Impact flash and particles
             CombatEffects.createImpactFlash(impactX, impactY, 80 + damage * 10);
@@ -461,7 +482,7 @@ function aiCombat(onComplete) {
             }
         }
         
-        // Add hit recoil animation
+        // Add hit recoil animation (only if not killed)
         if (!result.negated && !result.protectionBlocked && !result.killed && targetSprite) {
             targetSprite.classList.add('hit-recoil');
             setTimeout(() => targetSprite.classList.remove('hit-recoil'), 250);
@@ -537,7 +558,7 @@ function aiCombat(onComplete) {
         }
         
         if (result.killed) {
-            if (targetSprite) targetSprite.classList.add('dying-left');
+            // Death animation already started above (playDramaticDeath)
             
             // Wait for ability animations first
             waitForAbilityAnimations(() => {

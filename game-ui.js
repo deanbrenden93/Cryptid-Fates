@@ -150,6 +150,13 @@ function initGame() {
 
 // ==================== TILE POSITIONS ====================
 function calculateTilePositions() {
+    // GUARD: Don't recalculate during dramatic death zoom - getBoundingClientRect returns
+    // zoomed coordinates, but sprite left/top are in parent coordinate space (pre-transform).
+    // This mismatch causes sprites to shift dramatically during zoom animations.
+    if (window.CombatEffects?._dramaticDeathZoomActive) {
+        return;
+    }
+    
     const container = document.getElementById('battlefield-area');
     const containerRect = container.getBoundingClientRect();
     document.querySelectorAll('.tile').forEach(tile => {
@@ -2092,6 +2099,7 @@ function handleDeathAndPromotion(targetOwner, targetCol, targetRow, deadCryptid,
     
     // Use dramatic death animation scaled by rarity
     if (targetSprite && window.CombatEffects?.playDramaticDeath) {
+        console.log('[handleDeathAndPromotion] Calling playDramaticDeath for', deadCryptid?.name);
         // Kill cryptid slightly into the animation
         setTimeout(() => game.killCryptid(deadCryptid, killerOwner), 100);
         
@@ -2146,6 +2154,7 @@ function checkCascadingDeaths(onComplete) {
         const rarity = cryptid?.rarity || 'common';
         
         if (sprite && window.CombatEffects?.playDramaticDeath) {
+            console.log('[checkCascadingDeaths] Calling playDramaticDeath');
             game.killCryptid(cryptid);
             window.CombatEffects.playDramaticDeath(sprite, owner, rarity, () => {
                 renderAll();
@@ -2187,6 +2196,7 @@ function checkAllCreaturesForDeath(onComplete) {
         const rarity = cryptid?.rarity || 'common';
         
         if (sprite && window.CombatEffects?.playDramaticDeath) {
+            console.log('[checkAllCreaturesForDeath] Calling playDramaticDeath for', cryptid?.name);
             game.killCryptid(cryptid);
             window.CombatEffects.playDramaticDeath(sprite, owner, rarity, () => {
                 renderAll();
@@ -2257,14 +2267,16 @@ function executeAttack(targetCol, targetRow) {
                 renderSprites();
                 setTimeout(() => {
                     const attackerSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${attacker.col}"][data-row="${attacker.row}"]`);
-                    playAttackAnimation(attackerSprite, 'player', () => {
+                    // Pass performAttackOnTarget as onImpact (4th arg) so it fires at the moment of hit
+                    playAttackAnimation(attackerSprite, 'player', null, () => {
                         performAttackOnTarget(attacker, targetOwner, combatCol, targetRow);
                     });
                 }, 50);
             }, TIMING.summonAnim + 100);
         } else {
             const attackerSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${attacker.col}"][data-row="${attacker.row}"]`);
-            playAttackAnimation(attackerSprite, 'player', () => {
+            // Pass performAttackOnTarget as onImpact (4th arg) so it fires at the moment of hit
+            playAttackAnimation(attackerSprite, 'player', null, () => {
                 performAttackOnTarget(attacker, targetOwner, targetCol, targetRow);
             });
         }
@@ -2272,8 +2284,10 @@ function executeAttack(targetCol, targetRow) {
 }
 
 // New attack animation with windup, lunge, and return
-function playAttackAnimation(attackerSprite, owner, onComplete) {
+// onImpact is called at the MOMENT of impact (for effects), onComplete after animation ends
+function playAttackAnimation(attackerSprite, owner, onComplete, onImpact) {
     if (!attackerSprite) {
+        if (onImpact) onImpact();
         if (onComplete) onComplete();
         return;
     }
@@ -2287,15 +2301,17 @@ function playAttackAnimation(attackerSprite, owner, onComplete) {
         attackerSprite.classList.add('attack-lunge');
         
         setTimeout(() => {
-            // Phase 3: Impact - call the attack handler
+            // Phase 3: IMPACT - this is the exact moment of hit!
+            // Fire impact callback immediately for visual effects
+            if (onImpact) onImpact();
+            
             attackerSprite.classList.remove('attack-lunge');
             attackerSprite.classList.add('attack-return');
             
-            if (onComplete) onComplete();
-            
             setTimeout(() => {
-                // Phase 4: Return to rest - only remove animation classes, NOT 'enemy'
+                // Phase 4: Return to rest
                 attackerSprite.classList.remove('attack-return');
+                if (onComplete) onComplete();
             }, 200);
         }, 180);
     }, 150);
@@ -2426,13 +2442,35 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         return;
     }
     
-    // Combat effects for successful hit
+    // IMMEDIATELY update the target's health bar so damage shows at impact
+    if (result.target) {
+        window.updateSpriteHealthBar(targetOwner, targetCol, targetRow);
+    }
+    
+    // Track if we're using dramatic death (affects timing)
+    let usingDramaticDeath = false;
+    const targetRarity = result.target?.rarity || 'common';
+    
+    // IF KILLED: Start dramatic death FIRST so zoom begins at impact!
+    if (result.killed && targetSprite) {
+        if (window.CombatEffects?.playDramaticDeath) {
+            usingDramaticDeath = true;
+            console.log('[performAttackOnTarget] Calling playDramaticDeath for kill');
+            window.CombatEffects.playDramaticDeath(targetSprite, targetOwner, targetRarity);
+        } else {
+            targetSprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
+        }
+    }
+    
+    // Combat effects for successful hit (plays in parallel with death zoom if killed)
     if (window.CombatEffects) {
         const damage = result.damage || 0;
         const isCrit = damage >= 5;
         
-        // Screen shake scales with damage (still some feedback even for 0 damage)
-        CombatEffects.heavyImpact(Math.max(damage, 1));
+        // Screen shake only if NOT using dramatic death (it has its own effects)
+        if (!usingDramaticDeath) {
+            CombatEffects.heavyImpact(Math.max(damage, 1));
+        }
         
         // Impact flash and particles
         CombatEffects.createImpactFlash(impactX, impactY, 80 + damage * 10);
@@ -2445,20 +2483,9 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         }
     }
     
-    // Track if we're using dramatic death (affects timing)
-    let usingDramaticDeath = false;
-    const targetRarity = result.target?.rarity || 'common';
-    
-    if (targetSprite) {
-        if (result.killed) {
-            // Use dramatic death animation for combat kills
-            if (window.CombatEffects?.playDramaticDeath) {
-                usingDramaticDeath = true;
-                window.CombatEffects.playDramaticDeath(targetSprite, targetOwner, targetRarity);
-            } else {
-                targetSprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
-            }
-        } else if (result.protectionBlocked) {
+    // Handle non-kill sprite reactions
+    if (targetSprite && !result.killed) {
+        if (result.protectionBlocked) {
             // Protection blocked the attack - show shield animation
             console.log('[Protection] Block detected, adding animation to sprite:', targetSprite);
             targetSprite.classList.add('protection-block');
@@ -2481,9 +2508,13 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
     // Calculate wait time - dramatic deaths take longer based on rarity
     const getDramaticDeathTime = (rarity) => {
         const config = window.CombatEffects?.deathDramaConfig?.[rarity] || {};
-        const pauseDuration = config.pauseDuration || 150;
-        const zoomDuration = config.zoomDuration || 400;
-        return pauseDuration + TIMING.deathAnim + zoomDuration + 100;
+        const zoomInDuration = config.zoomInDuration || 200;
+        const holdDuration = config.holdDuration || 100;
+        const deathAnimSpeed = config.deathAnimSpeed || 1.0;
+        const actualDeathDuration = TIMING.deathAnim / deathAnimSpeed;
+        const zoomOutDuration = config.zoomOutDuration || 350;
+        // Total: zoomIn + hold + death + zoomOut + buffer
+        return zoomInDuration + holdDuration + actualDeathDuration + zoomOutDuration + 100;
     };
     
     const waitTime = result.killed 
@@ -2946,7 +2977,7 @@ function animateTurnStartEffects(owner, onComplete) {
                             });
                         });
                     } else {
-                        if (sprite) sprite.classList.add('dying-left');
+                        if (sprite) sprite.classList.add(effect.owner === 'enemy' ? 'dying-right' : 'dying-left');
                         setTimeout(() => {
                             renderAll();
                             processPendingPromotions(() => {
@@ -3007,7 +3038,7 @@ function animateTurnStartEffects(owner, onComplete) {
                             });
                         });
                     } else {
-                        if (sprite) sprite.classList.add('dying-left');
+                        if (sprite) sprite.classList.add(effect.owner === 'enemy' ? 'dying-right' : 'dying-left');
                         setTimeout(() => {
                             renderAll();
                             processPendingPromotions(() => {
@@ -3986,6 +4017,52 @@ window.calculateTilePositions = calculateTilePositions;
 window.tilePositions = tilePositions;
 window.performAttackOnTarget = performAttackOnTarget;
 window.playAttackAnimation = playAttackAnimation;
+
+// Update a single sprite's health bar immediately (for instant feedback at impact)
+window.updateSpriteHealthBar = function(owner, col, row) {
+    const cryptid = game.getFieldCryptid(owner, col, row);
+    if (!cryptid) return;
+    
+    const sprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`);
+    if (!sprite) return;
+    
+    const combatCol = game.getCombatCol(owner);
+    const supportCol = game.getSupportCol(owner);
+    
+    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0);
+    let displayHp = cryptid.currentHp;
+    
+    if (col === combatCol) {
+        const support = game.getFieldCryptid(owner, supportCol, row);
+        if (support) {
+            displayAtk += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0);
+            displayHp += support.currentHp;
+        }
+    }
+    
+    const maxHp = cryptid.maxHp || cryptid.hp;
+    const hpPercent = Math.max(0, Math.min(100, (cryptid.currentHp / maxHp) * 100));
+    
+    let hpArcClass = 'hp-arc';
+    if (hpPercent <= 25) hpArcClass += ' hp-low';
+    else if (hpPercent <= 50) hpArcClass += ' hp-medium';
+    
+    const arcInset = 5 + (45 * (1 - hpPercent / 100));
+    const arcClipPath = owner === 'player' 
+        ? `inset(${arcInset}% 50% ${arcInset}% 0)`
+        : `inset(${arcInset}% 0 ${arcInset}% 50%)`;
+    
+    const atkValue = sprite.querySelector('.atk-badge .stat-value');
+    const hpValue = sprite.querySelector('.hp-badge .stat-value');
+    const hpArc = sprite.querySelector('.hp-arc');
+    
+    if (atkValue) atkValue.textContent = Math.max(0, displayAtk);
+    if (hpValue) hpValue.textContent = displayHp;
+    if (hpArc) {
+        hpArc.className = hpArcClass;
+        hpArc.style.clipPath = arcClipPath;
+    }
+};
 
 // Debug commands for EffectStack
 window.debugEffectStack = () => {
