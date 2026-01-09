@@ -27,8 +27,8 @@ window.CheatMode = {
         
         // Start with generous resources
         if (window.game) {
-            game.playerPyre = 15;
-            game.enemyPyre = 15;
+            window.game.playerPyre = 15;
+            window.game.enemyPyre = 15;
         }
         
         console.log('🎮 Cheat Mode Active');
@@ -608,7 +608,7 @@ window.CheatMode = {
                     
                     // Check if there's a cryptid in this position
                     if (window.game) {
-                        const field = owner === 'player' ? game.playerField : game.enemyField;
+                        const field = owner === 'player' ? window.game.playerField : window.game.enemyField;
                         console.log('[CheatMode] Field lookup:', field[col], 'cryptid at row:', field[col]?.[row]?.name);
                         if (field[col]?.[row]) {
                             this.selectCryptid(owner, col, row);
@@ -624,7 +624,8 @@ window.CheatMode = {
     selectedCryptid: null,
     
     selectCryptid(owner, col, row) {
-        const field = owner === 'player' ? game.playerField : game.enemyField;
+        if (!window.game) return;
+        const field = owner === 'player' ? window.game.playerField : window.game.enemyField;
         const cryptid = field[col]?.[row];
         
         if (cryptid) {
@@ -673,9 +674,9 @@ window.CheatMode = {
     adjustPyre(owner, amount) {
         if (!window.game) return;
         if (owner === 'player') {
-            game.playerPyre = Math.max(0, game.playerPyre + amount);
+            window.game.playerPyre = Math.max(0, window.game.playerPyre + amount);
         } else {
-            game.enemyPyre = Math.max(0, game.enemyPyre + amount);
+            window.game.enemyPyre = Math.max(0, window.game.enemyPyre + amount);
         }
         this.updateDisplay();
         if (typeof renderAll === 'function') renderAll();
@@ -684,9 +685,9 @@ window.CheatMode = {
     setPyre(owner, amount) {
         if (!window.game) return;
         if (owner === 'player') {
-            game.playerPyre = amount;
+            window.game.playerPyre = amount;
         } else {
-            game.enemyPyre = amount;
+            window.game.enemyPyre = amount;
         }
         this.updateDisplay();
         if (typeof renderAll === 'function') renderAll();
@@ -695,9 +696,9 @@ window.CheatMode = {
     adjustDeaths(owner, amount) {
         if (!window.game) return;
         if (owner === 'player') {
-            game.playerDeaths = Math.max(0, Math.min(10, game.playerDeaths + amount));
+            window.game.playerDeaths = Math.max(0, Math.min(10, window.game.playerDeaths + amount));
         } else {
-            game.enemyDeaths = Math.max(0, Math.min(10, game.enemyDeaths + amount));
+            window.game.enemyDeaths = Math.max(0, Math.min(10, window.game.enemyDeaths + amount));
         }
         this.updateDisplay();
         if (typeof renderAll === 'function') renderAll();
@@ -867,8 +868,9 @@ window.CheatMode = {
             return;
         }
         
+        if (!window.game) return;
         const owner = this.controllingPlayer;
-        const hand = owner === 'player' ? game.playerHand : game.enemyHand;
+        const hand = owner === 'player' ? window.game.playerHand : window.game.enemyHand;
         // Generate unique ID for each card added to hand
         const cardCopy = {...card, id: Math.random().toString(36).substr(2, 9)};
         hand.push(cardCopy);
@@ -884,8 +886,13 @@ window.CheatMode = {
             return;
         }
         
+        if (!window.game) {
+            alert('Start a game first!');
+            return;
+        }
+        
         const owner = this.controllingPlayer;
-        const hand = owner === 'player' ? game.playerHand : game.enemyHand;
+        const hand = owner === 'player' ? window.game.playerHand : window.game.enemyHand;
         
         // Clear hand
         hand.length = 0;
@@ -910,8 +917,8 @@ window.CheatMode = {
         addCards(seriesData.auras, k => CardRegistry.getAura(k));
         
         // Give generous pyre
-        if (owner === 'player') game.playerPyre = 20;
-        else game.enemyPyre = 20;
+        if (owner === 'player') window.game.playerPyre = 20;
+        else window.game.enemyPyre = 20;
         
         this.updateDisplay();
         if (typeof renderAll === 'function') renderAll();
@@ -919,21 +926,23 @@ window.CheatMode = {
     },
     
     clearHand() {
+        if (!window.game) return;
         const owner = this.controllingPlayer;
-        const hand = owner === 'player' ? game.playerHand : game.enemyHand;
+        const hand = owner === 'player' ? window.game.playerHand : window.game.enemyHand;
         hand.length = 0;
         if (typeof renderAll === 'function') renderAll();
     },
     
     drawCard() {
+        if (!window.game) return;
         const owner = this.controllingPlayer;
-        game.drawCard(owner);
+        window.game.drawCard(owner);
         if (typeof renderAll === 'function') renderAll();
     },
     
     endTurn() {
         if (window.game) {
-            game.endTurn();
+            window.game.endTurn();
             if (typeof renderAll === 'function') renderAll();
         }
     },
@@ -943,8 +952,8 @@ window.CheatMode = {
         
         // Rebuild kindling pools
         if (typeof DeckBuilder !== 'undefined' && DeckBuilder.buildKindlingPool) {
-            game.playerKindling = DeckBuilder.buildKindlingPool();
-            game.enemyKindling = DeckBuilder.buildKindlingPool();
+            window.game.playerKindling = DeckBuilder.buildKindlingPool();
+            window.game.enemyKindling = DeckBuilder.buildKindlingPool();
             console.log('Kindling pools reset');
         }
     },
@@ -977,9 +986,9 @@ window.CheatMode = {
     },
     
     killSelected() {
-        if (!this.selectedCryptid) return;
+        if (!this.selectedCryptid || !window.game) return;
         const { cryptid, owner } = this.selectedCryptid;
-        game.killCryptid(cryptid, owner === 'player' ? 'enemy' : 'player');
+        window.game.killCryptid(cryptid, owner === 'player' ? 'enemy' : 'player');
         this.selectedCryptid = null;
         document.getElementById('cheat-selected-info').textContent = 'Click a cryptid on field to select';
         document.getElementById('cheat-cryptid-controls').style.display = 'none';
@@ -1107,7 +1116,8 @@ window.CheatMode = {
         };
         
         // Place on field
-        const field = owner === 'player' ? game.playerField : game.enemyField;
+        if (!window.game) return;
+        const field = owner === 'player' ? window.game.playerField : window.game.enemyField;
         if (!field[col]) field[col] = [];
         
         // If slot occupied, remove existing
@@ -1123,32 +1133,32 @@ window.CheatMode = {
         field[col][row] = cryptid;
         
         // Call appropriate callbacks like normal summonCryptid does
-        const supportCol = game.getSupportCol(owner);
-        const combatCol = game.getCombatCol(owner);
+        const supportCol = window.game.getSupportCol(owner);
+        const combatCol = window.game.getCombatCol(owner);
         
         // onSummon callback
         if (cryptid.onSummon) {
-            cryptid.onSummon(cryptid, owner, game);
+            cryptid.onSummon(cryptid, owner, window.game);
         }
         
         // onSupport callback (when placed in support column)
         if (col === supportCol && cryptid.onSupport) {
-            cryptid.onSupport(cryptid, owner, game);
+            cryptid.onSupport(cryptid, owner, window.game);
         }
         
         // onCombat / onEnterCombat callbacks (when placed in combat column)
         if (col === combatCol) {
             if (cryptid.onCombat) {
-                cryptid.onCombat(cryptid, owner, game);
+                cryptid.onCombat(cryptid, owner, window.game);
             }
             if (cryptid.onEnterCombat) {
-                cryptid.onEnterCombat(cryptid, owner, game);
+                cryptid.onEnterCombat(cryptid, owner, window.game);
             }
             
             // Re-apply support abilities from existing support in same row
-            const existingSupport = game.getFieldCryptid(owner, supportCol, row);
-            if (existingSupport?.onSupport && !game.isSupportNegated?.(existingSupport)) {
-                existingSupport.onSupport(existingSupport, owner, game);
+            const existingSupport = window.game.getFieldCryptid(owner, supportCol, row);
+            if (existingSupport?.onSupport && !window.game.isSupportNegated?.(existingSupport)) {
+                existingSupport.onSupport(existingSupport, owner, window.game);
             }
         }
         
@@ -1165,7 +1175,8 @@ window.CheatMode = {
         const col = parseInt(colSelect.value);
         const row = parseInt(rowSelect.value);
         
-        const field = owner === 'player' ? game.playerField : game.enemyField;
+        if (!window.game) return;
+        const field = owner === 'player' ? window.game.playerField : window.game.enemyField;
         const colName = owner === 'player' 
             ? (col === 0 ? 'Support' : 'Combat')
             : (col === 0 ? 'Combat' : 'Support');
@@ -1253,10 +1264,10 @@ window.CheatMode = {
         const playerDeaths = document.getElementById('cheat-player-deaths');
         const enemyDeaths = document.getElementById('cheat-enemy-deaths');
         
-        if (playerPyre) playerPyre.textContent = game.playerPyre;
-        if (enemyPyre) enemyPyre.textContent = game.enemyPyre;
-        if (playerDeaths) playerDeaths.textContent = game.playerDeaths;
-        if (enemyDeaths) enemyDeaths.textContent = game.enemyDeaths;
+        if (playerPyre) playerPyre.textContent = window.game.playerPyre;
+        if (enemyPyre) enemyPyre.textContent = window.game.enemyPyre;
+        if (playerDeaths) playerDeaths.textContent = window.game.playerDeaths;
+        if (enemyDeaths) enemyDeaths.textContent = window.game.enemyDeaths;
     },
     
     toggleEventLog() {

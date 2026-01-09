@@ -382,7 +382,10 @@ function renderSprites() {
                     if (cryptid.element) classes += ` element-${cryptid.element}`;
                     if (cryptid.rarity) classes += ` rarity-${cryptid.rarity}`;
                     if (cryptid.isHidden) classes += ' hidden-cryptid';
-                    if (cryptid.justSummoned) {
+                    
+                    // Track if this is a new summon for enhanced animation
+                    const wasJustSummoned = cryptid.justSummoned;
+                    if (wasJustSummoned) {
                         classes += ' summoning';
                         setTimeout(() => { cryptid.justSummoned = false; }, 50);
                     }
@@ -543,7 +546,21 @@ function renderSprites() {
                     sprite.style.left = pos.x + 'px';
                     sprite.style.top = pos.y + 'px';
                     sprite.style.transform = 'translate(-50%, -50%)';
-                    if (isNewSprite) spriteLayer.appendChild(sprite);
+                    if (isNewSprite) {
+                        spriteLayer.appendChild(sprite);
+                        
+                        // Trigger enhanced summon animation for new sprites
+                        if (wasJustSummoned && window.CombatEffects?.playSummonAnimation) {
+                            // Small delay to ensure sprite is in DOM
+                            setTimeout(() => {
+                                window.CombatEffects.playSummonAnimation(
+                                    sprite, 
+                                    cryptid.element || 'steel', 
+                                    cryptid.rarity || 'common'
+                                );
+                            }, 10);
+                        }
+                    }
                 }
             }
         }
@@ -1631,18 +1648,38 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
     
     setTimeout(() => {
         const sprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`);
-        if (sprite) sprite.classList.add('evolving');
-    }, 400);
-    
-    setTimeout(() => { 
-        // Multiplayer hook - AFTER evolution animation completes
-        if (game.isMultiplayer && targetOwner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onEvolve(card, targetCol, targetRow);
+        if (sprite) {
+            // Use enhanced evolution animation if available
+            if (window.CombatEffects?.playEvolutionAnimation) {
+                const evolvedCryptid = game.getFieldCryptid(targetOwner, targetCol, targetRow);
+                window.CombatEffects.playEvolutionAnimation(
+                    sprite, 
+                    evolvedCryptid?.element || card.element || 'steel',
+                    evolvedCryptid?.rarity || card.rarity || 'uncommon',
+                    () => {
+                        // Multiplayer hook - AFTER evolution animation completes
+                        if (game.isMultiplayer && targetOwner === 'player' && typeof window.multiplayerHook !== 'undefined') {
+                            window.multiplayerHook.onEvolve(card, targetCol, targetRow);
+                        }
+                        isAnimating = false; 
+                        renderAll(); 
+                        updateButtons();
+                    }
+                );
+            } else {
+                // Fallback to basic animation
+                sprite.classList.add('evolving');
+                setTimeout(() => { 
+                    if (game.isMultiplayer && targetOwner === 'player' && typeof window.multiplayerHook !== 'undefined') {
+                        window.multiplayerHook.onEvolve(card, targetCol, targetRow);
+                    }
+                    isAnimating = false; 
+                    renderAll(); 
+                    updateButtons(); 
+                }, TIMING.evolveAnim);
+            }
         }
-        isAnimating = false; 
-        renderAll(); 
-        updateButtons(); 
-    }, TIMING.evolveAnim);
+    }, 400);
 }
 
 function executeBurst(targetOwner, targetCol, targetRow) {
@@ -1666,24 +1703,54 @@ function executeBurst(targetOwner, targetCol, targetRow) {
         // 2. Show spell name message
         showMessage(`✧ ${card.name} ✧`, TIMING.messageDisplay);
         
-        // 3. Play visual effect on target
+        // 3. Get target position for projectile
+        const battlefield = document.getElementById('battlefield-area');
         const targetSprite = targetCryptid ? document.querySelector(
             `.cryptid-sprite[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`
         ) : null;
-        
-        if (targetSprite) {
-            targetSprite.classList.add('spell-target');
-            setTimeout(() => targetSprite.classList.remove('spell-target'), TIMING.spellEffect);
-        }
-        
-        // Play tile effect for tile-targeted spells
         const targetTile = document.querySelector(
             `.tile[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`
         );
-        if (targetTile) {
-            targetTile.classList.add('spell-target-tile');
-            setTimeout(() => targetTile.classList.remove('spell-target-tile'), TIMING.spellEffect);
+        
+        // Calculate target position for spell projectile
+        let targetX = 0, targetY = 0;
+        if (battlefield) {
+            const battlefieldRect = battlefield.getBoundingClientRect();
+            const targetElement = targetSprite || targetTile;
+            if (targetElement) {
+                const targetRect = targetElement.getBoundingClientRect();
+                targetX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+                targetY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+            }
+            
+            // Get start position from hand area
+            const handArea = document.getElementById('hand-area');
+            let startX = battlefieldRect.width / 2;
+            let startY = battlefieldRect.height - 20;
+            if (handArea) {
+                const handRect = handArea.getBoundingClientRect();
+                startX = handRect.left + handRect.width/2 - battlefieldRect.left;
+                startY = handRect.top - battlefieldRect.top;
+            }
+            
+            // Play spell projectile animation if available
+            if (window.CombatEffects?.playSpellProjectile && targetX && targetY) {
+                const element = card.element || 'void';
+                window.CombatEffects.playSpellProjectile(startX, startY, targetX, targetY, element, 'burst');
+            }
         }
+        
+        // 4. Play visual effect on target (after projectile lands)
+        setTimeout(() => {
+            if (targetSprite) {
+                targetSprite.classList.add('spell-target');
+                setTimeout(() => targetSprite.classList.remove('spell-target'), TIMING.spellEffect);
+            }
+            if (targetTile) {
+                targetTile.classList.add('spell-target-tile');
+                setTimeout(() => targetTile.classList.remove('spell-target-tile'), TIMING.spellEffect);
+            }
+        }, 250);
         
         // 4. Remove card from array and add to discard pile
         setTimeout(() => {
@@ -1999,27 +2066,12 @@ function executePyreCard(card) {
     if (!game.canPlayPyreCard('player') || isAnimating) return;
     isAnimating = true;
     
-    // Get card position for visual effect
+    // Get card element for visual effect
     const cardWrapper = document.querySelector(`.card-wrapper[data-card-id="${card.id}"]`);
-    let effectX = window.innerWidth / 2;
-    let effectY = window.innerHeight / 2;
-    if (cardWrapper) {
-        const rect = cardWrapper.getBoundingClientRect();
-        effectX = rect.left + rect.width / 2;
-        effectY = rect.top;
-    }
+    const cardElement = cardWrapper?.querySelector('.game-card');
     
     // Animate card removal
     animateCardRemoval(card.id, 'playing');
-    
-    // Create visual pyre burst effect
-    const pyreEffect = document.createElement('div');
-    pyreEffect.className = 'pyre-burst-effect';
-    pyreEffect.innerHTML = `<span class="pyre-icon">${card.sprite}</span><span class="pyre-glow">🔥</span>`;
-    pyreEffect.style.left = effectX + 'px';
-    pyreEffect.style.top = effectY + 'px';
-    document.body.appendChild(pyreEffect);
-    requestAnimationFrame(() => pyreEffect.classList.add('active'));
     
     const result = game.playPyreCard('player', card);
     
@@ -2046,17 +2098,46 @@ function executePyreCard(card) {
         showMessage(msg, 1200);
     }
     
-    setTimeout(() => {
-        pyreEffect.remove();
-        isAnimating = false;
-        renderAll(); 
-        updateButtons();
-    }, 600);
+    // Use enhanced pyre burn animation if available
+    if (window.CombatEffects?.playPyreBurn) {
+        window.CombatEffects.playPyreBurn(cardElement, result?.pyreGained || 1, () => {
+            isAnimating = false;
+            renderAll(); 
+            updateButtons();
+        });
+    } else {
+        // Fallback to basic effect
+        let effectX = window.innerWidth / 2;
+        let effectY = window.innerHeight / 2;
+        if (cardWrapper) {
+            const rect = cardWrapper.getBoundingClientRect();
+            effectX = rect.left + rect.width / 2;
+            effectY = rect.top;
+        }
+        const pyreEffect = document.createElement('div');
+        pyreEffect.className = 'pyre-burst-effect';
+        pyreEffect.innerHTML = `<span class="pyre-icon">${card.sprite}</span><span class="pyre-glow">🔥</span>`;
+        pyreEffect.style.left = effectX + 'px';
+        pyreEffect.style.top = effectY + 'px';
+        document.body.appendChild(pyreEffect);
+        requestAnimationFrame(() => pyreEffect.classList.add('active'));
+        
+        setTimeout(() => {
+            pyreEffect.remove();
+            isAnimating = false;
+            renderAll(); 
+            updateButtons();
+        }, 600);
+    }
 }
 
 function executePyreCardWithAnimation(card, dropX, dropY) {
     if (!game.canPlayPyreCard('player')) return;
     isAnimating = true;
+    
+    // Get card element before cleanup
+    const cardWrapper = document.querySelector(`.card-wrapper[data-card-id="${card.id}"]`);
+    const cardElement = cardWrapper?.querySelector('.game-card');
     
     // Clean up drag state
     ui.selectedCard = null; 
@@ -2066,19 +2147,26 @@ function executePyreCardWithAnimation(card, dropX, dropY) {
     // Animate card out of hand
     animateCardRemoval(card.id, 'playing');
     
-    const pyreEffect = document.createElement('div');
-    pyreEffect.className = 'pyre-burst-effect';
-    pyreEffect.innerHTML = `<span class="pyre-icon">${card.sprite}</span><span class="pyre-glow">🔥</span>`;
-    pyreEffect.style.left = dropX + 'px';
-    pyreEffect.style.top = dropY + 'px';
-    document.body.appendChild(pyreEffect);
-    requestAnimationFrame(() => pyreEffect.classList.add('active'));
-    
     const result = game.playPyreCard('player', card);
     
     // Multiplayer hook - AFTER effect so we know the resulting pyre
     if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
         window.multiplayerHook.onPyre(card);
+    }
+    
+    // Use enhanced pyre burn animation if available
+    if (window.CombatEffects?.playPyreBurn) {
+        window.CombatEffects.playPyreBurn(cardElement, result?.pyreGained || 1);
+    } else {
+        // Fallback to basic effect
+        const pyreEffect = document.createElement('div');
+        pyreEffect.className = 'pyre-burst-effect';
+        pyreEffect.innerHTML = `<span class="pyre-icon">${card.sprite}</span><span class="pyre-glow">🔥</span>`;
+        pyreEffect.style.left = dropX + 'px';
+        pyreEffect.style.top = dropY + 'px';
+        document.body.appendChild(pyreEffect);
+        requestAnimationFrame(() => pyreEffect.classList.add('active'));
+        setTimeout(() => pyreEffect.remove(), 800);
     }
     
     // Remove from hand immediately
@@ -2097,11 +2185,10 @@ function executePyreCardWithAnimation(card, dropX, dropY) {
     }
     
     setTimeout(() => { 
-        pyreEffect.remove(); 
         isAnimating = false; 
         renderAll(); 
         updateButtons(); 
-    }, 800);
+    }, 900);
 }
 
 function handleDeathAndPromotion(targetOwner, targetCol, targetRow, deadCryptid, killerOwner, onComplete) {
@@ -2294,39 +2381,53 @@ function executeAttack(targetCol, targetRow) {
     });
 }
 
-// New attack animation with windup, lunge, and return
+// Enhanced attack animation with hitstop, squash/stretch, and afterimage trails
 // onImpact is called at the MOMENT of impact (for effects), onComplete after animation ends
-function playAttackAnimation(attackerSprite, owner, onComplete, onImpact) {
+// Now supports passing damage for intensity scaling
+function playAttackAnimation(attackerSprite, owner, onComplete, onImpact, damage = 3) {
     if (!attackerSprite) {
         if (onImpact) onImpact();
         if (onComplete) onComplete();
         return;
     }
     
-    // Phase 1: Wind-up (anticipation)
-    attackerSprite.classList.add('attack-windup');
+    // Try to find target sprite for enhanced effects
+    let targetSprite = null;
+    const isEnemy = owner === 'enemy';
+    const targetOwner = isEnemy ? 'player' : 'enemy';
     
-    setTimeout(() => {
-        // Phase 2: Lunge forward
-        attackerSprite.classList.remove('attack-windup');
-        attackerSprite.classList.add('attack-lunge');
+    // Look for target in the same row
+    const row = attackerSprite.dataset.row;
+    if (row !== undefined) {
+        const combatCol = isEnemy ? 1 : 0; // Enemy targets player's col 1, player targets enemy's col 0
+        targetSprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${combatCol}"][data-row="${row}"]`);
+    }
+    
+    // Use enhanced attack if CombatEffects is available
+    if (window.CombatEffects?.playEnhancedAttack) {
+        window.CombatEffects.playEnhancedAttack(attackerSprite, owner, targetSprite, damage, onImpact, onComplete);
+    } else {
+        // Fallback to basic animation
+        attackerSprite.classList.add('attack-windup');
         
         setTimeout(() => {
-            // Phase 3: IMPACT - this is the exact moment of hit!
-            // Fire impact callback immediately for visual effects
-            if (onImpact) onImpact();
-            
-            attackerSprite.classList.remove('attack-lunge');
-            attackerSprite.classList.add('attack-return');
+            attackerSprite.classList.remove('attack-windup');
+            attackerSprite.classList.add('attack-lunge');
             
             setTimeout(() => {
-                // Phase 4: Return to rest
-                attackerSprite.classList.remove('attack-return');
-                if (onComplete) onComplete();
-            }, 200);
-        }, 180);
-    }, 150);
+                if (onImpact) onImpact();
+                attackerSprite.classList.remove('attack-lunge');
+                attackerSprite.classList.add('attack-return');
+                
+                setTimeout(() => {
+                    attackerSprite.classList.remove('attack-return');
+                    if (onComplete) onComplete();
+                }, 200);
+            }, 180);
+        }, 150);
+    }
 }
+window.playAttackAnimation = playAttackAnimation;
 
 function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
     // Capture target info BEFORE attack for multiplayer death tracking
@@ -2573,10 +2674,24 @@ function animateSupportPromotion(owner, row) {
     
     const sprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${row}"]`);
     if (sprite) {
-        sprite.style.setProperty('--promote-distance', `${distance}px`);
         sprite.style.left = supportPos.x + 'px';
-        sprite.classList.add(owner === 'player' ? 'promoting-right' : 'promoting-left');
-        setTimeout(() => { sprite.classList.remove('promoting-right', 'promoting-left'); sprite.style.left = combatPos.x + 'px'; renderSprites(); }, TIMING.promoteAnim);
+        
+        // Use enhanced promotion animation if available
+        if (window.CombatEffects?.playPromotionAnimation) {
+            window.CombatEffects.playPromotionAnimation(sprite, owner, distance, () => {
+                sprite.style.left = combatPos.x + 'px';
+                renderSprites();
+            });
+        } else {
+            // Fallback to basic animation
+            sprite.style.setProperty('--promote-distance', `${distance}px`);
+            sprite.classList.add(owner === 'player' ? 'promoting-right' : 'promoting-left');
+            setTimeout(() => { 
+                sprite.classList.remove('promoting-right', 'promoting-left'); 
+                sprite.style.left = combatPos.x + 'px'; 
+                renderSprites(); 
+            }, TIMING.promoteAnim);
+        }
     }
 }
 
@@ -2653,6 +2768,11 @@ document.getElementById('pyre-burn-btn').onclick = () => {
         // Multiplayer hook - AFTER pyre burn applied
         if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
             window.multiplayerHook.onPyreBurn(deaths);
+        }
+        
+        // Play machine gun ember effect for multiple pyre gains
+        if (deaths > 0 && window.CombatEffects?.playPyreBurn) {
+            window.CombatEffects.playPyreBurn(null, deaths);
         }
         
         renderAll(); 
@@ -3845,6 +3965,11 @@ function setupGameEventListeners() {
     GameEvents.on('onTurnStart', (data) => {
         // Reset timeline to conjure1 at turn start
         updatePhaseTimeline('conjure1');
+        
+        // Play turn transition animation (skip on first turn)
+        if (data.turnNumber > 1 && window.CombatEffects?.playTurnTransition) {
+            window.CombatEffects.playTurnTransition(data.owner);
+        }
     });
     
     // Turn start UI reset
@@ -3965,13 +4090,18 @@ function setupGameEventListeners() {
                 GameEvents.emit('onHuntSteal', { trap, stolenPyre: pyreGained, from: pyreOwner, to: trapOwner });
                 GameEvents.emit('onTrapTriggered', { trap, owner: trapOwner, row: i });
                 
+                // Play enhanced trap animation if available (trapSprite already declared above)
+                if (window.CombatEffects?.playTrapTrigger && trapSprite) {
+                    window.CombatEffects.playTrapTrigger(trapSprite, null, trap.element || 'void');
+                }
+                
                 // Consume trap
                 traps[i] = null;
                 
                 // Re-render to show pyre changes and trap removal
                 setTimeout(() => {
                     if (typeof renderAll === 'function') renderAll();
-                }, 100);
+                }, 700);
                 
                 break; // Only trigger one trap
             }
@@ -3993,6 +4123,25 @@ function setupGameEventListeners() {
         if (targetEl) {
             targetEl.classList.add('pyre-flash-gain');
             setTimeout(() => targetEl.classList.remove('pyre-flash-gain'), 400);
+        }
+        
+        // Trigger ember animation for special pyre sources (not turn start, pyre burn handled elsewhere)
+        const amount = data.amount || 1;
+        if (data.owner === 'player' && amount > 0 && window.CombatEffects?.playPyreBurn) {
+            // Only animate for specific sources (pyreFuel, huntTrap, etc.)
+            // Skip: turnStart (every turn), pyreBurn (handled by button), pyreCard (handled by executePyreCard)
+            const animatedSources = ['pyreFuel', 'huntTrap'];
+            if (animatedSources.includes(data.source)) {
+                // Find source cryptid sprite if available for start position
+                const sourceCryptid = data.sourceCryptid;
+                let sourceElement = null;
+                if (sourceCryptid) {
+                    sourceElement = document.querySelector(
+                        `.cryptid-sprite[data-owner="${sourceCryptid.owner}"][data-col="${sourceCryptid.col}"][data-row="${sourceCryptid.row}"]`
+                    );
+                }
+                window.CombatEffects.playPyreBurn(sourceElement, amount);
+            }
         }
     });
     

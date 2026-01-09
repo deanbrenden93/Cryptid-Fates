@@ -862,8 +862,15 @@ window.Multiplayer = {
                 const findAndAnimate = () => {
                     const sprite = document.querySelector(`.cryptid-sprite[data-owner="enemy"][data-col="${col}"][data-row="${action.row}"]`);
                     if (sprite) {
-                        sprite.classList.add('summoning');
-                        setTimeout(() => sprite.classList.remove('summoning'), TIMING.summon);
+                        // Use enhanced summon animation if available
+                        if (window.CombatEffects?.playSummonAnimation) {
+                            const element = sprite.className.match(/element-(\w+)/)?.[1] || 'steel';
+                            const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                            window.CombatEffects.playSummonAnimation(sprite, element, rarity);
+                        } else {
+                            sprite.classList.add('summoning');
+                            setTimeout(() => sprite.classList.remove('summoning'), TIMING.summon);
+                        }
                     } else if (attempts < 3) {
                         attempts++;
                         setTimeout(findAndAnimate, 50);
@@ -879,45 +886,65 @@ window.Multiplayer = {
                 const atkCol = 1 - action.attackerCol;
                 const tgtCol = 1 - action.targetCol;
                 
-                // Attacker animation
                 const atkSprite = document.querySelector(`.cryptid-sprite[data-owner="enemy"][data-col="${atkCol}"][data-row="${action.attackerRow}"]`);
-                if (atkSprite) {
-                    atkSprite.classList.add('attacking-left');
-                    setTimeout(() => atkSprite.classList.remove('attacking-left'), TIMING.attack);
+                const tgtSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${tgtCol}"][data-row="${action.targetRow}"]`);
+                
+                // Use enhanced attack animation if available
+                if (window.CombatEffects?.playEnhancedAttack && atkSprite) {
+                    const damage = action.damage || 3;
+                    window.CombatEffects.playEnhancedAttack(atkSprite, 'enemy', tgtSprite, damage, 
+                        // onImpact - damage effects
+                        () => {
+                            // Show death animation if target died (dramatic death handles itself)
+                            if (action.targetDied && tgtSprite && window.CombatEffects?.playDramaticDeath) {
+                                const rarity = tgtSprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                                window.CombatEffects.playDramaticDeath(tgtSprite, 'player', rarity);
+                            }
+                            
+                            // Handle support death from cleave/destroyer
+                            if (action.supportDied) {
+                                const supportCol = tgtCol === 1 ? 0 : 1;
+                                const supportSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${supportCol}"][data-row="${action.targetRow}"]`);
+                                if (supportSprite && window.CombatEffects?.playDramaticDeath) {
+                                    setTimeout(() => {
+                                        const supportRarity = supportSprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                                        window.CombatEffects.playDramaticDeath(supportSprite, 'player', supportRarity);
+                                    }, 200);
+                                }
+                            }
+                        },
+                        // onComplete
+                        null
+                    );
+                } else {
+                    // Fallback to basic animation
+                    if (atkSprite) {
+                        atkSprite.classList.add('attacking-left');
+                        setTimeout(() => atkSprite.classList.remove('attacking-left'), TIMING.attack);
+                    }
+                    
+                    setTimeout(() => {
+                        if (tgtSprite) {
+                            tgtSprite.classList.add('taking-damage');
+                            setTimeout(() => tgtSprite.classList.remove('taking-damage'), 400);
+                            
+                            if (action.targetDied) {
+                                setTimeout(() => tgtSprite.classList.add('dying-left'), 300);
+                            }
+                        }
+                        
+                        if (action.supportDied) {
+                            const supportCol = tgtCol === 1 ? 0 : 1;
+                            const supportSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${supportCol}"][data-row="${action.targetRow}"]`);
+                            if (supportSprite) {
+                                setTimeout(() => supportSprite.classList.add('dying-left'), 400);
+                            }
+                        }
+                    }, 250);
                 }
                 
-                // Target damage animation (delayed slightly)
-                // Since we now animate BEFORE state change for deaths, the target sprite is correct
-                setTimeout(() => {
-                    const tgtSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${tgtCol}"][data-row="${action.targetRow}"]`);
-                    
-                    if (tgtSprite) {
-                        tgtSprite.classList.add('taking-damage');
-                        setTimeout(() => tgtSprite.classList.remove('taking-damage'), 400);
-                        
-                        // Show death animation if target died
-                        if (action.targetDied) {
-                            setTimeout(() => {
-                                tgtSprite.classList.add('dying-left');
-                            }, 300);
-                        }
-                    }
-                    
-                    // Handle support death from cleave/destroyer
-                    if (action.supportDied) {
-                        // Support col is opposite of combat col
-                        const supportCol = tgtCol === 1 ? 0 : 1;
-                        const supportSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${supportCol}"][data-row="${action.targetRow}"]`);
-                        if (supportSprite) {
-                            setTimeout(() => {
-                                supportSprite.classList.add('dying-left');
-                            }, 400);
-                        }
-                    }
-                }, 250);
-                
                 // Longer delay if deaths need to animate
-                const deathDelay = (action.targetDied || action.supportDied) ? 500 : 0;
+                const deathDelay = (action.targetDied || action.supportDied) ? 800 : 0;
                 setTimeout(safeComplete, TIMING.attack + deathDelay);
                 break;
             }
@@ -981,11 +1008,18 @@ window.Multiplayer = {
                 const col = 1 - action.targetCol;
                 const sprite = document.querySelector(`.cryptid-sprite[data-owner="enemy"][data-col="${col}"][data-row="${action.targetRow}"]`);
                 if (sprite) {
-                    sprite.classList.add('evolving');
-                    setTimeout(() => sprite.classList.remove('evolving'), TIMING.evolve);
+                    // Use enhanced evolution animation if available
+                    if (window.CombatEffects?.playEvolutionAnimation) {
+                        const element = sprite.className.match(/element-(\w+)/)?.[1] || 'steel';
+                        const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'uncommon';
+                        window.CombatEffects.playEvolutionAnimation(sprite, element, rarity);
+                    } else {
+                        sprite.classList.add('evolving');
+                        setTimeout(() => sprite.classList.remove('evolving'), TIMING.evolve);
+                    }
                 }
                 
-                setTimeout(safeComplete, TIMING.evolve);
+                setTimeout(safeComplete, TIMING.evolve + 400);
                 break;
             }
             
