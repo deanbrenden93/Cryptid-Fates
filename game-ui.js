@@ -386,7 +386,7 @@ function renderSprites() {
                     // Track if this is a new summon for enhanced animation
                     const wasJustSummoned = cryptid.justSummoned;
                     if (wasJustSummoned) {
-                        classes += ' summoning';
+                        // DON'T add 'summoning' class - enhanced playSummonAnimation handles it
                         setTimeout(() => { cryptid.justSummoned = false; }, 50);
                     }
                     
@@ -441,6 +441,8 @@ function renderSprites() {
                         sprite.style.left = pos.x + 'px';
                         sprite.style.top = pos.y + 'px';
                         sprite.style.transform = 'translate(-50%, -50%)';
+                        // Row-based z-index for depth (hidden sprites too)
+                        sprite.style.zIndex = (row + 1) * 10;
                         if (isNewSprite) spriteLayer.appendChild(sprite);
                         continue;
                     }
@@ -546,6 +548,8 @@ function renderSprites() {
                     sprite.style.left = pos.x + 'px';
                     sprite.style.top = pos.y + 'px';
                     sprite.style.transform = 'translate(-50%, -50%)';
+                    // Row-based z-index for depth: top row (0) = back, bottom row (2) = front
+                    sprite.style.zIndex = (row + 1) * 10;
                     if (isNewSprite) {
                         spriteLayer.appendChild(sprite);
                         
@@ -1629,9 +1633,14 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
     const baseCryptid = game.getFieldCryptid(targetOwner, targetCol, targetRow);
     if (!baseCryptid || baseCryptid.key !== card.evolvesFrom) { isAnimating = false; return; }
     
+    // IMPORTANT: Capture the OLD sprite BEFORE any game state changes
+    const oldSprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`);
+    const oldSpriteImage = oldSprite?.querySelector('.sprite-image')?.src || null;
+    
     // Animate card removal from hand
     animateCardRemoval(card.id, 'playing');
     
+    // Update game state (this changes the cryptid data but NOT the DOM yet)
     game.evolveCryptid(baseCryptid, card);
     
     ui.selectedCard = null;
@@ -1639,13 +1648,14 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
     document.getElementById('cancel-target').classList.remove('show');
     showMessage(`${baseCryptid.name} transforms into ${card.name}!`, TIMING.messageDisplay);
     
-    // Remove from array after animation
+    // Remove card from hand array after card animation
     setTimeout(() => {
         const idx = game.playerHand.findIndex(c => c.id === card.id);
         if (idx > -1) game.playerHand.splice(idx, 1);
-        renderAll();
+        // DON'T renderAll here - we'll do it during the evolution animation
     }, 300);
     
+    // Start evolution animation with the OLD sprite still visible
     setTimeout(() => {
         const sprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`);
         if (sprite) {
@@ -1656,6 +1666,11 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
                     sprite, 
                     evolvedCryptid?.element || card.element || 'steel',
                     evolvedCryptid?.rarity || card.rarity || 'uncommon',
+                    // onSpriteChange callback - called when sprite should morph
+                    () => {
+                        renderAll(); // This updates the sprite to new form
+                    },
+                    // onComplete callback
                     () => {
                         // Multiplayer hook - AFTER evolution animation completes
                         if (game.isMultiplayer && targetOwner === 'player' && typeof window.multiplayerHook !== 'undefined') {
@@ -1669,6 +1684,7 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
             } else {
                 // Fallback to basic animation
                 sprite.classList.add('evolving');
+                renderAll(); // Update sprite immediately for fallback
                 setTimeout(() => { 
                     if (game.isMultiplayer && targetOwner === 'player' && typeof window.multiplayerHook !== 'undefined') {
                         window.multiplayerHook.onEvolve(card, targetCol, targetRow);
@@ -1679,7 +1695,7 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
                 }, TIMING.evolveAnim);
             }
         }
-    }, 400);
+    }, 350);
 }
 
 function executeBurst(targetOwner, targetCol, targetRow) {

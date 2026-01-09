@@ -785,18 +785,7 @@ body {
     image-rendering: auto;
 }
 
-/* Ultimate rarity - subtle electric sparks */
-.cryptid-sprite.rarity-ultimate .sprite {
-    animation: subtleSpark 0.4s steps(4) infinite;
-}
-
-@keyframes subtleSpark {
-    0% { filter: drop-shadow(3px -2px 1px rgba(255,255,255,0.9)); }
-    25% { filter: drop-shadow(-2px 3px 1px rgba(255,255,255,0.9)); }
-    50% { filter: drop-shadow(2px 2px 1px rgba(200,220,255,0.9)); }
-    75% { filter: drop-shadow(-3px -1px 1px rgba(255,255,200,0.9)); }
-    100% { filter: none; }
-}
+/* Ultimate rarity - removed special effects per design request */
 
 .cryptid-sprite.tapped {
     /* Only dim/gray the sprite itself, not the stat bars */

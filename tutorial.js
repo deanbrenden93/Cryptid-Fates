@@ -1290,8 +1290,15 @@ const TutorialBattle = {
         `.cryptid-sprite[data-owner="enemy"][data-col="${game.getCombatCol("enemy")}"][data-row="0"]`
       );
       if (newSprite) {
-        newSprite.classList.add("summoning");
-        setTimeout(() => newSprite.classList.remove("summoning"), 600);
+        // Use enhanced summon animation if available
+        if (window.CombatEffects?.playSummonAnimation) {
+          const element = newSprite.className.match(/element-(\w+)/)?.[1] || 'steel';
+          const rarity = newSprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+          window.CombatEffects.playSummonAnimation(newSprite, element, rarity);
+        } else {
+          newSprite.classList.add("summoning");
+          setTimeout(() => newSprite.classList.remove("summoning"), 600);
+        }
       }
     }, 100);
 

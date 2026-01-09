@@ -1123,7 +1123,7 @@ window.CombatEffects = {
         };
         const config = rarityConfig[rarity] || rarityConfig.common;
         
-        // Create summon effects container
+        // Create summon effects container - BEHIND the sprite (z-index: 1)
         const effectsContainer = document.createElement('div');
         effectsContainer.className = 'summon-effects-container';
         effectsContainer.style.cssText = `
@@ -1132,9 +1132,14 @@ window.CombatEffects = {
             top: ${y}px;
             transform: translate(-50%, -50%);
             pointer-events: none;
-            z-index: 500;
+            z-index: 1;
         `;
         battlefield.appendChild(effectsContainer);
+        
+        // Store the original z-index (row-based) to restore after animation
+        const originalZIndex = sprite.style.zIndex || '';
+        // Temporarily boost sprite z-index so it appears above pillar
+        sprite.style.zIndex = '50';
         
         // Phase 1: Summoning circle appears with runes
         const circle = document.createElement('div');
@@ -1188,6 +1193,8 @@ window.CombatEffects = {
         setTimeout(() => {
             sprite.classList.remove('summon-materialize');
             sprite.style.removeProperty('--element-color');
+            // Restore original row-based z-index
+            sprite.style.zIndex = originalZIndex;
             effectsContainer.remove();
             if (onComplete) onComplete();
         }, config.duration);
@@ -1429,17 +1436,19 @@ window.CombatEffects = {
     },
     
     // ==================== ENHANCED EVOLUTION ANIMATION ====================
-    // Features: Distant particles converging, smooth sprite transition, energy cocoon
+    // Features: Pokemon-style morph transition, particles converging, energy cocoon
     
     /**
-     * Play enhanced evolution animation
+     * Play enhanced evolution animation with sprite morph transition
      * @param {HTMLElement} sprite - The evolving cryptid's sprite element
      * @param {string} element - Element type
      * @param {string} newRarity - New rarity after evolution
+     * @param {Function} onSpriteChange - Callback to trigger sprite update (during white-out)
      * @param {Function} onComplete - Callback when animation completes
      */
-    playEvolutionAnimation(sprite, element = 'steel', newRarity = 'common', onComplete) {
+    playEvolutionAnimation(sprite, element = 'steel', newRarity = 'common', onSpriteChange, onComplete) {
         if (!sprite) {
+            if (onSpriteChange) onSpriteChange();
             if (onComplete) onComplete();
             return;
         }
@@ -1447,6 +1456,7 @@ window.CombatEffects = {
         const battlefield = document.getElementById('battlefield-area');
         const gameContainer = document.getElementById('game-container');
         if (!battlefield || !gameContainer) {
+            if (onSpriteChange) onSpriteChange();
             if (onComplete) onComplete();
             return;
         }
@@ -1488,6 +1498,22 @@ window.CombatEffects = {
         `;
         battlefield.appendChild(localEffects);
         
+        // Create a WHITE SILHOUETTE overlay that will cover the sprite during morph
+        const silhouette = document.createElement('div');
+        silhouette.className = 'evolution-silhouette';
+        silhouette.style.cssText = `
+            position: absolute;
+            left: ${x}px;
+            top: ${y}px;
+            width: ${rect.width}px;
+            height: ${rect.height}px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 650;
+            opacity: 0;
+        `;
+        battlefield.appendChild(silhouette);
+        
         // Phase 1: Distant particles fly in from screen edges
         sprite.classList.add('evolution-gathering-phase');
         this._createDistantEvolutionParticles(screenEffects, screenX, screenY, elementColor);
@@ -1499,7 +1525,7 @@ window.CombatEffects = {
         localEffects.appendChild(ambientGlow);
         
         setTimeout(() => {
-            // Phase 2: Energy cocoon forms around sprite
+            // Phase 2: Energy cocoon forms, sprite starts brightening
             sprite.classList.remove('evolution-gathering-phase');
             sprite.classList.add('evolution-cocoon-phase');
             
@@ -1516,12 +1542,13 @@ window.CombatEffects = {
             localEffects.appendChild(innerGlow);
             
             this.screenShake(0.5, 150);
-        }, 450);
+        }, 400);
         
         setTimeout(() => {
-            // Phase 3: Bright flash - sprite becomes hidden
+            // Phase 3: WHITE OUT - silhouette fades in to cover sprite
             sprite.classList.remove('evolution-cocoon-phase');
-            sprite.classList.add('evolution-flash-phase');
+            sprite.classList.add('evolution-whiteout-phase');
+            silhouette.classList.add('evolution-silhouette-visible');
             
             // Blinding flash
             const flash = document.createElement('div');
@@ -1530,12 +1557,19 @@ window.CombatEffects = {
             localEffects.appendChild(flash);
             
             this.screenShake(1.0, 250);
-        }, 750);
+        }, 650);
+        
+        // CRITICAL: Call onSpriteChange during white-out when sprite is hidden
+        setTimeout(() => {
+            if (onSpriteChange) onSpriteChange();
+        }, 800);
         
         setTimeout(() => {
-            // Phase 4: Reveal new form with energy burst
-            sprite.classList.remove('evolution-flash-phase');
+            // Phase 4: Reveal new form - silhouette fades out
+            sprite.classList.remove('evolution-whiteout-phase');
             sprite.classList.add('evolution-reveal-phase');
+            silhouette.classList.remove('evolution-silhouette-visible');
+            silhouette.classList.add('evolution-silhouette-fadeout');
             
             // Expanding energy rings
             this._createEvolutionRings(localEffects, elementColor);
@@ -1560,7 +1594,7 @@ window.CombatEffects = {
                     setTimeout(() => badge.classList.remove('stat-pop'), 400);
                 }, i * 80);
             });
-        }, 1150);
+        }, 1200);
         
         // Cleanup with fade
         setTimeout(() => {
@@ -1568,14 +1602,15 @@ window.CombatEffects = {
             localEffects.style.opacity = '0';
             screenEffects.style.transition = 'opacity 0.3s ease-out';
             screenEffects.style.opacity = '0';
-        }, 1350);
+        }, 1450);
         
         setTimeout(() => {
             sprite.classList.remove('evolution-settle-phase');
             localEffects.remove();
             screenEffects.remove();
+            silhouette.remove();
             if (onComplete) onComplete();
-        }, 1650);
+        }, 1750);
     },
     
     /**
@@ -3849,26 +3884,44 @@ window.CombatEffects = {
             }
         }
         
-        /* Flash phase - sprite hidden momentarily */
-        .cryptid-sprite.evolution-flash-phase {
-            animation: evolutionFlashPhase 200ms ease-out forwards !important;
+        /* White-out phase - sprite goes bright white before morph */
+        .cryptid-sprite.evolution-whiteout-phase {
+            animation: evolutionWhiteout 300ms ease-out forwards !important;
         }
         
-        @keyframes evolutionFlashPhase {
+        @keyframes evolutionWhiteout {
             0% { 
                 transform: translate(-50%, -50%) scale(0.85);
-                filter: brightness(2);
-                opacity: 1;
-            }
-            50% {
-                filter: brightness(5);
-                opacity: 0;
+                filter: brightness(2) saturate(1.5);
             }
             100% { 
                 transform: translate(-50%, -50%) scale(0.9);
-                filter: brightness(3);
-                opacity: 0;
+                filter: brightness(10) saturate(0);
             }
+        }
+        
+        /* White silhouette overlay for morph transition */
+        .evolution-silhouette {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 0 30px white, 0 0 60px rgba(255,255,255,0.8);
+            transition: opacity 150ms ease-out;
+        }
+        
+        .evolution-silhouette.evolution-silhouette-visible {
+            opacity: 1;
+            animation: silhouettePulse 300ms ease-in-out;
+        }
+        
+        .evolution-silhouette.evolution-silhouette-fadeout {
+            opacity: 0;
+            transition: opacity 250ms ease-out;
+        }
+        
+        @keyframes silhouettePulse {
+            0% { transform: translate(-50%, -50%) scale(0.9); }
+            50% { transform: translate(-50%, -50%) scale(1.05); }
+            100% { transform: translate(-50%, -50%) scale(1); }
         }
         
         /* Bright flash effect */
@@ -3903,23 +3956,23 @@ window.CombatEffects = {
             }
         }
         
-        /* Reveal phase - new form emerges */
+        /* Reveal phase - new form emerges from white */
         .cryptid-sprite.evolution-reveal-phase {
-            animation: evolutionRevealPhase 200ms ease-out forwards !important;
+            animation: evolutionRevealPhase 250ms ease-out forwards !important;
         }
         
         @keyframes evolutionRevealPhase {
             0% { 
-                transform: translate(-50%, -50%) scale(0.9);
-                filter: brightness(3);
-                opacity: 0;
-            }
-            30% {
+                transform: translate(-50%, -50%) scale(0.95);
+                filter: brightness(8) saturate(0);
                 opacity: 1;
+            }
+            40% {
+                filter: brightness(3) saturate(0.5);
             }
             100% { 
                 transform: translate(-50%, -50%) scale(1.1);
-                filter: brightness(1.8);
+                filter: brightness(1.6) saturate(1);
                 opacity: 1;
             }
         }

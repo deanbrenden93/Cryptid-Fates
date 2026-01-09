@@ -1012,14 +1012,27 @@ window.Multiplayer = {
                     if (window.CombatEffects?.playEvolutionAnimation) {
                         const element = sprite.className.match(/element-(\w+)/)?.[1] || 'steel';
                         const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'uncommon';
-                        window.CombatEffects.playEvolutionAnimation(sprite, element, rarity);
+                        window.CombatEffects.playEvolutionAnimation(
+                            sprite, 
+                            element, 
+                            rarity,
+                            // onSpriteChange - render to show new evolved form
+                            () => {
+                                if (window.renderAll) window.renderAll();
+                            },
+                            // onComplete
+                            () => {
+                                safeComplete();
+                            }
+                        );
                     } else {
                         sprite.classList.add('evolving');
                         setTimeout(() => sprite.classList.remove('evolving'), TIMING.evolve);
+                        setTimeout(safeComplete, TIMING.evolve + 400);
                     }
+                } else {
+                    setTimeout(safeComplete, TIMING.evolve + 400);
                 }
-                
-                setTimeout(safeComplete, TIMING.evolve + 400);
                 break;
             }
             
