@@ -1627,6 +1627,11 @@ const TutorialManager = {
         if (tooltip) tooltip.classList.remove("show");
       }
       
+      // Always allow closing the card detail modal
+      if (e.target.closest("#battle-card-detail-modal") || e.target.closest(".battle-detail-backdrop") || e.target.closest("#card-detail-close-btn")) {
+        return; // Let card detail handle its own close events
+      }
+      
       // Block ALL card interactions during enemy turn
       if (window.game?.currentTurn === 'enemy') {
         const isCardInteraction = e.target.closest(".game-card") || e.target.closest(".card-wrapper") || e.target.closest("#hand-container");

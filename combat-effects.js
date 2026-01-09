@@ -950,8 +950,26 @@ window.CombatEffects = {
         const hpValue = sprite.querySelector('.hp-badge .stat-value');
         if (!hpValue) return;
         
-        const maxHP = cryptid.maxHp || cryptid.hp;
-        const percent = Math.max(0, (newHP / maxHP) * 100);
+        // Calculate max HP including support if this is a combatant
+        let maxHP = cryptid.maxHp || cryptid.hp;
+        let displayHP = newHP;
+        let displayOldHP = oldHP;
+        
+        if (window.game) {
+            const combatCol = game.getCombatCol(cryptid.owner);
+            const supportCol = game.getSupportCol(cryptid.owner);
+            
+            if (cryptid.col === combatCol) {
+                const support = game.getFieldCryptid(cryptid.owner, supportCol, cryptid.row);
+                if (support) {
+                    maxHP += support.maxHp || support.hp;
+                    displayHP += support.currentHp;
+                    displayOldHP += support.currentHp;
+                }
+            }
+        }
+        
+        const percent = Math.max(0, (displayHP / maxHP) * 100);
         
         // Update HP arc class based on percentage
         if (hpArc) {
@@ -972,7 +990,7 @@ window.CombatEffects = {
         }
         
         // Animate text change
-        const diff = newHP - oldHP;
+        const diff = displayHP - displayOldHP;
         if (diff < 0) {
             hpValue.classList.add('decreased');
             setTimeout(() => hpValue.classList.remove('decreased'), 400);
@@ -981,7 +999,7 @@ window.CombatEffects = {
             setTimeout(() => hpValue.classList.remove('increased'), 400);
         }
         
-        hpValue.textContent = newHP;
+        hpValue.textContent = displayHP;
     },
     
     animateATKChange(cryptid, oldATK, newATK) {

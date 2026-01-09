@@ -444,18 +444,18 @@ function renderSprites() {
                     
                     let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0);
                     let displayHp = cryptid.currentHp;
+                    let displayMaxHp = cryptid.maxHp || cryptid.hp;
                     if (col === combatCol) {
                         const support = game.getFieldCryptid(owner, supportCol, row);
                         if (support) {
                             displayAtk += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0);
                             displayHp += support.currentHp;
+                            displayMaxHp += support.maxHp || support.hp;
                         }
                     }
                     
-                    // Calculate HP percentage for the arc
-                    const maxHp = cryptid.maxHp || cryptid.hp;
-                    const currentHp = cryptid.currentHp;
-                    const hpPercent = Math.max(0, Math.min(100, (currentHp / maxHp) * 100));
+                    // Calculate HP percentage for the arc (includes support HP for combatants)
+                    const hpPercent = Math.max(0, Math.min(100, (displayHp / displayMaxHp) * 100));
                     
                     // Determine HP arc class based on percentage
                     let hpArcClass = 'hp-arc';
@@ -4042,17 +4042,18 @@ window.updateSpriteHealthBar = function(owner, col, row) {
     
     let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0);
     let displayHp = cryptid.currentHp;
+    let displayMaxHp = cryptid.maxHp || cryptid.hp;
     
     if (col === combatCol) {
         const support = game.getFieldCryptid(owner, supportCol, row);
         if (support) {
             displayAtk += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0);
             displayHp += support.currentHp;
+            displayMaxHp += support.maxHp || support.hp;
         }
     }
     
-    const maxHp = cryptid.maxHp || cryptid.hp;
-    const hpPercent = Math.max(0, Math.min(100, (cryptid.currentHp / maxHp) * 100));
+    const hpPercent = Math.max(0, Math.min(100, (displayHp / displayMaxHp) * 100));
     
     let hpArcClass = 'hp-arc';
     if (hpPercent <= 25) hpArcClass += ' hp-low';

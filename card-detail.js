@@ -416,11 +416,28 @@ window.CardDetail = {
         `;
         document.head.appendChild(style);
         
-        // Bind close handlers
-        modal.querySelector('.battle-detail-backdrop').onclick = () => this.close();
-        modal.onclick = (e) => {
-            if (e.target === modal) this.close();
-        };
+        // Bind close handlers - use capture phase to ensure they work even when tutorial blocks events
+        const backdrop = modal.querySelector('.battle-detail-backdrop');
+        backdrop.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.close();
+        }, true);
+        backdrop.addEventListener('touchend', (e) => {
+            e.stopPropagation();
+            this.close();
+        }, true);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                e.stopPropagation();
+                this.close();
+            }
+        }, true);
+        modal.addEventListener('touchend', (e) => {
+            if (e.target === modal) {
+                e.stopPropagation();
+                this.close();
+            }
+        }, true);
     },
     
     // ==================== SHOW DETAIL ====================
@@ -606,13 +623,27 @@ window.CardDetail = {
                         </div>
                     ` : ''}
                     
-                    <button class="detail-close-btn" onclick="CardDetail.close()">Close</button>
+                    <button class="detail-close-btn" id="card-detail-close-btn">Close</button>
                 </div>
             </div>
         `;
         
         document.getElementById('battle-card-detail-modal').classList.add('open');
         this.isOpen = true;
+        
+        // Bind close button with capture to work during tutorial
+        const closeBtn = document.getElementById('card-detail-close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.close();
+            }, true);
+            closeBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.close();
+            }, true);
+        }
     },
     
     buildStatusesHTML(cryptid) {
