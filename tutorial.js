@@ -1883,10 +1883,15 @@ const TutorialManager = {
 
     if (action.type === "advancePhase") {
       const btn = document.getElementById("advance-phase-btn");
-      const handler = () => {
+      const handler = (e) => {
         if (handled) return;
         handled = true;
-        btn?.removeEventListener("click", handler);
+        
+        // Stop propagation to prevent the main game handler from also firing
+        // This prevents double phase advances
+        e.stopImmediatePropagation();
+        
+        btn?.removeEventListener("click", handler, true);
 
         // Actually advance the game phase
         if (window.game) {
@@ -1909,17 +1914,22 @@ const TutorialManager = {
 
         setTimeout(() => this.nextStep(), 400);
       };
-      btn?.addEventListener("click", handler);
-      this.actionCleanup = () => btn?.removeEventListener("click", handler);
+      // Use capture phase to ensure we get the event first
+      btn?.addEventListener("click", handler, true);
+      this.actionCleanup = () => btn?.removeEventListener("click", handler, true);
       return;
     }
 
     if (action.type === "endTurn") {
       const btn = document.getElementById("advance-phase-btn");
-      const handler = () => {
+      const handler = (e) => {
         if (handled) return;
         handled = true;
-        btn?.removeEventListener("click", handler);
+        
+        // Stop propagation to prevent the main game handler from also firing
+        e.stopImmediatePropagation();
+        
+        btn?.removeEventListener("click", handler, true);
 
         // Actually end the turn - transition to enemy turn, then back to player
         if (window.game) {
@@ -1940,8 +1950,9 @@ const TutorialManager = {
 
         setTimeout(() => this.nextStep(), 400);
       };
-      btn?.addEventListener("click", handler);
-      this.actionCleanup = () => btn?.removeEventListener("click", handler);
+      // Use capture phase to ensure we get the event first
+      btn?.addEventListener("click", handler, true);
+      this.actionCleanup = () => btn?.removeEventListener("click", handler, true);
       return;
     }
 

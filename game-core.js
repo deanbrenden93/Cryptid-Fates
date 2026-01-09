@@ -1317,11 +1317,20 @@ function updatePhaseTimeline(currentPhase) {
 }
 
 // ==================== ADVANCE PHASE BUTTON ====================
+// Store the handler reference so we can remove it before adding a new one
+let advancePhaseHandler = null;
+
 function setupAdvancePhaseButton() {
     const btn = document.getElementById('advance-phase-btn');
     if (!btn) return;
     
-    btn.addEventListener('click', () => {
+    // Remove any existing handler to prevent duplicate listeners
+    if (advancePhaseHandler) {
+        btn.removeEventListener('click', advancePhaseHandler);
+    }
+    
+    // Create and store the new handler
+    advancePhaseHandler = () => {
         // Determine what action to take based on current phase
         const conjure1Btn = document.getElementById('end-conjure1-btn');
         const combatBtn = document.getElementById('end-combat-btn');
@@ -1335,7 +1344,9 @@ function setupAdvancePhaseButton() {
         } else if (endTurnBtn && !endTurnBtn.disabled) {
             endTurnBtn.click();
         }
-    });
+    };
+    
+    btn.addEventListener('click', advancePhaseHandler);
     
     // Recalculate fan on resize
     window.addEventListener('resize', debounce(() => {

@@ -405,6 +405,17 @@ function renderSprites() {
                     sprite.dataset.cryptidKey = cryptidKey;
                     sprite.className = classes;
                     
+                    // Clear any lingering inline opacity from death animations
+                    // This is needed when a support is promoted to a combat slot
+                    // where a dying cryptid's sprite had opacity:0 set
+                    if (sprite.style.opacity === '0') {
+                        sprite.style.opacity = '';
+                    }
+                    // Also clear the dramatic death flag if this is a different cryptid now
+                    if (needsContentUpdate && sprite.dataset.dramaticDeathStarted) {
+                        delete sprite.dataset.dramaticDeathStarted;
+                    }
+                    
                     // Hidden enemy cryptids show "?" to opponent
                     if (cryptid.isHidden && owner === 'enemy') {
                         if (needsContentUpdate) {
