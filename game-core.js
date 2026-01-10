@@ -5183,7 +5183,7 @@ class Game {
             }
             
             GameEvents.emit('onAttackNegated', { attacker, target, targetOwner, attackerKilled });
-            return { negated: true, attackerKilled };
+            return { negated: true, attackerKilled, target };
         }
         
         // Check if target's support has onCombatantAttacked callback
@@ -5511,7 +5511,7 @@ class Game {
             attacker.multiAttackProcessed = false;
         }
         
-        return { damage, killed, protectionBlocked };
+        return { damage, killed, protectionBlocked, target };
     }
 
     killCryptid(cryptid, killerOwner = null) {

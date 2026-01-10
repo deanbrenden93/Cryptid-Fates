@@ -1560,8 +1560,25 @@ window.CombatEffects = {
         }, 650);
         
         // CRITICAL: Call onSpriteChange during white-out when sprite is hidden
+        // Clear the evolution-pending flag so renderSprites will update the image
         setTimeout(() => {
+            // Hide inner content completely - don't rely on filter alone
+            const innerSprite = sprite.querySelector('.sprite');
+            if (innerSprite) {
+                innerSprite.style.visibility = 'hidden';
+            }
+            
+            // Clear the pending flag so the sprite can now update
+            delete sprite.dataset.evolutionPending;
+            
+            // Update the sprite content
             if (onSpriteChange) onSpriteChange();
+            
+            // Re-query after renderAll since innerHTML was replaced
+            const newInnerSprite = sprite.querySelector('.sprite');
+            if (newInnerSprite) {
+                newInnerSprite.style.visibility = 'hidden';
+            }
         }, 800);
         
         setTimeout(() => {
@@ -1570,6 +1587,12 @@ window.CombatEffects = {
             sprite.classList.add('evolution-reveal-phase');
             silhouette.classList.remove('evolution-silhouette-visible');
             silhouette.classList.add('evolution-silhouette-fadeout');
+            
+            // Make inner sprite visible again for the reveal
+            const innerSprite = sprite.querySelector('.sprite');
+            if (innerSprite) {
+                innerSprite.style.visibility = 'visible';
+            }
             
             // Expanding energy rings
             this._createEvolutionRings(localEffects, elementColor);
@@ -3352,10 +3375,11 @@ window.CombatEffects = {
         }
         
         @keyframes damageFlashEnhanced {
-            0% { filter: brightness(1); }
-            15% { filter: brightness(2.5) drop-shadow(0 0 10px rgba(255, 0, 0, 0.8)); transform: scale(1.1); }
-            40% { filter: brightness(1.5); transform: scale(1.05); }
-            100% { filter: brightness(1); transform: scale(1); }
+            /* Must include translateY(-50%) to preserve base positioning */
+            0% { filter: brightness(1); transform: translateY(-50%) scale(1); }
+            15% { filter: brightness(2.5) drop-shadow(0 0 10px rgba(255, 0, 0, 0.8)); transform: translateY(-50%) scale(1.1); }
+            40% { filter: brightness(1.5); transform: translateY(-50%) scale(1.05); }
+            100% { filter: brightness(1); transform: translateY(-50%) scale(1); }
         }
         
         /* ==================== ENHANCED SUMMON ANIMATION ==================== */

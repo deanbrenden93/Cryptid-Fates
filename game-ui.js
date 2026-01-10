@@ -194,6 +194,13 @@ function onLayoutChange() {
 
 // ==================== RENDERING ====================
 function renderAll() {
+    // DEBUG: Uncomment to find mystery render calls during evolution
+    // const pendingSprite = document.querySelector('[data-evolution-pending="true"]');
+    // if (pendingSprite) {
+    //     console.warn('[DEBUG] renderAll called during evolution!');
+    //     console.trace();
+    // }
+    
     renderHUD();
     renderField();
     renderSprites();
@@ -415,8 +422,13 @@ function renderSprites() {
                         'evolution-settle-phase'
                     ];
                     const preservedClasses = evolutionClasses.filter(cls => sprite.classList?.contains(cls));
+                    // Only use the pending flag to block updates - this is cleared when animation is ready for sprite change
+                    const isEvolutionPending = sprite.dataset?.evolutionPending === 'true';
                     
-                    sprite.dataset.cryptidKey = cryptidKey;
+                    // Don't update cryptidKey during pending evolution - this prevents premature image change
+                    if (!isEvolutionPending) {
+                        sprite.dataset.cryptidKey = cryptidKey;
+                    }
                     sprite.className = classes + (preservedClasses.length ? ' ' + preservedClasses.join(' ') : '');
                     
                     // Clear any lingering inline opacity from death animations
@@ -501,32 +513,36 @@ function renderSprites() {
                     
                     // For existing sprites with image-based cryptids, update stats without replacing the image
                     // This prevents flickering caused by image reload
-                    if (!needsContentUpdate) {
-                        // Just update the dynamic parts: stats and status icons
-                        const atkValue = sprite.querySelector('.atk-badge .stat-value');
-                        const hpValue = sprite.querySelector('.hp-badge .stat-value');
-                        const hpArc = sprite.querySelector('.hp-arc');
-                        const statusDiv = sprite.querySelector('.status-icons');
-                        
-                        if (atkValue) atkValue.textContent = Math.max(0, displayAtk);
-                        if (hpValue) hpValue.textContent = displayHp;
-                        if (hpArc) {
-                            hpArc.className = hpArcClass;
-                            hpArc.style.clipPath = arcClipPath;
-                        }
-                        
-                        // Update status icons
-                        if (statusIcons.length > 0) {
-                            if (statusDiv) {
-                                statusDiv.innerHTML = statusIcons.join('');
-                            } else {
-                                const newStatusDiv = document.createElement('div');
-                                newStatusDiv.className = 'status-icons';
-                                newStatusDiv.innerHTML = statusIcons.join('');
-                                sprite.appendChild(newStatusDiv);
+                    // Also skip full updates during pending evolution - the animation controls when the image changes
+                    if (!needsContentUpdate || isEvolutionPending) {
+                        // During evolution, skip ALL updates - stats will update when animation reveals new form
+                        if (!isEvolutionPending) {
+                            // Just update the dynamic parts: stats and status icons
+                            const atkValue = sprite.querySelector('.atk-badge .stat-value');
+                            const hpValue = sprite.querySelector('.hp-badge .stat-value');
+                            const hpArc = sprite.querySelector('.hp-arc');
+                            const statusDiv = sprite.querySelector('.status-icons');
+                            
+                            if (atkValue) atkValue.textContent = Math.max(0, displayAtk);
+                            if (hpValue) hpValue.textContent = displayHp;
+                            if (hpArc) {
+                                hpArc.className = hpArcClass;
+                                hpArc.style.clipPath = arcClipPath;
                             }
-                        } else if (statusDiv) {
-                            statusDiv.remove();
+                            
+                            // Update status icons
+                            if (statusIcons.length > 0) {
+                                if (statusDiv) {
+                                    statusDiv.innerHTML = statusIcons.join('');
+                                } else {
+                                    const newStatusDiv = document.createElement('div');
+                                    newStatusDiv.className = 'status-icons';
+                                    newStatusDiv.innerHTML = statusIcons.join('');
+                                    sprite.appendChild(newStatusDiv);
+                                }
+                            } else if (statusDiv) {
+                                statusDiv.remove();
+                            }
                         }
                     } else {
                         // Full rebuild for new sprites or changed cryptids
@@ -1648,6 +1664,12 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
     const oldSprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`);
     const oldSpriteImage = oldSprite?.querySelector('.sprite-image')?.src || null;
     
+    // Mark this sprite as pending evolution BEFORE game state changes
+    // This prevents renderSprites from updating the image prematurely
+    if (oldSprite) {
+        oldSprite.dataset.evolutionPending = 'true';
+    }
+    
     // Animate card removal from hand
     animateCardRemoval(card.id, 'playing');
     
@@ -2393,17 +2415,19 @@ function executeAttack(targetCol, targetRow) {
                 setTimeout(() => {
                     const attackerSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${attacker.col}"][data-row="${attacker.row}"]`);
                     // Pass performAttackOnTarget as onImpact (4th arg) so it fires at the moment of hit
+                    // Pass targetRow (6th arg) so the correct enemy animates the hit reaction
                     playAttackAnimation(attackerSprite, 'player', null, () => {
                         performAttackOnTarget(attacker, targetOwner, combatCol, targetRow);
-                    });
+                    }, 3, targetRow);
                 }, 50);
             }, TIMING.summonAnim + 100);
         } else {
             const attackerSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${attacker.col}"][data-row="${attacker.row}"]`);
             // Pass performAttackOnTarget as onImpact (4th arg) so it fires at the moment of hit
+            // Pass targetRow (6th arg) so the correct enemy animates the hit reaction
             playAttackAnimation(attackerSprite, 'player', null, () => {
                 performAttackOnTarget(attacker, targetOwner, targetCol, targetRow);
-            });
+            }, 3, targetRow);
         }
     });
 }
@@ -2411,7 +2435,8 @@ function executeAttack(targetCol, targetRow) {
 // Enhanced attack animation with hitstop, squash/stretch, and afterimage trails
 // onImpact is called at the MOMENT of impact (for effects), onComplete after animation ends
 // Now supports passing damage for intensity scaling
-function playAttackAnimation(attackerSprite, owner, onComplete, onImpact, damage = 3) {
+// targetRow parameter allows targeting a specific row (for cross-row attacks)
+function playAttackAnimation(attackerSprite, owner, onComplete, onImpact, damage = 3, targetRow = null) {
     if (!attackerSprite) {
         if (onImpact) onImpact();
         if (onComplete) onComplete();
@@ -2423,8 +2448,8 @@ function playAttackAnimation(attackerSprite, owner, onComplete, onImpact, damage
     const isEnemy = owner === 'enemy';
     const targetOwner = isEnemy ? 'player' : 'enemy';
     
-    // Look for target in the same row
-    const row = attackerSprite.dataset.row;
+    // Use provided targetRow, or fall back to attacker's row (for same-row attacks)
+    const row = targetRow !== null ? targetRow : attackerSprite.dataset.row;
     if (row !== undefined) {
         const combatCol = isEnemy ? 1 : 0; // Enemy targets player's col 1, player targets enemy's col 0
         targetSprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${combatCol}"][data-row="${row}"]`);

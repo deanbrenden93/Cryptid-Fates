@@ -381,10 +381,11 @@ function aiCombat(onComplete) {
                             `.cryptid-sprite[data-owner="enemy"][data-col="${combatCol}"][data-row="${row}"]`
                         );
                         // Use new attack animation system - pass as onImpact (4th arg) for proper timing
+                        // Pass target.row (6th arg) so the correct player cryptid animates the hit reaction
                         if (typeof window.playAttackAnimation === 'function') {
                             window.playAttackAnimation(attackerSprite, 'enemy', null, () => {
                                 aiPerformAttackOnTarget(attacker, playerCombatCol, target.row, index, processNextAttack);
-                            });
+                            }, 3, target.row);
                         } else {
                             // Fallback to old animation
                             if (attackerSprite) {
@@ -403,10 +404,11 @@ function aiCombat(onComplete) {
                     `.cryptid-sprite[data-owner="enemy"][data-col="${combatCol}"][data-row="${row}"]`
                 );
                 // Use new attack animation system - pass as onImpact (4th arg) for proper timing
+                // Pass target.row (6th arg) so the correct player cryptid animates the hit reaction
                 if (typeof window.playAttackAnimation === 'function') {
                     window.playAttackAnimation(attackerSprite, 'enemy', null, () => {
                         aiPerformAttackOnTarget(attacker, target.col, target.row, index, processNextAttack);
-                    });
+                    }, 3, target.row);
                 } else {
                     // Fallback to old animation
                     if (attackerSprite) {
