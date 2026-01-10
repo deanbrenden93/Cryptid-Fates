@@ -1884,6 +1884,11 @@ window.CombatEffects = {
         const startX = rect.left + rect.width/2 - battlefieldRect.left;
         const startY = rect.top + rect.height/2 - battlefieldRect.top;
         
+        // Calculate the final position upfront (needed for committing position)
+        const direction = owner === 'player' ? 1 : -1;
+        const startLeft = parseFloat(sprite.style.left) || 0;
+        const endLeft = startLeft + (distance * direction);
+        
         // Phase 1: Anticipation + dust kick at start
         sprite.classList.add('promotion-anticipation');
         this._createDustCloud(battlefield, startX, startY + 20, 6);
@@ -1897,10 +1902,13 @@ window.CombatEffects = {
         
         setTimeout(() => {
             // Phase 3: Landing impact
+            // CRITICAL: Commit the position to left BEFORE removing stride animation
+            // Otherwise the CSS animation's final state is lost and sprite snaps back
+            sprite.style.left = endLeft + 'px';
+            
             sprite.classList.remove('promotion-stride');
             sprite.classList.add('promotion-land');
             
-            const direction = owner === 'player' ? 1 : -1;
             const landX = startX + (distance * direction);
             
             this._createDustCloud(battlefield, landX, startY + 20, 8);

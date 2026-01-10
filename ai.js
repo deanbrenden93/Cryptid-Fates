@@ -540,6 +540,13 @@ function aiCombat(onComplete) {
             // Wait for ability animations first
             waitForAbilityAnimations(() => {
                 setTimeout(() => {
+                    // Pre-mark pending promotions in activePromotions BEFORE renderAll
+                    if (window.pendingPromotions?.length > 0) {
+                        if (!window.activePromotions) window.activePromotions = new Set();
+                        window.pendingPromotions.forEach(p => {
+                            window.activePromotions.add(`${p.owner}-${p.row}`);
+                        });
+                    }
                     window.renderAll();
                     if (result.attackerKilled) {
                         window.processPendingPromotions(() => {
@@ -565,6 +572,13 @@ function aiCombat(onComplete) {
             // Wait for ability animations first
             waitForAbilityAnimations(() => {
                 setTimeout(() => {
+                    // Pre-mark pending promotions in activePromotions BEFORE renderAll
+                    if (window.pendingPromotions?.length > 0) {
+                        if (!window.activePromotions) window.activePromotions = new Set();
+                        window.pendingPromotions.forEach(p => {
+                            window.activePromotions.add(`${p.owner}-${p.row}`);
+                        });
+                    }
                     window.renderAll();
                     window.processPendingPromotions(() => {
                         waitForTraps(() => {

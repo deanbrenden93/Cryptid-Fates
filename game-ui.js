@@ -399,6 +399,25 @@ function renderSprites() {
                     
                     // Try to find existing sprite to update in place (prevents flickering)
                     let sprite = spriteLayer.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`);
+                    
+                    // If we found a sprite that's part of a death animation, REMOVE it from DOM entirely
+                    // playDramaticDeath uses a clone for the death animation, so the original is just hidden garbage
+                    if (sprite?.dataset.dramaticDeathStarted) {
+                        sprite.remove();
+                        sprite = null;
+                    }
+                    
+                    // For promotions: if no sprite found at combat col, look for one at support col to REUSE
+                    // This prevents the "blink" caused by removing old sprite and creating new one
+                    if (!sprite && col === combatCol) {
+                        const oldSupportSprite = spriteLayer.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${supportCol}"][data-row="${row}"]`);
+                        if (oldSupportSprite && !oldSupportSprite.dataset.dramaticDeathStarted) {
+                            // Reuse the old support sprite - just update its data-col
+                            oldSupportSprite.dataset.col = col;
+                            sprite = oldSupportSprite;
+                        }
+                    }
+                    
                     const isNewSprite = !sprite;
                     
                     // Track if this is a different cryptid than before (to avoid image reload flicker)
@@ -573,12 +592,14 @@ function renderSprites() {
                         sprite.innerHTML = html;
                     }
                     // Skip position updates for sprites in active promotion animation
+                    // (the sprite stays at support position until animateSupportPromotion moves it)
                     const promotionKey = `${owner}-${row}`;
                     const isPromoting = window.activePromotions?.has(promotionKey);
                     if (!isPromoting) {
                         sprite.style.left = pos.x + 'px';
                         sprite.style.top = pos.y + 'px';
                     }
+                    // If promoting and reusing old sprite, it's already at support position - don't move it
                     sprite.style.transform = 'translate(-50%, -50%)';
                     // Row-based z-index for depth: top row (0) = back, bottom row (2) = front
                     sprite.style.zIndex = (row + 1) * 10;
@@ -2256,6 +2277,14 @@ function handleDeathAndPromotion(targetOwner, targetCol, targetRow, deadCryptid,
         setTimeout(() => game.killCryptid(deadCryptid, killerOwner), 100);
         
         window.CombatEffects.playDramaticDeath(targetSprite, targetOwner, rarity, () => {
+            // Pre-mark pending promotions in activePromotions BEFORE renderAll
+            // This prevents the support from appearing at combat position before animation
+            if (window.pendingPromotions?.length > 0) {
+                if (!window.activePromotions) window.activePromotions = new Set();
+                window.pendingPromotions.forEach(p => {
+                    window.activePromotions.add(`${p.owner}-${p.row}`);
+                });
+            }
             renderAll();
             processPendingPromotions(() => {
                 checkCascadingDeaths(() => { 
@@ -2271,6 +2300,14 @@ function handleDeathAndPromotion(targetOwner, targetCol, targetRow, deadCryptid,
         if (targetSprite) targetSprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
         setTimeout(() => game.killCryptid(deadCryptid, killerOwner), 100);
         setTimeout(() => {
+            // Pre-mark pending promotions in activePromotions BEFORE renderAll
+            // This prevents the support from appearing at combat position before animation
+            if (window.pendingPromotions?.length > 0) {
+                if (!window.activePromotions) window.activePromotions = new Set();
+                window.pendingPromotions.forEach(p => {
+                    window.activePromotions.add(`${p.owner}-${p.row}`);
+                });
+            }
             renderAll();
             processPendingPromotions(() => {
                 checkCascadingDeaths(() => { 
@@ -2571,6 +2608,13 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         // Wait for ability animations, then proceed
         waitForAbilityAnimations(() => {
             setTimeout(() => {
+                // Pre-mark pending promotions in activePromotions BEFORE renderAll
+                if (window.pendingPromotions?.length > 0) {
+                    if (!window.activePromotions) window.activePromotions = new Set();
+                    window.pendingPromotions.forEach(p => {
+                        window.activePromotions.add(`${p.owner}-${p.row}`);
+                    });
+                }
                 renderAll();
                 if (result.attackerKilled) {
                     processPendingPromotions(() => {
@@ -2693,6 +2737,13 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
     // Wait for ability animations first, then proceed
     waitForAbilityAnimations(() => {
         setTimeout(() => {
+            // Pre-mark pending promotions in activePromotions BEFORE renderAll
+            if (window.pendingPromotions?.length > 0) {
+                if (!window.activePromotions) window.activePromotions = new Set();
+                window.pendingPromotions.forEach(p => {
+                    window.activePromotions.add(`${p.owner}-${p.row}`);
+                });
+            }
             renderAll();
             processPendingPromotions(() => {
                 checkCascadingDeaths(() => { 
@@ -2746,10 +2797,12 @@ function animateSupportPromotion(owner, row) {
     const sprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${row}"]`);
     if (sprite) {
         // Move sprite to starting position (support slot) for animation
+        // Keep it hidden (opacity:0) - playPromotionAnimation will reveal it
         sprite.style.left = supportPos.x + 'px';
+        sprite.style.top = supportPos.y + 'px';
         sprite.style.transition = 'none'; // Disable transitions for instant position set
         
-        // Force reflow to apply position before adding animation
+        // Force reflow to apply position before animation
         sprite.offsetHeight;
         
         // Use enhanced promotion animation if available
@@ -3185,6 +3238,13 @@ function animateTurnStartEffects(owner, onComplete) {
                     const rarity = effect.cryptid?.rarity || 'common';
                     if (sprite && window.CombatEffects?.playDramaticDeath) {
                         window.CombatEffects.playDramaticDeath(sprite, effect.owner, rarity, () => {
+                            // Pre-mark pending promotions in activePromotions BEFORE renderAll
+                            if (window.pendingPromotions?.length > 0) {
+                                if (!window.activePromotions) window.activePromotions = new Set();
+                                window.pendingPromotions.forEach(p => {
+                                    window.activePromotions.add(`${p.owner}-${p.row}`);
+                                });
+                            }
                             renderAll();
                             processPendingPromotions(() => {
                                 setTimeout(() => { currentIndex++; processNextEffect(); }, 100);
@@ -3193,6 +3253,13 @@ function animateTurnStartEffects(owner, onComplete) {
                     } else {
                         if (sprite) sprite.classList.add(effect.owner === 'enemy' ? 'dying-right' : 'dying-left');
                         setTimeout(() => {
+                            // Pre-mark pending promotions in activePromotions BEFORE renderAll
+                            if (window.pendingPromotions?.length > 0) {
+                                if (!window.activePromotions) window.activePromotions = new Set();
+                                window.pendingPromotions.forEach(p => {
+                                    window.activePromotions.add(`${p.owner}-${p.row}`);
+                                });
+                            }
                             renderAll();
                             processPendingPromotions(() => {
                                 setTimeout(() => { currentIndex++; processNextEffect(); }, 100);
@@ -3246,6 +3313,13 @@ function animateTurnStartEffects(owner, onComplete) {
                     const rarity = effect.cryptid?.rarity || 'common';
                     if (sprite && window.CombatEffects?.playDramaticDeath) {
                         window.CombatEffects.playDramaticDeath(sprite, effect.owner, rarity, () => {
+                            // Pre-mark pending promotions in activePromotions BEFORE renderAll
+                            if (window.pendingPromotions?.length > 0) {
+                                if (!window.activePromotions) window.activePromotions = new Set();
+                                window.pendingPromotions.forEach(p => {
+                                    window.activePromotions.add(`${p.owner}-${p.row}`);
+                                });
+                            }
                             renderAll();
                             processPendingPromotions(() => {
                                 setTimeout(() => { currentIndex++; processNextEffect(); }, 100);
@@ -3254,6 +3328,13 @@ function animateTurnStartEffects(owner, onComplete) {
                     } else {
                         if (sprite) sprite.classList.add(effect.owner === 'enemy' ? 'dying-right' : 'dying-left');
                         setTimeout(() => {
+                            // Pre-mark pending promotions in activePromotions BEFORE renderAll
+                            if (window.pendingPromotions?.length > 0) {
+                                if (!window.activePromotions) window.activePromotions = new Set();
+                                window.pendingPromotions.forEach(p => {
+                                    window.activePromotions.add(`${p.owner}-${p.row}`);
+                                });
+                            }
                             renderAll();
                             processPendingPromotions(() => {
                                 setTimeout(() => { currentIndex++; processNextEffect(); }, 100);
