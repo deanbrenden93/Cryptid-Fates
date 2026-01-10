@@ -405,8 +405,19 @@ function renderSprites() {
                         sprite.dataset.row = row;
                     }
                     
+                    // Preserve evolution animation classes during render
+                    // These classes control the visual transition and must not be removed mid-animation
+                    const evolutionClasses = [
+                        'evolution-gathering-phase',
+                        'evolution-cocoon-phase', 
+                        'evolution-whiteout-phase',
+                        'evolution-reveal-phase',
+                        'evolution-settle-phase'
+                    ];
+                    const preservedClasses = evolutionClasses.filter(cls => sprite.classList?.contains(cls));
+                    
                     sprite.dataset.cryptidKey = cryptidKey;
-                    sprite.className = classes;
+                    sprite.className = classes + (preservedClasses.length ? ' ' + preservedClasses.join(' ') : '');
                     
                     // Clear any lingering inline opacity from death animations
                     // This is needed when a support is promoted to a combat slot
