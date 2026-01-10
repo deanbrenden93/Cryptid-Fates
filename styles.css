@@ -16,7 +16,7 @@
 /* Current image is 78x119 - will appear large. Provide a smaller version for proper sizing */
 @media (pointer: fine) {
     *, *::before, *::after {
-        cursor: url('https://f.playcode.io/p-2633929/v-1/019b56a3-41e8-70aa-855b-1dcad20b4228/monster-hand-cursor.png') 0 0, auto !important;
+        cursor: url('sprites/monster-hand-cursor.png') 0 0, auto !important;
     }
 }
 
@@ -1598,7 +1598,7 @@ body {
 
 /* Left button */
 .hand-menu-btn {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b7085-a87a-7548-b4b5-10ddbd1ebab8/battle-burger.png');
+    background-image: url('sprites/battle-burger.png');
 }
 
 .hand-menu-btn.menu-open {
@@ -1607,7 +1607,7 @@ body {
 
 /* Right button */
 .advance-phase-btn {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6c7a-04c0-727f-ac08-b2339084de6c/turn-button.png');
+    background-image: url('sprites/turn-button.png');
 }
 
 /* ===== CARD CONTAINER ===== */
@@ -1866,20 +1866,20 @@ body {
 }
 
 .hand-menu-panel #menu-kindling-btn {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-9ce1-75de-a600-0f10ab445aab/kindling-button.png');
+    background-image: url('sprites/kindling-button.png');
 }
 
 .hand-menu-panel #menu-kindling-btn.active {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-9ce2-746b-b089-a7d1b68f8009/grimoire-button.png');
+    background-image: url('sprites/grimoire-button.png');
     filter: brightness(1.2) drop-shadow(0 0 8px rgba(232, 169, 62, 0.5));
 }
 
 .hand-menu-panel #menu-burn-btn {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-a0ff-704c-9742-51c58f289adb/burn-button.png');
+    background-image: url('sprites/burn-button.png');
 }
 
 .hand-menu-panel #menu-end-btn {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-9ce3-7587-8afd-c7067a9f965c/end-button.png');
+    background-image: url('sprites/end-button.png');
 }
 
 #action-bar {
@@ -1943,7 +1943,7 @@ body {
 
 /* Default to steel cryptid template */
 .card::before {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b76e0-eb8f-7209-b2b7-a4a16bd15a45/steel-element.png');
+    background-image: url('card-templates/steel-element.png');
 }
 
 .card::after {

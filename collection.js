@@ -74,7 +74,8 @@ window.Collection = {
         category: 'all',
         subtype: 'all',
         element: 'all',
-        owned: 'all' // all, owned, unowned
+        owned: 'all', // all, owned, unowned
+        cardSort: 'cost-asc' // cost-asc, cost-desc, name-asc, name-desc, rarity-asc, rarity-desc
     },
     
     init() {
@@ -271,6 +272,14 @@ window.Collection = {
                         <option value="owned">Owned</option>
                         <option value="unowned">Missing</option>
                     </select>
+                    <select class="coll-select" id="coll-card-sort">
+                        <option value="cost-asc">Cost ↑</option>
+                        <option value="cost-desc">Cost ↓</option>
+                        <option value="rarity-desc">Rarity ↓</option>
+                        <option value="rarity-asc">Rarity ↑</option>
+                        <option value="name-asc">Name A-Z</option>
+                        <option value="name-desc">Name Z-A</option>
+                    </select>
                 </div>
                 
                 <div class="coll-cards-grid" id="coll-cards-grid"></div>
@@ -342,6 +351,11 @@ window.Collection = {
             this.renderCards();
         };
         
+        document.getElementById('coll-card-sort').onchange = (e) => {
+            this.filters.cardSort = e.target.value;
+            this.renderCards();
+        };
+        
         // Detail modal click handlers
         document.querySelector('.coll-detail-backdrop').onclick = () => this.closeDetail();
         document.getElementById('coll-detail-modal').onclick = (e) => {
@@ -404,6 +418,7 @@ window.Collection = {
         this.filters.subtype = 'all';
         this.filters.element = 'all';
         this.filters.owned = 'all';
+        this.filters.cardSort = 'cost-asc';
         
         document.getElementById('coll-card-search').value = '';
         document.querySelectorAll('#coll-cards-screen .coll-filter-btn').forEach(b => b.classList.remove('active'));
@@ -411,6 +426,7 @@ window.Collection = {
         document.getElementById('coll-card-subtype').value = 'all';
         document.getElementById('coll-card-element').value = 'all';
         document.getElementById('coll-card-owned').value = 'all';
+        document.getElementById('coll-card-sort').value = 'cost-asc';
         
         document.getElementById('coll-set-title').textContent = set.name;
         
@@ -540,8 +556,8 @@ window.Collection = {
         // Apply filters
         cards = this.filterCards(cards);
         
-        // Sort by cost then name
-        cards.sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+        // Sort cards
+        cards = this.sortCards(cards);
         
         if (cards.length === 0) {
             container.innerHTML = '<div class="coll-empty">No cards match filters</div>';
@@ -588,6 +604,33 @@ window.Collection = {
             if (search && !card.name.toLowerCase().includes(search)) return false;
             
             return true;
+        });
+    },
+    
+    // Rarity order for sorting (higher = rarer)
+    rarityOrder: { common: 0, uncommon: 1, rare: 2, ultimate: 3 },
+    
+    sortCards(cards) {
+        const sort = this.filters.cardSort;
+        const rarityOrder = this.rarityOrder;
+        
+        return cards.sort((a, b) => {
+            switch (sort) {
+                case 'cost-asc':
+                    return (a.cost - b.cost) || a.name.localeCompare(b.name);
+                case 'cost-desc':
+                    return (b.cost - a.cost) || a.name.localeCompare(b.name);
+                case 'name-asc':
+                    return a.name.localeCompare(b.name);
+                case 'name-desc':
+                    return b.name.localeCompare(a.name);
+                case 'rarity-asc':
+                    return (rarityOrder[a.rarity || 'common'] - rarityOrder[b.rarity || 'common']) || (a.cost - b.cost) || a.name.localeCompare(b.name);
+                case 'rarity-desc':
+                    return (rarityOrder[b.rarity || 'common'] - rarityOrder[a.rarity || 'common']) || (a.cost - b.cost) || a.name.localeCompare(b.name);
+                default:
+                    return (a.cost - b.cost) || a.name.localeCompare(b.name);
+            }
         });
     },
     

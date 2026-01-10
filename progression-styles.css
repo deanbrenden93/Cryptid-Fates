@@ -232,7 +232,7 @@
     content: '';
     position: absolute;
     inset: -10px; /* Extend beyond edges to prevent blur edge artifacts */
-    background: url('https://f.playcode.io/p-2633929/v-1/019b6baa-080d-7041-9e91-53403860ef7c/testbackground.png') center/cover no-repeat;
+    background: url('sprites/testbackground.png') center/cover no-repeat;
     filter: blur(2px);
     z-index: -2;
 }
@@ -688,28 +688,28 @@ div.menu-btn#tile-collection {
 #tile-quickplay {
     width: 180px;
     height: 150px;
-    background: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-9cd8-745f-8716-b4a2e987ff67/battle-button.png') center/contain no-repeat !important;
+    background: url('sprites/battle-button.png') center/contain no-repeat !important;
 }
 
 /* Decks Button */
 #tile-decks {
     width: 150px;
     height: 130px;
-    background: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-9ce1-704d-8a7d-de997a5623f1/decks-button.png') center/contain no-repeat !important;
+    background: url('sprites/decks-button.png') center/contain no-repeat !important;
 }
 
 /* Shop Button */
 #tile-shop {
     width: 150px;
     height: 130px;
-    background: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-9cdb-7730-83ac-64c8fbc2afc4/shop-button.png') center/contain no-repeat !important;
+    background: url('sprites/shop-button.png') center/contain no-repeat !important;
 }
 
 /* Collection Button */
 #tile-collection {
     width: 150px;
     height: 130px;
-    background: url('https://f.playcode.io/p-2633929/v-1/019b6ba2-9d89-74c1-b186-f300370b109c/collection-button.png') center/contain no-repeat !important;
+    background: url('sprites/collection-button.png') center/contain no-repeat !important;
 }
 
 .menu-btn:hover {
@@ -2529,7 +2529,7 @@ div.menu-btn#tile-collection {
     padding-top: calc(20px + var(--safe-area-top));
     padding-bottom: calc(20px + var(--safe-area-bottom));
     background-color: #0a0a0a;
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b7840-e64e-707d-ad59-aec332a31a52/match-results-background.png');
+    background-image: url('results-screen/match-results-background.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -6258,32 +6258,32 @@ div.menu-btn#tile-collection {
 /* Blaze (formerly Blood) */
 .game-card.cryptid-card.element-blaze::before,
 .game-card.cryptid-card.element-blood::before {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b76e0-eb8a-71b5-9586-ea2a9ad4f42e/blaze-element.png');
+    background-image: url('card-templates/blaze-element.png');
 }
 
 /* Water */
 .game-card.cryptid-card.element-water::before {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b76e0-eb91-741b-ac7b-bcfa64713061/new-water.png');
+    background-image: url('card-templates/new-water.png');
 }
 
 /* Nature */
 .game-card.cryptid-card.element-nature::before {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b76e0-eb89-76c8-b980-6652a7aa7861/nature-element.png');
+    background-image: url('card-templates/nature-element.png');
 }
 
 /* Void */
 .game-card.cryptid-card.element-void::before {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b76e0-eb8a-737b-8357-834aad3f1a8e/void-element.png');
+    background-image: url('card-templates/void-element.png');
 }
 
 /* Steel */
 .game-card.cryptid-card.element-steel::before {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b76e0-eb8f-7209-b2b7-a4a16bd15a45/steel-element.png');
+    background-image: url('card-templates/steel-element.png');
 }
 
 /* Fallback for cryptids without element - use steel */
 .game-card.cryptid-card::before {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b76e0-eb8f-7209-b2b7-a4a16bd15a45/steel-element.png');
+    background-image: url('card-templates/steel-element.png');
 }
 
 /* ============================================================
@@ -6291,7 +6291,7 @@ div.menu-btn#tile-collection {
    ============================================================ */
 
 .game-card.spell-card::before {
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b76e0-eb8d-750f-a6ad-221843e32a67/new-spell.png');
+    background-image: url('card-templates/new-spell.png');
 }
 
 /* ============================================================
@@ -6315,22 +6315,22 @@ div.menu-btn#tile-collection {
 
 .game-card .gc-rarity.common {
     width: calc(var(--gc-width) * 0.3);
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6b65-9838-715d-ba93-e5bbc255be7e/common-gem.png');
+    background-image: url('card-templates/common-gem.png');
 }
 
 .game-card .gc-rarity.uncommon {
     width: calc(var(--gc-width) * 0.38);
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6b65-9836-703e-9123-cacdc8ec8b91/uncommon-gems.png');
+    background-image: url('card-templates/uncommon-gems.png');
 }
 
 .game-card .gc-rarity.rare {
     width: calc(var(--gc-width) * 0.39);
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6b65-983d-7617-8584-34f6dd88a516/rare-gems.png');
+    background-image: url('card-templates/rare-gems.png');
 }
 
 .game-card .gc-rarity.ultimate {
     width: calc(var(--gc-width) * 0.42);
-    background-image: url('https://f.playcode.io/p-2633929/v-1/019b6b65-9834-73ba-adc7-61d686d9edc5/ultimate-gems.png');
+    background-image: url('card-templates/ultimate-gems.png');
 }
 
 /* Hide old rarity gem children */

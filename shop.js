@@ -238,7 +238,7 @@ window.Shop = {
                     <h1 class="shop-title">Shop</h1>
                     <div class="shop-currency">
                         <div class="shop-currency-item embers" title="Earned by playing">
-                            <img src='https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png' class='embers-img currency-icon' alt=''>
+                            <img src='sprites/embers-icon.png' class='embers-img currency-icon' alt=''>
                             <span class="currency-amount" id="shop-embers">0</span>
                         </div>
                         <div class="shop-currency-item souls" title="Premium currency">
@@ -449,7 +449,7 @@ window.Shop = {
                     
                     <button class="price-btn embers full-width ${canAfford ? 'affordable' : ''}" 
                             onclick="Shop.buyPack('${booster.id}')" ${!canAfford ? 'disabled' : ''}>
-                        <img src='https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png' class='embers-img price-icon' alt=''>
+                        <img src='sprites/embers-icon.png' class='embers-img price-icon' alt=''>
                         <span class="price-amount">${total.toLocaleString()}</span>
                     </button>
                 </div>
@@ -502,7 +502,7 @@ window.Shop = {
                         <div class="deck-prices">
                             <button class="price-btn embers ${canEmbers ? 'affordable' : ''}"
                                     onclick="Shop.buyDeck('${deck.id}', 'embers')" ${!canEmbers ? 'disabled' : ''}>
-                                <img src='https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png' class='embers-img price-icon' alt=''>
+                                <img src='sprites/embers-icon.png' class='embers-img price-icon' alt=''>
                                 <span class="price-amount">${deck.emberPrice}</span>
                             </button>
                             <button class="price-btn souls ${canSouls ? 'affordable' : ''}"
@@ -579,7 +579,7 @@ window.Shop = {
                                 ${item.emberPrice ? `
                                     <button class="price-btn embers small ${canEmbers ? 'affordable' : ''}"
                                             onclick="Shop.buyCosmetic('${item.id}', 'embers')" ${!canEmbers ? 'disabled' : ''}>
-                                        <img src='https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png' class='embers-img price-icon' alt=''>
+                                        <img src='sprites/embers-icon.png' class='embers-img price-icon' alt=''>
                                         <span class="price-amount">${item.emberPrice}</span>
                                     </button>
                                 ` : ''}
@@ -732,7 +732,7 @@ window.Shop = {
                     <span class="purchase-name">${booster.name}</span>
                 </div>
                 <div class="purchase-cost">
-                    <img src='https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png' class='embers-img cost-icon' alt=''>
+                    <img src='sprites/embers-icon.png' class='embers-img cost-icon' alt=''>
                     <span class="cost-amount">-${total}</span>
                 </div>
                 <div class="purchase-hint">Ready to open in your inventory!</div>

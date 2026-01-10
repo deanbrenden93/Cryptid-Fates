@@ -712,7 +712,7 @@ window.MainMenu = {
         menu.id = 'main-menu';
         menu.innerHTML = `
             <div class="menu-content">
-                <div class="menu-icon"><img src='https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png' class='embers-img' alt=''></div>
+                <div class="menu-icon"><img src='sprites/embers-icon.png' class='embers-img' alt=''></div>
                 <h1 class="menu-title">CRYPTID FATES</h1>
                 <p class="menu-subtitle">A Game of Dark Summons</p>
                 

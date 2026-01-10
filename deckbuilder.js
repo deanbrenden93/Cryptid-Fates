@@ -24,7 +24,8 @@ window.DeckBuilder = {
         subtype: 'all',  // all, kindling, mythical, basic, burst, trap, aura, pyre
         element: 'all',  // all, blood, void, nature, water, steel
         series: 'all',   // all, city-of-flesh, forests-of-fear, putrid-swamp, etc.
-        search: ''
+        search: '',
+        sort: 'cost-asc' // cost-asc, cost-desc, name-asc, name-desc, rarity-asc, rarity-desc
     },
     deckPanelMinimized: false,
     
@@ -95,6 +96,14 @@ window.DeckBuilder = {
                                     <option value="forests-of-fear">🌲 Forests of Fear</option>
                                     <option value="putrid-swamp">🐊 Putrid Swamp</option>
                                 </select>
+                                <select class="db-select" id="db-sort">
+                                    <option value="cost-asc">Cost ↑</option>
+                                    <option value="cost-desc">Cost ↓</option>
+                                    <option value="rarity-desc">Rarity ↓</option>
+                                    <option value="rarity-asc">Rarity ↑</option>
+                                    <option value="name-asc">Name A-Z</option>
+                                    <option value="name-desc">Name Z-A</option>
+                                </select>
                             </div>
                             <div class="db-hint-bar">
                                 <span>💡 Click card to add • Right-click for details</span>
@@ -141,7 +150,7 @@ window.DeckBuilder = {
             <div class="db-incinerate-modal" id="db-incinerate-modal">
                 <div class="db-incinerate-backdrop"></div>
                 <div class="db-incinerate-content">
-                    <div class="incinerate-header"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="embers-img" alt=""> Incinerate Cards</div>
+                    <div class="incinerate-header"><img src="sprites/embers-icon.png" class="embers-img" alt=""> Incinerate Cards</div>
                     <div class="incinerate-card-info" id="incinerate-card-info"></div>
                     <div class="incinerate-controls">
                         <button class="incinerate-qty-btn" id="incinerate-minus">−</button>
@@ -150,7 +159,7 @@ window.DeckBuilder = {
                     </div>
                     <div class="incinerate-reward" id="incinerate-reward">
                         <span class="reward-label">You'll receive:</span>
-                        <span class="reward-amount"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="embers-img ember-icon" alt=""><span id="incinerate-embers">0</span></span>
+                        <span class="reward-amount"><img src="sprites/embers-icon.png" class="embers-img ember-icon" alt=""><span id="incinerate-embers">0</span></span>
                     </div>
                     <div class="incinerate-warning">⚠️ This cannot be undone!</div>
                     <div class="incinerate-btns">
@@ -200,6 +209,12 @@ window.DeckBuilder = {
         // Series filter
         document.getElementById('db-series').onchange = (e) => {
             this.filters.series = e.target.value;
+            this.renderCards();
+        };
+        
+        // Sort
+        document.getElementById('db-sort').onchange = (e) => {
+            this.filters.sort = e.target.value;
             this.renderCards();
         };
         
@@ -325,12 +340,13 @@ window.DeckBuilder = {
         document.getElementById('db-deck-name').value = this.currentDeck.name;
         
         // Reset filters
-        this.filters = { category: 'all', subtype: 'all', element: 'all', series: 'all', search: '' };
+        this.filters = { category: 'all', subtype: 'all', element: 'all', series: 'all', search: '', sort: 'cost-asc' };
         document.querySelectorAll('.db-filter-btn').forEach(b => b.classList.remove('active'));
         document.querySelector('.db-filter-btn[data-category="all"]').classList.add('active');
         document.getElementById('db-search').value = '';
         document.getElementById('db-element').value = 'all';
         document.getElementById('db-series').value = 'all';
+        document.getElementById('db-sort').value = 'cost-asc';
         this.updateSubtypeOptions();
         
         // Reset deck panel state - start minimized on mobile
@@ -651,7 +667,34 @@ window.DeckBuilder = {
             if (p) addCardWithVariants(p, key, 'pyre', 'pyre', { cost: 0 });
         });
         
-        return cards.sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+        return this.sortCards(cards);
+    },
+    
+    // Rarity order for sorting (higher = rarer)
+    rarityOrder: { common: 0, uncommon: 1, rare: 2, ultimate: 3 },
+    
+    sortCards(cards) {
+        const sort = this.filters.sort;
+        const rarityOrder = this.rarityOrder;
+        
+        return cards.sort((a, b) => {
+            switch (sort) {
+                case 'cost-asc':
+                    return (a.cost - b.cost) || a.name.localeCompare(b.name);
+                case 'cost-desc':
+                    return (b.cost - a.cost) || a.name.localeCompare(b.name);
+                case 'name-asc':
+                    return a.name.localeCompare(b.name);
+                case 'name-desc':
+                    return b.name.localeCompare(a.name);
+                case 'rarity-asc':
+                    return (rarityOrder[a.rarity || 'common'] - rarityOrder[b.rarity || 'common']) || (a.cost - b.cost) || a.name.localeCompare(b.name);
+                case 'rarity-desc':
+                    return (rarityOrder[b.rarity || 'common'] - rarityOrder[a.rarity || 'common']) || (a.cost - b.cost) || a.name.localeCompare(b.name);
+                default:
+                    return (a.cost - b.cost) || a.name.localeCompare(b.name);
+            }
+        });
     },
     
     filterCards(cards) {
@@ -1170,12 +1213,12 @@ window.DeckBuilder = {
                                 <div class="detail-collection-item clickable ${!isHolo ? 'active' : ''} ${normalOwned > 0 ? 'owned' : 'empty'}" data-variant="normal">
                                     <span class="collection-label">Normal</span>
                                     <span class="collection-value">${normalOwned}</span>
-                                    ${normalOwned > 0 ? `<span class="collection-ember"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="ember-icon-sm" alt="">${normalValue}</span>` : ''}
+                                    ${normalOwned > 0 ? `<span class="collection-ember"><img src="sprites/embers-icon.png" class="ember-icon-sm" alt="">${normalValue}</span>` : ''}
                                 </div>
                                 <div class="detail-collection-item clickable holo ${isHolo ? 'active' : ''} ${holoOwned > 0 ? 'owned' : 'empty'}" data-variant="holo">
                                     <span class="collection-label">✨ Holo</span>
                                     <span class="collection-value">${holoOwned}</span>
-                                    ${holoOwned > 0 ? `<span class="collection-ember"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="ember-icon-sm" alt="">${holoValue}</span>` : ''}
+                                    ${holoOwned > 0 ? `<span class="collection-ember"><img src="sprites/embers-icon.png" class="ember-icon-sm" alt="">${holoValue}</span>` : ''}
                                 </div>
                             `}
                             ${this.currentDeck ? `
@@ -1195,7 +1238,7 @@ window.DeckBuilder = {
                             </button>` : ''}
                         ${normalOwned > 0 && !isInfinite ? 
                             `<button class="detail-btn incinerate" onclick="DeckBuilder.showIncinerateModal('${cardKey}', false);">
-                                <img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="ember-icon-sm" alt=""> Incinerate
+                                <img src="sprites/embers-icon.png" class="ember-icon-sm" alt=""> Incinerate
                             </button>` : ''}
                         ${holoOwned > 0 ? 
                             `<button class="detail-btn incinerate holo" onclick="DeckBuilder.showIncinerateModal('${cardKey}', true);">

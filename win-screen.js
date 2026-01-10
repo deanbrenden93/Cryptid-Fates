@@ -13,11 +13,11 @@ window.WinScreen = {
     
     // Asset URLs
     assets: {
-        background: 'https://f.playcode.io/p-2633929/v-1/019b7840-e64e-707d-ad59-aec332a31a52/match-results-background.png',
-        victoryBanner: 'https://f.playcode.io/p-2633929/v-1/019b7840-e648-72f6-8014-ef9d4861c026/victory-banner.png',
-        defeatBanner: 'https://f.playcode.io/p-2633929/v-1/019b7840-e64a-721f-9798-3e22cd5d6f59/defeat-banner.png',
-        mainMenuBtn: 'https://f.playcode.io/p-2633929/v-1/019b7840-e64c-75d9-b410-842a1514c54c/main-menu-results-button.png',
-        rematchBtn: 'https://f.playcode.io/p-2633929/v-1/019b7840-e649-72ec-a814-ee99a0f0b204/rematch-button.png'
+        background: 'results-screen/match-results-background.png',
+        victoryBanner: 'results-screen/victory-banner.png',
+        defeatBanner: 'results-screen/defeat-banner.png',
+        mainMenuBtn: 'results-screen/main-menu-results-button.png',
+        rematchBtn: 'results-screen/rematch-button.png'
     },
     
     // ==================== INITIALIZATION ====================

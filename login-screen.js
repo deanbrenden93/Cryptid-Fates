@@ -294,7 +294,7 @@ const LoginScreen = {
         overlay.innerHTML = `
             <div class="login-container">
                 <div class="login-logo">
-                     <img src="sprites/New Logo.png" alt="Cryptid Fates" class="login-logo-img">
+                     <img src="sprites/new-logo.png" alt="Cryptid Fates" class="login-logo-img">
                 </div>
                 
                 <div class="login-box">

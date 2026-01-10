@@ -108,7 +108,7 @@ window.CardRegistry = window.CardRegistry || {
 // Myling - Kindling - Uncommon - 2 ATK / 2HP - Blood
 CardRegistry.registerKindling('myling', {
     name: "Myling",
-    sprite: "https://f.playcode.io/p-2633929/v-1/019b3c82-70d5-75fb-90eb-17ab504ae4b4/myling.png",
+    sprite: "sprites/myling.png",
     spriteScale: 1.0,
     element: "blood",
     cost: 1,
@@ -158,7 +158,7 @@ CardRegistry.registerKindling('myling', {
 // Shadow Person - Kindling - Common - 0 ATK / 3HP - Void
 CardRegistry.registerKindling('shadowPerson', {
     name: "Shadow Person",
-    sprite: "https://f.playcode.io/p-2633929/v-1/019b3c82-70d4-752c-8536-d27121bee17f/shadow-person.png",
+    sprite: "sprites/shadow-person.png",
     spriteScale: 1.0,
     element: "void",
     cost: 1,
@@ -191,7 +191,7 @@ CardRegistry.registerKindling('shadowPerson', {
 // Hellhound Pup - Kindling - Common - 1 ATK / 1HP - Blood - Evolves into Hellhound
 CardRegistry.registerKindling('hellhoundPup', {
     name: "Hellhound Pup",
-    sprite: "https://f.playcode.io/p-2633929/v-1/019b3c8a-ca9a-754c-948c-d92e7702a51e/hellhound_pup.png",
+    sprite: "sprites/hellhound_pup.png",
     spriteScale: 1.0,
     element: "blood",
     cost: 1,
@@ -325,7 +325,7 @@ CardRegistry.registerKindling('elDuende', {
 // Boggart - Kindling - Common - 1 ATK / 2HP - Nature
 CardRegistry.registerKindling('boggart', {
     name: "Boggart",
-    sprite: "https://f.playcode.io/p-2633929/v-1/019b3c82-70d6-7466-97c0-72c148e812e2/boggart.png",
+    sprite: "sprites/boggart.png",
     spriteScale: 1.0,
     element: "nature",
     cost: 3,
@@ -407,7 +407,7 @@ CardRegistry.registerKindling('boggart', {
 // Rooftop Gargoyle - Steel, Common, Cost 1 (evolves into Library Gargoyle)
 CardRegistry.registerCryptid('rooftopGargoyle', {
     name: "Rooftop Gargoyle",
-    sprite: "https://f.playcode.io/p-2633929/v-1/019b3c82-70d4-73ef-8929-822739914541/rooftop-gargoyle.png",
+    sprite: "sprites/rooftop-gargoyle.png",
     spriteScale: 1.4,
     element: "steel",
     cost: 1,
@@ -465,7 +465,7 @@ CardRegistry.registerCryptid('rooftopGargoyle', {
 // Library Gargoyle - Common - 2 ATK / 4HP - Steel - 3 Pyres - Evolves from Rooftop Gargoyle
 CardRegistry.registerCryptid('libraryGargoyle', {
     name: "Library Gargoyle",
-    sprite: "https://f.playcode.io/p-2633929/v-1/019b3d25-b581-7759-9bb3-53f15ec1cb37/library-gargoylealt2.png",
+    sprite: "sprites/library-gargoylealt2.png",
     spriteScale: 1.3,
     cardSpriteScale: 1.0,
     spriteFlip: true,
@@ -646,7 +646,7 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
 // Hellhound - Blood, Common, Cost 4 (evolves from Hellhound Pup)
 CardRegistry.registerCryptid('hellhound', {
     name: "Hellhound",
-    sprite: "https://f.playcode.io/p-2633929/v-1/019b56ab-36a2-73fd-91b6-e5445175ecdc/hellhound.png",
+    sprite: "sprites/hellhound.png",
     spriteScale: 1.0,
     element: "blood",
     cost: 4,
@@ -704,7 +704,7 @@ CardRegistry.registerCryptid('hellhound', {
 // Mothman - Steel, Ultimate, Mythical, Cost 5 (FLAGSHIP)
 CardRegistry.registerCryptid('mothman', {
     name: "Mothman",
-    sprite: "https://f.playcode.io/p-2633929/v-1/019b56ab-247a-71ca-a81b-4d246f30d69d/mothman.png",
+    sprite: "sprites/mothman.png",
     spriteScale: 1.9,
     element: "steel",
     cost: 5,
@@ -932,7 +932,7 @@ CardRegistry.registerCryptid('mutatedRat', {
 // Vampire Initiate - Blood, Common, Cost 1 (evolves into Elder Vampire)
 CardRegistry.registerCryptid('vampireInitiate', {
     name: "Vampire Initiate",
-    sprite: "https://f.playcode.io/p-2633929/v-1/019b56ab-b586-702d-96b4-fa0a1318f444/vampire-initiate.png",
+    sprite: "sprites/vampire-initiate.png",
     spriteScale: 1.45,
     element: "blood",
     cost: 1,
@@ -1017,7 +1017,7 @@ CardRegistry.registerCryptid('vampireInitiate', {
 // Elder Vampire - Blood, Rare, Cost 4 (evolves from Vampire Initiate) - REVISED
 CardRegistry.registerCryptid('elderVampire', {
     name: "Elder Vampire",
-    sprite: "https://f.playcode.io/p-2633929/v-1/019b3d39-5e70-731e-9b2e-5393265788c9/vampire-lord.png",
+    sprite: "sprites/vampire-lord.png",
     spriteScale: 1.9,
     element: "blood",
     cost: 4,

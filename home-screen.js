@@ -34,14 +34,14 @@ window.HomeScreen = {
             <div class="home-topbar">
                 <div class="top-left">
                     <div class="profile-chip">
-                        <img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="profile-avatar embers-img" alt="">
+                        <img src="sprites/embers-icon.png" class="profile-avatar embers-img" alt="">
                         <span class="profile-name">Summoner</span>
                         <span class="profile-level" id="home-level">Lv.1</span>
                     </div>
                 </div>
                 <div class="top-right">
                     <div class="currency-chip embers" onclick="Shop.open()">
-                        <img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="c-icon embers-img" alt=""><span class="c-val" id="home-embers">0</span>
+                        <img src="sprites/embers-icon.png" class="c-icon embers-img" alt=""><span class="c-val" id="home-embers">0</span>
                     </div>
                     <div class="currency-chip souls" onclick="Shop.open()">
                         <span class="c-icon">💜</span><span class="c-val" id="home-souls">0</span>
@@ -56,7 +56,7 @@ window.HomeScreen = {
             <div class="home-center">
                 <div class="logo-container">
                     <div class="logo-glow"></div>
-                    <img src="https://f.playcode.io/p-2633929/v-1/019b6b76-7683-700d-ba87-187753d937e6/new-logo.png" alt="Cryptid Fates" class="logo-image">
+                    <img src="sprites/new-logo.png" alt="Cryptid Fates" class="logo-image">
                 </div>
                 
                 <!-- Stats Row (subtle, under logo) -->
@@ -66,7 +66,7 @@ window.HomeScreen = {
                     <div class="stat"><span class="stat-val" id="home-losses">0</span><span class="stat-lbl">Losses</span></div>
                     <div class="stat-div"></div>
                     <div class="stat"><span class="stat-val" id="home-winrate">0%</span><span class="stat-lbl">Rate</span></div>
-                    <div class="streak-chip" id="streak-display"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="embers-img" alt=""><span id="home-streak">0</span></div>
+                    <div class="streak-chip" id="streak-display"><img src="sprites/embers-icon.png" class="embers-img" alt=""><span id="home-streak">0</span></div>
                 </div>
             </div>
             
@@ -141,7 +141,7 @@ window.HomeScreen = {
                             </div>
                         </div>
                         <div class="qp-mode-rewards">
-                            <span class="reward-item"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="embers-img" alt=""> 15</span>
+                            <span class="reward-item"><img src="sprites/embers-icon.png" class="embers-img" alt=""> 15</span>
                             <span class="reward-item">⭐ 20 XP</span>
                         </div>
                     </div>
@@ -154,7 +154,7 @@ window.HomeScreen = {
                             </div>
                         </div>
                         <div class="qp-mode-rewards">
-                            <span class="reward-item"><img src="https://f.playcode.io/p-2633929/v-1/019b6baf-a00d-779e-b5ae-a10bb55ef3b9/embers-icon.png" class="embers-img" alt=""> 30</span>
+                            <span class="reward-item"><img src="sprites/embers-icon.png" class="embers-img" alt=""> 30</span>
                             <span class="reward-item">⭐ 50 XP</span>
                         </div>
                     </div>
@@ -179,7 +179,7 @@ window.HomeScreen = {
         welcome.innerHTML = `
             <div class="welcome-content">
                 <div class="welcome-logo">
-                    <img src="https://f.playcode.io/p-2633929/v-1/019b6b76-7683-700d-ba87-187753d937e6/new-logo.png" alt="Cryptid Fates">
+                    <img src="sprites/new-logo.png" alt="Cryptid Fates">
                 </div>
                 <h2 class="welcome-title">Welcome, Summoner</h2>
                 <p class="welcome-text">Choose your starter deck to begin your journey.</p>
