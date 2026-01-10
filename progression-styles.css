@@ -6300,8 +6300,8 @@ div.menu-btn#tile-collection {
 
 .game-card .gc-rarity {
     position: absolute;
-    /* Proportional positioning: ~13% from top, scales with card size */
-    top: calc(var(--gc-width) * 0.18);
+    /* Positioned at bottom edge of top name bar */
+    top: 19%;
     left: 50%;
     transform: translateX(-50%);
     /* Default dimensions for fallback */
@@ -6347,13 +6347,14 @@ div.menu-btn#tile-collection {
    CARD CONTENT POSITIONING - Aligned to template
    ============================================================ */
 
-/* Pyre cost - top right in ornate circle (CRYPTID CARDS) */
+/* Pyre cost - TOP CENTER in ornate orb */
 .game-card .gc-cost {
     position: absolute;
-    top: 13.4%;
-    right: 11.3%;
-    width: calc(var(--gc-width) * 0.12);
-    height: calc(var(--gc-width) * 0.12);
+    top: 2.5%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(var(--gc-width) * 0.18);
+    height: calc(var(--gc-width) * 0.18);
     background: transparent;
     color: #fff;
     font-family: 'Cinzel', serif;
@@ -6370,19 +6371,18 @@ div.menu-btn#tile-collection {
     z-index: 20;
 }
 
-/* Spell card cost - different position */
+/* Spell card cost - same position */
 .game-card.spell-card .gc-cost {
-    top: 14.5%;
-    right: 11%;
+    top: 2.5%;
 }
 
-/* ATK stat - bottom left circle (red) */
+/* ATK stat - bottom left red orb */
 .game-card .gc-stat.atk {
     position: absolute;
-    top: 59.8%;
-    left: 9.5%;
-    width: calc(var(--gc-width) * 0.11);
-    height: calc(var(--gc-width) * 0.11);
+    bottom: 6.5%;
+    left: 4%;
+    width: calc(var(--gc-width) * 0.16);
+    height: calc(var(--gc-width) * 0.16);
     background: transparent;
     color: #fff;
     font-family: 'Cinzel', serif;
@@ -6399,13 +6399,13 @@ div.menu-btn#tile-collection {
     z-index: 20;
 }
 
-/* HP stat - bottom right circle (green) */
+/* HP stat - bottom right green orb */
 .game-card .gc-stat.hp {
     position: absolute;
-    top: 59.8%;
-    right: 9.5%;
-    width: calc(var(--gc-width) * 0.11);
-    height: calc(var(--gc-width) * 0.11);
+    bottom: 6.5%;
+    right: 4%;
+    width: calc(var(--gc-width) * 0.16);
+    height: calc(var(--gc-width) * 0.16);
     background: transparent;
     color: #fff;
     font-family: 'Cinzel', serif;
@@ -6427,12 +6427,13 @@ div.menu-btn#tile-collection {
     display: none;
 }
 
-/* Name banner - positioned on parchment area */
+/* Name banner - positioned on TOP center bar below pyre cost */
 .game-card .gc-header {
     position: absolute;
-    top: 67.9%;
-    left: 19%;
-    right: 17%;
+    top: 14.5%;
+    left: 12%;
+    right: 12%;
+    height: 8%;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -6453,6 +6454,11 @@ div.menu-btn#tile-collection {
         black 88%,
         transparent 100%
     );
+}
+
+/* Spell card name - slightly lower */
+.game-card.spell-card .gc-header {
+    top: 15.5%;
 }
 
 /* When name overflows, left-align to show start */
@@ -6477,15 +6483,20 @@ div.menu-btn#tile-collection {
 
 .game-card .gc-name {
     font-family: 'Cinzel', serif;
-    font-size: calc(var(--gc-width) * 0.10);
+    font-size: calc(var(--gc-width) * 0.09);
     font-weight: 700;
-    color: #2a2010;
+    color: #d4c4a0;
     line-height: 1.1;
     white-space: nowrap;
-    letter-spacing: 0px;
+    letter-spacing: 0.5px;
     text-align: center;
-    padding: 0 calc(var(--gc-width) * 0.08);
+    padding: 0 calc(var(--gc-width) * 0.04);
     display: inline-block;
+    text-shadow: 
+        -1px -1px 0 #000,
+        1px -1px 0 #000,
+        -1px 1px 0 #000,
+        1px 1px 0 #000;
 }
 
 /* Animate names that overflow - ALWAYS running, not just on hover */
@@ -6539,13 +6550,13 @@ div.menu-btn#tile-collection {
     padding: 0 2px;
 }
 
-/* Art/Sprite area */
+/* Art/Sprite area - positioned in center of card frame */
 .game-card .gc-art {
     position: absolute;
-    top: 15%;
-    left: 10%;
-    width: 80%;
-    height: 52%;
+    top: 24%;
+    left: 8%;
+    width: 84%;
+    height: 45%;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -6606,17 +6617,22 @@ div.menu-btn#tile-collection {
 /* Card type label (Cryptid/Kindling for cryptids, or spell type) */
 .game-card .gc-card-type {
     position: absolute;
-    top: 79.3%;
+    bottom: 24%;
     left: 15%;
     width: 70%;
     display: flex;
     justify-content: center;
     z-index: 15;
     font-family: 'Cinzel', serif;
-    font-size: calc(var(--gc-width) * 0.1);
+    font-size: calc(var(--gc-width) * 0.09);
     color: #a09080;
     text-transform: uppercase;
     letter-spacing: 1px;
+}
+
+/* Spell card type - slightly higher */
+.game-card.spell-card .gc-card-type {
+    bottom: 22%;
 }
 
 /* Mythical shimmer effect for card type text */
@@ -7075,7 +7091,7 @@ div.menu-btn#tile-collection {
     position: absolute;
     inset: 0;
     backface-visibility: hidden;
-    border-radius: 6px;
+    /* No border-radius - let the card images define their own shape */
     overflow: visible;
 }
 
@@ -7084,77 +7100,55 @@ div.menu-btn#tile-collection {
     overflow: visible;
 }
 
-/* Card Back Design */
+/* Card Back Design - Uses card back image */
 .card-back {
-    background: linear-gradient(145deg, #2a2535 0%, #1a1520 100%);
-    border: 2px solid rgba(100, 80, 120, 0.5);
+    background: url('sprites/card-back.png') center/100% 100% no-repeat;
+    border: none;
     display: flex;
     align-items: center;
     justify-content: center;
+    /* No border-radius - let the image define its own shape */
 }
 
-.card-back-design {
-    width: 100%;
-    height: 100%;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* Hide the inner design elements since we're using an image now */
+.card-back-design,
+.card-back-pattern,
+.card-back-glow {
+    display: none;
 }
 
-.card-back-pattern {
-    width: 60%;
-    height: 70%;
-    background: 
-        repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(100, 80, 120, 0.1) 4px, rgba(100, 80, 120, 0.1) 8px),
-        repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(100, 80, 120, 0.1) 4px, rgba(100, 80, 120, 0.1) 8px);
-    border: 2px solid rgba(100, 80, 120, 0.3);
-    border-radius: 4px;
-}
-
-.card-back-pattern::before {
-    content: '?';
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(var(--gc-width) * 0.4);
-    color: rgba(150, 130, 170, 0.4);
-    font-family: 'Cinzel', serif;
-}
-
-/* Rarity Glow on Card Back Edge */
+/* Rarity Glow on Card Back Edge - using drop-shadow to follow image pixels */
 .card-flip-wrapper.common .card-back {
-    box-shadow: 0 0 15px rgba(150, 150, 150, 0.3);
+    filter: drop-shadow(0 0 8px rgba(150, 150, 150, 0.4));
+}
+
+.card-flip-wrapper.uncommon .card-back {
+    filter: drop-shadow(0 0 10px rgba(100, 200, 100, 0.5));
 }
 
 .card-flip-wrapper.rare .card-back {
-    border-color: rgba(59, 130, 246, 0.6);
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4), inset 0 0 15px rgba(59, 130, 246, 0.1);
+    filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.6));
 }
 
 .card-flip-wrapper.ultimate .card-back {
-    border-color: rgba(168, 85, 247, 0.7);
-    box-shadow: 0 0 25px rgba(168, 85, 247, 0.5), inset 0 0 20px rgba(168, 85, 247, 0.15);
-    animation: ultimateGlow 2s ease-in-out infinite;
+    filter: drop-shadow(0 0 15px rgba(168, 85, 247, 0.7));
+    animation: ultimateGlowFilter 2s ease-in-out infinite;
 }
 
 .card-flip-wrapper.mythical .card-back,
 .card-flip-wrapper.holo-edge .card-back {
-    border-color: rgba(255, 215, 0, 0.7);
-    box-shadow: 0 0 30px rgba(255, 215, 0, 0.5), inset 0 0 25px rgba(255, 215, 0, 0.15);
-    animation: mythicalGlow 1.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 18px rgba(255, 215, 0, 0.8));
+    animation: mythicalGlowFilter 1.5s ease-in-out infinite;
 }
 
-@keyframes ultimateGlow {
-    0%, 100% { box-shadow: 0 0 25px rgba(168, 85, 247, 0.5), inset 0 0 20px rgba(168, 85, 247, 0.15); }
-    50% { box-shadow: 0 0 35px rgba(168, 85, 247, 0.7), inset 0 0 30px rgba(168, 85, 247, 0.2); }
+@keyframes ultimateGlowFilter {
+    0%, 100% { filter: drop-shadow(0 0 15px rgba(168, 85, 247, 0.7)); }
+    50% { filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.9)); }
 }
 
-@keyframes mythicalGlow {
-    0%, 100% { box-shadow: 0 0 30px rgba(255, 215, 0, 0.5), inset 0 0 25px rgba(255, 215, 0, 0.15); }
-    50% { box-shadow: 0 0 45px rgba(255, 215, 0, 0.7), inset 0 0 35px rgba(255, 215, 0, 0.25); }
+@keyframes mythicalGlowFilter {
+    0%, 100% { filter: drop-shadow(0 0 18px rgba(255, 215, 0, 0.8)); }
+    50% { filter: drop-shadow(0 0 28px rgba(255, 215, 0, 1)); }
 }
 
 /* Best card gets a subtle star indicator */
