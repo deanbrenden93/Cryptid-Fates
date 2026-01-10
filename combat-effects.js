@@ -4200,7 +4200,6 @@ window.CombatEffects = {
             width: 100%;
             height: 100%;
             pointer-events: none;
-            animation: turnPulseWave 600ms ease-out forwards;
         }
         
         .turn-pulse-player {
@@ -4211,14 +4210,26 @@ window.CombatEffects = {
             background: linear-gradient(-90deg, rgba(248, 113, 113, 0.3) 0%, transparent 100%);
         }
         
-        @keyframes turnPulseWave {
-            0% { opacity: 1; transform: scaleX(0); transform-origin: left; }
+        @keyframes turnPulseWaveLeft {
+            0% { opacity: 1; transform: scaleX(0); }
             50% { opacity: 0.8; transform: scaleX(1); }
             100% { opacity: 0; transform: scaleX(1); }
         }
         
+        @keyframes turnPulseWaveRight {
+            0% { opacity: 1; transform: scaleX(0); }
+            50% { opacity: 0.8; transform: scaleX(1); }
+            100% { opacity: 0; transform: scaleX(1); }
+        }
+        
+        .turn-pulse-player {
+            transform-origin: left;
+            animation: turnPulseWaveLeft 600ms ease-out forwards;
+        }
+        
         .turn-pulse-enemy {
             transform-origin: right;
+            animation: turnPulseWaveRight 600ms ease-out forwards;
         }
         
         /* Ready stance bounce */

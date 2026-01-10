@@ -1624,6 +1624,8 @@ body {
     padding: 0 8%;
     /* Extra top padding inside scroll container for hover lift + scale */
     padding-top: 45px;
+    /* Minimum height to prevent timeline from dropping when hand is empty */
+    min-height: calc(var(--card-h) + 45px);
     /* NOTE: Do NOT use scroll-behavior: smooth here - it conflicts with manual JS scroll handling
        and makes touchpad scrolling janky because it fights the rapid small pixel deltas */
     -webkit-overflow-scrolling: touch;
@@ -1633,6 +1635,9 @@ body {
     /* Fade edges - 3% fade zone, padding is 8% so cards can easily scroll fully into view */
     mask-image: linear-gradient(to right, transparent 0%, black 3%, black 97%, transparent 100%);
     -webkit-mask-image: linear-gradient(to right, transparent 0%, black 3%, black 97%, transparent 100%);
+    
+    /* Smooth opacity transition for turn changes */
+    transition: opacity 0.3s ease;
 }
 
 /* Scroll wrapper just needs to allow overflow */

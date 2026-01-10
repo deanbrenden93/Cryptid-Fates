@@ -3799,44 +3799,75 @@ async function playAbilityAnimation(effect) {
             // Show forced attack animation (for Face-Off, etc.)
             if (message) showMessage(message, 900);
             
-            // Attacker lunges with new animation
-            if (sourceSprite) {
-                sourceSprite.classList.add('attack-windup');
-                await new Promise(r => setTimeout(r, 150));
-                sourceSprite.classList.remove('attack-windup');
-                sourceSprite.classList.add('attack-lunge');
-                await new Promise(r => setTimeout(r, 180));
-            }
-            
-            // Impact effects
-            if (window.CombatEffects && targetSprite) {
-                const battlefield = document.getElementById('battlefield-area');
-                if (battlefield) {
-                    const targetRect = targetSprite.getBoundingClientRect();
-                    const battlefieldRect = battlefield.getBoundingClientRect();
-                    const impactX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
-                    const impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
-                    CombatEffects.createImpactFlash(impactX, impactY);
-                    CombatEffects.createSparks(impactX, impactY, 12);
-                    CombatEffects.heavyImpact(damage || 2);
+            // Use enhanced attack animation if available
+            if (window.CombatEffects?.playEnhancedAttack && sourceSprite) {
+                const attackOwner = source?.owner || 'player';
+                const attackDamage = damage || 2;
+                const wasKilled = effect.killed || false;
+                const targetRarity = effect.targetRarity || 'common';
+                
+                await new Promise(resolve => {
+                    window.CombatEffects.playEnhancedAttack(
+                        sourceSprite,
+                        attackOwner,
+                        targetSprite,
+                        attackDamage,
+                        // onImpact - start death animation if killed
+                        () => {
+                            if (wasKilled && targetSprite && window.CombatEffects?.playDramaticDeath) {
+                                const targetOwner = target?.owner || (attackOwner === 'player' ? 'enemy' : 'player');
+                                window.CombatEffects.playDramaticDeath(targetSprite, targetOwner, targetRarity);
+                            }
+                        },
+                        // onComplete
+                        resolve
+                    );
+                });
+                
+                // Wait for death animation to complete if target was killed
+                if (wasKilled) {
+                    await new Promise(r => setTimeout(r, TIMING.deathAnim || 700));
                 }
-                if (target && damage) {
-                    CombatEffects.showDamageNumber(target, damage, damage >= 5);
+            } else {
+                // Fallback to basic animation
+                if (sourceSprite) {
+                    sourceSprite.classList.add('attack-windup');
+                    await new Promise(r => setTimeout(r, 150));
+                    sourceSprite.classList.remove('attack-windup');
+                    sourceSprite.classList.add('attack-lunge');
+                    await new Promise(r => setTimeout(r, 180));
                 }
-            }
-            
-            // Target takes damage
-            if (targetSprite) {
-                targetSprite.classList.add('hit-recoil');
-                await new Promise(r => setTimeout(r, 250));
-                targetSprite.classList.remove('hit-recoil');
-            }
-            
-            if (sourceSprite) {
-                sourceSprite.classList.remove('attack-lunge');
-                sourceSprite.classList.add('attack-return');
-                await new Promise(r => setTimeout(r, 200));
-                sourceSprite.classList.remove('attack-return');
+                
+                // Impact effects
+                if (window.CombatEffects && targetSprite) {
+                    const battlefield = document.getElementById('battlefield-area');
+                    if (battlefield) {
+                        const targetRect = targetSprite.getBoundingClientRect();
+                        const battlefieldRect = battlefield.getBoundingClientRect();
+                        const impactX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+                        const impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+                        CombatEffects.createImpactFlash(impactX, impactY);
+                        CombatEffects.createSparks(impactX, impactY, 12);
+                        CombatEffects.heavyImpact(damage || 2);
+                    }
+                    if (target && damage) {
+                        CombatEffects.showDamageNumber(target, damage, damage >= 5);
+                    }
+                }
+                
+                // Target takes damage
+                if (targetSprite) {
+                    targetSprite.classList.add('hit-recoil');
+                    await new Promise(r => setTimeout(r, 250));
+                    targetSprite.classList.remove('hit-recoil');
+                }
+                
+                if (sourceSprite) {
+                    sourceSprite.classList.remove('attack-lunge');
+                    sourceSprite.classList.add('attack-return');
+                    await new Promise(r => setTimeout(r, 200));
+                    sourceSprite.classList.remove('attack-return');
+                }
             }
             break;
             

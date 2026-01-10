@@ -1269,18 +1269,24 @@ CardRegistry.registerBurst('faceOff', {
             target.tapped = false;
             target.canAttack = true;
             
-            // Queue attack animation
+            // Capture target info before attack (for death animation)
+            const targetRarity = enemyAcross.rarity || 'common';
+            
+            // Execute attack and get result
+            const result = game.attack(target, enemyOwner, enemyCombatCol, target.row);
+            
+            // Queue attack animation with result info
             if (typeof queueAbilityAnimation !== 'undefined') {
                 queueAbilityAnimation({
                     type: 'attack',
                     source: target,
                     target: enemyAcross,
+                    damage: result.damage || 0,
+                    killed: result.killed || false,
+                    targetRarity: targetRarity,
                     message: `⚔️ ${target.name} faces off against ${enemyAcross.name}!`
                 });
             }
-            
-            // Execute attack
-            game.attack(target, enemyOwner, enemyCombatCol, target.row);
         }
     }
 });
