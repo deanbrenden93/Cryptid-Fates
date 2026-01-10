@@ -572,8 +572,13 @@ function renderSprites() {
                         
                         sprite.innerHTML = html;
                     }
-                    sprite.style.left = pos.x + 'px';
-                    sprite.style.top = pos.y + 'px';
+                    // Skip position updates for sprites in active promotion animation
+                    const promotionKey = `${owner}-${row}`;
+                    const isPromoting = window.activePromotions?.has(promotionKey);
+                    if (!isPromoting) {
+                        sprite.style.left = pos.x + 'px';
+                        sprite.style.top = pos.y + 'px';
+                    }
                     sprite.style.transform = 'translate(-50%, -50%)';
                     // Row-based z-index for depth: top row (0) = back, bottom row (2) = front
                     sprite.style.zIndex = (row + 1) * 10;
@@ -2717,33 +2722,57 @@ function animateSupportPromotion(owner, row) {
     const combatCol = game.getCombatCol(owner);
     const supportKey = `${owner}-${supportCol}-${row}`;
     const combatKey = `${owner}-${combatCol}-${row}`;
+    
+    // Recalculate positions to ensure they're fresh
+    calculateTilePositions();
     const supportPos = tilePositions[supportKey];
     const combatPos = tilePositions[combatKey];
     
     if (!supportPos || !combatPos) { renderSprites(); return; }
     const distance = Math.abs(combatPos.x - supportPos.x);
+    
+    // Check if there's actually a cryptid to promote (might have already been rendered)
+    const cryptid = game.getFieldCryptid(owner, combatCol, row);
+    if (!cryptid) { renderSprites(); return; }
+    
+    // Mark as promotion in progress to prevent render glitches
+    const promotionKey = `${owner}-${row}`;
+    if (!window.activePromotions) window.activePromotions = new Set();
+    window.activePromotions.add(promotionKey);
+    
+    // Render to create the sprite at combat position, then move it for animation
     renderSprites();
     
     const sprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${row}"]`);
     if (sprite) {
+        // Move sprite to starting position (support slot) for animation
         sprite.style.left = supportPos.x + 'px';
+        sprite.style.transition = 'none'; // Disable transitions for instant position set
+        
+        // Force reflow to apply position before adding animation
+        sprite.offsetHeight;
         
         // Use enhanced promotion animation if available
         if (window.CombatEffects?.playPromotionAnimation) {
             window.CombatEffects.playPromotionAnimation(sprite, owner, distance, () => {
                 sprite.style.left = combatPos.x + 'px';
+                window.activePromotions?.delete(promotionKey);
                 renderSprites();
             });
         } else {
             // Fallback to basic animation
+            sprite.style.transition = ''; // Re-enable transitions
             sprite.style.setProperty('--promote-distance', `${distance}px`);
             sprite.classList.add(owner === 'player' ? 'promoting-right' : 'promoting-left');
             setTimeout(() => { 
                 sprite.classList.remove('promoting-right', 'promoting-left'); 
                 sprite.style.left = combatPos.x + 'px'; 
+                window.activePromotions?.delete(promotionKey);
                 renderSprites(); 
             }, TIMING.promoteAnim);
         }
+    } else {
+        window.activePromotions?.delete(promotionKey);
     }
 }
 
@@ -2771,7 +2800,9 @@ function processPendingPromotions(onComplete) {
         setTimeout(processNext, TIMING.promoteAnim + 50);
     }
     
-    processNext();
+    // Small delay to let any death animations get started first
+    // This prevents the promotion animation from visually conflicting with deaths
+    setTimeout(processNext, 150);
 }
 
 // ==================== BUTTON HANDLERS ====================

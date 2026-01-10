@@ -3539,7 +3539,8 @@ async function processTrapQueue() {
             await new Promise(r => setTimeout(r, TIMING.postAttackDelay));
             
             window.animatingTraps.delete(trapKey);
-            renderAll();
+            // DON'T renderAll here - it causes promotion sprites to appear before animation
+            // The renderAll inside checkAllCreaturesForDeath callback handles this after promotions
             
             // Check for any deaths caused by trap with timeout safety
             await new Promise(resolve => {
