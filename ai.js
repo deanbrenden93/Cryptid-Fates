@@ -532,10 +532,23 @@ function aiCombat(onComplete) {
         
         // Handle negated attacks (e.g., Hellhound Pup protection, Primal Wendigo counter-kill)
         if (result.negated) {
+            // Get attacker rarity for death timing
+            const attackerRarity = attacker?.rarity || 'common';
+            
             // Only show death animation if attacker was actually killed by counter-attack
             if (result.attackerKilled && attackerSprite) {
-                attackerSprite.classList.add('dying-right');
+                // Use dramatic death for counter-kills too
+                if (window.CombatEffects?.playDramaticDeath) {
+                    window.CombatEffects.playDramaticDeath(attackerSprite, 'enemy', attackerRarity);
+                } else {
+                    attackerSprite.classList.add('dying-right');
+                }
             }
+            
+            // Use actual death duration based on rarity
+            const attackerDeathDuration = result.attackerKilled 
+                ? (window.CombatEffects?.getDramaticDeathDuration?.(attackerRarity) || TIMING.deathAnim)
+                : 300;
             
             // Wait for ability animations first
             waitForAbilityAnimations(() => {
@@ -561,13 +574,15 @@ function aiCombat(onComplete) {
                         // Attack was just blocked, continue normally
                         waitForTraps(() => nextCallback(index + 1));
                     }
-                }, result.attackerKilled ? TIMING.deathAnim : 300);
+                }, attackerDeathDuration);
             });
             return;
         }
         
         if (result.killed) {
             // Death animation already started above (playDramaticDeath)
+            // Use actual death duration based on rarity (dramatic deaths take longer for higher rarities)
+            const deathDuration = window.CombatEffects?.getDramaticDeathDuration?.(targetRarity) || TIMING.deathAnim;
             
             // Wait for ability animations first
             waitForAbilityAnimations(() => {
@@ -588,7 +603,7 @@ function aiCombat(onComplete) {
                             });
                         });
                     });
-                }, TIMING.deathAnim);
+                }, deathDuration);
             });
         } else {
             if (targetSprite) {

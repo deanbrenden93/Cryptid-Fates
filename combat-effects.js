@@ -603,6 +603,22 @@ window.CombatEffects = {
         }
     },
     
+    // Get the total duration of a dramatic death animation based on rarity
+    getDramaticDeathDuration(rarity = 'common') {
+        const config = this.deathDramaConfig[rarity] || this.deathDramaConfig.common;
+        const TIMING = window.TIMING || { deathAnim: 800 };
+        const baseDeathDuration = TIMING.deathAnim;
+        const actualDeathDuration = baseDeathDuration / config.deathAnimSpeed;
+        
+        const zoomInEnd = config.zoomInDuration;
+        const holdEnd = zoomInEnd + config.holdDuration;
+        const deathStart = holdEnd;
+        const deathEnd = deathStart + actualDeathDuration;
+        const totalDuration = deathEnd + 100;
+        
+        return totalDuration;
+    },
+    
     // Main dramatic death function - Hollywood-style cinematic death sequence
     playDramaticDeath(sprite, owner, rarity = 'common', onComplete) {
         if (!sprite) {
@@ -1811,6 +1827,11 @@ window.CombatEffects = {
             return;
         }
         
+        // Block input during turn transition
+        if (typeof window.setAnimating === 'function') {
+            window.setAnimating(true);
+        }
+        
         const isPlayerTurn = newTurn === 'player';
         const bannerColor = isPlayerTurn ? '#4ade80' : '#f87171';
         const bannerText = isPlayerTurn ? 'YOUR TURN' : 'ENEMY TURN';
@@ -1847,11 +1868,15 @@ window.CombatEffects = {
             });
         }, 350);
         
-        // Cleanup
+        // Cleanup and unblock input
         setTimeout(() => {
             banner.classList.add('turn-banner-exit');
             setTimeout(() => {
                 banner.remove();
+                // Unblock input after animation completes
+                if (typeof window.setAnimating === 'function') {
+                    window.setAnimating(false);
+                }
                 if (onComplete) onComplete();
             }, 300);
         }, 800);
@@ -1950,6 +1975,215 @@ window.CombatEffects = {
             container.appendChild(dust);
             setTimeout(() => dust.remove(), 500);
         }
+    },
+    
+    // ==================== CARD DRAW ANIMATION ====================
+    // Features: Card back flies from deck, flips to reveal the drawn card
+    
+    /**
+     * Play card draw animation
+     * @param {number} cardCount - Number of cards being drawn
+     * @param {string} owner - 'player' or 'enemy'
+     * @param {Function} onComplete - Callback when animation completes
+     */
+    playCardDrawAnimation(cardCount = 1, owner = 'player', onComplete) {
+        if (owner !== 'player' || cardCount <= 0) {
+            // Only animate for player draws, skip enemy draws
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        const handContainer = document.getElementById('hand-container');
+        const gameContainer = document.getElementById('game-container');
+        
+        if (!handContainer || !gameContainer) {
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        // Get positions
+        const containerRect = gameContainer.getBoundingClientRect();
+        const handRect = handContainer.getBoundingClientRect();
+        
+        // Deck position (top right of game container)
+        const deckX = containerRect.width - 80;
+        const deckY = 60;
+        
+        // Hand position (center of hand container)
+        const handX = handRect.left - containerRect.left + handRect.width / 2;
+        const handY = handRect.top - containerRect.top + handRect.height / 2;
+        
+        // Create flying cards with stagger
+        const cardDelay = 120; // Stagger between cards
+        const animDuration = 400;
+        
+        for (let i = 0; i < Math.min(cardCount, 5); i++) { // Cap at 5 for performance
+            setTimeout(() => {
+                this._createFlyingCard(gameContainer, deckX, deckY, handX, handY, animDuration);
+            }, i * cardDelay);
+        }
+        
+        // Call completion after all cards have finished
+        const totalDuration = (Math.min(cardCount, 5) - 1) * cardDelay + animDuration + 100;
+        setTimeout(() => {
+            if (onComplete) onComplete();
+        }, totalDuration);
+    },
+    
+    /**
+     * Create a single flying card that moves from deck to hand
+     */
+    _createFlyingCard(container, startX, startY, endX, endY, duration) {
+        const card = document.createElement('div');
+        card.className = 'flying-card-back';
+        
+        // Use card back image
+        card.innerHTML = `
+            <div class="flying-card-inner">
+                <div class="flying-card-face card-back-face"></div>
+            </div>
+        `;
+        
+        card.style.cssText = `
+            position: absolute;
+            left: ${startX}px;
+            top: ${startY}px;
+            width: 70px;
+            height: 98px;
+            z-index: 10000;
+            pointer-events: none;
+            transform: scale(0.6) rotate(-10deg);
+            opacity: 0;
+        `;
+        
+        container.appendChild(card);
+        
+        // Animate appearance
+        requestAnimationFrame(() => {
+            card.style.transition = `all ${duration}ms cubic-bezier(0.2, 0.8, 0.3, 1)`;
+            card.style.opacity = '1';
+            card.style.left = `${endX - 35}px`;
+            card.style.top = `${endY - 49}px`;
+            card.style.transform = 'scale(1) rotate(0deg)';
+        });
+        
+        // Flip at midpoint
+        setTimeout(() => {
+            card.classList.add('card-flipping');
+        }, duration * 0.5);
+        
+        // Remove after animation
+        setTimeout(() => {
+            card.classList.add('card-fade-out');
+            setTimeout(() => card.remove(), 200);
+        }, duration);
+    },
+    
+    /**
+     * Play starting hand draw animation (multiple cards with dramatic reveal)
+     * @param {number} cardCount - Number of cards in starting hand
+     * @param {Function} onComplete - Callback when animation completes
+     */
+    playStartingHandAnimation(cardCount = 4, onComplete) {
+        const handContainer = document.getElementById('hand-container');
+        const gameContainer = document.getElementById('game-container');
+        
+        if (!handContainer || !gameContainer) {
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        // Block input during animation
+        if (typeof window.setAnimating === 'function') {
+            window.setAnimating(true);
+        }
+        
+        const containerRect = gameContainer.getBoundingClientRect();
+        const handRect = handContainer.getBoundingClientRect();
+        
+        // Deck position (top right)
+        const deckX = containerRect.width - 80;
+        const deckY = 60;
+        
+        // Calculate fan positions across the hand
+        const handCenterX = handRect.left - containerRect.left + handRect.width / 2;
+        const handY = handRect.top - containerRect.top + 20;
+        const cardSpacing = Math.min(90, handRect.width / (cardCount + 1));
+        const startOffset = -((cardCount - 1) * cardSpacing) / 2;
+        
+        // Staggered draw
+        const cardDelay = 150;
+        const flyDuration = 350;
+        const flipDelay = 200;
+        
+        for (let i = 0; i < cardCount; i++) {
+            const targetX = handCenterX + startOffset + (i * cardSpacing);
+            
+            setTimeout(() => {
+                this._createStartingCard(gameContainer, deckX, deckY, targetX, handY, flyDuration, flipDelay, i);
+            }, i * cardDelay);
+        }
+        
+        // Complete after all cards settle
+        const totalDuration = (cardCount - 1) * cardDelay + flyDuration + flipDelay + 400;
+        setTimeout(() => {
+            if (typeof window.setAnimating === 'function') {
+                window.setAnimating(false);
+            }
+            if (onComplete) onComplete();
+        }, totalDuration);
+    },
+    
+    /**
+     * Create a starting hand card with flip reveal
+     */
+    _createStartingCard(container, startX, startY, endX, endY, flyDuration, flipDelay, index) {
+        const card = document.createElement('div');
+        card.className = 'starting-card';
+        
+        card.innerHTML = `
+            <div class="starting-card-inner">
+                <div class="starting-card-back"></div>
+                <div class="starting-card-glow"></div>
+            </div>
+        `;
+        
+        // Slight rotation variation for natural look
+        const rotation = (index - 2) * 3;
+        
+        card.style.cssText = `
+            position: absolute;
+            left: ${startX}px;
+            top: ${startY}px;
+            width: 86px;
+            height: 120px;
+            z-index: ${10000 + index};
+            pointer-events: none;
+            transform: scale(0.3) rotate(-15deg);
+            opacity: 0;
+        `;
+        
+        container.appendChild(card);
+        
+        // Phase 1: Fly to position
+        requestAnimationFrame(() => {
+            card.style.transition = `all ${flyDuration}ms cubic-bezier(0.2, 0.8, 0.3, 1)`;
+            card.style.opacity = '1';
+            card.style.left = `${endX - 43}px`;
+            card.style.top = `${endY}px`;
+            card.style.transform = `scale(1) rotate(${rotation}deg)`;
+        });
+        
+        // Phase 2: Glow pulse on arrival
+        setTimeout(() => {
+            card.classList.add('card-arrived');
+        }, flyDuration);
+        
+        // Phase 3: Fade out as real cards appear
+        setTimeout(() => {
+            card.classList.add('card-dissolve');
+            setTimeout(() => card.remove(), 300);
+        }, flyDuration + flipDelay + 200);
     },
     
     // ==================== ENHANCED TRAP TRIGGER ANIMATION ====================

@@ -114,8 +114,8 @@ function initGame() {
     } else {
         // Normal mode: Draw 6 cards initially (first turn draws 1 more = 7 total)
         for (let i = 0; i < 6; i++) {
-            game.drawCard('player');
-            game.drawCard('enemy');
+            game.drawCard('player', 'initial');
+            game.drawCard('enemy', 'initial');
         }
     }
     
@@ -125,6 +125,20 @@ function initGame() {
     
     setTimeout(() => {
         calculateTilePositions();
+        
+        // Play starting hand animation for player's initial cards
+        if (window.CombatEffects?.playStartingHandAnimation && !window.testMode) {
+            // Initially hide hand cards during animation
+            const handContainer = document.getElementById('hand-container');
+            if (handContainer) handContainer.style.opacity = '0';
+            
+            window.CombatEffects.playStartingHandAnimation(game.playerHand.length, () => {
+                // Show actual cards with entering animation
+                if (handContainer) handContainer.style.opacity = '1';
+                renderHandAnimated();
+            });
+        }
+        
         renderAll();
         lastBattlefieldHeight = document.getElementById('battlefield-area').offsetHeight;
     }, 50);
@@ -4133,6 +4147,14 @@ function setupGameEventListeners() {
         // Play turn transition animation (skip on first turn)
         if (data.turnNumber > 1 && window.CombatEffects?.playTurnTransition) {
             window.CombatEffects.playTurnTransition(data.owner);
+        }
+    });
+    
+    // Card draw animation
+    GameEvents.on('onCardDrawn', (data) => {
+        // Only animate player card draws, and only during gameplay (not initial setup)
+        if (data.owner === 'player' && game.turnNumber > 0 && window.CombatEffects?.playCardDrawAnimation) {
+            window.CombatEffects.playCardDrawAnimation(1, 'player');
         }
     });
     
