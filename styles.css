@@ -1615,11 +1615,10 @@ body {
 #hand-container {
     display: flex;
     align-items: flex-end;
-    justify-content: center;
+    justify-content: flex-start;
     width: 100%;
     overflow-x: auto;
     overflow-y: visible;
-    padding: 0 8%;
     padding-top: 45px;
     min-height: calc(var(--card-h) + 45px);
     -webkit-overflow-scrolling: touch;
@@ -1682,16 +1681,8 @@ body {
     --arc-lift: 0px;
 }
 
-#hand-container.not-turn {
-    opacity: 0.5;
-    pointer-events: none;
-}
-
-/* Flatten fan slightly when not your turn */
-#hand-container.not-turn .card-wrapper {
-    --fan-max-rotation: 10deg;
-    --fan-max-lift: 12px;
-}
+/* Hand is always visible and interactive for viewing
+   Playing/dragging is blocked via JS when not player's turn */
 
 /* ===== CARD WRAPPER - Elegant Hand Fan ===== */
 .card-wrapper {
@@ -1727,6 +1718,32 @@ body {
 /* First card - no overlap */
 .card-wrapper:first-child {
     margin-left: 0;
+}
+
+/* Last card - extra margin for rotation overhang */
+.card-wrapper:last-child {
+    margin-right: 50px;
+}
+
+/* Left spacer for scrollable room (accounts for card rotation overhang) */
+#hand-container::before {
+    content: '';
+    flex-shrink: 0;
+    width: 50px;
+    min-width: 50px;
+}
+
+/* When cards fit without scrolling, center them */
+#hand-container.centered {
+    justify-content: center;
+}
+
+#hand-container.centered::before {
+    display: none;
+}
+
+#hand-container.centered .card-wrapper:last-child {
+    margin-right: 0;
 }
 
 /* Hover: lift card out of fan elegantly */

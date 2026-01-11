@@ -76,7 +76,6 @@ function initGame() {
     const handArea = document.getElementById('hand-area');
     const handContainer = document.getElementById('hand-container');
     if (handArea) handArea.classList.remove('collapsed');
-    if (handContainer) handContainer.classList.remove('not-turn');
     
     // Set up shared game event listeners
     setupGameEventListeners();
@@ -740,15 +739,6 @@ function updateHandCardStates() {
     
     console.log('[updateHandCardStates] Called - turn:', game.currentTurn, 'phase:', game.phase, 'isKindling:', isKindling);
     
-    // Handle turn-based interactivity
-    if (game.currentTurn !== 'player') {
-        container.classList.add('not-turn');
-        console.log('[updateHandCardStates] Added not-turn class');
-    } else {
-        container.classList.remove('not-turn');
-        console.log('[updateHandCardStates] Removed not-turn class, container classes:', container.className);
-    }
-    
     // Just update classes on existing cards - DON'T touch positions
     const wrappers = container.querySelectorAll('.card-wrapper');
     wrappers.forEach(wrapper => {
@@ -804,17 +794,6 @@ function renderHand() {
         return;
     }
     
-    // Check if container was blocked BEFORE we update its state
-    const containerWasBlocked = container.classList.contains('not-turn');
-    const isNowPlayerTurn = game.currentTurn === 'player';
-    
-    // Handle turn-based interactivity
-    if (game.currentTurn !== 'player') {
-        container.classList.add('not-turn');
-    } else {
-        container.classList.remove('not-turn');
-    }
-    
     const cards = ui.showingKindling ? game.playerKindling : game.playerHand;
     const isKindling = ui.showingKindling;
     
@@ -823,11 +802,6 @@ function renderHand() {
     const sameCards = newCardIds.join(',') === currentHandCardIds.join(',');
     const sameView = isKindling === currentHandIsKindling;
     
-    // Force rebuild if turn just changed (either direction) to ensure fan layout updates properly
-    // containerWasBlocked = had not-turn class (enemy turn), isNowPlayerTurn = player's turn now
-    // Turn changed if: (was enemy turn AND now player) OR (was player turn AND now enemy)
-    const needsRebuildForTurnChange = containerWasBlocked === isNowPlayerTurn;
-    
     console.log('[renderHand] Check:', { 
         isKindling, 
         currentIsKindling: currentHandIsKindling,
@@ -835,20 +809,14 @@ function renderHand() {
         sameView, 
         childCount: container.children.length,
         turn: game.currentTurn,
-        phase: game.phase,
-        containerWasBlocked,
-        needsRebuildForTurnChange
+        phase: game.phase
     });
     
-    if (sameCards && sameView && container.children.length > 0 && !needsRebuildForTurnChange) {
+    if (sameCards && sameView && container.children.length > 0) {
         // Same cards, same view - just update states, don't touch layout
         console.log('[renderHand] Calling updateHandCardStates() - lightweight update');
         updateHandCardStates();
         return;
-    }
-    
-    if (needsRebuildForTurnChange) {
-        console.log('[renderHand] Forcing rebuild - turn changed to player while viewing kindling');
     }
     
     console.log('[renderHand] Doing full rebuild');
@@ -990,13 +958,6 @@ function renderHandAnimated() {
     container.innerHTML = '';
     
     container.classList.remove('centered');
-    
-    // Handle turn-based interactivity (but keep cards visible)
-    if (game.currentTurn !== 'player') {
-        container.classList.add('not-turn');
-    } else {
-        container.classList.remove('not-turn');
-    }
     
     const cards = ui.showingKindling ? game.playerKindling : game.playerHand;
     const isKindling = ui.showingKindling;
@@ -4109,7 +4070,6 @@ window.initMultiplayerGame = function() {
     const handArea = document.getElementById('hand-area');
     const handContainer = document.getElementById('hand-container');
     if (handArea) handArea.classList.remove('collapsed');
-    if (handContainer) handContainer.classList.remove('not-turn');
     
     // Set up shared game event listeners (same as single-player)
     setupGameEventListeners();
@@ -4161,11 +4121,16 @@ function setupGameEventListeners() {
         }
     });
     
-    // Card draw animation
+    // Card draw - update hand and play animation
     GameEvents.on('onCardDrawn', (data) => {
-        // Only animate player card draws, and only during gameplay (not initial setup)
-        if (data.owner === 'player' && game.turnNumber > 0 && window.CombatEffects?.playCardDrawAnimation) {
-            window.CombatEffects.playCardDrawAnimation(1, 'player');
+        if (data.owner === 'player') {
+            // Update hand to show the new card
+            renderHand();
+            
+            // Play draw animation during gameplay (not initial setup)
+            if (game.turnNumber > 0 && window.CombatEffects?.playCardDrawAnimation) {
+                window.CombatEffects.playCardDrawAnimation(1, 'player');
+            }
         }
     });
     
