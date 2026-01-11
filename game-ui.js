@@ -823,9 +823,10 @@ function renderHand() {
     const sameCards = newCardIds.join(',') === currentHandCardIds.join(',');
     const sameView = isKindling === currentHandIsKindling;
     
-    // Force rebuild if turn just changed to player while viewing kindling
-    // This ensures event handlers are properly set up for the new turn state
-    const needsRebuildForTurnChange = containerWasBlocked && isNowPlayerTurn && isKindling;
+    // Force rebuild if turn just changed (either direction) to ensure fan layout updates properly
+    // containerWasBlocked = had not-turn class (enemy turn), isNowPlayerTurn = player's turn now
+    // Turn changed if: (was enemy turn AND now player) OR (was player turn AND now enemy)
+    const needsRebuildForTurnChange = containerWasBlocked === isNowPlayerTurn;
     
     console.log('[renderHand] Check:', { 
         isKindling, 
@@ -859,10 +860,15 @@ function renderHand() {
     // Clear and rebuild the hand
     container.innerHTML = '';
     
-    cards.forEach(card => {
+    const totalCards = cards.length;
+    cards.forEach((card, index) => {
         const wrapper = document.createElement('div');
         wrapper.className = 'card-wrapper';
         wrapper.dataset.cardId = card.id;
+        wrapper.dataset.cardIndex = index;
+        wrapper.dataset.cardTotal = totalCards;
+        wrapper.style.setProperty('--card-index', index);
+        wrapper.style.setProperty('--card-total', totalCards);
         
         const cardEl = document.createElement('div');
         const rarityClass = card.rarity || 'common';
@@ -1000,11 +1006,16 @@ function renderHandAnimated() {
     currentHandIsKindling = isKindling;
     console.log('[renderHandAnimated] Updated tracking - cardIds:', currentHandCardIds.length, 'isKindling:', currentHandIsKindling);
     
+    const totalCards = cards.length;
     let delayIndex = 0;
-    cards.forEach((card) => {
+    cards.forEach((card, index) => {
         const wrapper = document.createElement('div');
         wrapper.className = 'card-wrapper';
         wrapper.dataset.cardId = card.id;
+        wrapper.dataset.cardIndex = index;
+        wrapper.dataset.cardTotal = totalCards;
+        wrapper.style.setProperty('--card-index', index);
+        wrapper.style.setProperty('--card-total', totalCards);
         
         const rarityClass = card.rarity || 'common';
         const cardEl = document.createElement('div');

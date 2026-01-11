@@ -6580,6 +6580,12 @@ div.menu-btn#tile-collection {
     --art-bg: #000;
 }
 
+/* Spell card art - slightly different positioning */
+.game-card.spell-card .gc-art {
+    top: 22.5%;
+    height: 49%;
+}
+
 /* Background layer behind card art */
 .game-card .gc-art::before {
     content: '';
