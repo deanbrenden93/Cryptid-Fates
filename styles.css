@@ -1627,12 +1627,53 @@ body {
     transition: opacity 0.3s ease;
 }
 
-/* Scroll wrapper just needs to allow overflow */
+/* Scroll wrapper - simple flex container, NO position relative */
 .hand-scroll-wrapper {
     display: flex;
     width: 100%;
     overflow: visible;
     margin-top: -45px;
+}
+
+/* Cards area gets positioning context for fades */
+.hand-cards-area {
+    position: relative;
+}
+
+/* Feathered edge fades - positioned within cards area */
+.hand-scroll-fade {
+    display: block; /* Override earlier display: none */
+    position: absolute;
+    top: calc(var(--info-h, 24px) + 50px); /* Below info bar + hover lift area */
+    bottom: 0;
+    width: 40px;
+    pointer-events: none;
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.hand-scroll-fade.left {
+    left: 0;
+    background: linear-gradient(to right, 
+        rgba(10, 8, 12, 1) 0%, 
+        rgba(10, 8, 12, 0) 100%);
+}
+
+.hand-scroll-fade.right {
+    right: 0;
+    background: linear-gradient(to left, 
+        rgba(10, 8, 12, 1) 0%, 
+        rgba(10, 8, 12, 0) 100%);
+}
+
+/* Show fades when content is scrollable - classes applied to cards area */
+.hand-cards-area.can-scroll-left .hand-scroll-fade.left {
+    opacity: 1;
+}
+
+.hand-cards-area.can-scroll-right .hand-scroll-fade.right {
+    opacity: 1;
 }
 
 .hand-scroll-wrapper::-webkit-scrollbar {
@@ -3098,5 +3139,28 @@ body {
     100% { 
         opacity: 1; 
         transform: translateY(0) scale(1) rotateY(0deg);
+    }
+}
+
+/* Rapid-fire card draw animation - punchy staccato feel */
+.game-card.card-rapid-enter {
+    animation: cardRapidEnter 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+@keyframes cardRapidEnter {
+    0% { 
+        opacity: 0; 
+        transform: translateY(-40px) scale(0.5);
+        filter: brightness(2);
+    }
+    50% {
+        opacity: 1;
+        transform: translateY(8px) scale(1.08);
+        filter: brightness(1.3);
+    }
+    100% { 
+        opacity: 1; 
+        transform: translateY(0) scale(1);
+        filter: brightness(1);
     }
 }
