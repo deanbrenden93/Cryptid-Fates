@@ -123,24 +123,60 @@ function initGame() {
     const firstPlayer = window.playerGoesFirst !== false ? 'player' : 'enemy';
     game.startTurn(firstPlayer);
     
+    // Check if we should animate the starting hand
+    const shouldAnimateHand = window.CombatEffects?.playStartingHandAnimation && !window.testMode;
+    
+    // Hide hand IMMEDIATELY before any rendering can occur
+    if (shouldAnimateHand) {
+        const handContainer = document.getElementById('hand-container');
+        if (handContainer) {
+            handContainer.style.opacity = '0';
+            handContainer.style.pointerEvents = 'none';
+        }
+    }
+    
     setTimeout(() => {
         calculateTilePositions();
         
-        // Play starting hand animation for player's initial cards
-        if (window.CombatEffects?.playStartingHandAnimation && !window.testMode) {
-            // Initially hide hand cards during animation
-            const handContainer = document.getElementById('hand-container');
-            if (handContainer) handContainer.style.opacity = '0';
-            
-            window.CombatEffects.playStartingHandAnimation(game.playerHand.length, () => {
-                // Show actual cards with entering animation
-                if (handContainer) handContainer.style.opacity = '1';
-                renderHandAnimated();
-            });
-        }
-        
+        // Render everything (hand is already hidden if animating)
         renderAll();
         lastBattlefieldHeight = document.getElementById('battlefield-area').offsetHeight;
+        
+        // Now play the starting hand animation
+        if (shouldAnimateHand && window.CombatEffects?.playStartingHandAnimation) {
+            let animationCompleted = false;
+            
+            // Safety timeout - if animation doesn't complete in 5 seconds, force show hand
+            const safetyTimeout = setTimeout(() => {
+                if (!animationCompleted) {
+                    console.warn('[initGame] Starting hand animation safety timeout triggered');
+                    const hc = document.getElementById('hand-container');
+                    if (hc) {
+                        hc.style.opacity = '1';
+                        hc.style.pointerEvents = '';
+                    }
+                }
+            }, 5000);
+            
+            window.CombatEffects.playStartingHandAnimation(game.playerHand.length, () => {
+                animationCompleted = true;
+                clearTimeout(safetyTimeout);
+                // Show actual cards with entering animation after draw animation completes
+                const hc = document.getElementById('hand-container');
+                if (hc) {
+                    hc.style.opacity = '1';
+                    hc.style.pointerEvents = '';
+                }
+                renderHandAnimated();
+            });
+        } else if (shouldAnimateHand) {
+            // Animation was supposed to happen but CombatEffects not available - unhide
+            const hc = document.getElementById('hand-container');
+            if (hc) {
+                hc.style.opacity = '1';
+                hc.style.pointerEvents = '';
+            }
+        }
     }, 50);
     
     updateButtons();
@@ -2136,16 +2172,38 @@ function executeAura(col, row) {
     // 2. Show enchantment message
     showMessage(`✨ ${card.name} ✨`, TIMING.messageDisplay);
     
-    // 3. Play visual effect on target
+    // 3. Get positions for enhanced aura animation
     const targetSprite = document.querySelector(
         `.cryptid-sprite[data-owner="player"][data-col="${col}"][data-row="${row}"]`
     );
-    if (targetSprite) {
+    const battlefield = document.getElementById('battlefield-area');
+    const handArea = document.getElementById('hand-area');
+    
+    // Calculate start position (from hand) and target position
+    let startX = 0, startY = 0, targetX = 0, targetY = 0;
+    if (battlefield && handArea) {
+        const battlefieldRect = battlefield.getBoundingClientRect();
+        const handRect = handArea.getBoundingClientRect();
+        startX = handRect.left + handRect.width/2 - battlefieldRect.left;
+        startY = handRect.top - battlefieldRect.top;
+        
+        if (targetSprite) {
+            const targetRect = targetSprite.getBoundingClientRect();
+            targetX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+            targetY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+        }
+    }
+    
+    // 4. Play enhanced aura animation
+    if (window.CombatEffects?.playAuraEffect && targetSprite) {
+        window.CombatEffects.playAuraEffect(startX, startY, targetX, targetY, targetSprite);
+    } else if (targetSprite) {
+        // Fallback to basic animation
         targetSprite.classList.add('aura-target');
         setTimeout(() => targetSprite.classList.remove('aura-target'), TIMING.spellEffect);
     }
     
-    // 4. Remove from array, add to discard, and clear state
+    // 5. Remove from array, add to discard, and clear state
     setTimeout(() => {
         const idx = game.playerHand.findIndex(c => c.id === card.id);
         if (idx > -1) {
@@ -2156,7 +2214,7 @@ function executeAura(col, row) {
         document.getElementById('cancel-target').classList.remove('show');
     }, 300);
     
-    // 5. Apply aura after visual delay
+    // 6. Apply aura after visual delay (longer for enhanced animation)
     setTimeout(() => {
         const oldPyre = game.playerPyre;
         game.playerPyre -= card.cost;
@@ -2171,8 +2229,8 @@ function executeAura(col, row) {
             isAnimating = false; 
             renderAll(); 
             updateButtons(); 
-        }, 300);
-    }, TIMING.spellEffect);
+        }, 400);
+    }, 600); // Extended delay for enhanced animation
 }
 
 function executeAuraDirect(card, col, row) {
@@ -2188,16 +2246,38 @@ function executeAuraDirect(card, col, row) {
     // 2. Show enchantment message
     showMessage(`✨ ${card.name} ✨`, TIMING.messageDisplay);
     
-    // 3. Play visual effect on target
+    // 3. Get positions for enhanced aura animation
     const targetSprite = document.querySelector(
         `.cryptid-sprite[data-owner="player"][data-col="${col}"][data-row="${row}"]`
     );
-    if (targetSprite) {
+    const battlefield = document.getElementById('battlefield-area');
+    const handArea = document.getElementById('hand-area');
+    
+    // Calculate start position (from hand) and target position
+    let startX = 0, startY = 0, targetX = 0, targetY = 0;
+    if (battlefield && handArea) {
+        const battlefieldRect = battlefield.getBoundingClientRect();
+        const handRect = handArea.getBoundingClientRect();
+        startX = handRect.left + handRect.width/2 - battlefieldRect.left;
+        startY = handRect.top - battlefieldRect.top;
+        
+        if (targetSprite) {
+            const targetRect = targetSprite.getBoundingClientRect();
+            targetX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+            targetY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+        }
+    }
+    
+    // 4. Play enhanced aura animation
+    if (window.CombatEffects?.playAuraEffect && targetSprite) {
+        window.CombatEffects.playAuraEffect(startX, startY, targetX, targetY, targetSprite);
+    } else if (targetSprite) {
+        // Fallback to basic animation
         targetSprite.classList.add('aura-target');
         setTimeout(() => targetSprite.classList.remove('aura-target'), TIMING.spellEffect);
     }
     
-    // 4. Remove from array after animation and add to discard
+    // 5. Remove from array after animation and add to discard
     setTimeout(() => {
         const idx = game.playerHand.findIndex(c => c.id === card.id);
         if (idx > -1) {
@@ -2206,7 +2286,7 @@ function executeAuraDirect(card, col, row) {
         }
     }, 300);
     
-    // 5. Apply aura after visual delay
+    // 6. Apply aura after visual delay (longer for enhanced animation)
     setTimeout(() => {
         const oldPyre = game.playerPyre;
         game.playerPyre -= card.cost;
@@ -2221,8 +2301,8 @@ function executeAuraDirect(card, col, row) {
             isAnimating = false; 
             renderAll(); 
             updateButtons(); 
-        }, 300);
-    }, TIMING.spellEffect);
+        }, 400);
+    }, 600); // Extended delay for enhanced animation
 }
 
 function executePyreCard(card) {
@@ -2743,24 +2823,26 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         return;
     }
     
-    // IMMEDIATELY update the target's health bar so damage shows at impact
-    if (result.target) {
-        window.updateSpriteHealthBar(targetOwner, targetCol, targetRow);
-    }
-    
     // Track if we're using dramatic death (affects timing)
     let usingDramaticDeath = false;
     const targetRarity = result.target?.rarity || 'common';
     
-    // IF KILLED: Start dramatic death FIRST so zoom begins at impact!
+    // IF KILLED: Start dramatic death IMMEDIATELY at moment of impact!
+    // This MUST happen before health bar updates or any other visual changes
     if (result.killed && targetSprite) {
         if (window.CombatEffects?.playDramaticDeath) {
             usingDramaticDeath = true;
-            console.log('[performAttackOnTarget] Calling playDramaticDeath for kill');
+            console.log('[performAttackOnTarget] Starting dramatic death zoom at impact moment');
             window.CombatEffects.playDramaticDeath(targetSprite, targetOwner, targetRarity);
         } else {
             targetSprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
         }
+    }
+    
+    // Update health bar AFTER death zoom starts (so zoom begins on impact, not after HP drops)
+    // For kills, we skip the health bar update since the sprite is being replaced by death animation
+    if (result.target && !result.killed) {
+        window.updateSpriteHealthBar(targetOwner, targetCol, targetRow);
     }
     
     // Combat effects for successful hit (plays in parallel with death zoom if killed)
@@ -2778,8 +2860,8 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
         CombatEffects.createImpactParticles(impactX, impactY, result.killed ? '#ff2222' : '#ff6666', 8 + damage);
         
-        // Show damage number (show 0 for 0-damage attacks too)
-        if (result.target) {
+        // Show damage number (show 0 for 0-damage attacks too, but skip for dramatic deaths - the zoom is more impactful)
+        if (result.target && !usingDramaticDeath) {
             CombatEffects.showDamageNumber(result.target, damage, isCrit);
         }
     }

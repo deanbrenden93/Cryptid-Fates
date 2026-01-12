@@ -984,15 +984,29 @@ window.Multiplayer = {
             case 'aura': {
                 showMessage('Opponent cast ' + (action.cardName || action.cardKey) + '!');
                 
-                // Add aura effect to target
-                const col = 1 - action.col;
-                const targetSprite = document.querySelector(`.cryptid-sprite[data-owner="enemy"][data-col="${col}"][data-row="${action.row}"]`);
-                if (targetSprite) {
-                    targetSprite.classList.add('aura-target');
-                    setTimeout(() => targetSprite.classList.remove('aura-target'), TIMING.aura);
+                // Add enhanced aura effect to target
+                const auraCol = 1 - action.col;
+                const auraTargetSprite = document.querySelector(`.cryptid-sprite[data-owner="enemy"][data-col="${auraCol}"][data-row="${action.row}"]`);
+                const auraBattlefield = document.getElementById('battlefield-area');
+                
+                if (auraTargetSprite && auraBattlefield && window.CombatEffects?.playAuraEffect) {
+                    const battlefieldRect = auraBattlefield.getBoundingClientRect();
+                    const targetRect = auraTargetSprite.getBoundingClientRect();
+                    
+                    // Start from top of screen (opponent's side)
+                    const startX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+                    const startY = 0;
+                    const targetX = startX;
+                    const targetY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+                    
+                    window.CombatEffects.playAuraEffect(startX, startY, targetX, targetY, auraTargetSprite);
+                } else if (auraTargetSprite) {
+                    // Fallback to basic animation
+                    auraTargetSprite.classList.add('aura-target');
+                    setTimeout(() => auraTargetSprite.classList.remove('aura-target'), TIMING.aura);
                 }
                 
-                setTimeout(safeComplete, TIMING.aura);
+                setTimeout(safeComplete, TIMING.aura + 300); // Extended for enhanced animation
                 break;
             }
             

@@ -456,23 +456,26 @@ function aiCombat(onComplete) {
             impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
         }
         
-        // IMMEDIATELY update the target's health bar so damage shows at impact
-        if (result.target && window.updateSpriteHealthBar) {
-            window.updateSpriteHealthBar('player', targetCol, targetRow);
-        }
-        
         // Track if using dramatic death
         let usingDramaticDeath = false;
         const targetRarity = result.target?.rarity || 'common';
         
-        // IF KILLED: Start dramatic death FIRST so zoom begins at impact!
+        // IF KILLED: Start dramatic death IMMEDIATELY at moment of impact!
+        // This MUST happen before health bar updates or any other visual changes
         if (result.killed && targetSprite && !result.negated && !result.protectionBlocked) {
             if (window.CombatEffects?.playDramaticDeath) {
                 usingDramaticDeath = true;
+                console.log('[AI Attack] Starting dramatic death zoom at impact moment');
                 window.CombatEffects.playDramaticDeath(targetSprite, 'player', targetRarity);
             } else {
                 targetSprite.classList.add('dying-left');
             }
+        }
+        
+        // Update health bar AFTER death zoom starts (so zoom begins on impact, not after HP drops)
+        // For kills, we skip the health bar update since the sprite is being replaced by death animation
+        if (result.target && !result.killed && window.updateSpriteHealthBar) {
+            window.updateSpriteHealthBar('player', targetCol, targetRow);
         }
         
         // Apply combat effects for successful hit (plays in parallel with death zoom)
@@ -490,8 +493,8 @@ function aiCombat(onComplete) {
             CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
             CombatEffects.createImpactParticles(impactX, impactY, result.killed ? '#ff2222' : '#ff6666', 8 + damage);
             
-            // Show damage number (show 0 for 0-damage attacks too)
-            if (result.target) {
+            // Show damage number (skip for dramatic deaths - the zoom is more impactful)
+            if (result.target && !usingDramaticDeath) {
                 CombatEffects.showDamageNumber(result.target, damage, isCrit);
             }
         }

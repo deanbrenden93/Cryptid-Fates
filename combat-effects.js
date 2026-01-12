@@ -658,6 +658,19 @@ window.CombatEffects = {
         const focusXPct = (focusX / battlefieldRect.width) * 100;
         const focusYPct = (focusY / battlefieldRect.height) * 100;
         
+        // FREEZE ATTACKER IN IMPACT POSE during death zoom
+        // Find the attacking sprite (it will have attack-impact-freeze or attack-lunge-enhanced class)
+        const attackerSprite = document.querySelector('.cryptid-sprite.attack-impact-freeze, .cryptid-sprite.attack-lunge-enhanced');
+        if (attackerSprite) {
+            // Capture current position and freeze it there
+            const attackerRect = attackerSprite.getBoundingClientRect();
+            const attackerParentRect = attackerSprite.parentElement?.getBoundingClientRect() || battlefieldRect;
+            
+            // Add a class to hold the attacker in place during death zoom
+            attackerSprite.classList.add('death-zoom-freeze');
+            attackerSprite.style.setProperty('--freeze-duration', `${config.zoomInDuration + config.holdDuration}ms`);
+        }
+        
         // START ZOOM IMMEDIATELY - this is the first thing that happens on impact!
         battlefield.style.transformOrigin = `${focusXPct}% ${focusYPct}%`;
         battlefield.style.transition = `transform ${config.zoomInDuration}ms cubic-bezier(0.2, 0, 0.3, 1)`;
@@ -674,6 +687,21 @@ window.CombatEffects = {
         setTimeout(() => {
             this.screenShake(config.shakeIntensity * 2.5, 250);
         }, 80); // Small delay for zoom to establish
+        
+        // Release attacker freeze after zoom-in + hold completes
+        if (attackerSprite) {
+            setTimeout(() => {
+                attackerSprite.classList.remove('death-zoom-freeze');
+                attackerSprite.classList.remove('attack-impact-freeze');
+                attackerSprite.classList.remove('attack-lunge-enhanced');
+                // Let it return to normal position
+                attackerSprite.classList.add('attack-recovery');
+                setTimeout(() => {
+                    attackerSprite.classList.remove('attack-recovery');
+                    attackerSprite.style.removeProperty('--attack-intensity');
+                }, 220);
+            }, config.zoomInDuration + config.holdDuration);
+        }
         
         // ==================== SETUP (happens in parallel with zoom) ====================
         // Clone sprite for death animation
@@ -985,6 +1013,15 @@ window.CombatEffects = {
                 
                 // After hitstop, play hit reaction on target
                 setTimeout(() => {
+                    // Check if dramatic death has taken control of the attacker
+                    // If so, let the death animation handle the recovery
+                    if (attackerSprite.classList.contains('death-zoom-freeze')) {
+                        // Dramatic death is in control - just clean up the trail
+                        trailContainer.remove();
+                        if (onComplete) onComplete();
+                        return;
+                    }
+                    
                     attackerSprite.classList.remove('attack-impact-freeze');
                     if (targetSprite) {
                         targetSprite.classList.remove('hitstop-freeze');
@@ -1104,6 +1141,7 @@ window.CombatEffects = {
     
     // ==================== ENHANCED SUMMON ANIMATION ====================
     // Features: Element particles, summoning circle, ground impact, staggered reveal
+    // Scales DRAMATICALLY with rarity: common → uncommon → rare → ultimate
     
     /**
      * Play enhanced summon animation
@@ -1131,11 +1169,15 @@ window.CombatEffects = {
         
         // Get element color
         const elementColor = this._getElementColor(element) || '#888888';
+        
+        // DRAMATICALLY different configs per rarity
+        // Duration multipliers: common 1.0, uncommon 1.2, rare 1.5, ultimate 2.0
+        // Shake: rare (0.5) is the floor, scale up from there
         const rarityConfig = {
-            common: { circleSize: 60, particleCount: 8, duration: 500 },
-            uncommon: { circleSize: 75, particleCount: 12, duration: 600 },
-            rare: { circleSize: 90, particleCount: 18, duration: 700 },
-            ultimate: { circleSize: 110, particleCount: 25, duration: 850 }
+            common:   { circleSize: 60,  particleCount: 8,  duration: 500,  shake: 0.5,  waves: 1, pillarHeight: 1,   motes: 10 },
+            uncommon: { circleSize: 80,  particleCount: 16, duration: 600,  shake: 0.6,  waves: 1, pillarHeight: 1.2, motes: 16 },
+            rare:     { circleSize: 110, particleCount: 30, duration: 750,  shake: 0.75, waves: 2, pillarHeight: 1.5, motes: 25 },
+            ultimate: { circleSize: 150, particleCount: 50, duration: 1000, shake: 0.95, waves: 3, pillarHeight: 2.0, motes: 40 }
         };
         const config = rarityConfig[rarity] || rarityConfig.common;
         
@@ -1159,7 +1201,7 @@ window.CombatEffects = {
         
         // Phase 1: Summoning circle appears with runes
         const circle = document.createElement('div');
-        circle.className = 'summon-circle';
+        circle.className = `summon-circle summon-rarity-${rarity}`;
         circle.style.cssText = `
             width: ${config.circleSize}px;
             height: ${config.circleSize}px;
@@ -1169,7 +1211,7 @@ window.CombatEffects = {
         
         // Add inner rotating ring
         const innerRing = document.createElement('div');
-        innerRing.className = 'summon-inner-ring';
+        innerRing.className = `summon-inner-ring summon-rarity-${rarity}`;
         innerRing.style.cssText = `
             width: ${config.circleSize * 0.7}px;
             height: ${config.circleSize * 0.7}px;
@@ -1177,37 +1219,81 @@ window.CombatEffects = {
         `;
         effectsContainer.appendChild(innerRing);
         
-        // Phase 2: Particles converge inward
+        // Add extra outer ring for rare+
+        if (config.waves >= 2) {
+            const outerRing = document.createElement('div');
+            outerRing.className = 'summon-outer-ring';
+            outerRing.style.cssText = `
+                width: ${config.circleSize * 1.3}px;
+                height: ${config.circleSize * 1.3}px;
+                --element-color: ${elementColor};
+            `;
+            effectsContainer.appendChild(outerRing);
+        }
+        
+        // Phase 2: Particles converge inward - WAVE 1
         setTimeout(() => {
             this._createConvergingParticles(effectsContainer, elementColor, config.particleCount);
         }, 80);
         
         // Phase 3: Energy pillar rises (layered effect)
         setTimeout(() => {
-            this._createEnergyPillar(effectsContainer, elementColor, config.circleSize);
+            this._createEnergyPillar(effectsContainer, elementColor, config.circleSize * config.pillarHeight);
         }, 200);
         
         // Phase 4: Sprite materializes with flash
-        sprite.classList.add('summon-materialize');
+        sprite.classList.add('summon-materialize', `summon-rarity-${rarity}`);
         sprite.style.setProperty('--element-color', elementColor);
         
         // Ground impact at materialization
         setTimeout(() => {
-            this.lightImpact();
+            // All rarities get screen shake (no fallback to lightImpact)
+            if (config.shake > 0) {
+                this.screenShake(config.shake, 100);
+            }
+            // Common gets no shake - just visual effects
             this._createGroundImpact(effectsContainer, elementColor);
             
             // Dispersing energy motes
-            this._createSummonMotes(effectsContainer, elementColor, 12);
+            this._createSummonMotes(effectsContainer, elementColor, config.motes);
         }, 320);
+        
+        // ===== WAVE 2 for rare+ =====
+        if (config.waves >= 2) {
+            setTimeout(() => {
+                this._createConvergingParticles(effectsContainer, elementColor, Math.floor(config.particleCount * 0.7));
+                this._createSummonMotes(effectsContainer, elementColor, Math.floor(config.motes * 0.6));
+                this.screenShake(config.shake * 0.6, 80);
+            }, 450);
+            
+            setTimeout(() => {
+                this._createGroundImpact(effectsContainer, elementColor);
+            }, 550);
+        }
+        
+        // ===== WAVE 3 for ultimate =====
+        if (config.waves >= 3) {
+            setTimeout(() => {
+                this._createConvergingParticles(effectsContainer, elementColor, Math.floor(config.particleCount * 0.5));
+                this._createEnergyPillar(effectsContainer, elementColor, config.circleSize * 0.8);
+                this.screenShake(config.shake * 0.8, 100);
+            }, 650);
+            
+            setTimeout(() => {
+                this._createSummonMotes(effectsContainer, elementColor, Math.floor(config.motes * 0.8));
+                this._createGroundImpact(effectsContainer, elementColor);
+                this.createImpactFlash(x, y, 60);
+            }, 800);
+        }
         
         // Cleanup with fade
         setTimeout(() => {
-            effectsContainer.style.transition = 'opacity 0.2s ease-out';
+            effectsContainer.style.transition = 'opacity 0.3s ease-out';
             effectsContainer.style.opacity = '0';
-        }, config.duration - 200);
+        }, config.duration - 250);
         
         setTimeout(() => {
-            sprite.classList.remove('summon-materialize');
+            sprite.classList.remove('summon-materialize', `summon-rarity-${rarity}`);
             sprite.style.removeProperty('--element-color');
             // Restore original row-based z-index
             sprite.style.zIndex = originalZIndex;
@@ -1812,6 +1898,239 @@ window.CombatEffects = {
         
         // Particles
         this.createImpactParticles(x, y, color, 10);
+    },
+    
+    // ==================== ENHANCED AURA ANIMATION ====================
+    // Magical buff animation: Sigil, swirling sparks, ascending energy
+    
+    /**
+     * Play enhanced aura effect - makes buffs feel magical and satisfying
+     * @param {number} startX - Unused (kept for API compatibility)
+     * @param {number} startY - Unused (kept for API compatibility)
+     * @param {number} targetX - Target X position (on cryptid)
+     * @param {number} targetY - Target Y position
+     * @param {HTMLElement} targetSprite - The cryptid sprite receiving the aura
+     */
+    playAuraEffect(startX, startY, targetX, targetY, targetSprite) {
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield) {
+            return;
+        }
+        
+        const auraColor = '#f4d03f'; // Golden
+        const auraColorBright = '#fff6a9';
+        
+        // ===== PHASE 1: Magical sigil appears beneath target (0ms) =====
+        const sigil = document.createElement('div');
+        sigil.className = 'aura-sigil';
+        sigil.style.cssText = `
+            position: absolute;
+            left: ${targetX}px;
+            top: ${targetY + 25}px;
+            transform: translate(-50%, -50%) rotateX(60deg);
+            width: 120px;
+            height: 120px;
+            pointer-events: none;
+            z-index: 10;
+        `;
+        
+        sigil.innerHTML = `
+            <svg viewBox="0 0 100 100" style="width: 100%; height: 100%;">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="${auraColor}" stroke-width="2" opacity="0.8"/>
+                <circle cx="50" cy="50" r="35" fill="none" stroke="${auraColorBright}" stroke-width="1" opacity="0.6"/>
+                <circle cx="50" cy="50" r="25" fill="none" stroke="${auraColor}" stroke-width="1.5" opacity="0.7"/>
+                <polygon points="50,10 61,40 95,40 68,60 79,90 50,70 21,90 32,60 5,40 39,40" 
+                         fill="none" stroke="${auraColorBright}" stroke-width="1" opacity="0.5"/>
+            </svg>
+        `;
+        battlefield.appendChild(sigil);
+        
+        requestAnimationFrame(() => {
+            sigil.classList.add('aura-sigil-active');
+        });
+        
+        setTimeout(() => sigil.remove(), 1000);
+        
+        // ===== PHASE 2: Swirling spark vortex around target =====
+        setTimeout(() => {
+            this._createSparkVortex(battlefield, targetX, targetY, auraColor, auraColorBright);
+        }, 50);
+        
+        // ===== PHASE 3: Golden pulse wave =====
+        setTimeout(() => {
+            this._createAuraPulse(battlefield, targetX, targetY, auraColor);
+            this.screenShake(0.15, 120);
+        }, 150);
+        
+        // ===== PHASE 4: Ascending energy sparks + target glow =====
+        setTimeout(() => {
+            this._createAscendingSparks(battlefield, targetX, targetY, auraColor, auraColorBright, 16);
+            
+            // Target glow
+            if (targetSprite) {
+                targetSprite.classList.add('aura-applying');
+                setTimeout(() => {
+                    targetSprite.classList.remove('aura-applying');
+                }, 800);
+            }
+            
+            // Flash at target
+            this.createImpactFlash(targetX, targetY, 40);
+        }, 250);
+        
+        // ===== PHASE 5: Final spark burst =====
+        setTimeout(() => {
+            this._createSparkBurst(battlefield, targetX, targetY, auraColorBright, auraColor, 12);
+        }, 450);
+    },
+    
+    /**
+     * Create swirling spark vortex around target
+     */
+    _createSparkVortex(container, x, y, color, brightColor) {
+        const sparkCount = 12;
+        for (let i = 0; i < sparkCount; i++) {
+            setTimeout(() => {
+                const spark = document.createElement('div');
+                spark.className = 'aura-vortex-spark';
+                
+                const startAngle = (i / sparkCount) * Math.PI * 2;
+                const startRadius = 50 + Math.random() * 20;
+                const rotation = 30 + Math.random() * 60;
+                const sparkHeight = 10 + Math.random() * 6;
+                const sparkWidth = 2 + Math.random() * 2;
+                
+                spark.style.cssText = `
+                    position: absolute;
+                    left: ${x + Math.cos(startAngle) * startRadius}px;
+                    top: ${y + Math.sin(startAngle) * startRadius}px;
+                    width: ${sparkWidth}px;
+                    height: ${sparkHeight}px;
+                    background: linear-gradient(to bottom, ${brightColor}, ${color} 50%, transparent);
+                    border-radius: 2px 2px 50% 50%;
+                    pointer-events: none;
+                    z-index: 1001;
+                    transform-origin: center bottom;
+                    transform: rotate(${rotation}deg);
+                    box-shadow: 0 0 6px ${color}, 0 0 12px ${brightColor};
+                `;
+                container.appendChild(spark);
+                
+                requestAnimationFrame(() => {
+                    spark.classList.add('aura-vortex-active');
+                });
+                
+                setTimeout(() => spark.remove(), 500);
+            }, i * 25);
+        }
+    },
+    
+    /**
+     * Create golden pulse effect
+     */
+    _createAuraPulse(container, x, y, color) {
+        const pulse = document.createElement('div');
+        pulse.className = 'aura-pulse';
+        pulse.style.cssText = `
+            position: absolute;
+            left: ${x}px;
+            top: ${y}px;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: radial-gradient(circle, ${color}66 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 9;
+        `;
+        container.appendChild(pulse);
+        
+        requestAnimationFrame(() => {
+            pulse.classList.add('aura-pulse-active');
+        });
+        
+        setTimeout(() => pulse.remove(), 500);
+    },
+    
+    /**
+     * Create ascending spark particles (buff feeling)
+     */
+    _createAscendingSparks(container, x, y, color, brightColor, count) {
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+                const spark = document.createElement('div');
+                spark.className = 'aura-ascending-spark';
+                
+                const offsetX = (Math.random() - 0.5) * 50;
+                const height = 8 + Math.random() * 10;
+                const width = 2 + Math.random() * 2;
+                const isGlowing = Math.random() > 0.4;
+                const riseHeight = 70 + Math.random() * 50;
+                
+                spark.style.cssText = `
+                    position: absolute;
+                    left: ${x + offsetX}px;
+                    top: ${y + 10}px;
+                    width: ${width}px;
+                    height: ${height}px;
+                    background: linear-gradient(to top, transparent, ${isGlowing ? brightColor : color} 30%, ${brightColor});
+                    border-radius: 50% 50% 2px 2px;
+                    pointer-events: none;
+                    z-index: 1002;
+                    box-shadow: 0 0 ${width * 2}px ${color}, 0 0 ${width * 4}px ${brightColor}40;
+                    --rise-offset: ${(Math.random() - 0.5) * 25}px;
+                    --rise-height: ${riseHeight}px;
+                    --wobble: ${(Math.random() - 0.5) * 15}px;
+                `;
+                container.appendChild(spark);
+                
+                requestAnimationFrame(() => {
+                    spark.classList.add('aura-spark-ascending');
+                });
+                
+                setTimeout(() => spark.remove(), 700);
+            }, i * 20);
+        }
+    },
+    
+    /**
+     * Create final spark burst
+     */
+    _createSparkBurst(container, x, y, brightColor, baseColor, count) {
+        for (let i = 0; i < count; i++) {
+            const spark = document.createElement('div');
+            spark.className = 'aura-burst-spark';
+            
+            const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+            const distance = 35 + Math.random() * 30;
+            const height = 6 + Math.random() * 8;
+            const width = 2 + Math.random() * 2;
+            
+            spark.style.cssText = `
+                position: absolute;
+                left: ${x}px;
+                top: ${y}px;
+                width: ${width}px;
+                height: ${height}px;
+                background: linear-gradient(to top, transparent, ${baseColor} 20%, ${brightColor});
+                border-radius: 50% 50% 2px 2px;
+                pointer-events: none;
+                z-index: 1003;
+                transform-origin: center bottom;
+                transform: rotate(${(angle * 180 / Math.PI) + 90}deg);
+                box-shadow: 0 0 4px ${baseColor}, 0 0 8px ${brightColor};
+                --burst-x: ${Math.cos(angle) * distance}px;
+                --burst-y: ${Math.sin(angle) * distance}px;
+                --burst-rotation: ${(angle * 180 / Math.PI) + 90}deg;
+            `;
+            container.appendChild(spark);
+            
+            requestAnimationFrame(() => {
+                spark.classList.add('aura-burst-active');
+            });
+            
+            setTimeout(() => spark.remove(), 350);
+        }
     },
     
     // ==================== TURN TRANSITION ANIMATION ====================
@@ -3473,6 +3792,19 @@ window.CombatEffects = {
             transform: translate(-50%, -50%) scale(1.05) !important;
         }
         
+        /* Death zoom freeze - holds attacker in impact pose during cinematic death */
+        .cryptid-sprite.death-zoom-freeze {
+            animation: none !important;
+            transition: none !important;
+            /* Keep the impact pose transform - player attacks right, enemy attacks left */
+            transform: translate(calc(-50% + 55px * var(--attack-intensity, 1)), -50%) scale(1.15, 0.9) !important;
+            filter: brightness(1.3) !important;
+        }
+        
+        .cryptid-sprite.enemy.death-zoom-freeze {
+            transform: translate(calc(-50% - 55px * var(--attack-intensity, 1)), -50%) scale(1.15, 0.9) !important;
+        }
+        
         /* Recovery phase */
         .cryptid-sprite.attack-recovery {
             animation: attackRecovery 220ms cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
@@ -3629,6 +3961,7 @@ window.CombatEffects = {
         }
         
         /* ==================== ENHANCED SUMMON ANIMATION ==================== */
+        /* Scales DRAMATICALLY with rarity: common → uncommon → rare → ultimate */
         
         /* Summoning circle - outer magical ring */
         .summon-circle {
@@ -3648,6 +3981,77 @@ window.CombatEffects = {
                 inset 0 0 20px rgba(255,255,255,0.15);
         }
         
+        /* UNCOMMON - Enhanced glow */
+        .summon-circle.summon-rarity-uncommon {
+            border-width: 3px;
+            animation: summonCircleAppear 540ms ease-out forwards;
+            box-shadow: 
+                0 0 25px var(--element-color, #888),
+                0 0 45px var(--element-color, #888),
+                inset 0 0 25px rgba(255,255,255,0.2);
+        }
+        
+        /* RARE - Multiple pulse animation */
+        .summon-circle.summon-rarity-rare {
+            border-width: 4px;
+            animation: summonCircleAppearRare 750ms ease-out forwards;
+            box-shadow: 
+                0 0 40px var(--element-color, #888),
+                0 0 70px var(--element-color, #888),
+                0 0 100px var(--element-color, #888),
+                inset 0 0 35px rgba(255,255,255,0.3);
+        }
+        
+        /* ULTIMATE - Maximum epic intensity */
+        .summon-circle.summon-rarity-ultimate {
+            border-width: 5px;
+            animation: summonCircleAppearUltimate 1000ms ease-out forwards;
+            box-shadow: 
+                0 0 60px var(--element-color, #888),
+                0 0 100px var(--element-color, #888),
+                0 0 150px var(--element-color, #888),
+                0 0 200px var(--element-color, #888),
+                inset 0 0 50px rgba(255,255,255,0.4);
+        }
+        
+        /* Extra outer ring for rare+ */
+        .summon-outer-ring {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            border: 2px solid var(--element-color, #888);
+            opacity: 0;
+            animation: summonOuterRingPulse 800ms ease-out forwards;
+            box-shadow: 
+                0 0 30px var(--element-color, #888),
+                0 0 50px var(--element-color, #888);
+        }
+        
+        @keyframes summonOuterRingPulse {
+            0% { 
+                transform: translate(-50%, -50%) scale(0.3);
+                opacity: 0;
+            }
+            25% { 
+                transform: translate(-50%, -50%) scale(1.1);
+                opacity: 0.8;
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.0);
+                opacity: 0.6;
+            }
+            75% {
+                transform: translate(-50%, -50%) scale(1.2);
+                opacity: 0.4;
+            }
+            100% { 
+                transform: translate(-50%, -50%) scale(1.5);
+                opacity: 0;
+            }
+        }
+        
         /* Inner rotating ring */
         .summon-inner-ring {
             position: absolute;
@@ -3658,6 +4062,21 @@ window.CombatEffects = {
             border: 1.5px dashed var(--element-color, #888);
             opacity: 0;
             animation: summonInnerRing 400ms ease-out forwards;
+        }
+        
+        .summon-inner-ring.summon-rarity-uncommon {
+            border-width: 2px;
+            animation: summonInnerRing 480ms ease-out forwards;
+        }
+        
+        .summon-inner-ring.summon-rarity-rare {
+            border-width: 2.5px;
+            animation: summonInnerRingIntense 675ms ease-out forwards;
+        }
+        
+        .summon-inner-ring.summon-rarity-ultimate {
+            border-width: 3px;
+            animation: summonInnerRingIntense 900ms ease-out forwards;
         }
         
         @keyframes summonCircleAppear {
@@ -3674,6 +4093,60 @@ window.CombatEffects = {
             }
         }
         
+        @keyframes summonCircleAppearRare {
+            0% { 
+                transform: translate(-50%, -50%) scale(0.1) rotate(0deg);
+                opacity: 0;
+            }
+            20% { 
+                transform: translate(-50%, -50%) scale(1.2) rotate(60deg);
+                opacity: 1;
+            }
+            40% {
+                transform: translate(-50%, -50%) scale(0.95) rotate(120deg);
+                opacity: 0.95;
+            }
+            60% {
+                transform: translate(-50%, -50%) scale(1.1) rotate(180deg);
+                opacity: 0.9;
+            }
+            100% { 
+                transform: translate(-50%, -50%) scale(1) rotate(270deg);
+                opacity: 0;
+            }
+        }
+        
+        @keyframes summonCircleAppearUltimate {
+            0% { 
+                transform: translate(-50%, -50%) scale(0.05) rotate(0deg);
+                opacity: 0;
+            }
+            15% { 
+                transform: translate(-50%, -50%) scale(1.4) rotate(90deg);
+                opacity: 1;
+            }
+            30% {
+                transform: translate(-50%, -50%) scale(0.9) rotate(160deg);
+                opacity: 1;
+            }
+            45% {
+                transform: translate(-50%, -50%) scale(1.25) rotate(230deg);
+                opacity: 1;
+            }
+            60% {
+                transform: translate(-50%, -50%) scale(0.95) rotate(300deg);
+                opacity: 0.95;
+            }
+            75% {
+                transform: translate(-50%, -50%) scale(1.1) rotate(370deg);
+                opacity: 0.85;
+            }
+            100% { 
+                transform: translate(-50%, -50%) scale(1) rotate(450deg);
+                opacity: 0;
+            }
+        }
+        
         @keyframes summonInnerRing {
             0% { 
                 transform: translate(-50%, -50%) scale(0.3) rotate(0deg);
@@ -3684,6 +4157,29 @@ window.CombatEffects = {
             }
             100% { 
                 transform: translate(-50%, -50%) scale(1) rotate(-90deg);
+                opacity: 0;
+            }
+        }
+        
+        @keyframes summonInnerRingIntense {
+            0% { 
+                transform: translate(-50%, -50%) scale(0.2) rotate(0deg);
+                opacity: 0;
+            }
+            25% {
+                transform: translate(-50%, -50%) scale(1.15) rotate(-60deg);
+                opacity: 1;
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(0.9) rotate(-140deg);
+                opacity: 0.9;
+            }
+            75% {
+                transform: translate(-50%, -50%) scale(1.05) rotate(-220deg);
+                opacity: 0.7;
+            }
+            100% { 
+                transform: translate(-50%, -50%) scale(1) rotate(-300deg);
                 opacity: 0;
             }
         }
@@ -3873,9 +4369,24 @@ window.CombatEffects = {
             }
         }
         
-        /* Sprite materialize effect */
+        /* Sprite materialize effect - base (common) */
         .cryptid-sprite.summon-materialize {
             animation: spriteMaterialize 480ms ease-out forwards !important;
+        }
+        
+        /* UNCOMMON - Slightly bigger entrance */
+        .cryptid-sprite.summon-materialize.summon-rarity-uncommon {
+            animation: spriteMaterializeUncommon 576ms ease-out forwards !important;
+        }
+        
+        /* RARE - Dramatic entrance with glow */
+        .cryptid-sprite.summon-materialize.summon-rarity-rare {
+            animation: spriteMaterializeRare 720ms ease-out forwards !important;
+        }
+        
+        /* ULTIMATE - Maximum epic entrance */
+        .cryptid-sprite.summon-materialize.summon-rarity-ultimate {
+            animation: spriteMaterializeUltimate 960ms ease-out forwards !important;
         }
         
         @keyframes spriteMaterialize {
@@ -3897,6 +4408,113 @@ window.CombatEffects = {
             75% {
                 transform: translate(-50%, -50%) scale(1.03) translateY(-1px);
                 filter: brightness(1.3);
+            }
+            100% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1) translateY(0);
+                filter: brightness(1);
+            }
+        }
+        
+        @keyframes spriteMaterializeUncommon {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.3) translateY(15px);
+                filter: brightness(4) blur(8px) drop-shadow(0 0 20px var(--element-color, #888));
+            }
+            20% {
+                opacity: 0.6;
+                transform: translate(-50%, -50%) scale(1.25) translateY(-8px);
+                filter: brightness(3) blur(3px) drop-shadow(0 0 30px var(--element-color, #888));
+            }
+            45% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(0.92) translateY(3px);
+                filter: brightness(2) blur(0) drop-shadow(0 0 20px var(--element-color, #888));
+            }
+            70% {
+                transform: translate(-50%, -50%) scale(1.06) translateY(-2px);
+                filter: brightness(1.4) drop-shadow(0 0 10px var(--element-color, #888));
+            }
+            100% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1) translateY(0);
+                filter: brightness(1);
+            }
+        }
+        
+        @keyframes spriteMaterializeRare {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.2) translateY(20px);
+                filter: brightness(5) blur(12px) drop-shadow(0 0 40px var(--element-color, #888));
+            }
+            15% {
+                opacity: 0.5;
+                transform: translate(-50%, -50%) scale(1.4) translateY(-12px);
+                filter: brightness(4) blur(5px) drop-shadow(0 0 60px var(--element-color, #888));
+            }
+            30% {
+                opacity: 0.9;
+                transform: translate(-50%, -50%) scale(0.85) translateY(5px);
+                filter: brightness(3) blur(1px) drop-shadow(0 0 50px var(--element-color, #888));
+            }
+            50% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.2) translateY(-5px);
+                filter: brightness(2.5) blur(0) drop-shadow(0 0 40px var(--element-color, #888));
+            }
+            70% {
+                transform: translate(-50%, -50%) scale(0.95) translateY(2px);
+                filter: brightness(1.8) drop-shadow(0 0 25px var(--element-color, #888));
+            }
+            85% {
+                transform: translate(-50%, -50%) scale(1.05) translateY(-1px);
+                filter: brightness(1.4) drop-shadow(0 0 15px var(--element-color, #888));
+            }
+            100% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1) translateY(0);
+                filter: brightness(1);
+            }
+        }
+        
+        @keyframes spriteMaterializeUltimate {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.1) translateY(30px);
+                filter: brightness(6) blur(15px) drop-shadow(0 0 60px var(--element-color, #888)) drop-shadow(0 0 100px var(--element-color, #888));
+            }
+            10% {
+                opacity: 0.4;
+                transform: translate(-50%, -50%) scale(1.6) translateY(-20px);
+                filter: brightness(5) blur(8px) drop-shadow(0 0 80px var(--element-color, #888)) drop-shadow(0 0 120px var(--element-color, #888));
+            }
+            22% {
+                opacity: 0.8;
+                transform: translate(-50%, -50%) scale(0.75) translateY(8px);
+                filter: brightness(4) blur(3px) drop-shadow(0 0 70px var(--element-color, #888));
+            }
+            35% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.35) translateY(-10px);
+                filter: brightness(3.5) blur(1px) drop-shadow(0 0 60px var(--element-color, #888));
+            }
+            48% {
+                transform: translate(-50%, -50%) scale(0.9) translateY(4px);
+                filter: brightness(2.8) blur(0) drop-shadow(0 0 50px var(--element-color, #888));
+            }
+            62% {
+                transform: translate(-50%, -50%) scale(1.2) translateY(-6px);
+                filter: brightness(2.2) drop-shadow(0 0 40px var(--element-color, #888));
+            }
+            76% {
+                transform: translate(-50%, -50%) scale(0.97) translateY(2px);
+                filter: brightness(1.7) drop-shadow(0 0 25px var(--element-color, #888));
+            }
+            88% {
+                transform: translate(-50%, -50%) scale(1.08) translateY(-1px);
+                filter: brightness(1.4) drop-shadow(0 0 15px var(--element-color, #888));
             }
             100% {
                 opacity: 1;
@@ -4391,6 +5009,211 @@ window.CombatEffects = {
                 width: 100px;
                 height: 100px;
                 opacity: 0;
+            }
+        }
+        
+        /* ==================== ENHANCED AURA ANIMATION ==================== */
+        
+        /* Magical sigil beneath target */
+        .aura-sigil {
+            opacity: 0;
+            transform: translate(-50%, -50%) rotateX(60deg) scale(0.3);
+        }
+        
+        .aura-sigil.aura-sigil-active {
+            animation: auraSigilAppear 1000ms ease-out forwards;
+        }
+        
+        @keyframes auraSigilAppear {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) rotateX(60deg) scale(0.3) rotate(0deg);
+            }
+            15% {
+                opacity: 1;
+                transform: translate(-50%, -50%) rotateX(60deg) scale(1.15) rotate(20deg);
+            }
+            35% {
+                opacity: 0.95;
+                transform: translate(-50%, -50%) rotateX(60deg) scale(1) rotate(50deg);
+            }
+            60% {
+                opacity: 0.7;
+                transform: translate(-50%, -50%) rotateX(60deg) scale(1.05) rotate(100deg);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) rotateX(60deg) scale(1.2) rotate(160deg);
+            }
+        }
+        
+        .aura-sigil svg {
+            animation: auraSigilGlow 350ms ease-in-out infinite;
+        }
+        
+        @keyframes auraSigilGlow {
+            0%, 100% { filter: drop-shadow(0 0 10px #f4d03f); }
+            50% { filter: drop-shadow(0 0 25px #fff6a9) drop-shadow(0 0 45px #f4d03f); }
+        }
+        
+        /* Vortex spark - elongated flame-like shape */
+        .aura-vortex-spark {
+            opacity: 0;
+        }
+        
+        .aura-vortex-spark.aura-vortex-active {
+            animation: auraVortexSpin 500ms ease-out forwards;
+        }
+        
+        @keyframes auraVortexSpin {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.5);
+            }
+            20% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.2);
+            }
+            60% {
+                opacity: 1;
+                transform: translate(calc(-50% - 20px), calc(-50% - 25px)) scale(1) rotate(45deg);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(calc(-50% - 10px), calc(-50% - 50px)) scale(0.4) rotate(90deg);
+            }
+        }
+        
+        /* Pulse wave */
+        .aura-pulse {
+            opacity: 0;
+        }
+        
+        .aura-pulse.aura-pulse-active {
+            animation: auraPulseExpand 500ms ease-out forwards;
+        }
+        
+        @keyframes auraPulseExpand {
+            0% {
+                width: 20px;
+                height: 20px;
+                opacity: 0.9;
+            }
+            100% {
+                width: 180px;
+                height: 180px;
+                opacity: 0;
+            }
+        }
+        
+        /* Ascending sparks - elongated flame-like particles */
+        .aura-ascending-spark {
+            transform: translate(-50%, -50%);
+            opacity: 0;
+        }
+        
+        .aura-ascending-spark.aura-spark-ascending {
+            animation: auraSparkRise 700ms ease-out forwards;
+        }
+        
+        @keyframes auraSparkRise {
+            0% {
+                transform: translate(-50%, -50%) scaleY(0.3);
+                opacity: 0;
+            }
+            15% {
+                transform: translate(calc(-50% + var(--rise-offset) * 0.1), calc(-50% - var(--rise-height) * 0.1)) scaleY(1.3);
+                opacity: 1;
+            }
+            40% {
+                transform: translate(calc(-50% + var(--rise-offset) * 0.4 + var(--wobble)), calc(-50% - var(--rise-height) * 0.4)) scaleY(1.1);
+                opacity: 1;
+            }
+            70% {
+                transform: translate(calc(-50% + var(--rise-offset) * 0.8), calc(-50% - var(--rise-height) * 0.75)) scaleY(0.9);
+                opacity: 0.7;
+            }
+            100% {
+                transform: translate(calc(-50% + var(--rise-offset)), calc(-50% - var(--rise-height))) scaleY(0.3);
+                opacity: 0;
+            }
+        }
+        
+        /* Burst sparks - radial explosion */
+        .aura-burst-spark {
+            transform: translate(-50%, -100%);
+            opacity: 0;
+        }
+        
+        .aura-burst-spark.aura-burst-active {
+            animation: auraBurstOut 350ms ease-out forwards;
+        }
+        
+        @keyframes auraBurstOut {
+            0% {
+                transform: translate(-50%, -100%) rotate(var(--burst-rotation)) scale(0.3);
+                opacity: 0;
+            }
+            20% {
+                transform: translate(-50%, -100%) rotate(var(--burst-rotation)) scale(1.4);
+                opacity: 1;
+            }
+            50% {
+                transform: translate(
+                    calc(-50% + var(--burst-x) * 0.6), 
+                    calc(-100% + var(--burst-y) * 0.6)
+                ) rotate(var(--burst-rotation)) scale(1.1);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(
+                    calc(-50% + var(--burst-x)), 
+                    calc(-100% + var(--burst-y))
+                ) rotate(var(--burst-rotation)) scale(0.2);
+                opacity: 0;
+            }
+        }
+        
+        /* Target receiving aura - golden glow */
+        .cryptid-sprite.aura-applying {
+            animation: auraApplyGlow 800ms ease-out !important;
+            z-index: 100;
+        }
+        
+        @keyframes auraApplyGlow {
+            0% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+                transform: translate(-50%, -50%) scale(1);
+            }
+            15% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) 
+                        drop-shadow(0 0 30px rgba(244, 208, 63, 1)) 
+                        drop-shadow(0 0 60px rgba(244, 208, 63, 0.8))
+                        brightness(1.5);
+                transform: translate(-50%, -50%) scale(1.15);
+            }
+            30% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) 
+                        drop-shadow(0 0 50px rgba(255, 246, 169, 1)) 
+                        drop-shadow(0 0 80px rgba(244, 208, 63, 0.9))
+                        brightness(1.8);
+                transform: translate(-50%, -50%) scale(1.1);
+            }
+            50% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) 
+                        drop-shadow(0 0 40px rgba(244, 208, 63, 0.9))
+                        brightness(1.4);
+                transform: translate(-50%, -50%) scale(1.12);
+            }
+            70% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) 
+                        drop-shadow(0 0 25px rgba(244, 208, 63, 0.6))
+                        brightness(1.2);
+                transform: translate(-50%, -50%) scale(1.05);
+            }
+            100% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+                transform: translate(-50%, -50%) scale(1);
             }
         }
         

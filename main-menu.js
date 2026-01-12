@@ -541,10 +541,12 @@ window.MainMenu = {
             .fate-decider {
                 width: 80px;
                 height: 80px;
+                aspect-ratio: 1;
                 margin: 30px 0;
                 perspective: 200px;
                 opacity: 0;
                 transition: opacity 0.3s ease;
+                flex-shrink: 0;
             }
             
             .fate-decider.active {
@@ -554,9 +556,11 @@ window.MainMenu = {
             .fate-coin {
                 width: 100%;
                 height: 100%;
+                aspect-ratio: 1;
                 position: relative;
                 transform-style: preserve-3d;
                 animation: coinSpin 0.15s linear infinite;
+                border-radius: 50%;
             }
             
             .fate-coin.stopped {
@@ -572,6 +576,7 @@ window.MainMenu = {
                 position: absolute;
                 width: 100%;
                 height: 100%;
+                aspect-ratio: 1;
                 border-radius: 50%;
                 display: flex;
                 justify-content: center;
@@ -687,11 +692,13 @@ window.MainMenu = {
                 .fate-decider {
                     width: 60px;
                     height: 60px;
+                    aspect-ratio: 1;
                     margin: 16px 0;
                 }
                 
                 .coin-face {
                     font-size: 28px;
+                    aspect-ratio: 1;
                 }
                 
                 .turn-order-result {

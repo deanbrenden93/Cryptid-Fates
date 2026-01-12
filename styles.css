@@ -1371,7 +1371,7 @@ body {
 #pyre-burn-text.active { animation: pyreBurnText 1.2s ease-out forwards; }
 
 /* ==================== HAND AREA - Grid-Based Proportional Layout ==================== */
-/* VERSION: 6.2 - Centered layout, no clipping, better desktop scaling */
+/* VERSION: 6.3 - Viewport-fit cards, no vertical scroll, mobile-optimized */
 
 /* 
  * Design principles:
@@ -1380,10 +1380,11 @@ body {
  * 3. Buttons scale with cards and stay adjacent to card area
  * 4. Content is centered as a group (buttons + cards together)
  * 5. Overflow visible to prevent card clipping on hover
+ * 6. Hand height MUST fit within viewport - no vertical scroll
  */
 #hand-area {
-    /* Height: 22% of viewport, min 130px, max 240px */
-    --hand-h: clamp(130px, 22vh, 240px);
+    /* Height: 22% of viewport, min 130px, max 240px - use dvh for mobile browser chrome */
+    --hand-h: clamp(130px, 22dvh, 240px);
     
     /* Card dimensions - 80% of hand height, room for hover */
     --card-h: calc(var(--hand-h) * 0.80);
@@ -1397,6 +1398,7 @@ body {
     --info-h: 24px;
     
     height: var(--hand-h);
+    max-height: 35dvh; /* Ensure hand never exceeds 35% of viewport */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1412,14 +1414,14 @@ body {
 /* Very short screens (phones in landscape) */
 @media (max-height: 400px) {
     #hand-area {
-        --hand-h: 150px;
+        --hand-h: min(140px, 32dvh);
     }
 }
 
-/* Mobile screens - for 140px cards */
+/* Mobile screens - reduced card scale (~10% smaller) */
 @media (max-height: 500px) {
     #hand-area {
-        --hand-h: 155px;
+        --hand-h: min(145px, 30dvh);
     }
 }
 
@@ -1475,6 +1477,15 @@ body {
     max-width: 1400px; /* Keep everything grouped on wide screens */
     padding: 0 2vw 6px 2vw;
     overflow: visible;
+    max-height: 100%; /* Ensure content fits within hand area */
+}
+
+/* Mobile: Tighter gap between buttons and cards */
+@media (max-height: 500px) {
+    .hand-main-content {
+        gap: 8px;
+        padding: 0 1vw 4px 1vw;
+    }
 }
 
 /* ===== CARDS AREA - Contains scroll wrapper ===== */
@@ -1621,6 +1632,7 @@ body {
     overflow-y: visible;
     padding-top: 45px;
     min-height: calc(var(--card-h) + 45px);
+    max-height: 100%; /* Never exceed parent hand-area */
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -1916,22 +1928,58 @@ body {
         0 0 12px rgba(180, 100, 255, 0.25);
 }
 
-/* Mobile: Explicitly set smaller card dimensions */
+/* Mobile: Reduced card scale (~10% smaller), larger side buttons */
 @media (max-height: 500px) {
     #hand-area .battle-card {
-        --gc-width: 95px !important;
-        --gc-height: 140px !important;
-        width: 95px !important;
-        height: 140px !important;
+        --gc-width: 86px !important;
+        --gc-height: 126px !important;
+        width: 86px !important;
+        height: 126px !important;
     }
     
+    /* Side buttons - significantly larger for better touch targets */
     #hand-area .hand-side-btn {
-        width: 70px !important;
-        height: 70px !important;
+        width: 100px !important;
+        height: 100px !important;
+        min-width: 100px;
+        min-height: 100px;
     }
     
     #hand-area .card-wrapper:hover {
-        transform: translateY(-12px) scale(1.05);
+        transform: translateY(-10px) scale(1.04);
+    }
+    
+    /* Ensure cards container doesn't overflow vertically */
+    #hand-area #hand-container {
+        padding-top: 35px;
+        min-height: calc(126px + 35px);
+    }
+}
+
+/* Very short screens (phones in landscape) - even smaller cards, still large buttons */
+@media (max-height: 400px) {
+    #hand-area .battle-card {
+        --gc-width: 78px !important;
+        --gc-height: 114px !important;
+        width: 78px !important;
+        height: 114px !important;
+    }
+    
+    /* Keep buttons large even on very short screens for touch targets */
+    #hand-area .hand-side-btn {
+        width: 95px !important;
+        height: 95px !important;
+        min-width: 95px;
+        min-height: 95px;
+    }
+    
+    #hand-area .card-wrapper:hover {
+        transform: translateY(-8px) scale(1.03);
+    }
+    
+    #hand-area #hand-container {
+        padding-top: 30px;
+        min-height: calc(114px + 30px);
     }
 }
 
