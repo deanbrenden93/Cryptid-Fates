@@ -223,6 +223,104 @@ body {
     z-index: 2;
 }
 
+/* ==================== PHASE VISUAL EFFECTS ==================== */
+
+/* Combat phase - red hue overlay */
+#game-container.phase-combat::after {
+    background: 
+        radial-gradient(ellipse at center, transparent 30%, rgba(80, 20, 20, 0.4) 100%),
+        linear-gradient(180deg, rgba(60, 15, 15, 0.15) 0%, rgba(40, 10, 10, 0.25) 100%);
+}
+
+/* Enemy turn - dark blue/purple tint */
+#game-container.enemy-turn::after {
+    background: 
+        radial-gradient(ellipse at center, transparent 40%, rgba(20, 20, 50, 0.5) 100%),
+        linear-gradient(180deg, rgba(15, 15, 35, 0.2) 0%, rgba(10, 10, 30, 0.3) 100%);
+}
+
+/* ==================== DANGER VIGNETTE - Survival Horror Style ==================== */
+
+/* Warning: 7 deaths - subtle pulsing red vignette */
+#game-container.danger-warning {
+    animation: dangerPulseSubtle 4s infinite ease-in-out;
+}
+
+#game-container.danger-warning::after {
+    background: 
+        radial-gradient(ellipse at center, transparent 50%, rgba(100, 20, 20, 0.5) 100%) !important;
+}
+
+/* Critical: 8 deaths - stronger red vignette with gentle pulse */
+#game-container.danger-critical {
+    animation: dangerPulseStrong 3s infinite ease-in-out;
+}
+
+#game-container.danger-critical::after {
+    background: 
+        radial-gradient(ellipse at center, transparent 40%, rgba(120, 15, 15, 0.6) 85%, rgba(80, 0, 0, 0.8) 100%) !important;
+}
+
+/* Imminent death: 9 deaths - intense vignette with steady pulse */
+#game-container.danger-imminent {
+    animation: dangerPulseUrgent 2s infinite ease-in-out;
+}
+
+#game-container.danger-imminent::after {
+    background: 
+        radial-gradient(ellipse at center, rgba(40, 0, 0, 0.2) 20%, rgba(100, 0, 0, 0.5) 60%, rgba(60, 0, 0, 0.85) 100%) !important;
+}
+
+/* Add blood drip effect at edges for imminent death */
+#game-container.danger-imminent::before {
+    background: 
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E"),
+        linear-gradient(180deg, rgba(80, 0, 0, 0.4) 0%, transparent 15%),
+        linear-gradient(0deg, rgba(80, 0, 0, 0.3) 0%, transparent 10%) !important;
+    mix-blend-mode: multiply;
+}
+
+/* Gentle animations - reduced intensity for epilepsy safety */
+@keyframes dangerPulseSubtle {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(0.97) saturate(1.05); }
+}
+
+@keyframes dangerPulseStrong {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(0.93) saturate(1.08); }
+}
+
+@keyframes dangerPulseUrgent {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(0.9) saturate(1.1); }
+}
+
+/* Danger text overlay for imminent death */
+#game-container.danger-imminent .death-counter.player::after {
+    content: '⚠ DANGER';
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    font-weight: 700;
+    color: #ff4444;
+    text-shadow: 0 0 8px #ff0000, 0 0 12px #aa0000;
+    animation: dangerTextFlash 1.5s infinite ease-in-out;
+    white-space: nowrap;
+}
+
+/* Death counter needs position relative for the ::after */
+.death-counter.player {
+    position: relative;
+}
+
+@keyframes dangerTextFlash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
 /* ==================== HUD (Top Bar) - Silver/Grunge ==================== */
 #hud {
     height: 52px;
@@ -701,6 +799,117 @@ body {
     border-color: rgba(180, 200, 160, 0.6) !important;
     box-shadow: 0 4px 0 rgba(30, 40, 25, 0.9), 0 0 15px rgba(180, 200, 160, 0.3);
 }
+
+/* ==================== COMBAT PHASE ENHANCEMENTS ==================== */
+
+/* Cryptid that can attack - pulse glow effect */
+.cryptid-sprite.can-attack-cryptid {
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.cryptid-sprite.can-attack-cryptid::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(120, 200, 100, 0.3) 0%, transparent 70%);
+    animation: canAttackPulse 2s infinite ease-in-out;
+    z-index: -1;
+}
+
+@keyframes canAttackPulse {
+    0%, 100% { transform: scale(0.9); opacity: 0.5; }
+    50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+/* Selected attacker - intense highlight */
+.cryptid-sprite.attacker-selected {
+    filter: drop-shadow(0 0 12px rgba(255, 200, 100, 0.9)) drop-shadow(0 0 20px rgba(255, 150, 50, 0.6));
+    z-index: 100 !important;
+}
+
+.cryptid-sprite.attacker-selected::before {
+    content: '';
+    position: absolute;
+    inset: -12px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(255, 200, 100, 0.5) 0%, rgba(255, 150, 50, 0.2) 50%, transparent 70%);
+    animation: attackerSelectedPulse 1s infinite ease-in-out;
+    z-index: -1;
+}
+
+.cryptid-sprite.attacker-selected::after {
+    content: '⚔️';
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 16px;
+    animation: attackerIconBob 1s infinite ease-in-out;
+    filter: drop-shadow(0 0 4px rgba(0,0,0,0.8));
+}
+
+@keyframes attackerSelectedPulse {
+    0%, 100% { transform: scale(0.95); opacity: 0.7; }
+    50% { transform: scale(1.15); opacity: 1; }
+}
+
+@keyframes attackerIconBob {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(-4px); }
+}
+
+/* Support Link Lines - Radio wave effect between combat and support */
+.support-link-line {
+    background: linear-gradient(90deg, 
+        transparent 0%, 
+        rgba(100, 180, 130, 0.3) 20%, 
+        rgba(100, 180, 130, 0.5) 50%, 
+        rgba(100, 180, 130, 0.3) 80%, 
+        transparent 100%
+    );
+    overflow: visible;
+}
+
+.support-link-line.enemy {
+    background: linear-gradient(90deg, 
+        transparent 0%, 
+        rgba(180, 100, 100, 0.3) 20%, 
+        rgba(180, 100, 100, 0.5) 50%, 
+        rgba(180, 100, 100, 0.3) 80%, 
+        transparent 100%
+    );
+}
+
+/* Pulsing orbs that travel along the link */
+.support-link-orb {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: radial-gradient(circle, rgba(150, 220, 180, 1) 0%, rgba(100, 180, 130, 0.8) 50%, transparent 100%);
+    border-radius: 50%;
+    top: 50%;
+    transform: translateY(-50%);
+    animation: supportOrbTravel 2s infinite ease-in-out;
+    box-shadow: 0 0 8px rgba(100, 180, 130, 0.8), 0 0 12px rgba(100, 180, 130, 0.5);
+}
+
+.support-link-line.enemy .support-link-orb {
+    background: radial-gradient(circle, rgba(220, 150, 150, 1) 0%, rgba(180, 100, 100, 0.8) 50%, transparent 100%);
+    box-shadow: 0 0 8px rgba(180, 100, 100, 0.8), 0 0 12px rgba(180, 100, 100, 0.5);
+}
+
+@keyframes supportOrbTravel {
+    0% { left: 0%; opacity: 0; transform: translateY(-50%) scale(0.5); }
+    10% { opacity: 1; transform: translateY(-50%) scale(1); }
+    90% { opacity: 1; transform: translateY(-50%) scale(1); }
+    100% { left: 100%; opacity: 0; transform: translateY(-50%) scale(0.5); }
+}
+
+/* Stagger orb animations */
+.support-link-orb:nth-child(2) { animation-delay: 0.66s; }
+.support-link-orb:nth-child(3) { animation-delay: 1.33s; }
 
 .tile.drag-over .tile-base {
     transform: scale(1.05);
@@ -1456,7 +1665,8 @@ body {
     height: var(--info-h);
     width: 100%;
     flex-shrink: 0;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
+    margin-top: -24px;
 }
 
 /* Hide info bar on mobile - MUST come after base definition */
@@ -1530,6 +1740,20 @@ body {
     color: #c9a227;
     background: rgba(200, 160, 40, 0.15);
     box-shadow: 0 0 8px rgba(200, 160, 40, 0.2);
+}
+
+/* Combat phase gets extra visual emphasis when active */
+.phase-timeline .phase-node[data-phase="combat"].active {
+    color: #ff8844;
+    background: rgba(255, 100, 50, 0.2);
+    box-shadow: 0 0 12px rgba(255, 100, 50, 0.4), 0 0 20px rgba(255, 80, 40, 0.2);
+    animation: combatPhasePulse 1.5s infinite ease-in-out;
+    font-weight: 700;
+}
+
+@keyframes combatPhasePulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(255, 100, 50, 0.4), 0 0 20px rgba(255, 80, 40, 0.2); }
+    50% { box-shadow: 0 0 16px rgba(255, 100, 50, 0.6), 0 0 28px rgba(255, 80, 40, 0.3); }
 }
 
 .phase-timeline .phase-connector {

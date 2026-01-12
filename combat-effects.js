@@ -2755,7 +2755,7 @@ window.CombatEffects = {
         // Create ember soul with actual icon image
         const soul = document.createElement('div');
         soul.className = 'pyre-soul-ember';
-        soul.innerHTML = `<img src="sprites/embers icon.png" alt="" class="ember-icon">`;
+        soul.innerHTML = `<img src="sprites/embers-icon.png" alt="" class="ember-icon">`;
         soul.style.cssText = `
             position: absolute;
             left: ${startX + offsetX}px;

@@ -233,7 +233,7 @@
     position: absolute;
     inset: -10px; /* Extend beyond edges to prevent blur edge artifacts */
     background-color: #1a1a2e; /* Fallback color */
-    background-image: url('sprites/testbackground.png');
+    background-image: url('./sprites/testbackground.png');
     background-position: center;
     background-size: cover;
     background-repeat: no-repeat;

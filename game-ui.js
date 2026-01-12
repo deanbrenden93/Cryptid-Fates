@@ -325,6 +325,51 @@ function renderHUD() {
         game.phase === 'combat' ? "Battle Phase" : 
         game.phase === 'waiting' ? "Waiting..." : "Second Conjuring";
     document.getElementById('phase-text').textContent = phaseText;
+    
+    // Update phase-based visual effects
+    updatePhaseVisualEffects();
+    
+    // Update danger vignette based on player deaths
+    updateDangerVignette();
+}
+
+// Apply visual effects based on current game phase
+function updatePhaseVisualEffects() {
+    const gameContainer = document.getElementById('game-container');
+    if (!gameContainer) return;
+    
+    // Remove all phase classes
+    gameContainer.classList.remove('phase-combat', 'phase-conjure', 'enemy-turn');
+    
+    if (game.currentTurn === 'enemy') {
+        gameContainer.classList.add('enemy-turn');
+    } else if (game.phase === 'combat') {
+        gameContainer.classList.add('phase-combat');
+    } else if (game.phase === 'conjure1' || game.phase === 'conjure2') {
+        gameContainer.classList.add('phase-conjure');
+    }
+}
+
+// Survival horror style danger vignette when near death (7+ deaths)
+function updateDangerVignette() {
+    const gameContainer = document.getElementById('game-container');
+    if (!gameContainer) return;
+    
+    // Remove all danger classes first
+    gameContainer.classList.remove('danger-warning', 'danger-critical', 'danger-imminent');
+    
+    const deaths = game.playerDeaths || 0;
+    
+    if (deaths >= 9) {
+        // Critical - one more death = loss
+        gameContainer.classList.add('danger-imminent');
+    } else if (deaths >= 8) {
+        // Very dangerous
+        gameContainer.classList.add('danger-critical');
+    } else if (deaths >= 7) {
+        // Warning level
+        gameContainer.classList.add('danger-warning');
+    }
 }
 
 function updateHint() {
@@ -474,6 +519,15 @@ function renderSprites() {
                     if (cryptid.element) classes += ` element-${cryptid.element}`;
                     if (cryptid.rarity) classes += ` rarity-${cryptid.rarity}`;
                     if (cryptid.isHidden) classes += ' hidden-cryptid';
+                    
+                    // Add attacker-selected class for combat phase highlighting
+                    if (ui.attackingCryptid === cryptid) classes += ' attacker-selected';
+                    
+                    // Add can-attack-cryptid class for clickable attackers during combat
+                    if (owner === 'player' && col === combatCol && game.phase === 'combat' && 
+                        game.currentTurn === 'player' && !cryptid.tapped && cryptid.canAttack) {
+                        classes += ' can-attack-cryptid';
+                    }
                     
                     // Track if this is a new summon for enhanced animation
                     const wasJustSummoned = cryptid.justSummoned;
@@ -796,6 +850,70 @@ function renderSprites() {
         const traps = owner === 'player' ? game.playerTraps : game.enemyTraps;
         if (!traps[row]) tile.classList.remove('has-trap');
     });
+    
+    // Render support link lines during combat phase
+    renderSupportLinks();
+}
+
+// Render visual links between combatants and their supports
+function renderSupportLinks() {
+    const spriteLayer = document.getElementById('sprite-layer');
+    
+    // Remove existing support links
+    document.querySelectorAll('.support-link-line').forEach(el => el.remove());
+    
+    for (const owner of ['player', 'enemy']) {
+        const field = owner === 'player' ? game.playerField : game.enemyField;
+        const combatCol = game.getCombatCol(owner);
+        const supportCol = game.getSupportCol(owner);
+        
+        for (let row = 0; row < 3; row++) {
+            const combatant = field[combatCol][row];
+            const support = field[supportCol][row];
+            
+            // Only show link if both combatant and support exist
+            if (combatant && support) {
+                const combatKey = `${owner}-${combatCol}-${row}`;
+                const supportKey = `${owner}-${supportCol}-${row}`;
+                const combatPos = tilePositions[combatKey];
+                const supportPos = tilePositions[supportKey];
+                
+                if (!combatPos || !supportPos) continue;
+                
+                // Create the link line
+                const link = document.createElement('div');
+                link.className = 'support-link-line';
+                if (owner === 'enemy') link.classList.add('enemy');
+                
+                // Calculate line position and dimensions
+                const x1 = Math.min(combatPos.x, supportPos.x);
+                const x2 = Math.max(combatPos.x, supportPos.x);
+                const y = (combatPos.y + supportPos.y) / 2;
+                const width = x2 - x1;
+                
+                link.style.cssText = `
+                    position: absolute;
+                    left: ${x1}px;
+                    top: ${y}px;
+                    width: ${width}px;
+                    height: 2px;
+                    transform: translateY(-50%);
+                    z-index: 5;
+                    pointer-events: none;
+                `;
+                
+                // Add pulsing orbs along the line
+                for (let i = 0; i < 3; i++) {
+                    const orb = document.createElement('div');
+                    orb.className = 'support-link-orb';
+                    orb.style.animationDelay = `${i * 0.33}s`;
+                    link.appendChild(orb);
+                }
+                
+                spriteLayer.appendChild(link);
+            }
+        }
+    }
 }
 
 // Track which cards are currently in the hand to avoid unnecessary rebuilds
