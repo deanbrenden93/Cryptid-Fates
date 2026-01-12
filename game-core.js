@@ -3607,7 +3607,23 @@ window.abilityAnimationQueue = [];
 window.processingAbilityAnimations = false;
 
 // Queue an ability animation effect
+// Automatically captures sprite references at queue time so they're available
+// even if the cryptid is killed before the animation plays
 function queueAbilityAnimation(effect) {
+    // Auto-capture target sprite if not already provided
+    if (effect.target && !effect.targetSprite) {
+        effect.targetSprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${effect.target.owner}"][data-col="${effect.target.col}"][data-row="${effect.target.row}"]`
+        );
+    }
+    
+    // Auto-capture source sprite if not already provided
+    if (effect.source && !effect.sourceSprite) {
+        effect.sourceSprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${effect.source.owner}"][data-col="${effect.source.col}"][data-row="${effect.source.row}"]`
+        );
+    }
+    
     window.abilityAnimationQueue.push(effect);
     if (!window.processingAbilityAnimations) {
         processAbilityAnimationQueue();
@@ -3629,17 +3645,17 @@ async function processAbilityAnimationQueue() {
 async function playAbilityAnimation(effect) {
     const { type, source, target, damage, message, owner } = effect;
     
-    // Find target sprite
-    let targetSprite = null;
-    if (target) {
+    // Use pre-captured sprites if provided (important for abilities that kill before animation)
+    // Otherwise fall back to lookup by position
+    let targetSprite = effect.targetSprite || null;
+    if (!targetSprite && target) {
         targetSprite = document.querySelector(
             `.cryptid-sprite[data-owner="${target.owner}"][data-col="${target.col}"][data-row="${target.row}"]`
         );
     }
     
-    // Find source sprite
-    let sourceSprite = null;
-    if (source) {
+    let sourceSprite = effect.sourceSprite || null;
+    if (!sourceSprite && source) {
         sourceSprite = document.querySelector(
             `.cryptid-sprite[data-owner="${source.owner}"][data-col="${source.col}"][data-row="${source.row}"]`
         );
@@ -4406,7 +4422,7 @@ class Game {
                 hpBefore, hpAfter: support.currentHp 
             });
             
-            // Queue destroyer animation
+            // Queue destroyer animation (sprites auto-captured at queue time)
             if (typeof queueAbilityAnimation !== 'undefined') {
                 queueAbilityAnimation({
                     type: 'abilityDamage',
@@ -5000,7 +5016,7 @@ class Game {
             enemyCombatant.currentHp -= 2;
             GameEvents.emit('onSnipeDamage', { source: cryptid, target: enemyCombatant, damage: 2 });
             
-            // Queue damage animation
+            // Queue damage animation (sprites auto-captured at queue time)
             if (typeof queueAbilityAnimation !== 'undefined') {
                 queueAbilityAnimation({
                     type: 'abilityDamage',
@@ -5547,6 +5563,14 @@ class Game {
     }
 
     killCryptid(cryptid, killerOwner = null) {
+        // Guard against double-kill (can happen when abilities call killCryptid directly,
+        // then post-effect death check tries to process the same death)
+        if (cryptid._alreadyKilled) {
+            console.log('[killCryptid] Already killed, skipping:', cryptid.name);
+            return null;
+        }
+        cryptid._alreadyKilled = true;
+        
         // Track death count BEFORE onDeath (for Wendigo 10th death check)
         const owner = cryptid.owner;
         const { col, row } = cryptid; // Extract col/row early for callbacks

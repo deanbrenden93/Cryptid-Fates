@@ -101,7 +101,7 @@ CardRegistry.registerKindling('newbornWendigo', {
                 for (let row = 0; row < 3; row++) {
                     const support = enemyField[supportCol][row];
                     if (support) {
-                        // Queue support death animation
+                        // Queue support death animation (sprites auto-captured at queue time)
                         if (typeof queueAbilityAnimation !== 'undefined') {
                             queueAbilityAnimation({
                                 type: 'abilityDamage',
@@ -669,7 +669,7 @@ CardRegistry.cryptids['primalWendigo'].onTurnStart = function(cryptid, owner, ga
     support.currentHp -= damage;
     GameEvents.emit('onCannibalizeDamage', { cryptid, support, damage, owner });
     
-    // Queue Cannibalize animation
+    // Queue Cannibalize animation (sprites auto-captured at queue time)
     if (typeof queueAbilityAnimation !== 'undefined') {
         queueAbilityAnimation({
             type: 'abilityDamage',
@@ -736,7 +736,7 @@ CardRegistry.registerCryptid('thunderbird', {
         enemyCryptid.currentHp -= 2;
         GameEvents.emit('onStormCallDamage', { source: cryptid, target: enemyCryptid, damage: 2 });
         
-        // Queue Storm Call animation
+        // Queue Storm Call animation (sprites auto-captured at queue time)
         if (typeof queueAbilityAnimation !== 'undefined') {
             queueAbilityAnimation({
                 type: 'abilityDamage',
@@ -964,7 +964,7 @@ CardRegistry.registerCryptid('werewolf', {
     // Die at end of turn if cursed
     onTurnEnd: (cryptid, owner, game) => {
         if (cryptid.cursedToDie) {
-            // Queue curse death animation
+            // Queue curse death animation (sprites auto-captured at queue time)
             if (typeof queueAbilityAnimation !== 'undefined') {
                 queueAbilityAnimation({
                     type: 'abilityDamage',
@@ -1038,7 +1038,7 @@ CardRegistry.registerCryptid('rogueRazorback', {
             enemyCombatant.currentHp -= damage;
             GameEvents.emit('onGoreDamage', { source: cryptid, target: enemyCombatant, damage, owner });
             
-            // Queue Gore animation
+            // Queue Gore animation (sprites auto-captured at queue time)
             if (typeof queueAbilityAnimation !== 'undefined') {
                 queueAbilityAnimation({
                     type: 'abilityDamage',
@@ -1143,7 +1143,7 @@ CardRegistry.registerCryptid('jerseyDevil', {
             enemyCombatant.currentHp -= damage;
             GameEvents.emit('onSwoopDamage', { source: cryptid, target: enemyCombatant, damage, owner });
             
-            // Queue Swoop animation
+            // Queue Swoop animation (sprites auto-captured at queue time)
             if (typeof queueAbilityAnimation !== 'undefined') {
                 queueAbilityAnimation({
                     type: 'abilityDamage',
@@ -1238,7 +1238,7 @@ CardRegistry.registerCryptid('babaYaga', {
         if (enemies.length > 0) {
             const victim = enemies[Math.floor(Math.random() * enemies.length)];
             
-            // Queue Hex animation before kill
+            // Queue Hex animation before kill (sprites auto-captured at queue time)
             if (typeof queueAbilityAnimation !== 'undefined') {
                 queueAbilityAnimation({
                     type: 'abilityDamage',

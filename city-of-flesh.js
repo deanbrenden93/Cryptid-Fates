@@ -1269,23 +1269,32 @@ CardRegistry.registerBurst('faceOff', {
             target.tapped = false;
             target.canAttack = true;
             
-            // Capture target info before attack (for death animation)
             const targetRarity = enemyAcross.rarity || 'common';
             
-            // Execute attack and get result
-            const result = game.attack(target, enemyOwner, enemyCombatCol, target.row);
-            
-            // Queue attack animation with result info
+            // Queue attack animation BEFORE attack executes (sprites auto-captured at queue time)
             if (typeof queueAbilityAnimation !== 'undefined') {
                 queueAbilityAnimation({
                     type: 'attack',
                     source: target,
                     target: enemyAcross,
-                    damage: result.damage || 0,
-                    killed: result.killed || false,
                     targetRarity: targetRarity,
-                    message: `⚔️ ${target.name} faces off against ${enemyAcross.name}!`
+                    message: `⚔️ ${target.name} faces off against ${enemyAcross.name}!`,
+                    // These will be filled in after attack executes
+                    _pendingAttack: { attacker: target, enemyOwner, enemyCombatCol, row: target.row }
                 });
+            }
+            
+            // Execute attack - result updates the queued animation
+            const result = game.attack(target, enemyOwner, enemyCombatCol, target.row);
+            
+            // Update the queued animation with attack results
+            if (window.abilityAnimationQueue?.length > 0) {
+                const lastEffect = window.abilityAnimationQueue[window.abilityAnimationQueue.length - 1];
+                if (lastEffect._pendingAttack) {
+                    lastEffect.damage = result.damage || 0;
+                    lastEffect.killed = result.killed || false;
+                    delete lastEffect._pendingAttack;
+                }
             }
         }
     }

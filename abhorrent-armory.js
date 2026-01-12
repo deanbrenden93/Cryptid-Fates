@@ -44,7 +44,7 @@ CardRegistry.registerBurst('rockSlide', {
             owner 
         });
         
-        // Queue animation
+        // Queue animation (sprites auto-captured at queue time)
         if (typeof queueAbilityAnimation !== 'undefined') {
             queueAbilityAnimation({
                 type: 'abilityDamage',

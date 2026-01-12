@@ -2139,7 +2139,9 @@ function executeBurst(targetOwner, targetCol, targetRow) {
             setTimeout(() => {
                 if (targetCryptid) {
                     const effectiveHpAfter = game.getEffectiveHp(targetCryptid);
-                    if (effectiveHpAfter <= 0) handleDeathAndPromotion(targetOwner, targetCol, targetRow, targetCryptid, 'player', sendMultiplayerHook);
+                    // Only handle death if cryptid is still in field (not already killed by the effect itself)
+                    const stillInField = game.getFieldCryptid(targetOwner, targetCol, targetRow) === targetCryptid;
+                    if (effectiveHpAfter <= 0 && stillInField) handleDeathAndPromotion(targetOwner, targetCol, targetRow, targetCryptid, 'player', sendMultiplayerHook);
                     else checkAllCreaturesForDeath(() => { sendMultiplayerHook(); isAnimating = false; renderAll(); updateButtons(); });
                 } else { 
                     checkAllCreaturesForDeath(() => { sendMultiplayerHook(); isAnimating = false; renderAll(); updateButtons(); });
@@ -2223,7 +2225,9 @@ function executeBurstDirect(card, targetOwner, targetCol, targetRow) {
                 setTimeout(() => {
                     if (targetCryptid) {
                         const effectiveHpAfter = game.getEffectiveHp(targetCryptid);
-                        if (effectiveHpAfter <= 0) handleDeathAndPromotion(targetOwner, targetCol, targetRow, targetCryptid, 'player', sendMultiplayerHook);
+                        // Only handle death if cryptid is still in field (not already killed by the effect itself)
+                        const stillInField = game.getFieldCryptid(targetOwner, targetCol, targetRow) === targetCryptid;
+                        if (effectiveHpAfter <= 0 && stillInField) handleDeathAndPromotion(targetOwner, targetCol, targetRow, targetCryptid, 'player', sendMultiplayerHook);
                         else checkAllCreaturesForDeath(() => { sendMultiplayerHook(); isAnimating = false; renderAll(); updateButtons(); });
                     } else { 
                         checkAllCreaturesForDeath(() => { sendMultiplayerHook(); isAnimating = false; renderAll(); updateButtons(); });
@@ -3022,8 +3026,8 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
         CombatEffects.createImpactParticles(impactX, impactY, result.killed ? '#ff2222' : '#ff6666', 8 + damage);
         
-        // Show damage number (show 0 for 0-damage attacks too, but skip for dramatic deaths - the zoom is more impactful)
-        if (result.target && !usingDramaticDeath) {
+        // Show damage number (always show, including kills - players want to see damage dealt)
+        if (result.target) {
             CombatEffects.showDamageNumber(result.target, damage, isCrit);
         }
     }
