@@ -1660,7 +1660,9 @@ body {
 /* Must come after height-based queries to override them */
 @media (orientation: portrait) and (min-width: 550px) and (max-width: 1100px) and (min-height: 550px) {
     #hand-area {
-        --hand-h: clamp(160px, 18vh, 260px);
+        --hand-h: clamp(220px, 24vh, 320px);
+        --card-w: 150px;
+        --card-h: 210px;
     }
 }
 
@@ -2275,26 +2277,26 @@ body {
 /* Targets portrait tablets (narrow but tall) that need bigger hand cards */
 @media (orientation: portrait) and (min-width: 550px) and (max-width: 1100px) and (min-height: 550px) {
     #hand-area .battle-card {
-        /* Use the CSS variable-derived dimensions instead of fixed small values */
-        --gc-width: var(--card-w, 100px) !important;
-        --gc-height: var(--card-h, 140px) !important;
-        width: var(--card-w, 100px) !important;
-        height: var(--card-h, 140px) !important;
+        /* Larger cards for portrait tablets - 150px width with 1.4 aspect ratio */
+        --gc-width: 150px !important;
+        --gc-height: 210px !important;
+        width: 150px !important;
+        height: 210px !important;
     }
     
     #hand-area .hand-side-btn {
-        width: calc(var(--card-h, 140px) * 0.85) !important;
-        height: calc(var(--card-h, 140px) * 0.85) !important;
+        width: 130px !important;
+        height: 130px !important;
     }
     
     /* Ensure hover lift works well at this size */
     #hand-area .card-wrapper:hover {
-        --hover-lift: 35px;
+        --hover-lift: 40px;
     }
     
     /* More padding for the card container */
     #hand-area #hand-container {
-        padding-top: 45px;
+        padding-top: 55px;
     }
 }
 
