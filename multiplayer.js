@@ -1088,6 +1088,11 @@ window.Multiplayer = {
         this.startTurnTimer(true);
         this.updateTimerDisplay();
         
+        // CRITICAL: Reset animation state so player can interact with their hand
+        if (typeof window.setAnimating === 'function') {
+            window.setAnimating(false);
+        }
+        
         // CRITICAL: Force browser repaint with requestAnimationFrame
         // This ensures UI updates even when browser deprioritizes background tasks
         requestAnimationFrame(() => {

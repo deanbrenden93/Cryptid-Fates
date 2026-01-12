@@ -1705,6 +1705,12 @@ body {
     position: relative;
     margin-left: var(--card-overlap);
     transform-origin: center bottom;
+    /* CRITICAL: Ensure cards are always interactive for hover/tooltips */
+    pointer-events: auto;
+    /* Help browser maintain proper hover detection during animations */
+    will-change: transform, z-index;
+    /* Ensure this element creates its own stacking context for reliable hit-testing */
+    isolation: isolate;
     transform: 
         translateY(calc(var(--arc-lift) * -1))
         rotate(var(--fan-rotation));
@@ -1746,6 +1752,17 @@ body {
     margin-right: 0;
 }
 
+/* Reset hover states - used during turn transitions to clear stuck :hover on touch devices */
+/* NOTE: We no longer disable pointer-events here as it was blocking hover during enemy turn.
+   The hover reset now works by forcing a reflow in JS instead. */
+#hand-container.resetting-hover .card-wrapper {
+    /* Force transform reset to clear visual hover state */
+    transform: 
+        translateY(calc(var(--arc-lift) * -1))
+        rotate(var(--fan-rotation)) !important;
+    z-index: calc(10 + var(--card-index)) !important;
+}
+
 /* Hover: lift card out of fan elegantly */
 .card-wrapper:hover {
     --hover-lift: 15px;
@@ -1772,6 +1789,20 @@ body {
         rotate(0deg)
         scale(1.08);
     z-index: 200 !important;
+}
+
+/* Shake animation for blocked interactions during opponent's turn */
+.card-wrapper.card-shake {
+    animation: cardShakeAnim 0.4s ease-out;
+}
+
+@keyframes cardShakeAnim {
+    0%, 100% { transform: translateY(calc(var(--arc-lift) * -1)) rotate(var(--fan-rotation)); }
+    15% { transform: translateY(calc(var(--arc-lift) * -1)) rotate(calc(var(--fan-rotation) + 5deg)); }
+    30% { transform: translateY(calc(var(--arc-lift) * -1)) rotate(calc(var(--fan-rotation) - 4deg)); }
+    45% { transform: translateY(calc(var(--arc-lift) * -1)) rotate(calc(var(--fan-rotation) + 3deg)); }
+    60% { transform: translateY(calc(var(--arc-lift) * -1)) rotate(calc(var(--fan-rotation) - 2deg)); }
+    75% { transform: translateY(calc(var(--arc-lift) * -1)) rotate(calc(var(--fan-rotation) + 1deg)); }
 }
 
 /* Subtle glow on hover */

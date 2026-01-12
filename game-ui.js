@@ -71,6 +71,7 @@ function initGame() {
     };
     window.ui = ui; // Keep window reference updated
     isAnimating = false;
+    window._opponentTurnMessageShown = false; // Reset opponent turn message flag
     
     // Reset hand toggle visual state
     const handArea = document.getElementById('hand-area');
@@ -451,7 +452,8 @@ function renderSprites() {
                         'evolution-cocoon-phase', 
                         'evolution-whiteout-phase',
                         'evolution-reveal-phase',
-                        'evolution-settle-phase'
+                        'evolution-settle-phase',
+                        'evolution-fadeout-phase'
                     ];
                     const preservedClasses = evolutionClasses.filter(cls => sprite.classList?.contains(cls));
                     // Only use the pending flag to block updates - this is cleared when animation is ready for sprite change
@@ -729,6 +731,29 @@ function renderSprites() {
 let currentHandCardIds = [];
 let currentHandIsKindling = false;
 
+// Force clear any stuck hover/touch states on hand cards
+function clearHandHoverStates() {
+    const container = document.getElementById('hand-container');
+    if (!container) return;
+    
+    // Clear any inspecting states
+    container.querySelectorAll('.card-wrapper.inspecting').forEach(w => w.classList.remove('inspecting'));
+    
+    // Force browser to recalculate hover by briefly toggling pointer-events
+    // This clears stuck :hover pseudo-class on touch devices
+    container.classList.add('resetting-hover');
+    // Force a reflow to ensure the class is applied
+    void container.offsetHeight;
+    // Remove after a frame to restore normal behavior (with timeout fallback)
+    requestAnimationFrame(() => {
+        container.classList.remove('resetting-hover');
+    });
+    // Safety fallback - ensure class is always removed even if RAF doesn't fire
+    setTimeout(() => {
+        container.classList.remove('resetting-hover');
+    }, 50);
+}
+
 // Update card states WITHOUT rebuilding - prevents wiggle
 function updateHandCardStates() {
     const container = document.getElementById('hand-container');
@@ -738,6 +763,9 @@ function updateHandCardStates() {
     const isKindling = ui.showingKindling;
     
     console.log('[updateHandCardStates] Called - turn:', game.currentTurn, 'phase:', game.phase, 'isKindling:', isKindling);
+    
+    // NOTE: Don't clear hover states here - it was blocking card inspection during enemy turn
+    // Hover state clearing is only needed during turn transitions (handled in end-turn-btn handler)
     
     // Just update classes on existing cards - DON'T touch positions
     const wrappers = container.querySelectorAll('.card-wrapper');
@@ -749,24 +777,29 @@ function updateHandCardStates() {
         const cardEl = wrapper.querySelector('.battle-card');
         if (!cardEl) return;
         
-        // Recalculate playability
+        // Recalculate playability - MUST be player's turn AND in conjure phase
         let canPlay = false;
-        if (isKindling) {
-            canPlay = !game.playerKindlingPlayedThisTurn && (game.phase === 'conjure1' || game.phase === 'conjure2');
+        const isPlayerTurn = game.currentTurn === 'player';
+        const isConjurePhase = game.phase === 'conjure1' || game.phase === 'conjure2';
+        
+        if (!isPlayerTurn || !isConjurePhase) {
+            canPlay = false; // Cards are never playable during opponent's turn or non-conjure phases
+        } else if (isKindling) {
+            canPlay = !game.playerKindlingPlayedThisTurn;
         } else if (card.type === 'trap') {
             const validSlots = game.getValidTrapSlots('player');
-            canPlay = validSlots.length > 0 && game.playerPyre >= card.cost && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = validSlots.length > 0 && game.playerPyre >= card.cost;
         } else if (card.type === 'aura') {
             const targets = game.getValidAuraTargets('player');
-            canPlay = targets.length > 0 && game.playerPyre >= card.cost && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = targets.length > 0 && game.playerPyre >= card.cost;
         } else if (card.type === 'pyre') {
-            canPlay = game.canPlayPyreCard('player') && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = game.canPlayPyreCard('player');
         } else if (card.evolvesFrom) {
             const hasEvolutionTargets = game.getValidEvolutionTargets(card, 'player').length > 0;
             const canAfford = game.playerPyre >= card.cost;
-            canPlay = (hasEvolutionTargets || canAfford) && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = hasEvolutionTargets || canAfford;
         } else {
-            canPlay = game.playerPyre >= card.cost && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = game.playerPyre >= card.cost;
         }
         
         // Update classes only
@@ -859,24 +892,30 @@ function renderHand() {
         if (card.mythical) cardEl.classList.add('mythical');
         cardEl.classList.add(rarityClass);
         
+        // Check playability - MUST be player's turn AND in conjure phase
         let canPlay = false;
-        if (isKindling) {
-            canPlay = !game.playerKindlingPlayedThisTurn && (game.phase === 'conjure1' || game.phase === 'conjure2');
+        const isPlayerTurn = game.currentTurn === 'player';
+        const isConjurePhase = game.phase === 'conjure1' || game.phase === 'conjure2';
+        
+        if (!isPlayerTurn || !isConjurePhase) {
+            canPlay = false;
+        } else if (isKindling) {
+            canPlay = !game.playerKindlingPlayedThisTurn;
         } else if (card.type === 'trap') {
             const validSlots = game.getValidTrapSlots('player');
-            canPlay = validSlots.length > 0 && game.playerPyre >= card.cost && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = validSlots.length > 0 && game.playerPyre >= card.cost;
         } else if (card.type === 'aura') {
             const targets = game.getValidAuraTargets('player');
-            canPlay = targets.length > 0 && game.playerPyre >= card.cost && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = targets.length > 0 && game.playerPyre >= card.cost;
         } else if (card.type === 'pyre') {
-            canPlay = game.canPlayPyreCard('player') && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = game.canPlayPyreCard('player');
         } else if (card.evolvesFrom) {
             const hasEvolutionTargets = game.getValidEvolutionTargets(card, 'player').length > 0;
             const canAfford = game.playerPyre >= card.cost;
-            canPlay = (hasEvolutionTargets || canAfford) && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = hasEvolutionTargets || canAfford;
             if (hasEvolutionTargets) cardEl.classList.add('evolution-card');
         } else {
-            canPlay = game.playerPyre >= card.cost && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = game.playerPyre >= card.cost;
         }
         
         if (!canPlay) cardEl.classList.add('unplayable');
@@ -1000,25 +1039,30 @@ function renderHandAnimated() {
         if (card.mythical) cardEl.classList.add('mythical');
         cardEl.classList.add(rarityClass);
         
+        // Check playability - MUST be player's turn AND in conjure phase
         let canPlay = false;
+        const isPlayerTurn = game.currentTurn === 'player';
+        const isConjurePhase = game.phase === 'conjure1' || game.phase === 'conjure2';
         
-        if (isKindling) {
-            canPlay = !game.playerKindlingPlayedThisTurn && (game.phase === 'conjure1' || game.phase === 'conjure2');
+        if (!isPlayerTurn || !isConjurePhase) {
+            canPlay = false;
+        } else if (isKindling) {
+            canPlay = !game.playerKindlingPlayedThisTurn;
         } else if (card.type === 'trap') {
             const validSlots = game.getValidTrapSlots('player');
-            canPlay = validSlots.length > 0 && game.playerPyre >= card.cost && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = validSlots.length > 0 && game.playerPyre >= card.cost;
         } else if (card.type === 'aura') {
             const targets = game.getValidAuraTargets('player');
-            canPlay = targets.length > 0 && game.playerPyre >= card.cost && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = targets.length > 0 && game.playerPyre >= card.cost;
         } else if (card.type === 'pyre') {
-            canPlay = game.canPlayPyreCard('player') && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = game.canPlayPyreCard('player');
         } else if (card.evolvesFrom) {
             const hasEvolutionTargets = game.getValidEvolutionTargets(card, 'player').length > 0;
             const canAfford = game.playerPyre >= card.cost;
-            canPlay = (hasEvolutionTargets || canAfford) && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = hasEvolutionTargets || canAfford;
             if (hasEvolutionTargets) cardEl.classList.add('evolution-card');
         } else {
-            canPlay = game.playerPyre >= card.cost && (game.phase === 'conjure1' || game.phase === 'conjure2');
+            canPlay = game.playerPyre >= card.cost;
         }
         
         if (!canPlay) cardEl.classList.add('unplayable');
@@ -1152,6 +1196,28 @@ function setupCardInteractions(wrapper, cardEl, card, canPlay) {
         // Check playability dynamically
         if (!isCurrentlyPlayable()) {
             console.log('[CardClick] Blocked - not playable');
+            // During opponent's turn, show visual feedback that card was clicked but can't be played
+            if (game.currentTurn !== 'player') {
+                // Add shake animation to show input was received
+                wrapper.classList.add('card-shake');
+                setTimeout(() => wrapper.classList.remove('card-shake'), 400);
+                // Show message on first click during opponent turn
+                if (!window._opponentTurnMessageShown) {
+                    showMessage("Wait for your turn...", 1000);
+                    window._opponentTurnMessageShown = true;
+                    // Reset flag when it becomes player's turn
+                    const resetFlag = () => {
+                        window._opponentTurnMessageShown = false;
+                        GameEvents.off('onTurnStart', resetFlag);
+                    };
+                    GameEvents.on('onTurnStart', (data) => {
+                        if (data.owner === 'player') resetFlag();
+                    });
+                }
+                // Also show the card inspect for details
+                inspectCard(e, e.clientX, e.clientY);
+                setTimeout(endInspect, 2000);
+            }
             return;
         }
         selectCard(card); 
@@ -1231,20 +1297,56 @@ function setupCardInteractions(wrapper, cardEl, card, canPlay) {
             return;
         }
         
-        // Quick tap on stationary finger = select card (if playable)
+        // Quick tap on stationary finger = select card (if playable) or give feedback (if not)
         if (!touchMoved && touchStartPos && !scrollDetected && !dragStarted && touchDuration < 350) {
             hideTooltip(); ui.cardTooltipVisible = false;
             if (isCurrentlyPlayable()) {
                 selectCard(card);
+            } else if (game.currentTurn !== 'player') {
+                // During opponent's turn, show visual feedback that card was tapped
+                wrapper.classList.add('card-shake');
+                setTimeout(() => wrapper.classList.remove('card-shake'), 400);
+                if (navigator.vibrate) navigator.vibrate([20, 30, 20]); // Double buzz for "no"
+                // Show message on first tap during opponent turn
+                if (!window._opponentTurnMessageShown) {
+                    showMessage("Wait for your turn...", 1000);
+                    window._opponentTurnMessageShown = true;
+                    const resetFlag = () => {
+                        window._opponentTurnMessageShown = false;
+                        GameEvents.off('onTurnStart', resetFlag);
+                    };
+                    GameEvents.on('onTurnStart', (data) => {
+                        if (data.owner === 'player') resetFlag();
+                    });
+                }
+                // Show card details via inspect
+                const touch = e.changedTouches[0];
+                inspectCard(e, touch?.clientX || 0, touch?.clientY || 0);
+                setTimeout(endInspect, 2000);
             }
         }
         
         touchStartPos = null; dragStarted = false; scrollDetected = false;
     };
-    wrapper.onmouseenter = (e) => showCardTooltip(card, e);
-    wrapper.onmouseleave = () => {
+    
+    // Use addEventListener for more robust event handling during animations
+    // These are passive for better scroll performance
+    wrapper.addEventListener('mouseenter', (e) => {
+        showCardTooltip(card, e);
+    }, { passive: true });
+    
+    wrapper.addEventListener('mouseleave', () => {
         if (!wrapper.classList.contains('inspecting')) hideTooltip();
-    };
+    }, { passive: true });
+    
+    // FALLBACK: Also use mouseover/mouseout for better reliability
+    // These bubble, so they can help if mouseenter/mouseleave get stuck
+    wrapper.addEventListener('mouseover', (e) => {
+        // Only trigger if this is the direct target (not bubbled from child)
+        if (e.target === wrapper || e.target.closest('.card-wrapper') === wrapper) {
+            showCardTooltip(card, e);
+        }
+    }, { passive: true });
 }
 
 // Smart tooltip positioning - positions to side of card, never overlapping
@@ -3076,6 +3178,9 @@ document.getElementById('end-turn-btn').onclick = () => {
     ui.selectedCard = null; ui.attackingCryptid = null; ui.targetingBurst = null; ui.targetingEvolution = null; ui.showingKindling = false;
     document.getElementById('cancel-target').classList.remove('show');
     
+    // Clear any stuck hover states on hand cards before turn transition
+    clearHandHoverStates();
+    
     checkAllCreaturesForDeath(() => {
         // Animate turn-end effects (healing from radiance/regen)
         animateTurnEndEffects(() => {
@@ -4046,6 +4151,7 @@ window.checkCascadingDeaths = checkCascadingDeaths;
 window.processPendingPromotions = processPendingPromotions;
 window.animateTurnStartEffects = animateTurnStartEffects;
 window.animateTurnEndEffects = animateTurnEndEffects;
+window.setAnimating = setAnimating;
 window.initGame = initGame;
 
 // Minimal game init for multiplayer (no coin flip, no AI, no auto-draw)
@@ -4065,6 +4171,7 @@ window.initMultiplayerGame = function() {
     };
     window.ui = ui; // Keep window reference updated
     isAnimating = false;
+    window._opponentTurnMessageShown = false; // Reset opponent turn message flag
     
     // Reset hand toggle visual state
     const handArea = document.getElementById('hand-area');

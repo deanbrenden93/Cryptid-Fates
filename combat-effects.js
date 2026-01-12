@@ -1635,8 +1635,12 @@ window.CombatEffects = {
             });
         }, 1200);
         
-        // Cleanup with fade
+        // Cleanup with fade - transition sprite filter back to normal
         setTimeout(() => {
+            // Add fadeout class to smoothly transition filter back to default
+            sprite.classList.remove('evolution-settle-phase');
+            sprite.classList.add('evolution-fadeout-phase');
+            
             localEffects.style.transition = 'opacity 0.3s ease-out';
             localEffects.style.opacity = '0';
             screenEffects.style.transition = 'opacity 0.3s ease-out';
@@ -1644,12 +1648,12 @@ window.CombatEffects = {
         }, 1450);
         
         setTimeout(() => {
-            sprite.classList.remove('evolution-settle-phase');
+            sprite.classList.remove('evolution-fadeout-phase');
             localEffects.remove();
             screenEffects.remove();
             silhouette.remove();
             if (onComplete) onComplete();
-        }, 1750);
+        }, 1850);
     },
     
     /**
@@ -4292,6 +4296,22 @@ window.CombatEffects = {
             100% { 
                 transform: translate(-50%, -50%) scale(1);
                 filter: brightness(1) drop-shadow(0 0 12px var(--element-color, #9b59b6));
+            }
+        }
+        
+        /* Fadeout phase - smoothly transition back to default state */
+        .cryptid-sprite.evolution-fadeout-phase {
+            animation: evolutionFadeout 400ms ease-out forwards !important;
+        }
+        
+        @keyframes evolutionFadeout {
+            0% { 
+                transform: translate(-50%, -50%) scale(1);
+                filter: brightness(1) drop-shadow(0 0 12px var(--element-color, #9b59b6));
+            }
+            100% { 
+                transform: translate(-50%, -50%) scale(1);
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
             }
         }
         

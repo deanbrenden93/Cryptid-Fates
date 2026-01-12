@@ -49,11 +49,19 @@ window.runEnemyAI = function() {
                                         // Animate turn-start effects for player
                                         if (window.animateTurnStartEffects) {
                                             window.animateTurnStartEffects('player', () => {
+                                                // CRITICAL: Reset isAnimating so player can interact with their hand
+                                                if (typeof window.setAnimating === 'function') {
+                                                    window.setAnimating(false);
+                                                }
                                                 window.showMessage("Your turn begins...", TIMING.messageDisplay);
                                                 window.renderAll();
                                                 window.updateButtons();
                                             });
                                         } else {
+                                            // CRITICAL: Reset isAnimating so player can interact with their hand
+                                            if (typeof window.setAnimating === 'function') {
+                                                window.setAnimating(false);
+                                            }
                                             window.showMessage("Your turn begins...", TIMING.messageDisplay);
                                             window.renderAll();
                                             window.updateButtons();
@@ -61,6 +69,10 @@ window.runEnemyAI = function() {
                                     });
                                 } else {
                                     game.endTurn();
+                                    // CRITICAL: Reset isAnimating so player can interact with their hand
+                                    if (typeof window.setAnimating === 'function') {
+                                        window.setAnimating(false);
+                                    }
                                     if (!game.gameOver) window.showMessage("Your turn begins...", TIMING.messageDisplay);
                                     window.renderAll();
                                     window.updateButtons();
