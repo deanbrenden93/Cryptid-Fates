@@ -240,7 +240,42 @@ function onLayoutChange() {
         lastBattlefieldHeight = newHeight;
         updateSpritePositions();
     }
+    updateHandScrollFades();
 }
+
+// Update feathered edge fades based on scroll position
+function updateHandScrollFades() {
+    const container = document.getElementById('hand-container');
+    const cardsArea = document.querySelector('.hand-cards-area');
+    if (!container || !cardsArea) return;
+    
+    const scrollLeft = container.scrollLeft;
+    const scrollWidth = container.scrollWidth;
+    const clientWidth = container.clientWidth;
+    const maxScroll = scrollWidth - clientWidth;
+    
+    // Show left fade if scrolled right
+    if (scrollLeft > 5) {
+        cardsArea.classList.add('can-scroll-left');
+    } else {
+        cardsArea.classList.remove('can-scroll-left');
+    }
+    
+    // Show right fade if can scroll more right
+    if (maxScroll > 5 && scrollLeft < maxScroll - 5) {
+        cardsArea.classList.add('can-scroll-right');
+    } else {
+        cardsArea.classList.remove('can-scroll-right');
+    }
+}
+
+// Listen for hand container scroll
+document.addEventListener('DOMContentLoaded', () => {
+    const container = document.getElementById('hand-container');
+    if (container) {
+        container.addEventListener('scroll', updateHandScrollFades);
+    }
+});
 
 // ==================== RENDERING ====================
 function renderAll() {
@@ -851,20 +886,23 @@ function updateHandCardStates() {
     updateKindlingButton();
 }
 
-function renderHand() {
+function renderHand(force = false) {
     const container = document.getElementById('hand-container');
     
     // Guard against uninitialized game
     if (!game) return;
     
-    // During animation, don't clear/rebuild
-    if (isAnimating) {
+    // During animation, don't clear/rebuild (unless forced for card draws)
+    if (isAnimating && !force) {
         console.log('[renderHand] Skipping - isAnimating is true');
         return;
     }
     
-    const cards = ui.showingKindling ? game.playerKindling : game.playerHand;
+    const allCards = ui.showingKindling ? game.playerKindling : game.playerHand;
     const isKindling = ui.showingKindling;
+    
+    // Filter to only show revealed cards during staggered draw sequences
+    const cards = allCards.filter(c => !window.isCardRevealed || window.isCardRevealed(c.id));
     
     // Check if we can do a lightweight update instead of full rebuild
     const newCardIds = cards.map(c => c.id);
@@ -878,7 +916,9 @@ function renderHand() {
         sameView, 
         childCount: container.children.length,
         turn: game.currentTurn,
-        phase: game.phase
+        phase: game.phase,
+        totalCards: allCards.length,
+        revealedCards: cards.length
     });
     
     if (sameCards && sameView && container.children.length > 0) {
@@ -2397,21 +2437,6 @@ function executePyreCardWithAnimation(card, dropX, dropY) {
         window.multiplayerHook.onPyre(card);
     }
     
-    // Use enhanced pyre burn animation if available
-    if (window.CombatEffects?.playPyreBurn) {
-        window.CombatEffects.playPyreBurn(cardElement, result?.pyreGained || 1);
-    } else {
-        // Fallback to basic effect
-        const pyreEffect = document.createElement('div');
-        pyreEffect.className = 'pyre-burst-effect';
-        pyreEffect.innerHTML = `<span class="pyre-icon">${card.sprite}</span><span class="pyre-glow">🔥</span>`;
-        pyreEffect.style.left = dropX + 'px';
-        pyreEffect.style.top = dropY + 'px';
-        document.body.appendChild(pyreEffect);
-        requestAnimationFrame(() => pyreEffect.classList.add('active'));
-        setTimeout(() => pyreEffect.remove(), 800);
-    }
-    
     // Remove from hand immediately
     const idx = game.playerHand.findIndex(c => c.id === card.id);
     if (idx > -1) {
@@ -2427,11 +2452,30 @@ function executePyreCardWithAnimation(card, dropX, dropY) {
         setTimeout(() => showMessage(msg, 1200), 200);
     }
     
-    setTimeout(() => { 
-        isAnimating = false; 
-        renderAll(); 
-        updateButtons(); 
-    }, 900);
+    // Use enhanced pyre burn animation if available - with proper callback to render hand after cards drawn
+    if (window.CombatEffects?.playPyreBurn) {
+        window.CombatEffects.playPyreBurn(cardElement, result?.pyreGained || 1, () => {
+            isAnimating = false;
+            renderAll(); 
+            updateButtons();
+        });
+    } else {
+        // Fallback to basic effect
+        const pyreEffect = document.createElement('div');
+        pyreEffect.className = 'pyre-burst-effect';
+        pyreEffect.innerHTML = `<span class="pyre-icon">${card.sprite}</span><span class="pyre-glow">🔥</span>`;
+        pyreEffect.style.left = dropX + 'px';
+        pyreEffect.style.top = dropY + 'px';
+        document.body.appendChild(pyreEffect);
+        requestAnimationFrame(() => pyreEffect.classList.add('active'));
+        setTimeout(() => pyreEffect.remove(), 800);
+        
+        setTimeout(() => { 
+            isAnimating = false; 
+            renderAll(); 
+            updateButtons(); 
+        }, 900);
+    }
 }
 
 function handleDeathAndPromotion(targetOwner, targetCol, targetRow, deadCryptid, killerOwner, onComplete) {
@@ -3080,11 +3124,15 @@ document.getElementById('pyre-burn-btn').onclick = () => {
         if (deaths > 0 && window.CombatEffects?.playPyreBurn) {
             window.CombatEffects.playPyreBurn(null, deaths);
         }
-        
+    }, 300);
+    setTimeout(() => { 
+        overlay.classList.remove('active'); 
+        text.classList.remove('active'); 
+        container.classList.remove('shaking'); 
+        isAnimating = false; 
         renderAll(); 
         updateButtons(); 
-    }, 300);
-    setTimeout(() => { overlay.classList.remove('active'); text.classList.remove('active'); container.classList.remove('shaking'); isAnimating = false; }, TIMING.pyreBurnEffect);
+    }, TIMING.pyreBurnEffect);
 };
 
 document.getElementById('end-conjure1-btn').onclick = () => {
@@ -3118,6 +3166,9 @@ document.getElementById('kindling-toggle-btn').onclick = () => {
     hideTooltip();
     ui.selectedCard = null; ui.targetingBurst = null; ui.targetingEvolution = null;
     document.getElementById('cancel-target').classList.remove('show');
+    
+    // Clear staggered card reveal queue when switching views
+    if (window.clearCardRevealQueue) window.clearCardRevealQueue();
     
     // Toggle the state immediately
     ui.showingKindling = !ui.showingKindling;
@@ -4310,22 +4361,113 @@ function setupGameEventListeners() {
         }
     });
     
-    // Card draw - update hand and play animation
+    // Card draw - staggered rapid-fire reveal queue for satisfying multi-draw
+    let cardRevealQueue = [];
+    let pendingRevealCardIds = new Set(); // Cards waiting to be revealed (hidden until processed)
+    let revealTimer = null;
+    let queueStartTimer = null; // Delay before starting to process queue (lets multiple cards accumulate)
+    let isRevealingCards = false; // Track if we're in the middle of a staggered reveal
+    const CARD_REVEAL_STAGGER = 140; // ms between each card reveal (matches ember timing feel)
+    const QUEUE_START_DELAY = 50; // Small delay to let synchronous draws accumulate
+    
+    function queueCardReveal(card) {
+        // Mark this card as pending (will be hidden until revealed)
+        pendingRevealCardIds.add(card.id);
+        cardRevealQueue.push(card);
+        isRevealingCards = true;
+        
+        // Delay starting the queue processing to let multiple synchronous draws accumulate
+        if (!revealTimer && !queueStartTimer) {
+            queueStartTimer = setTimeout(() => {
+                queueStartTimer = null;
+                processCardRevealQueue();
+            }, QUEUE_START_DELAY);
+        }
+    }
+    
+    function processCardRevealQueue() {
+        if (cardRevealQueue.length === 0) {
+            revealTimer = null;
+            isRevealingCards = false;
+            pendingRevealCardIds.clear();
+            return;
+        }
+        
+        const card = cardRevealQueue.shift();
+        
+        // Remove from pending (now it should be shown)
+        pendingRevealCardIds.delete(card.id);
+        
+        // Play flying card animation
+        if (window.CombatEffects?.playCardDrawAnimation) {
+            window.CombatEffects.playCardDrawAnimation(1, 'player');
+        }
+        
+        // Re-render hand to show the newly revealed card (force=true to bypass animation lock)
+        renderHand(true);
+        
+        // Add rapid-enter animation to the new card
+        requestAnimationFrame(() => {
+            const cardWrapper = document.querySelector(`.card-wrapper[data-card-id="${card.id}"]`);
+            if (cardWrapper) {
+                const cardEl = cardWrapper.querySelector('.game-card');
+                if (cardEl) {
+                    cardEl.classList.add('card-rapid-enter');
+                    setTimeout(() => cardEl.classList.remove('card-rapid-enter'), 400);
+                }
+            }
+        });
+        
+        // Schedule next reveal
+        if (cardRevealQueue.length > 0) {
+            revealTimer = setTimeout(processCardRevealQueue, CARD_REVEAL_STAGGER);
+        } else {
+            revealTimer = null;
+            isRevealingCards = false;
+            pendingRevealCardIds.clear();
+        }
+    }
+    
+    // Helper to check if a card should be shown (for staggered reveals)
+    // Returns FALSE for cards that are still pending reveal
+    window.isCardRevealed = (cardId) => {
+        // If not currently revealing, show all cards
+        if (!isRevealingCards) return true;
+        // During reveal, hide cards that are still pending
+        return !pendingRevealCardIds.has(cardId);
+    };
+    
+    // Clear reveal tracking when appropriate (turn start, etc.)
+    window.clearCardRevealQueue = () => {
+        cardRevealQueue = [];
+        pendingRevealCardIds.clear();
+        isRevealingCards = false;
+        if (revealTimer) {
+            clearTimeout(revealTimer);
+            revealTimer = null;
+        }
+        if (queueStartTimer) {
+            clearTimeout(queueStartTimer);
+            queueStartTimer = null;
+        }
+    };
+    
     GameEvents.on('onCardDrawn', (data) => {
         if (data.owner === 'player') {
-            // Update hand to show the new card
-            renderHand();
-            
-            // Play draw animation during gameplay (not initial setup)
-            if (game.turnNumber > 0 && window.CombatEffects?.playCardDrawAnimation) {
-                window.CombatEffects.playCardDrawAnimation(1, 'player');
+            if (game.turnNumber > 0) {
+                // Queue for staggered rapid-fire reveal during gameplay
+                queueCardReveal(data.card);
+            } else {
+                // Initial hand setup - just render immediately, no animation
+                renderHand(true);
             }
         }
     });
     
-    // Turn start UI reset
+    // Turn start UI reset (don't clear reveal queue here - it clears itself after processing)
     GameEvents.on('onTurnStart', (data) => {
         if (data.owner === 'player') {
+            // Reset UI state
             ui.selectedCard = null;
             ui.attackingCryptid = null;
             ui.targetingBurst = null;
@@ -4335,6 +4477,11 @@ function setupGameEventListeners() {
             ui.draggedCard = null;
             document.getElementById('cancel-target').classList.remove('show');
         }
+    });
+    
+    // Clear reveal queue at turn END (before new turn starts) to ensure clean state
+    GameEvents.on('onTurnEnd', (data) => {
+        window.clearCardRevealQueue();
     });
     
     // Lycanthrope Pack Growth - when support summoned, buff Lycanthrope/combatant
