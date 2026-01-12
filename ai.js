@@ -481,21 +481,25 @@ function aiCombat(onComplete) {
         // Apply combat effects for successful hit (plays in parallel with death zoom)
         if (!result.negated && !result.protectionBlocked && window.CombatEffects) {
             const damage = result.damage || 0;
-            const isCrit = damage >= 5;
+            // Cap displayed damage to effective HP if killed (shows actual HP absorbed, not overkill)
+            const displayDamage = result.killed && result.effectiveHpBefore !== undefined
+                ? Math.min(damage, result.effectiveHpBefore)
+                : damage;
+            const isCrit = displayDamage >= 5;
             
-            // Screen shake only if NOT using dramatic death
+            // Screen shake only if NOT using dramatic death (use full damage for intensity)
             if (!usingDramaticDeath) {
                 CombatEffects.heavyImpact(Math.max(damage, 1));
             }
             
-            // Impact flash and particles
+            // Impact flash and particles (use full damage for visual intensity)
             CombatEffects.createImpactFlash(impactX, impactY, 80 + damage * 10);
             CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
             CombatEffects.createImpactParticles(impactX, impactY, result.killed ? '#ff2222' : '#ff6666', 8 + damage);
             
-            // Show damage number (skip for dramatic deaths - the zoom is more impactful)
+            // Show damage number (capped to actual HP absorbed, skip for dramatic deaths)
             if (result.target && !usingDramaticDeath) {
-                CombatEffects.showDamageNumber(result.target, damage, isCrit);
+                CombatEffects.showDamageNumber(result.target, displayDamage, isCrit);
             }
         }
         

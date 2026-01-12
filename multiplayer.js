@@ -315,7 +315,9 @@ window.Multiplayer = {
             // El Duende
             hasElDuendeSupport: cryptid.hasElDuendeSupport || false,
             protectsTraps: cryptid.protectsTraps || false,
-            protectedTrapSide: cryptid.protectedTrapSide || null,
+            protectedTrapSlot: cryptid.protectedTrapSlot,
+            trapCostModifier: cryptid.trapCostModifier || 0,
+            enemyTrapCostModifier: cryptid.enemyTrapCostModifier || 0,
             
             // Library Gargoyle
             libraryGargoyleBuff: cryptid.libraryGargoyleBuff || false,
@@ -616,7 +618,9 @@ window.Multiplayer = {
                     ourCryptid.hasHellhoundPupSupport = theirView.hasHellhoundPupSupport;
                     ourCryptid.hasElDuendeSupport = theirView.hasElDuendeSupport;
                     ourCryptid.protectsTraps = theirView.protectsTraps;
-                    ourCryptid.protectedTrapSide = theirView.protectedTrapSide;
+                    ourCryptid.protectedTrapSlot = theirView.protectedTrapSlot;
+                    ourCryptid.trapCostModifier = theirView.trapCostModifier;
+                    ourCryptid.enemyTrapCostModifier = theirView.enemyTrapCostModifier;
                     ourCryptid.libraryGargoyleBuff = theirView.libraryGargoyleBuff;
                     ourCryptid.hasSewerAlligatorSupport = theirView.hasSewerAlligatorSupport;
                     ourCryptid.hasSacrificeAbility = theirView.hasSacrificeAbility;

@@ -252,6 +252,129 @@ window.CombatEffects = {
         setTimeout(() => container.remove(), 1000);
     },
     
+    // ==================== DESTROYER RESIDUE EFFECT ====================
+    // Creates a lingering danger zone in the combat slot after Destroyer overkill
+    // The support promotes INTO this danger zone, then gets struck
+    
+    /**
+     * Create a lingering Destroyer residue effect in a tile
+     * @param {string} owner - 'player' or 'enemy'
+     * @param {number} col - Column (combat column)
+     * @param {number} row - Row
+     * @param {number} overkillDamage - Amount of overkill damage
+     * @returns {HTMLElement} The residue element (caller should store reference to remove later)
+     */
+    createDestroyerResidue(owner, col, row, overkillDamage) {
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield) return null;
+        
+        // Get tile position
+        const tileKey = `${owner}-${col}-${row}`;
+        const tile = document.querySelector(`.tile[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`);
+        if (!tile) return null;
+        
+        const tileRect = tile.getBoundingClientRect();
+        const battlefieldRect = battlefield.getBoundingClientRect();
+        const x = tileRect.left + tileRect.width/2 - battlefieldRect.left;
+        const y = tileRect.top + tileRect.height/2 - battlefieldRect.top;
+        
+        // Create container for the residue effect
+        const residue = document.createElement('div');
+        residue.className = 'destroyer-residue';
+        residue.dataset.owner = owner;
+        residue.dataset.row = row;
+        residue.style.left = x + 'px';
+        residue.style.top = y + 'px';
+        
+        // Intensity scales with overkill damage
+        const intensity = Math.min(1 + overkillDamage * 0.1, 2);
+        residue.style.setProperty('--intensity', intensity);
+        
+        // Create multiple slash marks
+        for (let i = 0; i < 3; i++) {
+            const slash = document.createElement('div');
+            slash.className = 'destroyer-slash';
+            slash.style.setProperty('--slash-index', i);
+            slash.style.setProperty('--slash-angle', (i * 60 - 30) + 'deg');
+            residue.appendChild(slash);
+        }
+        
+        // Create pulsing danger glow
+        const glow = document.createElement('div');
+        glow.className = 'destroyer-glow';
+        residue.appendChild(glow);
+        
+        // Create floating damage number
+        const dmgIndicator = document.createElement('div');
+        dmgIndicator.className = 'destroyer-damage-indicator';
+        dmgIndicator.textContent = `💥${overkillDamage}`;
+        residue.appendChild(dmgIndicator);
+        
+        battlefield.appendChild(residue);
+        
+        // Store reference for later removal
+        if (!window.activeDestroyerResidues) window.activeDestroyerResidues = new Map();
+        window.activeDestroyerResidues.set(`${owner}-${row}`, { element: residue, damage: overkillDamage });
+        
+        return residue;
+    },
+    
+    /**
+     * Trigger the Destroyer residue strike when support enters
+     * @param {string} owner - 'player' or 'enemy'  
+     * @param {number} row - Row
+     * @param {Function} onComplete - Callback after strike animation
+     */
+    strikeDestroyerResidue(owner, row, onComplete) {
+        const key = `${owner}-${row}`;
+        const residueData = window.activeDestroyerResidues?.get(key);
+        
+        if (!residueData) {
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        const { element: residue, damage } = residueData;
+        const battlefield = document.getElementById('battlefield-area');
+        
+        // Get position for impact
+        const x = parseFloat(residue.style.left);
+        const y = parseFloat(residue.style.top);
+        
+        // Add strike animation class
+        residue.classList.add('destroyer-striking');
+        
+        // Heavy screen shake
+        this.heavyImpact(damage);
+        
+        // Impact particles
+        this.createImpactParticles(x, y, '#ff4444', 15);
+        this.createImpactParticles(x, y, '#ff8800', 10);
+        this.createSparks(x, y, 20);
+        
+        // Flash
+        this.createImpactFlash(x, y, 100);
+        
+        // Remove after animation
+        setTimeout(() => {
+            residue.remove();
+            window.activeDestroyerResidues.delete(key);
+            if (onComplete) onComplete();
+        }, 300);
+    },
+    
+    /**
+     * Clear any Destroyer residue (e.g., if no support to promote)
+     */
+    clearDestroyerResidue(owner, row) {
+        const key = `${owner}-${row}`;
+        const residueData = window.activeDestroyerResidues?.get(key);
+        if (residueData) {
+            residueData.element.remove();
+            window.activeDestroyerResidues.delete(key);
+        }
+    },
+    
     // ==================== LIGHTNING STRIKE EFFECT ====================
     
     createLightningStrike(targetX, targetY, onComplete) {
@@ -3001,6 +3124,124 @@ window.CombatEffects = {
                 transform: translate(-50%, -50%) scale(1.5);
                 opacity: 0;
             }
+        }
+        
+        /* ==================== DESTROYER RESIDUE ==================== */
+        .destroyer-residue {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 500;
+        }
+        
+        .destroyer-slash {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 80px;
+            height: 6px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(255, 50, 50, 0.8) 20%, 
+                rgba(255, 200, 100, 1) 50%, 
+                rgba(255, 50, 50, 0.8) 80%, 
+                transparent 100%);
+            transform: translate(-50%, -50%) rotate(var(--slash-angle, 0deg));
+            box-shadow: 
+                0 0 10px rgba(255, 100, 50, 0.8),
+                0 0 20px rgba(255, 50, 0, 0.5),
+                0 0 30px rgba(255, 0, 0, 0.3);
+            animation: slashPulse 0.8s ease-in-out infinite;
+            animation-delay: calc(var(--slash-index, 0) * 0.15s);
+        }
+        
+        @keyframes slashPulse {
+            0%, 100% { 
+                opacity: 0.6; 
+                transform: translate(-50%, -50%) rotate(var(--slash-angle, 0deg)) scaleX(0.9);
+            }
+            50% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) rotate(var(--slash-angle, 0deg)) scaleX(1.1);
+            }
+        }
+        
+        .destroyer-glow {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 100px;
+            height: 100px;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: radial-gradient(circle, 
+                rgba(255, 50, 0, 0.3) 0%, 
+                rgba(255, 0, 0, 0.15) 40%, 
+                transparent 70%);
+            animation: dangerPulse 1s ease-in-out infinite;
+        }
+        
+        @keyframes dangerPulse {
+            0%, 100% { 
+                transform: translate(-50%, -50%) scale(0.8); 
+                opacity: 0.5;
+            }
+            50% { 
+                transform: translate(-50%, -50%) scale(1.2); 
+                opacity: 1;
+            }
+        }
+        
+        .destroyer-damage-indicator {
+            position: absolute;
+            left: 50%;
+            top: -30px;
+            transform: translateX(-50%);
+            font-family: 'Trebuchet MS', sans-serif;
+            font-size: 18px;
+            font-weight: bold;
+            color: #ff6644;
+            text-shadow: 
+                0 0 5px #ff0000,
+                0 0 10px rgba(255, 0, 0, 0.5),
+                0 2px 4px rgba(0, 0, 0, 0.8);
+            animation: indicatorBob 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes indicatorBob {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-5px); }
+        }
+        
+        .destroyer-residue.destroyer-striking .destroyer-slash {
+            animation: slashStrike 0.3s ease-out forwards;
+        }
+        
+        .destroyer-residue.destroyer-striking .destroyer-glow {
+            animation: glowExplode 0.3s ease-out forwards;
+        }
+        
+        .destroyer-residue.destroyer-striking .destroyer-damage-indicator {
+            animation: indicatorStrike 0.3s ease-out forwards;
+        }
+        
+        @keyframes slashStrike {
+            0% { transform: translate(-50%, -50%) rotate(var(--slash-angle, 0deg)) scale(1); opacity: 1; }
+            50% { transform: translate(-50%, -50%) rotate(var(--slash-angle, 0deg)) scale(1.5); opacity: 1; }
+            100% { transform: translate(-50%, -50%) rotate(var(--slash-angle, 0deg)) scale(2); opacity: 0; }
+        }
+        
+        @keyframes glowExplode {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(3); opacity: 0; }
+        }
+        
+        @keyframes indicatorStrike {
+            0% { transform: translateX(-50%) scale(1); opacity: 1; }
+            50% { transform: translateX(-50%) scale(1.5); opacity: 1; }
+            100% { transform: translateX(-50%) scale(0); opacity: 0; }
         }
         
         /* ==================== DAMAGE NUMBERS ==================== */

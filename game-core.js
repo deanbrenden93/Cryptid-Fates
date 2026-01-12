@@ -3607,7 +3607,7 @@ window.abilityAnimationQueue = [];
 window.processingAbilityAnimations = false;
 
 // Queue an ability animation effect
-// Automatically captures sprite references at queue time so they're available
+// Automatically captures sprite references and HP at queue time so they're available
 // even if the cryptid is killed before the animation plays
 function queueAbilityAnimation(effect) {
     // Auto-capture target sprite if not already provided
@@ -3622,6 +3622,13 @@ function queueAbilityAnimation(effect) {
         effect.sourceSprite = document.querySelector(
             `.cryptid-sprite[data-owner="${effect.source.owner}"][data-col="${effect.source.col}"][data-row="${effect.source.row}"]`
         );
+    }
+    
+    // Auto-capture target's current HP for accurate damage display (Option B: cap to HP lost)
+    // This captures HP AFTER damage was applied, so we need to add back the damage to get "before"
+    if (effect.target && effect.damage && effect.targetHpBefore === undefined) {
+        // HP after damage + damage dealt = HP before damage
+        effect.targetHpBefore = (effect.target.currentHp || 0) + (effect.damage || 0);
     }
     
     window.abilityAnimationQueue.push(effect);
@@ -3643,7 +3650,13 @@ async function processAbilityAnimationQueue() {
 }
 
 async function playAbilityAnimation(effect) {
-    const { type, source, target, damage, message, owner } = effect;
+    const { type, source, target, damage, message, owner, targetHpBefore } = effect;
+    
+    // Calculate displayed damage: cap to HP lost if target died (Option B)
+    const targetDied = target && target.currentHp <= 0;
+    const displayDamage = (targetDied && targetHpBefore !== undefined && damage)
+        ? Math.min(damage, Math.max(0, targetHpBefore))
+        : damage;
     
     // Use pre-captured sprites if provided (important for abilities that kill before animation)
     // Otherwise fall back to lookup by position
@@ -3684,10 +3697,10 @@ async function playAbilityAnimation(effect) {
                         CombatEffects.createImpactFlash(impactX, impactY, 60);
                         CombatEffects.createImpactParticles(impactX, impactY, '#aa66ff', 8);
                         CombatEffects.lightImpact();
-                        CombatEffects.showDamageNumber(target, damage);
+                        CombatEffects.showDamageNumber(target, displayDamage);
                     }
                 } else {
-                    showFloatingDamage(target, damage);
+                    showFloatingDamage(target, displayDamage);
                 }
                 await new Promise(r => setTimeout(r, 300));
                 targetSprite.classList.remove('hit-recoil');
@@ -3719,10 +3732,10 @@ async function playAbilityAnimation(effect) {
                         CombatEffects.createImpactFlash(impactX, impactY, 70);
                         CombatEffects.createSparks(impactX, impactY, 10);
                         CombatEffects.heavyImpact(damage || 2);
-                        CombatEffects.showDamageNumber(target, damage, damage >= 5);
+                        CombatEffects.showDamageNumber(target, displayDamage, displayDamage >= 5);
                     }
                 } else {
-                    showFloatingDamage(target, damage);
+                    showFloatingDamage(target, displayDamage);
                 }
                 await new Promise(r => setTimeout(r, 250));
                 targetSprite.classList.remove('hit-recoil');
@@ -3749,10 +3762,10 @@ async function playAbilityAnimation(effect) {
                         CombatEffects.createImpactFlash(impactX, impactY, 60);
                         CombatEffects.createSparks(impactX, impactY, 8);
                         CombatEffects.lightImpact();
-                        CombatEffects.showDamageNumber(target, damage);
+                        CombatEffects.showDamageNumber(target, displayDamage);
                     }
                 } else {
-                    showFloatingDamage(target, damage);
+                    showFloatingDamage(target, displayDamage);
                 }
                 await new Promise(r => setTimeout(r, 250));
                 targetSprite.classList.remove('hit-recoil');
@@ -3775,10 +3788,10 @@ async function playAbilityAnimation(effect) {
                         CombatEffects.createImpactFlash(impactX, impactY, 50);
                         CombatEffects.createSparks(impactX, impactY, 6);
                         CombatEffects.lightImpact();
-                        CombatEffects.showDamageNumber(target, damage);
+                        CombatEffects.showDamageNumber(target, displayDamage);
                     }
                 } else {
-                    showFloatingDamage(target, damage);
+                    showFloatingDamage(target, displayDamage);
                 }
                 await new Promise(r => setTimeout(r, 250));
                 targetSprite.classList.remove('hit-recoil');
@@ -3866,8 +3879,8 @@ async function playAbilityAnimation(effect) {
                         CombatEffects.createSparks(impactX, impactY, 12);
                         CombatEffects.heavyImpact(damage || 2);
                     }
-                    if (target && damage) {
-                        CombatEffects.showDamageNumber(target, damage, damage >= 5);
+                    if (target && displayDamage) {
+                        CombatEffects.showDamageNumber(target, displayDamage, displayDamage >= 5);
                     }
                 }
                 
@@ -4300,6 +4313,32 @@ class Game {
         return (owner === 'player' ? this.playerTraps : this.enemyTraps)[row];
     }
     
+    // Map field row (0,1,2) to trap slot (0,1). Row 1 (center) has no corresponding trap slot.
+    fieldRowToTrapSlot(fieldRow) {
+        if (fieldRow === 0) return 0;  // Top row → trap slot 0
+        if (fieldRow === 2) return 1;  // Bottom row → trap slot 1
+        return null;  // Center row (1) has no trap slot
+    }
+    
+    // Destroy a trap, checking for protection (Boggart ability)
+    // Returns true if destroyed, false if protected or no trap
+    destroyTrap(owner, trapSlot, destroyer = null) {
+        const traps = owner === 'player' ? this.playerTraps : this.enemyTraps;
+        const trap = traps[trapSlot];
+        if (!trap) return false;
+        
+        // Check if trap is protected (Boggart support ability)
+        if (trap.protected) {
+            GameEvents.emit('onTrapProtected', { trap, owner, trapSlot, destroyer });
+            console.log(`[Trap] Protected trap at ${owner} slot ${trapSlot} cannot be destroyed`);
+            return false;
+        }
+        
+        traps[trapSlot] = null;
+        GameEvents.emit('onTrapDestroyed', { trap, owner, trapSlot, destroyer });
+        return true;
+    }
+    
     getValidTrapSlots(owner) {
         const traps = owner === 'player' ? this.playerTraps : this.enemyTraps;
         const slots = [];
@@ -4313,9 +4352,11 @@ class Game {
     getModifiedCost(card, owner) {
         let cost = card.cost || 0;
         const field = owner === 'player' ? this.playerField : this.enemyField;
+        const enemyField = owner === 'player' ? this.enemyField : this.playerField;
         const supportCol = this.getSupportCol(owner);
+        const enemySupportCol = this.getSupportCol(owner === 'player' ? 'enemy' : 'player');
         
-        // Check all supports for cost modifiers
+        // Check all friendly supports for cost modifiers (reductions)
         for (let r = 0; r < 3; r++) {
             const support = field[supportCol][r];
             if (support?.trapCostModifier && card.type === 'trap') {
@@ -4329,6 +4370,23 @@ class Game {
             }
             if (support?.cryptidCostModifier && card.type === 'cryptid') {
                 cost += support.cryptidCostModifier;
+            }
+        }
+        
+        // Check enemy supports for cost increases (e.g., El Duende's enemyTrapCostModifier)
+        for (let r = 0; r < 3; r++) {
+            const enemySupport = enemyField[enemySupportCol][r];
+            if (enemySupport?.enemyTrapCostModifier && card.type === 'trap') {
+                cost += enemySupport.enemyTrapCostModifier;
+            }
+            if (enemySupport?.enemyAuraCostModifier && card.type === 'aura') {
+                cost += enemySupport.enemyAuraCostModifier;
+            }
+            if (enemySupport?.enemyBurstCostModifier && card.type === 'burst') {
+                cost += enemySupport.enemyBurstCostModifier;
+            }
+            if (enemySupport?.enemyCryptidCostModifier && card.type === 'cryptid') {
+                cost += enemySupport.enemyCryptidCostModifier;
             }
         }
         
@@ -5328,6 +5386,8 @@ class Game {
             GameEvents.emit('onToxicDamage', { target, bonusDamage: 1, owner: targetOwner });
         }
         
+        // Capture effective HP before damage for accurate overkill calculation (HP pooling)
+        const effectiveHpBefore = this.getEffectiveHp(target);
         const hpBefore = target.currentHp;
         target.currentHp -= damage;
         
@@ -5363,65 +5423,36 @@ class Game {
         }
         
         // Cleave - also hit support in same row (Adult Bigfoot)
+        // IMPORTANT: We apply damage now but defer death processing until after main target death
+        // This ensures proper death ordering: main target dies first, then cleave targets
+        let cleaveTarget = null;
+        let cleaveTargetWasCombatant = false;
         if (attacker.hasCleave && damage > 0) {
             const supportCol = this.getSupportCol(targetOwner);
             const combatCol = this.getCombatCol(targetOwner);
             // If we attacked combatant, also hit support
             if (targetCol === combatCol) {
-                const supportTarget = this.getFieldCryptid(targetOwner, supportCol, targetRow);
-                if (supportTarget) {
-                    supportTarget.currentHp -= damage;
-                    GameEvents.emit('onCleaveDamage', { attacker, target: supportTarget, damage });
-                    
-                    // Queue cleave animation
-                    queueAbilityAnimation({
-                        type: 'cleave',
-                        source: attacker,
-                        target: supportTarget,
-                        damage: damage,
-                        message: `⚔ ${attacker.name} cleaves!`
-                    });
-                    
-                    if (supportTarget.currentHp <= 0) {
-                        supportTarget.killedBy = 'cleave';
-                        supportTarget.killedBySource = attacker;
-                        this.killCryptid(supportTarget, attacker.owner);
-                        if (attacker.onKill) {
-                            GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: supportTarget, col: attacker.col, row: attacker.row });
-                            attacker.onKill(attacker, supportTarget, this);
-                        }
-                        GameEvents.emit('onKill', { killer: attacker, victim: supportTarget, killerOwner: attacker.owner, victimOwner: targetOwner });
-                    }
-                }
+                cleaveTarget = this.getFieldCryptid(targetOwner, supportCol, targetRow);
+                cleaveTargetWasCombatant = false;
             }
             // If we attacked support, also hit combatant
             else if (targetCol === supportCol) {
-                const combatTarget = this.getFieldCryptid(targetOwner, combatCol, targetRow);
-                if (combatTarget) {
-                    combatTarget.currentHp -= damage;
-                    GameEvents.emit('onCleaveDamage', { attacker, target: combatTarget, damage });
-                    
-                    // Queue cleave animation
-                    queueAbilityAnimation({
-                        type: 'cleave',
-                        source: attacker,
-                        target: combatTarget,
-                        damage: damage,
-                        message: `⚔ ${attacker.name} cleaves!`
-                    });
-                    
-                    // Use getEffectiveHp to consider combatant's support HP pooling
-                    if (this.getEffectiveHp(combatTarget) <= 0) {
-                        combatTarget.killedBy = 'cleave';
-                        combatTarget.killedBySource = attacker;
-                        this.killCryptid(combatTarget, attacker.owner);
-                        if (attacker.onKill) {
-                            GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: combatTarget, col: attacker.col, row: attacker.row });
-                            attacker.onKill(combatTarget, this);
-                        }
-                        GameEvents.emit('onKill', { killer: attacker, victim: combatTarget, killerOwner: attacker.owner, victimOwner: targetOwner });
-                    }
-                }
+                cleaveTarget = this.getFieldCryptid(targetOwner, combatCol, targetRow);
+                cleaveTargetWasCombatant = true;
+            }
+            
+            if (cleaveTarget) {
+                cleaveTarget.currentHp -= damage;
+                GameEvents.emit('onCleaveDamage', { attacker, target: cleaveTarget, damage });
+                
+                // Queue cleave animation
+                queueAbilityAnimation({
+                    type: 'cleave',
+                    source: attacker,
+                    target: cleaveTarget,
+                    damage: damage,
+                    message: `⚔ ${attacker.name} cleaves!`
+                });
             }
         }
         
@@ -5435,8 +5466,28 @@ class Game {
             target.killedBySource = attacker;
             
             // Calculate overkill damage for destroyer
-            const overkillDamage = Math.abs(target.currentHp);
+            // Uses effective HP (with HP pooling) for accurate overflow calculation
+            const overkillDamage = Math.max(0, damage - effectiveHpBefore);
             
+            // IMPORTANT: Capture support reference BEFORE killing combatant
+            // killCryptid promotes support to combat, so we'd lose the reference otherwise
+            const targetSupport = attacker.hasDestroyer && overkillDamage > 0 
+                ? this.getFieldCryptid(targetOwner, this.getSupportCol(targetOwner), targetRow)
+                : null;
+            
+            // Create Destroyer residue effect if there's a support about to be hit
+            // This creates a visual "danger zone" in the combat slot before the support promotes into it
+            if (targetSupport && overkillDamage > 0) {
+                GameEvents.emit('onDestroyerResidue', { 
+                    owner: targetOwner, 
+                    col: this.getCombatCol(targetOwner), 
+                    row: targetRow, 
+                    damage: overkillDamage,
+                    support: targetSupport
+                });
+            }
+            
+            // Death 1: Kill the combatant (this promotes the support to combat)
             this.killCryptid(target, attacker.owner);
             if (attacker.onKill) {
                 GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: target, col: attacker.col, row: attacker.row });
@@ -5454,26 +5505,55 @@ class Game {
                 }
             }
             
-            // Destroyer - overkill damage floods to support
-            if (attacker.hasDestroyer && overkillDamage > 0) {
-                const support = this.getFieldCryptid(targetOwner, this.getSupportCol(targetOwner), targetRow);
-                if (support) {
-                    const supportHpBefore = support.currentHp;
-                    support.currentHp -= overkillDamage;
-                    GameEvents.emit('onDestroyerDamage', { 
-                        attacker, target, support, damage: overkillDamage,
-                        hpBefore: supportHpBefore, hpAfter: support.currentHp 
-                    });
-                    
-                    if (support.currentHp <= 0) {
-                        supportKilled = true;
-                        support.killedBy = 'destroyer';
-                        support.killedBySource = attacker;
-                        this.killCryptid(support, attacker.owner);
-                        GameEvents.emit('onKill', { killer: attacker, victim: support, killerOwner: attacker.owner, victimOwner: targetOwner });
-                    }
+            // Destroyer - overkill damage floods to (former) support
+            // Note: targetSupport was captured BEFORE killCryptid, when it was still in support position
+            if (targetSupport) {
+                const supportHpBefore = targetSupport.currentHp;
+                targetSupport.currentHp -= overkillDamage;
+                GameEvents.emit('onDestroyerDamage', { 
+                    attacker, target, support: targetSupport, damage: overkillDamage,
+                    hpBefore: supportHpBefore, hpAfter: targetSupport.currentHp 
+                });
+                
+                // Calculate display damage (cap to HP if killed - Option B)
+                const displayOverkill = targetSupport.currentHp <= 0 
+                    ? Math.min(overkillDamage, supportHpBefore) 
+                    : overkillDamage;
+                
+                // Mark for pending damage animation - UI will play this AFTER promotion completes
+                // We don't queue immediately because the death/promotion animations need to happen first
+                targetSupport._pendingDestroyerDamage = {
+                    damage: displayOverkill, // Use capped damage for display
+                    actualDamage: overkillDamage, // Keep actual for screen shake intensity
+                    source: attacker,
+                    message: `💥 Destroyer: ${displayOverkill} damage pierces to ${targetSupport.name}!`
+                };
+                
+                // Mark for death - UI will animate and call killCryptid via checkAllCreaturesForDeath
+                // We do NOT call killCryptid here so the death animation can play
+                if (targetSupport.currentHp <= 0) {
+                    supportKilled = true;
+                    targetSupport.killedBy = 'destroyer';
+                    targetSupport.killedBySource = attacker;
+                    targetSupport._pendingDeathFromAttack = true; // Flag for UI to detect
+                    // Emit onKill now so game logic happens, but don't actually remove from field yet
+                    GameEvents.emit('onKill', { killer: attacker, victim: targetSupport, killerOwner: attacker.owner, victimOwner: targetOwner, pendingAnimation: true });
                 }
             }
+        }
+        
+        // Deferred cleave death check - mark for death, don't kill yet
+        // UI's checkAllCreaturesForDeath will handle animation and actual removal
+        // Skip if already killed or already pending death from another source (e.g., Destroyer)
+        if (cleaveTarget && cleaveTarget.currentHp <= 0 && !cleaveTarget._alreadyKilled && !cleaveTarget._pendingDeathFromAttack) {
+            cleaveTarget.killedBy = 'cleave';
+            cleaveTarget.killedBySource = attacker;
+            cleaveTarget._pendingDeathFromAttack = true; // Flag for UI to detect
+            if (attacker.onKill) {
+                GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: cleaveTarget, col: attacker.col, row: attacker.row });
+                attacker.onKill(attacker, cleaveTarget, this);
+            }
+            GameEvents.emit('onKill', { killer: attacker, victim: cleaveTarget, killerOwner: attacker.owner, victimOwner: targetOwner, pendingAnimation: true });
         }
         
         if (!killed && attacker.hasLatch && !attacker.latchedTo && damage > 0) {
@@ -5559,7 +5639,7 @@ class Game {
             attacker.multiAttackProcessed = false;
         }
         
-        return { damage, killed, protectionBlocked, target };
+        return { damage, killed, protectionBlocked, target, effectiveHpBefore };
     }
 
     killCryptid(cryptid, killerOwner = null) {

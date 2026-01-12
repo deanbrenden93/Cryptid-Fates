@@ -135,8 +135,8 @@ CardRegistry.registerKindling('myling', {
                 combatant.burnTurns = 0;
                 ailmentsCleared++;
             }
-            if (combatant.bleedStacks > 0) {
-                combatant.bleedStacks = 0;
+            if (combatant.bleedTurns > 0) {
+                combatant.bleedTurns = 0;
                 ailmentsCleared++;
             }
             if (combatant.calamityCounters > 0) {
@@ -282,9 +282,8 @@ CardRegistry.registerKindling('elDuende', {
     // COMBAT: Remove aura or protection before attack
     onBeforeAttack: (attacker, target, game) => {
         // Try to remove protection first
-        if (target.protection > 0) {
-            target.protection--;
-            GameEvents.emit('onProtectionRemoved', { target, removedBy: attacker, owner: attacker.owner });
+        if (target.protectionCharges > 0) {
+            game.removeProtection(target, 1);
             return;
         }
         
@@ -295,30 +294,12 @@ CardRegistry.registerKindling('elDuende', {
             GameEvents.emit('onAuraRemoved', { target, aura: removedAura, removedBy: attacker, owner: attacker.owner });
         }
     },
-    // SUPPORT: Modify trap costs
+    // SUPPORT: Modify trap costs - uses the support-based cost modifier system
+    // Owner's traps cost -1, enemy traps cost +1
     onSupport: (cryptid, owner, game) => {
-        // Mark owner as having trap cost reduction
-        if (owner === 'player') {
-            game.playerTrapCostReduction = (game.playerTrapCostReduction || 0) + 1;
-            game.enemyTrapCostIncrease = (game.enemyTrapCostIncrease || 0) + 1;
-        } else {
-            game.enemyTrapCostReduction = (game.enemyTrapCostReduction || 0) + 1;
-            game.playerTrapCostIncrease = (game.playerTrapCostIncrease || 0) + 1;
-        }
-        cryptid.hasElDuendeSupport = true;
-    },
-    onDeath: (cryptid, game) => {
-        // Remove trap cost modification when El Duende dies
-        if (cryptid.hasElDuendeSupport) {
-            const owner = cryptid.owner;
-            if (owner === 'player') {
-                game.playerTrapCostReduction = Math.max(0, (game.playerTrapCostReduction || 0) - 1);
-                game.enemyTrapCostIncrease = Math.max(0, (game.enemyTrapCostIncrease || 0) - 1);
-            } else {
-                game.enemyTrapCostReduction = Math.max(0, (game.enemyTrapCostReduction || 0) - 1);
-                game.playerTrapCostIncrease = Math.max(0, (game.playerTrapCostIncrease || 0) - 1);
-            }
-        }
+        // Set cost modifier on self (checked by getModifiedCost)
+        cryptid.trapCostModifier = -1;  // Your traps cost 1 less
+        cryptid.enemyTrapCostModifier = 1;  // Enemy traps cost 1 more
     }
 });
 
@@ -365,7 +346,7 @@ CardRegistry.registerKindling('boggart', {
             // Copy ailments
             if (target.paralyzed) game.applyParalyze(randomTarget);
             if (target.burnTurns > 0) game.applyBurn(randomTarget);
-            if (target.bleedStacks > 0) game.applyBleed(randomTarget);
+            if (target.bleedTurns > 0) game.applyBleed(randomTarget);
             if (target.calamityCounters > 0) game.applyCalamity(randomTarget, target.calamityCounters);
             
             GameEvents.emit('onAilmentSpread', { source: attacker, from: target, to: randomTarget, owner: attacker.owner });
@@ -373,30 +354,30 @@ CardRegistry.registerKindling('boggart', {
         return 0;
     },
     // SUPPORT: Protect traps on same side (top/bottom row)
+    // Note: Field has rows 0-2 (top, center, bottom), trap slots are 0-1 (top, bottom)
     onSupport: (cryptid, owner, game) => {
         // Only works if Boggart is in top or bottom row, not center
         if (cryptid.row === 1) return; // Center row - no effect
         
         cryptid.protectsTraps = true;
-        cryptid.protectedTrapSide = cryptid.row === 0 ? 'top' : 'bottom';
+        // Map field row to trap slot: row 0 → trap 0, row 2 → trap 1
+        const trapSlot = cryptid.row === 0 ? 0 : 1;
+        cryptid.protectedTrapSlot = trapSlot;
         
         // Mark traps on this side as protected
         const traps = owner === 'player' ? game.playerTraps : game.enemyTraps;
-        if (cryptid.row === 0 && traps[0]) {
-            traps[0].protected = true;
-        } else if (cryptid.row === 2 && traps[2]) {
-            traps[2].protected = true;
+        if (traps[trapSlot]) {
+            traps[trapSlot].protected = true;
         }
     },
     onDeath: (cryptid, game) => {
         // Remove trap protection when Boggart dies
-        if (cryptid.protectsTraps) {
+        if (cryptid.protectsTraps && cryptid.protectedTrapSlot !== undefined) {
             const owner = cryptid.owner;
             const traps = owner === 'player' ? game.playerTraps : game.enemyTraps;
-            if (cryptid.row === 0 && traps[0]) {
-                traps[0].protected = false;
-            } else if (cryptid.row === 2 && traps[2]) {
-                traps[2].protected = false;
+            const trapSlot = cryptid.protectedTrapSlot;
+            if (traps[trapSlot]) {
+                traps[trapSlot].protected = false;
             }
         }
     }
@@ -441,15 +422,11 @@ CardRegistry.registerCryptid('rooftopGargoyle', {
             // Check if the dead cryptid was our combatant
             const combatant = game.getCombatant(cryptid);
             if (data.cryptid === combatant && data.killerOwner && data.killerOwner !== owner) {
-                // Find the killer
-                const killerOwner = data.killerOwner;
-                const killerField = killerOwner === 'player' ? game.playerField : game.enemyField;
-                const killerCombatCol = game.getCombatCol(killerOwner);
-                
-                // Give calamity to the attacker in same row
-                const attacker = killerField[killerCombatCol][data.row];
+                // Use killedBySource to find the actual attacker (handles canTargetAny attackers)
+                const attacker = data.killedBySource;
                 if (attacker) {
                     game.applyCalamity(attacker, 3);
+                    GameEvents.emit('onVengeanceTriggered', { support: cryptid, victim: combatant, attacker, owner });
                 }
             }
         });
@@ -605,25 +582,15 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
         if (!combatant || !cryptid.sacrificeAbilityAvailable) return false;
         
         const owner = cryptid.owner;
-        const row = cryptid.row;
         
-        // Kill the combatant
+        // Kill the combatant - this automatically promotes Kuchisake-Onna to combat
+        // and queues the promotion animation via pendingPromotions
         combatant.killedBy = 'sacrifice';
         combatant.killedBySource = cryptid;
         game.killCryptid(combatant, cryptid.owner);
         
-        // Promote Kuchisake-Onna to combat position
-        const promoted = game.promoteSupport(owner, row);
-        
-        // Trigger promotion animation if available
-        if (promoted && typeof window.animateSupportPromotion === 'function') {
-            window.animateSupportPromotion(owner, row);
-        }
-        
         // Buff Kuchisake-Onna to 7/7 with Destroyer
-        const atkGain = 7 - cryptid.currentAtk;
-        const hpGain = 7 - cryptid.currentHp;
-        
+        // (cryptid is now at combat position after killCryptid promoted her)
         cryptid.currentAtk = 7;
         cryptid.baseAtk = 7;
         cryptid.currentHp = 7;
@@ -636,7 +603,8 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
             cryptid, 
             victim: combatant, 
             owner: cryptid.owner,
-            atkGain, hpGain
+            atkGain: 7 - (cryptid.atk || 4),
+            hpGain: 7 - (cryptid.hp || 4)
         });
         
         return true;

@@ -977,18 +977,21 @@ function updateHandCardStates() {
             canPlay = !game.playerKindlingPlayedThisTurn;
         } else if (card.type === 'trap') {
             const validSlots = game.getValidTrapSlots('player');
-            canPlay = validSlots.length > 0 && game.playerPyre >= card.cost;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = validSlots.length > 0 && game.playerPyre >= effectiveCost;
         } else if (card.type === 'aura') {
             const targets = game.getValidAuraTargets('player');
-            canPlay = targets.length > 0 && game.playerPyre >= card.cost;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = targets.length > 0 && game.playerPyre >= effectiveCost;
         } else if (card.type === 'pyre') {
             canPlay = game.canPlayPyreCard('player');
         } else if (card.evolvesFrom) {
             const hasEvolutionTargets = game.getValidEvolutionTargets(card, 'player').length > 0;
-            const canAfford = game.playerPyre >= card.cost;
-            canPlay = hasEvolutionTargets || canAfford;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = hasEvolutionTargets || game.playerPyre >= effectiveCost;
         } else {
-            canPlay = game.playerPyre >= card.cost;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = game.playerPyre >= effectiveCost;
         }
         
         // Update classes only
@@ -1097,19 +1100,22 @@ function renderHand(force = false) {
             canPlay = !game.playerKindlingPlayedThisTurn;
         } else if (card.type === 'trap') {
             const validSlots = game.getValidTrapSlots('player');
-            canPlay = validSlots.length > 0 && game.playerPyre >= card.cost;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = validSlots.length > 0 && game.playerPyre >= effectiveCost;
         } else if (card.type === 'aura') {
             const targets = game.getValidAuraTargets('player');
-            canPlay = targets.length > 0 && game.playerPyre >= card.cost;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = targets.length > 0 && game.playerPyre >= effectiveCost;
         } else if (card.type === 'pyre') {
             canPlay = game.canPlayPyreCard('player');
         } else if (card.evolvesFrom) {
             const hasEvolutionTargets = game.getValidEvolutionTargets(card, 'player').length > 0;
-            const canAfford = game.playerPyre >= card.cost;
-            canPlay = hasEvolutionTargets || canAfford;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = hasEvolutionTargets || game.playerPyre >= effectiveCost;
             if (hasEvolutionTargets) cardEl.classList.add('evolution-card');
         } else {
-            canPlay = game.playerPyre >= card.cost;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = game.playerPyre >= effectiveCost;
         }
         
         if (!canPlay) cardEl.classList.add('unplayable');
@@ -1244,19 +1250,22 @@ function renderHandAnimated() {
             canPlay = !game.playerKindlingPlayedThisTurn;
         } else if (card.type === 'trap') {
             const validSlots = game.getValidTrapSlots('player');
-            canPlay = validSlots.length > 0 && game.playerPyre >= card.cost;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = validSlots.length > 0 && game.playerPyre >= effectiveCost;
         } else if (card.type === 'aura') {
             const targets = game.getValidAuraTargets('player');
-            canPlay = targets.length > 0 && game.playerPyre >= card.cost;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = targets.length > 0 && game.playerPyre >= effectiveCost;
         } else if (card.type === 'pyre') {
             canPlay = game.canPlayPyreCard('player');
         } else if (card.evolvesFrom) {
             const hasEvolutionTargets = game.getValidEvolutionTargets(card, 'player').length > 0;
-            const canAfford = game.playerPyre >= card.cost;
-            canPlay = hasEvolutionTargets || canAfford;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = hasEvolutionTargets || game.playerPyre >= effectiveCost;
             if (hasEvolutionTargets) cardEl.classList.add('evolution-card');
         } else {
-            canPlay = game.playerPyre >= card.cost;
+            const effectiveCost = game.getModifiedCost(card, 'player');
+            canPlay = game.playerPyre >= effectiveCost;
         }
         
         if (!canPlay) cardEl.classList.add('unplayable');
@@ -2240,7 +2249,8 @@ function executeBurstDirect(card, targetOwner, targetCol, targetRow) {
 
 function executeTrapPlacement(row) {
     const card = ui.targetingTrap;
-    if (!card || isAnimating || game.playerPyre < card.cost) return;
+    const effectiveCost = game.getModifiedCost(card, 'player');
+    if (!card || isAnimating || game.playerPyre < effectiveCost) return;
     
     const success = game.setTrap('player', row, card);
     if (success) {
@@ -2253,8 +2263,8 @@ function executeTrapPlacement(row) {
         animateCardRemoval(card.id, 'playing');
         
         const oldPyre = game.playerPyre;
-        game.playerPyre -= card.cost;
-        GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'trap', card });
+        game.playerPyre -= effectiveCost;
+        GameEvents.emit('onPyreSpent', { owner: 'player', amount: effectiveCost, oldValue: oldPyre, newValue: game.playerPyre, source: 'trap', card });
         
         ui.targetingTrap = null; ui.selectedCard = null;
         document.getElementById('cancel-target').classList.remove('show');
@@ -2283,7 +2293,8 @@ function executeTrapPlacement(row) {
 }
 
 function executeTrapPlacementDirect(card, row) {
-    if (!card || isAnimating || game.playerPyre < card.cost) return;
+    const effectiveCost = game.getModifiedCost(card, 'player');
+    if (!card || isAnimating || game.playerPyre < effectiveCost) return;
     const success = game.setTrap('player', row, card);
     if (success) {
         isAnimating = true;
@@ -2295,8 +2306,8 @@ function executeTrapPlacementDirect(card, row) {
         animateCardRemoval(card.id, 'playing');
         
         const oldPyre = game.playerPyre;
-        game.playerPyre -= card.cost;
-        GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'trap', card });
+        game.playerPyre -= effectiveCost;
+        GameEvents.emit('onPyreSpent', { owner: 'player', amount: effectiveCost, oldValue: oldPyre, newValue: game.playerPyre, source: 'trap', card });
         showMessage(`Trap set!`, 800);
         
         setTimeout(() => {
@@ -2657,39 +2668,138 @@ function handleDeathAndPromotion(targetOwner, targetCol, targetRow, deadCryptid,
 
 function checkCascadingDeaths(onComplete) {
     const deathsToProcess = [];
+    const nonLethalDamageToProcess = []; // For Destroyer damage that doesn't kill
+    
     for (const owner of ['player', 'enemy']) {
         const field = owner === 'player' ? game.playerField : game.enemyField;
-        const combatCol = game.getCombatCol(owner);
-        for (let row = 0; row < 3; row++) {
-            const combatant = field[combatCol][row];
-            if (combatant && combatant.checkDeathAfterSupportLoss) {
-                delete combatant.checkDeathAfterSupportLoss;
-                if (combatant.currentHp <= 0) deathsToProcess.push({ owner, col: combatCol, row, cryptid: combatant });
+        for (let col = 0; col < 2; col++) {
+            for (let row = 0; row < 3; row++) {
+                const cryptid = field[col][row];
+                if (!cryptid) continue;
+                
+                // Check for cascading death after support loss (HP pooling ended)
+                if (cryptid.checkDeathAfterSupportLoss) {
+                    delete cryptid.checkDeathAfterSupportLoss;
+                    if (cryptid.currentHp <= 0) {
+                        deathsToProcess.push({ owner, col, row, cryptid, reason: 'supportLoss' });
+                        continue;
+                    }
+                }
+                
+                // Check for pending deaths from Destroyer/Cleave that need animation
+                if (cryptid._pendingDeathFromAttack && cryptid.currentHp <= 0) {
+                    delete cryptid._pendingDeathFromAttack;
+                    deathsToProcess.push({ owner, col, row, cryptid, reason: cryptid.killedBy });
+                }
+                // Check for non-lethal Destroyer damage (support survived)
+                else if (cryptid._pendingDestroyerDamage && cryptid.currentHp > 0) {
+                    nonLethalDamageToProcess.push({ owner, col, row, cryptid });
+                }
             }
         }
     }
-    if (deathsToProcess.length === 0) { onComplete?.(); return; }
+    
+    // Process non-lethal Destroyer damage animations first
+    function processNonLethalDamage(index, callback) {
+        if (index >= nonLethalDamageToProcess.length) {
+            callback();
+            return;
+        }
+        
+        const { owner, col, row, cryptid } = nonLethalDamageToProcess[index];
+        const sprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`);
+        
+        playDestroyerDamageAnimation(cryptid, sprite, () => {
+            processNonLethalDamage(index + 1, callback);
+        });
+    }
+    
+    // If nothing to process, complete immediately
+    if (deathsToProcess.length === 0 && nonLethalDamageToProcess.length === 0) { 
+        onComplete?.(); 
+        return; 
+    }
+    
+    // Play Destroyer damage animation before death animation
+    function playDestroyerDamageAnimation(cryptid, sprite, callback) {
+        const pendingDamage = cryptid._pendingDestroyerDamage;
+        if (!pendingDamage) {
+            callback();
+            return;
+        }
+        
+        delete cryptid._pendingDestroyerDamage;
+        
+        // Show damage message
+        if (pendingDamage.message) {
+            showMessage(pendingDamage.message, 800);
+        }
+        
+        // Play damage effects on the sprite
+        if (sprite && window.CombatEffects) {
+            const battlefield = document.getElementById('battlefield-area');
+            if (battlefield) {
+                const rect = sprite.getBoundingClientRect();
+                const bRect = battlefield.getBoundingClientRect();
+                const impactX = rect.left + rect.width/2 - bRect.left;
+                const impactY = rect.top + rect.height/2 - bRect.top;
+                
+                // Visual effects (use actualDamage for intensity, damage for display)
+                const impactIntensity = pendingDamage.actualDamage || pendingDamage.damage;
+                CombatEffects.createImpactFlash(impactX, impactY, 70);
+                CombatEffects.createSparks(impactX, impactY, 12);
+                CombatEffects.heavyImpact(impactIntensity);
+                CombatEffects.showDamageNumber(cryptid, pendingDamage.damage, pendingDamage.damage >= 5);
+                
+                // Hit recoil on sprite
+                sprite.classList.add('hit-recoil');
+                setTimeout(() => sprite.classList.remove('hit-recoil'), 300);
+            }
+        }
+        
+        // Brief pause for damage to register visually before death
+        setTimeout(callback, 400);
+    }
     
     function processNextDeath(index) {
         if (index >= deathsToProcess.length) { onComplete?.(); return; }
-        const { owner, col, row, cryptid } = deathsToProcess[index];
+        const { owner, col, row, cryptid, reason } = deathsToProcess[index];
         const sprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`);
         const rarity = cryptid?.rarity || 'common';
         
-        if (sprite && window.CombatEffects?.playDramaticDeath) {
-            console.log('[checkCascadingDeaths] Calling playDramaticDeath');
-            game.killCryptid(cryptid);
-            window.CombatEffects.playDramaticDeath(sprite, owner, rarity, () => {
-                renderAll();
-                setTimeout(() => processNextDeath(index + 1), 200);
-            });
-        } else {
-            if (sprite) sprite.classList.add(owner === 'enemy' ? 'dying-right' : 'dying-left');
-            setTimeout(() => { game.killCryptid(cryptid); renderAll(); setTimeout(() => processNextDeath(index + 1), 200); }, TIMING.deathAnim);
-        }
+        // First play Destroyer damage animation if pending, then death
+        playDestroyerDamageAnimation(cryptid, sprite, () => {
+            // Show appropriate message based on death reason
+            if (reason === 'supportLoss') {
+                showMessage("Soul bond severed!", TIMING.messageDisplay);
+            } else if (cryptid.killedBy === 'destroyer') {
+                showMessage(`💥 ${cryptid.name} destroyed!`, TIMING.messageDisplay);
+            } else if (cryptid.killedBy === 'cleave') {
+                showMessage(`⚔ ${cryptid.name} cleaved!`, TIMING.messageDisplay);
+            }
+            
+            if (sprite && window.CombatEffects?.playDramaticDeath) {
+                console.log('[checkCascadingDeaths] Calling playDramaticDeath for', cryptid?.name, 'killedBy:', cryptid?.killedBy);
+                game.killCryptid(cryptid);
+                window.CombatEffects.playDramaticDeath(sprite, owner, rarity, () => {
+                    renderAll();
+                    setTimeout(() => processNextDeath(index + 1), 200);
+                });
+            } else {
+                if (sprite) sprite.classList.add(owner === 'enemy' ? 'dying-right' : 'dying-left');
+                setTimeout(() => { game.killCryptid(cryptid); renderAll(); setTimeout(() => processNextDeath(index + 1), 200); }, TIMING.deathAnim);
+            }
+        });
     }
-    showMessage("Soul bond severed!", TIMING.messageDisplay);
-    processNextDeath(0);
+    
+    // First process non-lethal Destroyer damage, then deaths
+    processNonLethalDamage(0, () => {
+        if (deathsToProcess.length === 0) {
+            onComplete?.();
+        } else {
+            processNextDeath(0);
+        }
+    });
 }
 
 function checkAllCreaturesForDeath(onComplete) {
@@ -3014,21 +3124,25 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
     // Combat effects for successful hit (plays in parallel with death zoom if killed)
     if (window.CombatEffects) {
         const damage = result.damage || 0;
-        const isCrit = damage >= 5;
+        // Cap displayed damage to effective HP if killed (shows actual HP absorbed, not overkill)
+        const displayDamage = result.killed && result.effectiveHpBefore !== undefined
+            ? Math.min(damage, result.effectiveHpBefore)
+            : damage;
+        const isCrit = displayDamage >= 5;
         
         // Screen shake only if NOT using dramatic death (it has its own effects)
         if (!usingDramaticDeath) {
-            CombatEffects.heavyImpact(Math.max(damage, 1));
+            CombatEffects.heavyImpact(Math.max(damage, 1)); // Use full damage for impact intensity
         }
         
-        // Impact flash and particles
+        // Impact flash and particles (use full damage for visual intensity)
         CombatEffects.createImpactFlash(impactX, impactY, 80 + damage * 10);
         CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
         CombatEffects.createImpactParticles(impactX, impactY, result.killed ? '#ff2222' : '#ff6666', 8 + damage);
         
-        // Show damage number (always show, including kills - players want to see damage dealt)
+        // Show damage number (capped to actual HP absorbed for accurate math)
         if (result.target) {
-            CombatEffects.showDamageNumber(result.target, damage, isCrit);
+            CombatEffects.showDamageNumber(result.target, displayDamage, isCrit);
         }
     }
     
@@ -3146,7 +3260,15 @@ function animateSupportPromotion(owner, row) {
             window.CombatEffects.playPromotionAnimation(sprite, owner, distance, () => {
                 sprite.style.left = combatPos.x + 'px';
                 window.activePromotions?.delete(promotionKey);
-                renderSprites();
+                
+                // Check for Destroyer residue and trigger strike
+                if (window.CombatEffects?.strikeDestroyerResidue) {
+                    window.CombatEffects.strikeDestroyerResidue(owner, row, () => {
+                        renderSprites();
+                    });
+                } else {
+                    renderSprites();
+                }
             });
         } else {
             // Fallback to basic animation
@@ -3157,11 +3279,23 @@ function animateSupportPromotion(owner, row) {
                 sprite.classList.remove('promoting-right', 'promoting-left'); 
                 sprite.style.left = combatPos.x + 'px'; 
                 window.activePromotions?.delete(promotionKey);
-                renderSprites(); 
+                
+                // Check for Destroyer residue and trigger strike
+                if (window.CombatEffects?.strikeDestroyerResidue) {
+                    window.CombatEffects.strikeDestroyerResidue(owner, row, () => {
+                        renderSprites();
+                    });
+                } else {
+                    renderSprites();
+                }
             }, TIMING.promoteAnim);
         }
     } else {
         window.activePromotions?.delete(promotionKey);
+        // Also clear any residue if there's no sprite (edge case)
+        if (window.CombatEffects?.clearDestroyerResidue) {
+            window.CombatEffects.clearDestroyerResidue(owner, row);
+        }
     }
 }
 
@@ -4098,11 +4232,50 @@ function showCryptidTooltip(cryptid, col, row, owner) {
             e.stopPropagation();
             if (cryptid.activateSacrifice) {
                 const combatant = game.getCombatant(cryptid);
+                const combatCol = game.getCombatCol(owner);
+                const combatantRow = cryptid.row;
+                
+                // Get sprite for death animation BEFORE activating sacrifice
+                const combatantSprite = document.querySelector(
+                    `.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${combatantRow}"]`
+                );
+                const rarity = combatant?.rarity || 'common';
+                
                 GameEvents.emit('onActivatedAbility', { ability: 'sacrifice', card: cryptid, owner, col: cryptid.col, row: cryptid.row, target: combatant });
-                cryptid.activateSacrifice(cryptid, game);
                 hideTooltip();
-                // Delay renderAll for death animation + promotion animation + buffer
-                setTimeout(() => renderAll(), TIMING.deathAnim + TIMING.promoteAnim + 200);
+                isAnimating = true;
+                
+                // Pre-mark the promotion in activePromotions BEFORE activating sacrifice
+                // This prevents renderSprites from showing the support at combat position prematurely
+                if (!window.activePromotions) window.activePromotions = new Set();
+                window.activePromotions.add(`${owner}-${combatantRow}`);
+                
+                // Play death animation for the sacrificed combatant
+                if (combatantSprite && window.CombatEffects?.playDramaticDeath) {
+                    // Activate sacrifice after a small delay (so animation starts first)
+                    setTimeout(() => cryptid.activateSacrifice(cryptid, game), 100);
+                    
+                    window.CombatEffects.playDramaticDeath(combatantSprite, owner, rarity, () => {
+                        // After death animation, process pending promotions with animation
+                        renderAll();
+                        processPendingPromotions(() => {
+                            isAnimating = false;
+                            renderAll();
+                            updateButtons();
+                        });
+                    });
+                } else {
+                    // Fallback - no animation available
+                    cryptid.activateSacrifice(cryptid, game);
+                    setTimeout(() => {
+                        renderAll();
+                        processPendingPromotions(() => {
+                            isAnimating = false;
+                            renderAll();
+                            updateButtons();
+                        });
+                    }, TIMING.deathAnim);
+                }
             }
         };
         tooltip.classList.add('has-sacrifice');
@@ -4636,6 +4809,13 @@ function setupGameEventListeners() {
                     }
                 }
             }
+        }
+    });
+    
+    // Destroyer Residue - create visual danger zone when Destroyer overkill will hit support
+    GameEvents.on('onDestroyerResidue', (data) => {
+        if (window.CombatEffects?.createDestroyerResidue) {
+            window.CombatEffects.createDestroyerResidue(data.owner, data.col, data.row, data.damage);
         }
     });
     

@@ -1244,20 +1244,26 @@ CardRegistry.registerCryptid('honeyIslandMonster', {
     // COMBAT: Destroy trap on enter, bonus first attack
     onCombat: (cryptid, owner, game) => {
         const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        const enemyTraps = enemyOwner === 'player' ? game.playerTraps : game.enemyTraps;
         
-        // Destroy trap in same row
-        if (enemyTraps[cryptid.row]) {
-            const destroyedTrap = enemyTraps[cryptid.row];
-            enemyTraps[cryptid.row] = null;
-            GameEvents.emit('onTrapDestroyed', { trap: destroyedTrap, destroyer: cryptid });
-            
-            if (typeof queueAbilityAnimation !== 'undefined') {
-                queueAbilityAnimation({
-                    type: 'damage',
-                    target: { owner: enemyOwner, row: cryptid.row },
-                    message: `💥 ${cryptid.name} destroys enemy trap!`
-                });
+        // Map field row to trap slot (row 0→slot 0, row 2→slot 1, row 1 has no trap)
+        const trapSlot = game.fieldRowToTrapSlot(cryptid.row);
+        if (trapSlot !== null) {
+            const trap = game.getTrap(enemyOwner, trapSlot);
+            if (trap) {
+                const destroyed = game.destroyTrap(enemyOwner, trapSlot, cryptid);
+                if (destroyed && typeof queueAbilityAnimation !== 'undefined') {
+                    queueAbilityAnimation({
+                        type: 'damage',
+                        target: { owner: enemyOwner, row: cryptid.row },
+                        message: `💥 ${cryptid.name} destroys enemy trap!`
+                    });
+                } else if (!destroyed && typeof queueAbilityAnimation !== 'undefined') {
+                    queueAbilityAnimation({
+                        type: 'effect',
+                        target: { owner: enemyOwner, row: cryptid.row },
+                        message: `🛡️ Trap is protected!`
+                    });
+                }
             }
         }
     },
