@@ -86,8 +86,7 @@ body {
     background: var(--night-sky);
     min-height: 100vh;
     min-height: 100dvh;
-    overflow-x: hidden;
-    overflow-y: hidden;
+    overflow: hidden;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -1677,7 +1676,10 @@ body {
     /* Height: 22% of viewport, min 130px, max 240px - use dvh for mobile browser chrome */
     --hand-h: clamp(130px, 22dvh, 240px);
     
-    /* Card dimensions - 80% of hand height, room for hover */
+    /* Hover lift space - 20% of hand height */
+    --hover-space: calc(var(--hand-h) * 0.20);
+    
+    /* Card dimensions - 80% of hand height, fits with hover space */
     --card-h: calc(var(--hand-h) * 0.80);
     --card-w: calc(var(--card-h) / 1.4);
     --card-gap: calc(var(--card-h) * 0.06);
@@ -1699,7 +1701,7 @@ body {
     position: relative;
     z-index: 50;
     flex-shrink: 0;
-    overflow: visible;
+    overflow: visible; /* Allow hand cards to extend above container */
 }
 
 /* Very short screens (phones in landscape) */
@@ -1945,10 +1947,9 @@ body {
     justify-content: flex-start;
     width: 100%;
     overflow-x: auto;
-    overflow-y: visible;
-    padding-top: 45px;
-    min-height: calc(var(--card-h) + 45px);
-    max-height: 100%; /* Never exceed parent hand-area */
+    overflow-y: hidden; /* Cards lift INTO padding-top space, not above container */
+    padding-top: var(--hover-space);
+    height: 100%; /* Fill hand area exactly */
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -1960,7 +1961,7 @@ body {
     display: flex;
     width: 100%;
     overflow: visible;
-    margin-top: -45px;
+    margin-top: calc(var(--hover-space) * -1);
 }
 
 /* Cards area gets positioning context for fades */
@@ -2305,12 +2306,6 @@ body {
     #hand-area .card-wrapper:hover {
         transform: translateY(-10px) scale(1.04);
     }
-    
-    /* Ensure cards container doesn't overflow vertically */
-    #hand-area #hand-container {
-        padding-top: 35px;
-        min-height: calc(126px + 35px);
-    }
 }
 
 /* Very short screens (phones in landscape) - even smaller cards, still large buttons */
@@ -2332,11 +2327,6 @@ body {
     
     #hand-area .card-wrapper:hover {
         transform: translateY(-8px) scale(1.03);
-    }
-    
-    #hand-area #hand-container {
-        padding-top: 30px;
-        min-height: calc(114px + 30px);
     }
 }
 
@@ -2371,15 +2361,6 @@ body {
         height: 130px !important;
     }
     
-    /* Ensure hover lift works well at this size */
-    #hand-area .card-wrapper:hover {
-        --hover-lift: 40px;
-    }
-    
-    /* More padding for the card container */
-    #hand-area #hand-container {
-        padding-top: 55px;
-    }
 }
 
 /* Card enter animation - elegant fan deal */
