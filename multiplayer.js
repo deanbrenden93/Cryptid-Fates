@@ -2022,6 +2022,16 @@ function initializeMultiplayerMatch(matchData) {
     }, 100);
     
     showMessage(matchData.goesFirst ? 'You go first!' : (matchData.opponentName || 'Opponent') + ' goes first!');
+    
+    // TEMPORARY: Enable cheat mode for multiplayer testing
+    // Remove this block when done testing!
+    if (typeof CheatMode !== 'undefined') {
+        setTimeout(function() {
+            CheatMode.start();
+            console.log('[MP] Cheat mode enabled for testing');
+        }, 200);
+    }
+    
     console.log('[MP] Game started');
 }
 
