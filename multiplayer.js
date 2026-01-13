@@ -1080,6 +1080,14 @@ window.Multiplayer = {
                 break;
             }
             
+            case 'cheatSync': {
+                // Cheat mode forced state sync - just show message and complete
+                showMessage('Opponent synced state', 1000);
+                console.log('[MP] Cheat sync received');
+                safeComplete();
+                break;
+            }
+            
             default:
                 console.warn('[MP] Unknown action:', action.type);
                 safeComplete();
