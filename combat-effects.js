@@ -2753,11 +2753,23 @@ window.CombatEffects = {
     
     /**
      * Play enhanced pyre burn animation with machine-gun effect for multiple pyres
-     * @param {HTMLElement} cardElement - The card being burned
+     * @param {HTMLElement} cardElement - The card being burned (or source element for position)
      * @param {number} pyreGain - Amount of pyre gained
-     * @param {Function} onComplete - Callback when animation completes
+     * @param {Function|Object} onCompleteOrOptions - Callback when animation completes, or options object
+     *        Options: { onComplete: Function, skipBurningEffect: boolean }
      */
-    playPyreBurn(cardElement, pyreGain = 1, onComplete) {
+    playPyreBurn(cardElement, pyreGain = 1, onCompleteOrOptions) {
+        // Parse options
+        let onComplete = null;
+        let skipBurningEffect = false;
+        
+        if (typeof onCompleteOrOptions === 'function') {
+            onComplete = onCompleteOrOptions;
+        } else if (onCompleteOrOptions && typeof onCompleteOrOptions === 'object') {
+            onComplete = onCompleteOrOptions.onComplete;
+            skipBurningEffect = onCompleteOrOptions.skipBurningEffect || false;
+        }
+        
         const gameContainer = document.getElementById('game-container');
         const pyreCounter = document.querySelector('.pyre-display');
         
@@ -2799,8 +2811,8 @@ window.CombatEffects = {
         `;
         gameContainer.appendChild(effectsContainer);
         
-        // Phase 1: Card desaturates and embers rise
-        if (cardElement) {
+        // Phase 1: Card desaturates and embers rise (skip for dying cryptids)
+        if (cardElement && !skipBurningEffect) {
             cardElement.classList.add('pyre-burning');
         }
         
@@ -2857,7 +2869,7 @@ window.CombatEffects = {
         // Cleanup
         const cleanupTime = totalFlightTime + 400;
         setTimeout(() => {
-            if (cardElement) {
+            if (cardElement && !skipBurningEffect) {
                 cardElement.classList.remove('pyre-burning');
             }
             effectsContainer.remove();

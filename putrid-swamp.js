@@ -77,14 +77,27 @@ CardRegistry.registerKindling('swampRat', {
         const enemyOwner = target.owner;
         const myOwner = attacker.owner;
         
+        let stolenPyre = false;
         if (enemyOwner === 'player' && game.playerPyre > 0) {
             game.playerPyre--;
             game.enemyPyre++;
+            stolenPyre = true;
             GameEvents.emit('onPyreStolen', { from: 'player', to: 'enemy', amount: 1, source: attacker });
         } else if (enemyOwner === 'enemy' && game.enemyPyre > 0) {
             game.enemyPyre--;
             game.playerPyre++;
+            stolenPyre = true;
             GameEvents.emit('onPyreStolen', { from: 'enemy', to: 'player', amount: 1, source: attacker });
+        }
+        
+        // Play pyre gain animation if pyre was stolen
+        if (stolenPyre) {
+            const ratSprite = document.querySelector(
+                `.cryptid-sprite[data-owner="${attacker.owner}"][data-col="${attacker.col}"][data-row="${attacker.row}"]`
+            );
+            if (window.CombatEffects?.playPyreBurn) {
+                window.CombatEffects.playPyreBurn(ratSprite, 1);
+            }
         }
         
         if (typeof queueAbilityAnimation !== 'undefined') {
@@ -107,7 +120,16 @@ CardRegistry.registerKindling('swampRat', {
         if (combatant && combatant.curseTokens > 0) {
             if (owner === 'player') game.playerPyre++;
             else game.enemyPyre++;
-            GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'Swamp Rat support' });
+            
+            // Play pyre gain animation
+            const ratSprite = document.querySelector(
+                `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
+            );
+            if (window.CombatEffects?.playPyreBurn) {
+                window.CombatEffects.playPyreBurn(ratSprite, 1);
+            }
+            
+            GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'Swamp Rat support', sourceCryptid: cryptid });
         }
     }
 });
@@ -560,7 +582,16 @@ CardRegistry.registerCryptid('plagueRat', {
             if (pyreGain > 0) {
                 if (owner === 'player') game.playerPyre += pyreGain;
                 else game.enemyPyre += pyreGain;
-                GameEvents.emit('onPyreGained', { owner, amount: pyreGain, source: 'Plague Rat support' });
+                
+                // Play pyre gain animation
+                const ratSprite = document.querySelector(
+                    `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
+                );
+                if (window.CombatEffects?.playPyreBurn) {
+                    window.CombatEffects.playPyreBurn(ratSprite, pyreGain);
+                }
+                
+                GameEvents.emit('onPyreGained', { owner, amount: pyreGain, source: 'Plague Rat support', sourceCryptid: cryptid });
             }
         }
     }
@@ -1006,7 +1037,18 @@ CardRegistry.registerCryptid('mamaBrigitte', {
                     // Ally died - gain pyre
                     if (owner === 'player') game.playerPyre += 2;
                     else game.enemyPyre += 2;
-                    GameEvents.emit('onPyreGained', { owner, amount: 2, source: 'Mama Brigitte' });
+                    
+                    // Play pyre gain animation from the DEAD ALLY's position
+                    // The sprite still exists during the death animation
+                    // Use skipBurningEffect to avoid interfering with death animation
+                    const deadAllySprite = document.querySelector(
+                        `.cryptid-sprite[data-owner="${data.owner}"][data-col="${data.col}"][data-row="${data.row}"]`
+                    );
+                    if (window.CombatEffects?.playPyreBurn) {
+                        window.CombatEffects.playPyreBurn(deadAllySprite, 2, { skipBurningEffect: true });
+                    }
+                    
+                    GameEvents.emit('onPyreGained', { owner, amount: 2, source: 'Mama Brigitte', sourceCryptid: data.cryptid });
                 }
             };
             GameEvents.on('onDeath', cryptid._deathListener);

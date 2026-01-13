@@ -800,30 +800,52 @@ CardRegistry.registerCryptid('theFlayer', {
             }
         }
     },
-    // COMBAT: Gain pyre and draw when killing paralyzed cryptid
-    onCombatAttack: (attacker, target, game) => {
+    // COMBAT: Mark paralyzed targets before attacking so we can track at death time
+    onBeforeAttack: (attacker, target, game) => {
+        // Mark that this target was paralyzed when The Flayer attacked it
         if (target.paralyzed) {
-            // Check if this attack will kill
-            const damage = game.calculateAttackDamage(attacker);
-            if (target.currentHp <= damage) {
-                // Will kill - mark for reward
-                attacker.rewardOnKill = true;
-            }
+            target._wasParalyzedByFlayerAttack = attacker;
         }
-        return 0;
     },
-    // Hook into death to grant rewards
+    // Hook into death to grant rewards - check if target was paralyzed at death, not via prediction
     onSummon: (cryptid, owner, game) => {
         // Use the unsubscribe function returned by GameEvents.on() for clean cleanup
         cryptid._unsubscribeKillReward = GameEvents.on('onDeath', (data) => {
-            if (data.cryptid?.killedBySource === cryptid && cryptid.rewardOnKill) {
+            // Check if The Flayer killed this cryptid AND it was paralyzed when attacked
+            const victim = data.cryptid;
+            if (victim?.killedBySource === cryptid && 
+                (victim.paralyzed || victim._wasParalyzedByFlayerAttack === cryptid)) {
+                console.log('[The Flayer] Killed paralyzed target! Granting pyre + draw');
+                
                 // Gain 1 pyre
                 if (owner === 'player') game.playerPyre++;
                 else game.enemyPyre++;
-                // Draw a card
+                
+                // Play pyre gain animation from the VICTIM's position (where pyre is extracted from)
+                // The victim sprite still exists during the death animation
+                // Use skipBurningEffect to avoid interfering with death animation
+                const victimSprite = document.querySelector(
+                    `.cryptid-sprite[data-owner="${data.owner}"][data-col="${data.col}"][data-row="${data.row}"]`
+                );
+                if (window.CombatEffects?.playPyreBurn) {
+                    window.CombatEffects.playPyreBurn(victimSprite, 1, { skipBurningEffect: true });
+                }
+                
+                // Draw a card (will fail silently if hand is full, but pyre still granted)
+                // The onCardDrawn event will trigger the card reveal animation automatically
                 game.drawCard(owner, 'flayerKill');
-                cryptid.rewardOnKill = false;
-                GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'The Flayer' });
+                
+                // Emit the event for logging/tracking
+                GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'The Flayer', sourceCryptid: victim });
+                
+                // Queue ability text notification
+                if (typeof queueAbilityAnimation !== 'undefined') {
+                    queueAbilityAnimation({
+                        type: 'buff',
+                        target: cryptid,
+                        message: `👁️ The Flayer: +1 Pyre, Draw!`
+                    });
+                }
             }
         });
         
@@ -917,7 +939,16 @@ CardRegistry.registerCryptid('vampireInitiate', {
         // Gain 1 pyre
         if (attacker.owner === 'player') game.playerPyre++;
         else game.enemyPyre++;
-        GameEvents.emit('onPyreGained', { owner: attacker.owner, amount: 1, source: 'Vampire Initiate Siphon' });
+        
+        // Play pyre gain animation from attacker sprite
+        const vampSprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${attacker.owner}"][data-col="${attacker.col}"][data-row="${attacker.row}"]`
+        );
+        if (window.CombatEffects?.playPyreBurn) {
+            window.CombatEffects.playPyreBurn(vampSprite, 1);
+        }
+        
+        GameEvents.emit('onPyreGained', { owner: attacker.owner, amount: 1, source: 'Vampire Initiate Siphon', sourceCryptid: attacker });
         return 0;
     },
     // SUPPORT: Activatable ability - deal 1 damage to combatant for 1 pyre
@@ -944,6 +975,15 @@ CardRegistry.registerCryptid('vampireInitiate', {
         if (owner === 'player') game.playerPyre++;
         else game.enemyPyre++;
         
+        // Play pyre gain animation from Vampire Initiate sprite
+        const vampSprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
+        );
+        if (window.CombatEffects?.playPyreBurn) {
+            window.CombatEffects.playPyreBurn(vampSprite, 1);
+        }
+        
+        GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'Blood Pact', sourceCryptid: cryptid });
         GameEvents.emit('onBloodPactActivated', { 
             cryptid, 
             victim: combatant, 
@@ -1036,7 +1076,15 @@ CardRegistry.registerCryptid('elderVampire', {
         if (owner === 'player') game.playerPyre++;
         else game.enemyPyre++;
         
-        GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'Elder Vampire Undying' });
+        // Play pyre gain animation from Elder Vampire sprite
+        const vampSprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
+        );
+        if (window.CombatEffects?.playPyreBurn) {
+            window.CombatEffects.playPyreBurn(vampSprite, 1);
+        }
+        
+        GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'Elder Vampire Undying', sourceCryptid: cryptid });
     }
 });
 
