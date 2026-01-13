@@ -730,8 +730,8 @@ function renderSprites() {
                                         <span class="stat-icon">♥</span>
                                         <span class="stat-value">${displayHp}</span>
                                     </div>
+                                    ${evoPipsHtml}
                                 </div>
-                                ${evoPipsHtml}
                             </div>
                         `;
                         

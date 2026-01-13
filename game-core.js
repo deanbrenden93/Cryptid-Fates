@@ -4955,13 +4955,17 @@ class Game {
     
     getStatusIcons(cryptid) {
         const icons = [];
+        // Ailments
         if (cryptid.burnTurns > 0) icons.push('🔥');
         if (cryptid.paralyzed) icons.push('⚡');
         if (cryptid.bleedTurns > 0) icons.push('🩸');
         if (cryptid.curseTokens > 0) icons.push(`🔮${cryptid.curseTokens}`);
         if (cryptid.calamityCounters > 0) icons.push(`💀${cryptid.calamityCounters}`);
+        // Buffs/abilities
         if (cryptid.protectionCharges > 0) icons.push(`🛡️${cryptid.protectionCharges > 1 ? cryptid.protectionCharges : ''}`);
         if (cryptid.hasFocus) icons.push('🎯');
+        if (cryptid.hasFlying) icons.push('🪽');
+        if (cryptid.isHidden) icons.push('👁');
         if (cryptid.latchedTo || cryptid.latchedBy) icons.push('🔗');
         if (cryptid.auras?.length > 0) icons.push('✨');
         if (cryptid.hasDestroyer) icons.push('💥');

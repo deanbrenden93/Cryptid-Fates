@@ -3030,7 +3030,9 @@ window.CombatEffects = {
 // ==================== CSS INJECTION ====================
 
 (function injectCombatStyles() {
-    if (document.getElementById('combat-effects-styles')) return;
+    // Always update styles - remove old one if exists
+    const existingStyle = document.getElementById('combat-effects-styles');
+    if (existingStyle) existingStyle.remove();
     
     const style = document.createElement('style');
     style.id = 'combat-effects-styles';
@@ -3543,45 +3545,50 @@ window.CombatEffects = {
             50% { opacity: 0.8; box-shadow: 0 0 12px rgba(255, 50, 50, 0.9); }
         }
         
-        /* Status Icons Column - between HP bar and stat badges */
+        /* Status Icons Column - positioned outside the stat bar, doesn't affect layout */
         .combat-stats .stat-icons-column {
+            position: absolute;
+            top: 0;
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
             align-items: center;
-            gap: 0px;
-            min-width: 8px;
-            max-height: 100%;
+            gap: 1px;
+            min-width: calc(var(--sprite-size, 40px) * 0.28);
+            height: 100%;
             overflow: hidden;
-            padding: 1px 0;
+            padding: 2px 1px;
             background: rgba(10, 8, 6, 0.6);
             border-radius: 2px;
             border: 1px solid rgba(50, 45, 40, 0.4);
         }
         
-        .combat-stats .stat-icon-item {
-            font-size: 10px;
+        /* Player: icons on far left (outer edge) */
+        .cryptid-sprite[data-owner="player"] .stat-icons-column {
+            right: 100%;
+            margin-right: 2px;
+        }
+        
+        /* Enemy: icons on far right (outer edge) */
+        .cryptid-sprite[data-owner="enemy"] .stat-icons-column {
+            left: 100%;
+            margin-left: 2px;
+        }
+        
+        .combat-stats .status-icon-item,
+        .stat-icons-column .status-icon-item,
+        span.status-icon-item {
+            font-size: calc(var(--sprite-size, 40px) * 0.28);
             line-height: 1;
             filter: drop-shadow(0 1px 1px rgba(0,0,0,0.8));
-            flex-shrink: 1;
-            min-height: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            transform: scale(0.55);
-            transform-origin: center;
-            margin: -2px 0;
-        }
-        
-        /* Progressive icon shrinking based on count */
-        .combat-stats .stat-icons-column:has(.stat-icon-item:nth-child(5)) .stat-icon-item {
-            transform: scale(0.45);
-            margin: -3px 0;
-        }
-        
-        .combat-stats .stat-icons-column:has(.stat-icon-item:nth-child(7)) .stat-icon-item {
-            transform: scale(0.35);
-            margin: -4px 0;
+            flex: 0 1 auto;
+            min-height: 0;
+            text-align: center;
+            max-width: calc(var(--sprite-size, 40px) * 0.28);
+            width: calc(var(--sprite-size, 40px) * 0.28);
         }
         
         /* Stat Badges Column */
@@ -3631,25 +3638,17 @@ window.CombatEffects = {
             color: #99ffbb;
         }
         
-        /* Evolution pips - below the whole stat block */
+        /* Evolution pips - below the HP badge */
         .combat-stats .evo-pips {
-            position: absolute;
-            bottom: -10px;
             display: flex;
             gap: 2px;
-        }
-        
-        .cryptid-sprite[data-owner="player"] .evo-pips {
-            left: 0;
-        }
-        
-        .cryptid-sprite[data-owner="enemy"] .evo-pips {
-            right: 0;
+            justify-content: center;
+            margin-top: 2px;
         }
         
         .combat-stats .evo-pip {
-            width: calc(var(--sprite-size, 40px) * 0.1);
-            height: calc(var(--sprite-size, 40px) * 0.1);
+            width: calc(var(--sprite-size, 40px) * 0.08);
+            height: calc(var(--sprite-size, 40px) * 0.08);
             background: linear-gradient(135deg, #88ddff, #44aaff);
             border-radius: 50%;
             box-shadow: 0 0 4px rgba(100, 180, 255, 0.6);
@@ -3712,11 +3711,14 @@ window.CombatEffects = {
                 width: 5px;
             }
             .combat-stats .stat-icons-column {
-                min-width: 6px;
+                min-width: calc(var(--sprite-size, 40px) * 0.24);
+                gap: 0px;
             }
-            .combat-stats .stat-icon-item {
-                transform: scale(0.5);
-                margin: -2px 0;
+            .combat-stats .status-icon-item,
+            span.status-icon-item {
+                font-size: calc(var(--sprite-size, 40px) * 0.24);
+                max-width: calc(var(--sprite-size, 40px) * 0.24);
+                width: calc(var(--sprite-size, 40px) * 0.24);
             }
             .combat-stats .stat-badge {
                 padding: 1px 3px;
@@ -3745,11 +3747,14 @@ window.CombatEffects = {
                 width: 4px;
             }
             .combat-stats .stat-icons-column {
-                min-width: 5px;
+                min-width: calc(var(--sprite-size, 40px) * 0.22);
+                gap: 0px;
             }
-            .combat-stats .stat-icon-item {
-                transform: scale(0.45);
-                margin: -3px 0;
+            .combat-stats .status-icon-item,
+            span.status-icon-item {
+                font-size: calc(var(--sprite-size, 40px) * 0.22);
+                max-width: calc(var(--sprite-size, 40px) * 0.22);
+                width: calc(var(--sprite-size, 40px) * 0.22);
             }
             .combat-stats .stat-badge {
                 padding: 1px 2px;
@@ -3766,11 +3771,13 @@ window.CombatEffects = {
         /* Large desktops - slightly bigger stats */
         @media (min-width: 1400px) and (min-height: 800px) {
             .combat-stats .stat-icons-column {
-                min-width: 10px;
+                min-width: calc(var(--sprite-size, 40px) * 0.32);
             }
-            .combat-stats .stat-icon-item {
-                transform: scale(0.6);
-                margin: -2px 0;
+            .combat-stats .status-icon-item,
+            span.status-icon-item {
+                font-size: calc(var(--sprite-size, 40px) * 0.32);
+                max-width: calc(var(--sprite-size, 40px) * 0.32);
+                width: calc(var(--sprite-size, 40px) * 0.32);
             }
         }
         
