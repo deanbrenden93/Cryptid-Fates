@@ -2958,7 +2958,7 @@ window.CombatEffects = {
         const sprite = document.querySelector(`.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`);
         if (!sprite) return;
         
-        const hpArc = sprite.querySelector('.hp-arc');
+        const hpFill = sprite.querySelector('.hp-fill');
         const hpValue = sprite.querySelector('.hp-badge .stat-value');
         if (!hpValue) return;
         
@@ -2983,22 +2983,15 @@ window.CombatEffects = {
         
         const percent = Math.max(0, (displayHP / maxHP) * 100);
         
-        // Update HP arc class based on percentage
-        if (hpArc) {
-            hpArc.classList.remove('hp-low', 'hp-medium');
+        // Update HP fill bar height and class
+        if (hpFill) {
+            hpFill.classList.remove('hp-low', 'hp-medium');
             if (percent <= 25) {
-                hpArc.classList.add('hp-low');
+                hpFill.classList.add('hp-low');
             } else if (percent <= 50) {
-                hpArc.classList.add('hp-medium');
+                hpFill.classList.add('hp-medium');
             }
-            
-            // Update clip-path to shrink arc toward center
-            const arcInset = 5 + (45 * (1 - percent / 100));
-            const isPlayer = cryptid.owner === 'player';
-            const arcClipPath = isPlayer 
-                ? `inset(${arcInset}% 50% ${arcInset}% 0)`
-                : `inset(${arcInset}% 0 ${arcInset}% 50%)`;
-            hpArc.style.clipPath = arcClipPath;
+            hpFill.style.height = `${percent}%`;
         }
         
         // Animate text change
@@ -3473,142 +3466,144 @@ window.CombatEffects = {
             }
         }
         
-        /* ==================== CRESCENT MOON STAT BAR ==================== */
+        /* ==================== VERTICAL STAT BAR SYSTEM ==================== */
         .cryptid-sprite .combat-stats {
             position: absolute;
             top: 50%;
             transform: translateY(-50%);
-            /* Scale with sprite size - base is ~40px sprite, stats are ~56px tall */
-            width: calc(var(--sprite-size, 40px) * 0.7);
-            height: calc(var(--sprite-size, 40px) * 1.4);
+            display: flex;
+            align-items: stretch;
+            height: calc(var(--sprite-size, 40px) * 1.6);
             z-index: 10;
             pointer-events: none;
+            gap: 2px;
         }
         
-        /* Player monsters: stats on LEFT */
+        /* Player monsters: stats on LEFT, flex-direction puts HP bar on outside */
         .cryptid-sprite[data-owner="player"] .combat-stats {
-            left: calc(var(--sprite-size, 40px) * -0.45);
+            left: calc(var(--sprite-size, 40px) * -1.1);
             right: auto;
+            flex-direction: row;
         }
         
-        /* Enemy monsters: stats on RIGHT */
+        /* Enemy monsters: stats on RIGHT, flex-direction reversed */
         .cryptid-sprite[data-owner="enemy"] .combat-stats {
-            right: calc(var(--sprite-size, 40px) * -0.45);
+            right: calc(var(--sprite-size, 40px) * -1.1);
             left: auto;
+            flex-direction: row-reverse;
         }
         
-        /* Crescent background arc */
-        .combat-stats .crescent-bg {
+        /* Vertical HP Bar */
+        .combat-stats .hp-bar-vertical {
+            width: 6px;
+            height: 100%;
+            background: linear-gradient(to right, rgba(10, 8, 6, 0.95), rgba(25, 22, 18, 0.9));
+            border: 1px solid rgba(70, 60, 50, 0.7);
+            border-radius: 3px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.4);
+        }
+        
+        .combat-stats .hp-fill {
             position: absolute;
-            width: calc(var(--sprite-size, 40px) * 1.1);
-            height: calc(var(--sprite-size, 40px) * 1.4);
-            border: 2px solid rgba(50, 45, 40, 0.9);
-            border-radius: 50%;
-            background: linear-gradient(90deg, rgba(25, 22, 18, 0.85) 30%, transparent 70%);
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
-        }
-        
-        /* Player: arc curves to the right (clip left half visible) */
-        .cryptid-sprite[data-owner="player"] .crescent-bg {
-            right: 0;
-            clip-path: inset(0 50% 0 0);
-            border-right-color: transparent;
-        }
-        
-        /* Enemy: arc curves to the left (clip right half visible) */
-        .cryptid-sprite[data-owner="enemy"] .crescent-bg {
+            bottom: 0;
             left: 0;
-            clip-path: inset(0 0 0 50%);
-            border-left-color: transparent;
-            background: linear-gradient(-90deg, rgba(25, 22, 18, 0.85) 30%, transparent 70%);
+            right: 0;
+            background: linear-gradient(to right, #2ebd5c 0%, #44ee77 50%, #3dd968 100%);
+            border-radius: 2px;
+            transition: height 0.4s ease-out, background 0.3s;
+            box-shadow: 0 0 8px rgba(68, 221, 119, 0.6), inset 0 0 4px rgba(255,255,255,0.2);
         }
         
-        /* HP Arc - glowing indicator */
-        .combat-stats .hp-arc {
+        .combat-stats .hp-fill::after {
+            content: '';
             position: absolute;
-            width: calc(var(--sprite-size, 40px) * 1.1);
-            height: calc(var(--sprite-size, 40px) * 1.4);
-            border: 2px solid transparent;
-            border-radius: 50%;
-            transition: clip-path 0.4s ease-out;
-        }
-        
-        /* Player HP arc - clip-path set dynamically via inline style */
-        .cryptid-sprite[data-owner="player"] .hp-arc {
-            right: 0;
-            border-left: 2px solid #44dd77;
-            filter: drop-shadow(0 0 6px rgba(68, 221, 119, 0.6));
-        }
-        
-        .cryptid-sprite[data-owner="player"] .hp-arc.hp-medium {
-            border-left-color: #ddaa22;
-            filter: drop-shadow(0 0 6px rgba(221, 170, 34, 0.6));
-        }
-        
-        .cryptid-sprite[data-owner="player"] .hp-arc.hp-low {
-            border-left-color: #dd4444;
-            filter: drop-shadow(0 0 6px rgba(221, 68, 68, 0.6));
-            animation: hpLowPulse 1s ease-in-out infinite;
-        }
-        
-        /* Enemy HP arc */
-        .cryptid-sprite[data-owner="enemy"] .hp-arc {
+            top: 0;
             left: 0;
-            border-right: 2px solid #ff6666;
-            filter: drop-shadow(0 0 6px rgba(255, 102, 102, 0.6));
+            right: 0;
+            height: 40%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.25), transparent);
+            border-radius: 2px 2px 0 0;
         }
         
-        .cryptid-sprite[data-owner="enemy"] .hp-arc.hp-medium {
-            border-right-color: #ddaa22;
-            filter: drop-shadow(0 0 6px rgba(221, 170, 34, 0.6));
+        .combat-stats .hp-fill.hp-medium {
+            background: linear-gradient(to right, #c4910d 0%, #e5b82a 50%, #d9a820 100%);
+            box-shadow: 0 0 8px rgba(221, 170, 34, 0.6), inset 0 0 4px rgba(255,255,255,0.15);
         }
         
-        .cryptid-sprite[data-owner="enemy"] .hp-arc.hp-low {
-            border-right-color: #dd4444;
-            filter: drop-shadow(0 0 6px rgba(221, 68, 68, 0.6));
+        .combat-stats .hp-fill.hp-low {
+            background: linear-gradient(to right, #c42e2e 0%, #ee4444 50%, #d93a3a 100%);
+            box-shadow: 0 0 8px rgba(221, 68, 68, 0.7), inset 0 0 4px rgba(255,255,255,0.15);
             animation: hpLowPulse 1s ease-in-out infinite;
         }
         
         @keyframes hpLowPulse {
-            0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px rgba(221, 68, 68, 0.6)); }
-            50% { opacity: 0.7; filter: drop-shadow(0 0 10px rgba(255, 50, 50, 0.9)); }
+            0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(221, 68, 68, 0.6); }
+            50% { opacity: 0.8; box-shadow: 0 0 12px rgba(255, 50, 50, 0.9); }
         }
         
-        /* Stat badges */
+        /* Status Icons Column - between HP bar and stat badges */
+        .combat-stats .stat-icons-column {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            gap: 0px;
+            min-width: 8px;
+            max-height: 100%;
+            overflow: hidden;
+            padding: 1px 0;
+            background: rgba(10, 8, 6, 0.6);
+            border-radius: 2px;
+            border: 1px solid rgba(50, 45, 40, 0.4);
+        }
+        
+        .combat-stats .stat-icon-item {
+            font-size: 10px;
+            line-height: 1;
+            filter: drop-shadow(0 1px 1px rgba(0,0,0,0.8));
+            flex-shrink: 1;
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform: scale(0.55);
+            transform-origin: center;
+            margin: -2px 0;
+        }
+        
+        /* Progressive icon shrinking based on count */
+        .combat-stats .stat-icons-column:has(.stat-icon-item:nth-child(5)) .stat-icon-item {
+            transform: scale(0.45);
+            margin: -3px 0;
+        }
+        
+        .combat-stats .stat-icons-column:has(.stat-icon-item:nth-child(7)) .stat-icon-item {
+            transform: scale(0.35);
+            margin: -4px 0;
+        }
+        
+        /* Stat Badges Column */
+        .combat-stats .stat-badges-column {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            gap: 2px;
+            height: 100%;
+        }
+        
         .combat-stats .stat-badge {
-            position: absolute;
             background: rgba(15, 12, 10, 0.95);
-            border: 1px solid rgba(120, 100, 70, 0.5);
+            border: 1px solid rgba(100, 85, 60, 0.6);
             border-radius: 4px;
-            padding: 1px 3px;
+            padding: 2px 4px;
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 0;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
-            min-width: calc(var(--sprite-size, 40px) * 0.45);
-        }
-        
-        /* Player badge positions (on left side) */
-        .cryptid-sprite[data-owner="player"] .stat-badge.atk-badge {
-            top: 2px;
-            left: 0px;
-        }
-        
-        .cryptid-sprite[data-owner="player"] .stat-badge.hp-badge {
-            bottom: 2px;
-            left: 0px;
-        }
-        
-        /* Enemy badge positions (on right side) */
-        .cryptid-sprite[data-owner="enemy"] .stat-badge.atk-badge {
-            top: 2px;
-            right: 0px;
-        }
-        
-        .cryptid-sprite[data-owner="enemy"] .stat-badge.hp-badge {
-            bottom: 2px;
-            right: 0px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+            min-width: calc(var(--sprite-size, 40px) * 0.42);
         }
         
         .combat-stats .stat-icon {
@@ -3621,7 +3616,7 @@ window.CombatEffects = {
         
         .combat-stats .stat-value {
             font-family: 'Trebuchet MS', sans-serif;
-            font-size: calc(var(--sprite-size, 40px) * 0.28);
+            font-size: calc(var(--sprite-size, 40px) * 0.3);
             font-weight: 800;
             line-height: 1;
             text-shadow: 0 1px 2px rgba(0,0,0,0.8);
@@ -3636,20 +3631,20 @@ window.CombatEffects = {
             color: #99ffbb;
         }
         
-        /* Evolution pips - below HP badge */
+        /* Evolution pips - below the whole stat block */
         .combat-stats .evo-pips {
             position: absolute;
-            bottom: -8px;
+            bottom: -10px;
             display: flex;
             gap: 2px;
         }
         
         .cryptid-sprite[data-owner="player"] .evo-pips {
-            left: 4px;
+            left: 0;
         }
         
         .cryptid-sprite[data-owner="enemy"] .evo-pips {
-            right: 4px;
+            right: 0;
         }
         
         .combat-stats .evo-pip {
@@ -3657,7 +3652,7 @@ window.CombatEffects = {
             height: calc(var(--sprite-size, 40px) * 0.1);
             background: linear-gradient(135deg, #88ddff, #44aaff);
             border-radius: 50%;
-            box-shadow: 0 0 3px rgba(100, 180, 255, 0.6);
+            box-shadow: 0 0 4px rgba(100, 180, 255, 0.6);
         }
         
         /* Stat change animations */
@@ -3669,8 +3664,8 @@ window.CombatEffects = {
             animation: statIncrease 0.4s ease-out;
         }
         
-        .combat-stats.damage-flash .hp-arc {
-            animation: arcDamageFlash 0.3s ease-out;
+        .combat-stats.damage-flash .hp-fill {
+            animation: hpBarDamageFlash 0.3s ease-out;
         }
         
         .combat-stats.damage-flash .hp-badge {
@@ -3689,16 +3684,94 @@ window.CombatEffects = {
             100% { transform: scale(1); }
         }
         
-        @keyframes arcDamageFlash {
-            0% { filter: drop-shadow(0 0 8px currentColor); }
-            30% { filter: drop-shadow(0 0 20px #ff0000) brightness(2); }
-            100% { filter: drop-shadow(0 0 8px currentColor); }
+        @keyframes hpBarDamageFlash {
+            0% { box-shadow: 0 0 6px currentColor; }
+            30% { box-shadow: 0 0 15px #ff0000; filter: brightness(1.5); }
+            100% { box-shadow: 0 0 6px currentColor; }
         }
         
         @keyframes badgeDamageFlash {
             0% { background: rgba(15, 12, 10, 0.95); }
             30% { background: rgba(80, 20, 20, 0.95); box-shadow: 0 0 15px rgba(255,0,0,0.5); }
             100% { background: rgba(15, 12, 10, 0.95); }
+        }
+        
+        /* Responsive adjustments for vertical stat bar */
+        @media (max-width: 1000px) and (orientation: landscape), (max-height: 550px) {
+            .cryptid-sprite .combat-stats {
+                height: calc(var(--sprite-size, 40px) * 1.5);
+                gap: 1px;
+            }
+            .cryptid-sprite[data-owner="player"] .combat-stats {
+                left: calc(var(--sprite-size, 40px) * -0.9);
+            }
+            .cryptid-sprite[data-owner="enemy"] .combat-stats {
+                right: calc(var(--sprite-size, 40px) * -0.9);
+            }
+            .combat-stats .hp-bar-vertical {
+                width: 5px;
+            }
+            .combat-stats .stat-icons-column {
+                min-width: 6px;
+            }
+            .combat-stats .stat-icon-item {
+                transform: scale(0.5);
+                margin: -2px 0;
+            }
+            .combat-stats .stat-badge {
+                padding: 1px 3px;
+                min-width: calc(var(--sprite-size, 40px) * 0.38);
+            }
+            .combat-stats .stat-value {
+                font-size: calc(var(--sprite-size, 40px) * 0.26);
+            }
+            .combat-stats .stat-icon {
+                font-size: calc(var(--sprite-size, 40px) * 0.16);
+            }
+        }
+        
+        @media (max-width: 600px) and (orientation: portrait) {
+            .cryptid-sprite .combat-stats {
+                height: calc(var(--sprite-size, 40px) * 1.4);
+                gap: 1px;
+            }
+            .cryptid-sprite[data-owner="player"] .combat-stats {
+                left: calc(var(--sprite-size, 40px) * -0.8);
+            }
+            .cryptid-sprite[data-owner="enemy"] .combat-stats {
+                right: calc(var(--sprite-size, 40px) * -0.8);
+            }
+            .combat-stats .hp-bar-vertical {
+                width: 4px;
+            }
+            .combat-stats .stat-icons-column {
+                min-width: 5px;
+            }
+            .combat-stats .stat-icon-item {
+                transform: scale(0.45);
+                margin: -3px 0;
+            }
+            .combat-stats .stat-badge {
+                padding: 1px 2px;
+                min-width: calc(var(--sprite-size, 40px) * 0.35);
+            }
+            .combat-stats .stat-value {
+                font-size: calc(var(--sprite-size, 40px) * 0.24);
+            }
+            .combat-stats .stat-icon {
+                font-size: calc(var(--sprite-size, 40px) * 0.14);
+            }
+        }
+        
+        /* Large desktops - slightly bigger stats */
+        @media (min-width: 1400px) and (min-height: 800px) {
+            .combat-stats .stat-icons-column {
+                min-width: 10px;
+            }
+            .combat-stats .stat-icon-item {
+                transform: scale(0.6);
+                margin: -2px 0;
+            }
         }
         
         /* Hide old stat bar */

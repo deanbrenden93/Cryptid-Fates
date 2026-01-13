@@ -607,15 +607,18 @@ function renderSprites() {
                             sprite.innerHTML = `
                                 <span class="sprite hidden-sprite">❓</span>
                                 <div class="combat-stats">
-                                    <div class="crescent-bg"></div>
-                                    <div class="hp-arc" style="clip-path: inset(5% 0 5% 50%)"></div>
-                                    <div class="stat-badge atk-badge">
-                                        <span class="stat-icon">⚔</span>
-                                        <span class="stat-value">?</span>
+                                    <div class="hp-bar-vertical">
+                                        <div class="hp-fill" style="height: 100%"></div>
                                     </div>
-                                    <div class="stat-badge hp-badge">
-                                        <span class="stat-icon">♥</span>
-                                        <span class="stat-value">?</span>
+                                    <div class="stat-badges-column">
+                                        <div class="stat-badge atk-badge">
+                                            <span class="stat-icon">⚔</span>
+                                            <span class="stat-value">?</span>
+                                        </div>
+                                        <div class="stat-badge hp-badge">
+                                            <span class="stat-icon">♥</span>
+                                            <span class="stat-value">?</span>
+                                        </div>
                                     </div>
                                 </div>
                             `;
@@ -641,22 +644,11 @@ function renderSprites() {
                         }
                     }
                     
-                    // Calculate HP percentage for the arc (includes support HP for combatants)
+                    // Calculate HP percentage (includes support HP for combatants)
                     const hpPercent = Math.max(0, Math.min(100, (displayHp / displayMaxHp) * 100));
                     
-                    // Determine HP arc class based on percentage
-                    let hpArcClass = 'hp-arc';
-                    if (hpPercent <= 25) {
-                        hpArcClass += ' hp-low';
-                    } else if (hpPercent <= 50) {
-                        hpArcClass += ' hp-medium';
-                    }
-                    
-                    // Calculate clip-path to shrink arc toward center based on HP
-                    const arcInset = 5 + (45 * (1 - hpPercent / 100));
-                    const arcClipPath = owner === 'player' 
-                        ? `inset(${arcInset}% 50% ${arcInset}% 0)`
-                        : `inset(${arcInset}% 0 ${arcInset}% 50%)`;
+                    // HP fill height for vertical bar (fills from bottom)
+                    const hpFillHeight = hpPercent;
                     
                     // Build evolution pips
                     let evoPipsHtml = '';
@@ -670,6 +662,11 @@ function renderSprites() {
                     
                     const statusIcons = game.getStatusIcons(cryptid);
                     
+                    // Build status icons HTML for inline display
+                    const statusIconsHtml = statusIcons.length > 0 
+                        ? statusIcons.map(icon => `<span class="status-icon-item">${icon}</span>`).join('')
+                        : '';
+                    
                     // For existing sprites with image-based cryptids, update stats without replacing the image
                     // This prevents flickering caused by image reload
                     // Also skip full updates during pending evolution - the animation controls when the image changes
@@ -679,27 +676,32 @@ function renderSprites() {
                             // Just update the dynamic parts: stats and status icons
                             const atkValue = sprite.querySelector('.atk-badge .stat-value');
                             const hpValue = sprite.querySelector('.hp-badge .stat-value');
-                            const hpArc = sprite.querySelector('.hp-arc');
                             const statusDiv = sprite.querySelector('.status-icons');
                             
                             if (atkValue) atkValue.textContent = Math.max(0, displayAtk);
                             if (hpValue) hpValue.textContent = displayHp;
-                            if (hpArc) {
-                                hpArc.className = hpArcClass;
-                                hpArc.style.clipPath = arcClipPath;
+                            
+                            // Update HP fill bar
+                            const hpFill = sprite.querySelector('.hp-fill');
+                            if (hpFill) {
+                                hpFill.style.height = `${hpFillHeight}%`;
+                                hpFill.className = 'hp-fill' + (hpPercent <= 25 ? ' hp-low' : hpPercent <= 50 ? ' hp-medium' : '');
                             }
                             
-                            // Update status icons
-                            if (statusIcons.length > 0) {
-                                if (statusDiv) {
-                                    statusDiv.innerHTML = statusIcons.join('');
+                            // Update status icons in the integrated column
+                            const iconsColumn = sprite.querySelector('.stat-icons-column');
+                            if (iconsColumn) {
+                                if (statusIcons.length > 0) {
+                                    iconsColumn.innerHTML = statusIconsHtml;
+                                    iconsColumn.style.display = 'flex';
                                 } else {
-                                    const newStatusDiv = document.createElement('div');
-                                    newStatusDiv.className = 'status-icons';
-                                    newStatusDiv.innerHTML = statusIcons.join('');
-                                    sprite.appendChild(newStatusDiv);
+                                    iconsColumn.innerHTML = '';
+                                    iconsColumn.style.display = 'none';
                                 }
-                            } else if (statusDiv) {
+                            }
+                            
+                            // Remove old external status-icons div if it exists
+                            if (statusDiv) {
                                 statusDiv.remove();
                             }
                         }
@@ -713,21 +715,25 @@ function renderSprites() {
                         
                         html += `
                             <div class="combat-stats">
-                                <div class="crescent-bg"></div>
-                                <div class="${hpArcClass}" style="clip-path: ${arcClipPath}"></div>
-                                <div class="stat-badge atk-badge">
-                                    <span class="stat-icon">⚔</span>
-                                    <span class="stat-value">${Math.max(0, displayAtk)}</span>
+                                <div class="hp-bar-vertical">
+                                    <div class="hp-fill${hpPercent <= 25 ? ' hp-low' : hpPercent <= 50 ? ' hp-medium' : ''}" style="height: ${hpFillHeight}%"></div>
                                 </div>
-                                <div class="stat-badge hp-badge">
-                                    <span class="stat-icon">♥</span>
-                                    <span class="stat-value">${displayHp}</span>
+                                <div class="stat-icons-column" style="${statusIcons.length > 0 ? '' : 'display: none;'}">
+                                    ${statusIconsHtml}
+                                </div>
+                                <div class="stat-badges-column">
+                                    <div class="stat-badge atk-badge">
+                                        <span class="stat-icon">⚔</span>
+                                        <span class="stat-value">${Math.max(0, displayAtk)}</span>
+                                    </div>
+                                    <div class="stat-badge hp-badge">
+                                        <span class="stat-icon">♥</span>
+                                        <span class="stat-value">${displayHp}</span>
+                                    </div>
                                 </div>
                                 ${evoPipsHtml}
                             </div>
                         `;
-                        
-                        if (statusIcons.length > 0) html += `<div class="status-icons">${statusIcons.join('')}</div>`;
                         
                         sprite.innerHTML = html;
                     }
@@ -5004,24 +5010,15 @@ window.updateSpriteHealthBar = function(owner, col, row) {
     
     const hpPercent = Math.max(0, Math.min(100, (displayHp / displayMaxHp) * 100));
     
-    let hpArcClass = 'hp-arc';
-    if (hpPercent <= 25) hpArcClass += ' hp-low';
-    else if (hpPercent <= 50) hpArcClass += ' hp-medium';
-    
-    const arcInset = 5 + (45 * (1 - hpPercent / 100));
-    const arcClipPath = owner === 'player' 
-        ? `inset(${arcInset}% 50% ${arcInset}% 0)`
-        : `inset(${arcInset}% 0 ${arcInset}% 50%)`;
-    
     const atkValue = sprite.querySelector('.atk-badge .stat-value');
     const hpValue = sprite.querySelector('.hp-badge .stat-value');
-    const hpArc = sprite.querySelector('.hp-arc');
+    const hpFill = sprite.querySelector('.hp-fill');
     
     if (atkValue) atkValue.textContent = Math.max(0, displayAtk);
     if (hpValue) hpValue.textContent = displayHp;
-    if (hpArc) {
-        hpArc.className = hpArcClass;
-        hpArc.style.clipPath = arcClipPath;
+    if (hpFill) {
+        hpFill.style.height = `${hpPercent}%`;
+        hpFill.className = 'hp-fill' + (hpPercent <= 25 ? ' hp-low' : hpPercent <= 50 ? ' hp-medium' : '');
     }
 };
 

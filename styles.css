@@ -36,11 +36,11 @@
     --spirit-blue: #6b8fa3;
     --ui-font: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, sans-serif;
     
-    /* Base sizes - desktop (scale with viewport) */
-    --tile-size: clamp(70px, min(14vh, 12vw), 140px);
+    /* Base sizes - desktop (scale with viewport) - slightly reduced for breathing room */
+    --tile-size: clamp(60px, min(12vh, 10vw), 120px);
     --card-width: clamp(80px, min(11vw, 13vh), 160px);
     --card-height: calc(var(--card-width) * 1.375);
-    --sprite-size: clamp(32px, min(6vh, 5vw), 60px);
+    --sprite-size: clamp(28px, min(5vh, 4.5vw), 52px);
     
     /* Element colors */
     --element-void: #9b59b6;
@@ -54,30 +54,30 @@
 /* Landscape mobile/tablet */
 @media (max-width: 1000px) and (orientation: landscape), (max-height: 550px) {
     :root {
-        --tile-size: clamp(50px, min(17vh, 10vw), 90px);
+        --tile-size: clamp(45px, min(15vh, 9vw), 80px);
         --card-width: clamp(55px, min(9vw, 11vh), 100px);
         --card-height: calc(var(--card-width) * 1.375);
-        --sprite-size: clamp(24px, min(9vh, 5.5vw), 40px);
+        --sprite-size: clamp(22px, min(8vh, 5vw), 36px);
     }
 }
 
 /* Portrait mobile */
 @media (max-width: 600px) and (orientation: portrait) {
     :root {
-        --tile-size: clamp(40px, min(13vw, 8vh), 70px);
+        --tile-size: clamp(36px, min(11vw, 7vh), 60px);
         --card-width: clamp(58px, calc((100vw - 48px) / 5), 85px);
         --card-height: calc(var(--card-width) * 1.375);
-        --sprite-size: clamp(20px, min(7vw, 5vh), 35px);
+        --sprite-size: clamp(18px, min(6vw, 4.5vh), 30px);
     }
 }
 
 /* Large desktop */
 @media (min-width: 1400px) and (min-height: 900px) {
     :root {
-        --tile-size: clamp(100px, 12vh, 150px);
+        --tile-size: clamp(85px, 10vh, 130px);
         --card-width: clamp(110px, 10vh, 160px);
         --card-height: calc(var(--card-width) * 1.375);
-        --sprite-size: clamp(45px, 5vh, 70px);
+        --sprite-size: clamp(40px, 4.5vh, 60px);
     }
 }
 
@@ -635,16 +635,110 @@ body {
 .grid-column {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: clamp(16px, 3.5vh, 32px);
 }
 
 /* Trap columns - only 2 tiles, centered vertically */
 .grid-column.trap-column {
     justify-content: center;
+    gap: clamp(20px, 4vh, 40px);
 }
 
+/* Add generous horizontal spacing between all column pairs
+   This gives each cryptid breathing room for status icons */
+#player-trap-col {
+    margin-right: clamp(30px, 5vw, 60px);
+}
+
+#player-support-col {
+    margin-right: clamp(35px, 6vw, 70px);
+}
+
+#enemy-combat-col {
+    margin-right: clamp(35px, 6vw, 70px);
+}
+
+#enemy-support-col {
+    margin-right: clamp(30px, 5vw, 60px);
+}
+
+/* Chevron formation - severe offset: top/bottom far back, middle pushes forward */
+/* Player side: positive offset = toward enemy (right) */
+.grid-column:not(.trap-column) .tile.player[data-row="0"] {
+    transform: translateX(clamp(-18px, -3vw, -35px));
+}
+.grid-column:not(.trap-column) .tile.player[data-row="1"] {
+    transform: translateX(clamp(10px, 2vw, 20px));
+}
+.grid-column:not(.trap-column) .tile.player[data-row="2"] {
+    transform: translateX(clamp(-18px, -3vw, -35px));
+}
+
+/* Enemy side: mirror the chevron (left from their perspective) */
+.grid-column:not(.trap-column) .tile.enemy[data-row="0"] {
+    transform: translateX(clamp(18px, 3vw, 35px));
+}
+.grid-column:not(.trap-column) .tile.enemy[data-row="1"] {
+    transform: translateX(clamp(-10px, -2vw, -20px));
+}
+.grid-column:not(.trap-column) .tile.enemy[data-row="2"] {
+    transform: translateX(clamp(18px, 3vw, 35px));
+}
+
+/* Landscape mobile / short screens */
 @media (max-height: 500px) {
-    .grid-column { gap: 4px; }
+    .grid-column { gap: clamp(10px, 2.5vh, 18px); }
+    .grid-column.trap-column { gap: clamp(14px, 3vh, 24px); }
+    #player-trap-col,
+    #player-support-col,
+    #enemy-combat-col,
+    #enemy-support-col {
+        margin-right: clamp(18px, 4vw, 35px);
+    }
+    
+    /* Moderate chevron offset on landscape mobile */
+    .grid-column:not(.trap-column) .tile.player[data-row="0"],
+    .grid-column:not(.trap-column) .tile.player[data-row="2"] {
+        transform: translateX(-12px);
+    }
+    .grid-column:not(.trap-column) .tile.player[data-row="1"] {
+        transform: translateX(8px);
+    }
+    .grid-column:not(.trap-column) .tile.enemy[data-row="0"],
+    .grid-column:not(.trap-column) .tile.enemy[data-row="2"] {
+        transform: translateX(12px);
+    }
+    .grid-column:not(.trap-column) .tile.enemy[data-row="1"] {
+        transform: translateX(-8px);
+    }
+}
+
+/* Portrait mobile - maintain spacing and chevron */
+@media (max-width: 600px) and (orientation: portrait) {
+    .grid-column { gap: clamp(12px, 2.5vh, 20px); }
+    .grid-column.trap-column { gap: clamp(16px, 3vh, 26px); }
+    #player-trap-col,
+    #player-support-col,
+    #enemy-combat-col,
+    #enemy-support-col {
+        margin-right: clamp(14px, 3.5vw, 28px);
+    }
+    
+    /* Moderate chevron on portrait */
+    .grid-column:not(.trap-column) .tile.player[data-row="0"],
+    .grid-column:not(.trap-column) .tile.player[data-row="2"] {
+        transform: translateX(-8px);
+    }
+    .grid-column:not(.trap-column) .tile.player[data-row="1"] {
+        transform: translateX(6px);
+    }
+    .grid-column:not(.trap-column) .tile.enemy[data-row="0"],
+    .grid-column:not(.trap-column) .tile.enemy[data-row="2"] {
+        transform: translateX(8px);
+    }
+    .grid-column:not(.trap-column) .tile.enemy[data-row="1"] {
+        transform: translateX(-6px);
+    }
 }
 
 /* ==================== TILES - Silver/Grunge ==================== */
@@ -1081,21 +1175,9 @@ body {
     box-shadow: 0 0 4px var(--spirit-blue);
 }
 
-/* Status Effect Icons */
+/* Status Effect Icons - Now integrated into combat-stats, old external div hidden */
 .cryptid-sprite .status-icons {
-    position: absolute;
-    top: -8px;
-    right: -8px;
-    display: flex;
-    gap: 2px;
-    font-size: 12px;
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8));
-    animation: statusPulse 2s ease-in-out infinite;
-}
-
-@keyframes statusPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+    display: none !important;
 }
 
 /* Toxic tile indicator on cryptid */
