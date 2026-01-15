@@ -1175,6 +1175,9 @@ function renderHand(force = false) {
         // NO card-entering class - this is a non-animated render
         cardEl.className = 'game-card battle-card';
         
+        // Custom card background support
+        const artBgStyle = card.cardBg ? `style="--art-bg: url('${card.cardBg}')"` : '';
+        
         // Card type class for template selection
         if (card.type === 'cryptid') {
             cardEl.classList.add('cryptid-card');
@@ -1258,7 +1261,7 @@ function renderHand(force = false) {
         cardEl.innerHTML = `
             <span class="gc-cost">${card.cost}</span>
             <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-            <div class="gc-art">${renderSprite(card.sprite, false, null, card.cardSpriteScale, card.spriteFlip)}</div>
+            <div class="gc-art" ${artBgStyle}>${renderSprite(card.sprite, false, null, card.cardSpriteScale, card.spriteFlip)}</div>
             <div class="gc-stats">${statsHTML}</div>
             <div class="gc-card-type">${cardTypeLabel}</div>
             ${abilityBoxes}
@@ -1325,6 +1328,9 @@ function renderHandAnimated() {
         cardEl.style.animationDelay = `${delayIndex * 0.05}s`;
         delayIndex++;
         
+        // Custom card background support
+        const artBgStyle = card.cardBg ? `style="--art-bg: url('${card.cardBg}')"` : '';
+        
         // Card type class for template selection
         if (card.type === 'cryptid') {
             cardEl.classList.add('cryptid-card');
@@ -1408,7 +1414,7 @@ function renderHandAnimated() {
         cardEl.innerHTML = `
             <span class="gc-cost">${card.cost}</span>
             <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-            <div class="gc-art">${renderSprite(card.sprite, false, null, card.cardSpriteScale, card.spriteFlip)}</div>
+            <div class="gc-art" ${artBgStyle}>${renderSprite(card.sprite, false, null, card.cardSpriteScale, card.spriteFlip)}</div>
             <div class="gc-stats">${statsHTML}</div>
             <div class="gc-card-type">${cardTypeLabel}</div>
             ${abilityBoxes}

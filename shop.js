@@ -1023,6 +1023,9 @@ window.Shop = {
                 `<img src="${card.sprite}" class="sprite-img"${card.cardSpriteScale && card.cardSpriteScale !== 1 ? ` style="transform: scale(${card.cardSpriteScale})"` : ''} alt="" draggable="false">` : card.sprite) 
             : '?';
         
+        // Custom card background support
+        const artBgStyle = card.cardBg ? `style="--art-bg: url('${card.cardBg}')"` : '';
+        
         // Remove existing modal if any
         const existing = document.getElementById('shop-card-detail-modal');
         if (existing) existing.remove();
@@ -1040,7 +1043,7 @@ window.Shop = {
                         <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${mythicalClass} ${isHolo ? 'foil' : ''}">
                             <span class="gc-cost">${card.cost}</span>
                             <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-                            <div class="gc-art">${spriteHTML}</div>
+                            <div class="gc-art" ${artBgStyle}>${spriteHTML}</div>
                             <div class="gc-stats">${statsHTML}</div>
                             <div class="gc-card-type">${cardTypeLabel}</div>
                             ${rarityGems}
@@ -1303,6 +1306,9 @@ window.Shop = {
                 ? Collection.renderSprite(card.sprite)
                 : this.renderSprite(card.sprite);
             
+            // Custom card background support
+            const artBgStyle = card.cardBg ? `style="--art-bg: url('${card.cardBg}')"` : '';
+            
             // Card type label
             let cardTypeLabel;
             if (card.type === 'cryptid') {
@@ -1329,7 +1335,7 @@ window.Shop = {
                                  data-index="${i}" data-key="${card.key}" data-holo="${card.isHolo ? '1' : '0'}">
                                 <span class="gc-cost">${cost}</span>
                                 <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-                                <div class="gc-art">${spriteHTML}</div>
+                                <div class="gc-art" ${artBgStyle}>${spriteHTML}</div>
                                 <div class="gc-stats">${statsHTML}</div>
                                 <div class="gc-card-type">${cardTypeLabel}</div>
                                 ${rarityGems}

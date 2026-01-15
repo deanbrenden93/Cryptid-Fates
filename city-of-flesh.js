@@ -923,7 +923,8 @@ CardRegistry.registerCryptid('mutatedRat', {
 CardRegistry.registerCryptid('vampireInitiate', {
     name: "Vampire Initiate",
     sprite: "sprites/vampire-initiate.png",
-    spriteScale: 1.45,
+    spriteScale: 1.2,
+    spriteFlip: false,
     element: "blood",
     cost: 1,
     hp: 3,
@@ -1026,7 +1027,9 @@ CardRegistry.registerCryptid('vampireInitiate', {
 CardRegistry.registerCryptid('elderVampire', {
     name: "Elder Vampire",
     sprite: "sprites/vampire-lord.png",
-    spriteScale: 1.5,
+    cardBg: "sprites/vampire-lord-bg.png",
+    spriteScale: 1.6,
+    spriteFlip: true,
     element: "blood",
     cost: 4,
     hp: 4,

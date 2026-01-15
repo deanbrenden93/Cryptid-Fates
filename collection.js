@@ -670,13 +670,16 @@ window.Collection = {
         
         // Owned badge
         const ownedBadge = `<span class="gc-owned ${owned > 0 ? 'have' : 'none'}">${owned > 0 ? `×${owned}` : '✗'}</span>`;
+        
+        // Custom card background support
+        const artBgStyle = card.cardBg ? `style="--art-bg: url('${card.cardBg}')"` : '';
 
         return `
             <div class="game-card coll-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${unownedClass} ${mythicalClass} ${foilClass}"
                  onclick="Collection.showDetail('${card.key}', ${card.foil ? 'true' : 'false'})">
                 <span class="gc-cost">${card.cost}</span>
                 <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-                <div class="gc-art">${Collection.renderSprite(card.sprite, card.cardSpriteScale)}</div>
+                <div class="gc-art" ${artBgStyle}>${Collection.renderSprite(card.sprite, card.cardSpriteScale)}</div>
                 <div class="gc-stats">${statsHTML}</div>
                 <div class="gc-card-type">${cardTypeLabel}</div>
                 ${rarityGems}
@@ -851,6 +854,9 @@ window.Collection = {
                 </div>`;
         }
         
+        // Custom card background support
+        const artBgStyle = card.cardBg ? `style="--art-bg: url('${card.cardBg}')"` : '';
+        
         const content = document.getElementById('coll-detail-content');
         content.innerHTML = `
             <div class="detail-view-layout">
@@ -859,7 +865,7 @@ window.Collection = {
                     <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${mythicalClass} ${isHolo ? 'foil' : ''}">
                         <span class="gc-cost">${card.cost}</span>
                         <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-                        <div class="gc-art">${Collection.renderSprite(card.sprite, card.cardSpriteScale)}</div>
+                        <div class="gc-art" ${artBgStyle}>${Collection.renderSprite(card.sprite, card.cardSpriteScale)}</div>
                         <div class="gc-stats">${statsHTML}</div>
                         <div class="gc-card-type">${cardTypeLabel}</div>
                         ${rarityGems}

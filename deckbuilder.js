@@ -573,6 +573,9 @@ window.DeckBuilder = {
         
         // Max copies indicator (only show if at limit and not infinite)
         const maxCopyBadge = (atMaxCopies && !card.infinite) ? `<span class="gc-max-copies">${baseInDeck}/${maxCopies}</span>` : '';
+        
+        // Custom card background support
+        const artBgStyle = card.cardBg ? `style="--art-bg: url('${card.cardBg}')"` : '';
 
         return `
             <div class="game-card db-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${unownedClass} ${inDeckClass} ${unavailClass} ${mythicalClass} ${foilClass}"
@@ -580,7 +583,7 @@ window.DeckBuilder = {
                  data-foil="${isFoil}">
                 <span class="gc-cost">${card.cost}</span>
                 <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-                <div class="gc-art">${DeckBuilder.renderSprite(card.sprite, card.cardSpriteScale)}</div>
+                <div class="gc-art" ${artBgStyle}>${DeckBuilder.renderSprite(card.sprite, card.cardSpriteScale)}</div>
                 <div class="gc-stats">${statsHTML}</div>
                 <div class="gc-card-type">${cardTypeLabel}</div>
                 ${rarityGems}
@@ -1165,6 +1168,9 @@ window.DeckBuilder = {
         const normalValue = this.calculateIncinerateValue(cardKey, false);
         const holoValue = this.calculateIncinerateValue(cardKey, true);
         
+        // Custom card background support
+        const artBgStyle = card.cardBg ? `style="--art-bg: url('${card.cardBg}')"` : '';
+        
         const content = document.getElementById('db-preview-content');
         content.innerHTML = `
             <div class="detail-view-layout">
@@ -1173,7 +1179,7 @@ window.DeckBuilder = {
                     <div class="game-card detail-card ${cardTypeClass} ${elementClass} ${typeClass} ${rarityClass} ${mythicalClass} ${foilClass}">
                         <span class="gc-cost">${card.cost}</span>
                         <div class="gc-header"><span class="gc-name">${card.name}</span></div>
-                        <div class="gc-art">${DeckBuilder.renderSprite(card.sprite, card.cardSpriteScale)}</div>
+                        <div class="gc-art" ${artBgStyle}>${DeckBuilder.renderSprite(card.sprite, card.cardSpriteScale)}</div>
                         <div class="gc-stats">${statsHTML}</div>
                         <div class="gc-card-type">${cardTypeLabel}</div>
                         ${rarityGems}
