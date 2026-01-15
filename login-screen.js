@@ -1707,26 +1707,76 @@ const loginStyles = `
 
 /* ===== PORTRAIT MODE ===== */
 @media (orientation: portrait) {
-    .login-content {
-        gap: clamp(12px, 2.5vmin, 20px);
+    /* Use vh-based sizing to fit everything in viewport */
+    .login-logo-wrapper {
+        animation: wrapperSlideToTopPortrait 1.5s ease 3.3s forwards;
+    }
+    
+    @keyframes wrapperSlideToTopPortrait {
+        0% {
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+        100% {
+            top: clamp(20px, 4vh, 60px);
+            transform: translate(-50%, 0);
+        }
     }
     
     .login-logo-img {
-        width: clamp(220px, 65vw, 400px);
+        /* Logo height based on viewport */
+        width: auto;
+        height: clamp(120px, 28vh, 320px);
+        max-width: 90vw;
+    }
+    
+    .login-content {
+        /* Content starts below logo: logo_top + logo_height + gap */
+        padding-top: clamp(180px, 36vh, 420px);
+        gap: clamp(8px, 1.5vh, 16px);
     }
     
     .login-box {
         max-width: clamp(260px, 72vw, 360px);
     }
     
+    .login-box h2 {
+        font-size: clamp(16px, 2.5vh, 24px);
+        margin-bottom: clamp(4px, 0.8vh, 10px);
+    }
+    
+    .login-prompt {
+        font-size: clamp(11px, 1.6vh, 15px);
+        margin-bottom: clamp(8px, 1.5vh, 16px);
+    }
+    
+    .login-buttons {
+        gap: clamp(8px, 1.2vh, 14px);
+    }
+    
+    .login-btn {
+        padding: clamp(10px, 1.5vh, 16px) clamp(20px, 3vh, 32px);
+        font-size: clamp(12px, 1.8vh, 16px);
+    }
+    
     .login-features {
         max-width: clamp(260px, 72vw, 340px);
-        padding: clamp(10px, 2vmin, 16px);
-        gap: clamp(6px, 1.5vmin, 12px);
+        padding: clamp(8px, 1.2vh, 14px);
+        gap: clamp(4px, 0.8vh, 10px);
     }
     
     .feature {
-        font-size: clamp(11px, 2.2vmin, 14px);
+        font-size: clamp(10px, 1.5vh, 13px);
+    }
+    
+    .login-bottom-btns {
+        gap: clamp(8px, 1.2vh, 14px);
+        margin-top: clamp(4px, 0.8vh, 10px);
+    }
+    
+    .skip-login-btn {
+        padding: clamp(6px, 1vh, 12px) clamp(12px, 2vh, 24px);
+        font-size: clamp(9px, 1.3vh, 12px);
     }
 }
 
@@ -1767,68 +1817,39 @@ const loginStyles = `
 
 /* ===== SHORT PORTRAIT (less than 700px) ===== */
 @media (max-height: 700px) and (orientation: portrait) {
-    .login-logo-img {
-        width: clamp(180px, 50vw, 320px);
-    }
-    
     .login-features {
         display: none;
     }
-    
-    .login-content {
-        gap: 10px;
-        padding-top: clamp(220px, 40vmin, 320px);
-    }
 }
 
-/* ===== VERY SHORT PORTRAIT ===== */
-@media (max-height: 600px) and (orientation: portrait) {
-    .login-logo-wrapper {
-        animation: wrapperSlideToTopShortPortrait 1.5s ease 3.3s forwards;
-    }
-    
-    @keyframes wrapperSlideToTopShortPortrait {
-        0% {
-            top: 50%;
-            transform: translate(-50%, -50%);
-        }
-        100% {
-            top: clamp(30px, 6vmin, 50px);
-            transform: translate(-50%, 0);
-        }
-    }
-    
+/* ===== VERY SHORT PORTRAIT (less than 550px) ===== */
+@media (max-height: 550px) and (orientation: portrait) {
     .login-logo-img {
-        width: clamp(150px, 45vw, 260px);
+        height: clamp(80px, 22vh, 140px);
+    }
+    
+    .login-content {
+        padding-top: clamp(120px, 30vh, 180px);
+        gap: clamp(6px, 1vh, 10px);
     }
     
     .login-box h2 {
-        font-size: clamp(14px, 3vmin, 18px);
+        font-size: clamp(13px, 2.2vh, 16px);
     }
     
-    .login-content {
-        padding-top: clamp(180px, 35vmin, 260px);
+    .login-prompt {
+        font-size: clamp(10px, 1.5vh, 12px);
+        margin-bottom: clamp(6px, 1vh, 10px);
     }
     
     .login-btn {
-        padding: 10px 20px;
-        font-size: 12px;
+        padding: clamp(8px, 1.2vh, 12px) clamp(16px, 2.5vh, 24px);
+        font-size: clamp(11px, 1.6vh, 13px);
     }
     
     .skip-login-btn {
-        padding: 8px 14px;
-        font-size: 9px;
-    }
-}
-
-/* ===== TALL PORTRAIT ===== */
-@media (min-height: 800px) and (orientation: portrait) {
-    .login-content {
-        gap: clamp(16px, 3vmin, 28px);
-    }
-    
-    .login-logo-img {
-        width: clamp(280px, 60vw, 480px);
+        padding: clamp(5px, 0.8vh, 8px) clamp(10px, 1.5vh, 16px);
+        font-size: clamp(8px, 1.2vh, 10px);
     }
 }
 `;
