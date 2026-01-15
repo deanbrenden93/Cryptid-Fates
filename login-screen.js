@@ -312,11 +312,15 @@ const LoginScreen = {
             <!-- Canvas for 3D ember tunnel effect -->
             <canvas id="login-ember-canvas"></canvas>
             
-            <div class="login-container">
+            <!-- Logo Wrapper - centers logo then shrinks -->
+            <div class="login-logo-wrapper">
                 <div class="login-logo">
                      <img src="sprites/new-logo.png" alt="Cryptid Fates" class="login-logo-img">
                 </div>
-                
+            </div>
+            
+            <!-- Content Container - appears after logo animation -->
+            <div class="login-content">
                 <div class="login-box">
                     <h2>Welcome, Summoner</h2>
                     <p class="login-prompt">Sign in to begin your journey</p>
@@ -722,12 +726,11 @@ const loginStyles = `
     inset: 0;
     background: transparent;
     display: flex;
-    align-items: flex-start;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
     z-index: 10000;
     opacity: 0;
     transition: opacity 1s ease;
-    padding: clamp(16px, 4vmin, 32px);
     overflow-y: auto;
     overflow-x: hidden;
 }
@@ -770,107 +773,94 @@ const loginStyles = `
     50% { opacity: 1; }
 }
 
-/* ==================== MAIN CONTAINER ==================== */
-.login-container {
-    position: relative;
+/* ==================== LOGO WRAPPER - Centered, then slides to top ==================== */
+.login-logo-wrapper {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 20;
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: clamp(20px, 4vmin, 32px);
-    max-width: 440px;
-    width: 100%;
-    min-width: min(100%, 440px);
-    z-index: 10;
-    /* Start with padding to center logo at ~50% of viewport height */
-    padding: calc(50vh - 120px) 0 clamp(20px, 4vmin, 40px) 0;
-    animation: containerPaddingCollapse 1.2s ease-in-out 3.3s forwards;
+    justify-content: center;
+    /* Animate only top position - smooth slide up */
+    animation: wrapperSlideToTop 1.5s ease 3.3s forwards;
 }
 
-@keyframes containerPaddingCollapse {
+@keyframes wrapperSlideToTop {
     0% {
-        padding-top: calc(50vh - 120px);
+        top: 50%;
+        transform: translate(-50%, -50%);
     }
     100% {
-        padding-top: clamp(20px, 4vmin, 40px);
-    }
-}
-
-/* Items hidden and collapsed initially */
-.login-box,
-.login-features,
-.login-bottom-btns {
-    opacity: 0;
-    max-height: 0;
-    overflow: hidden;
-    transform: translateY(20px);
-    pointer-events: none;
-    animation: itemsFadeIn 0.7s ease-out forwards;
-    animation-delay: 3.6s;
-    /* Prevent width changes during expansion */
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.login-features {
-    animation-delay: 3.8s;
-}
-
-.login-bottom-btns {
-    animation-delay: 4s;
-}
-
-@keyframes itemsFadeIn {
-    0% {
-        opacity: 0;
-        max-height: 0;
-        transform: translateY(20px);
-        pointer-events: none;
-    }
-    100% {
-        opacity: 1;
-        max-height: 500px;
-        transform: translateY(0);
-        pointer-events: auto;
-        overflow: visible;
+        top: clamp(60px, 12vmin, 100px);
+        transform: translate(-50%, 0);
     }
 }
 
 /* ==================== LOGO ==================== */
 .login-logo {
     text-align: center;
-    flex-shrink: 0;
-    position: relative;
     perspective: 1000px;
     /* Heat distortion on the container */
     filter: url(#heatDistortion);
-    /* Fixed centering - immune to sibling layout changes */
+}
+
+/* ==================== CONTENT CONTAINER ==================== */
+.login-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(12px, 2.5vmin, 20px);
+    max-width: 440px;
     width: 100%;
-    /* Height for absolutely positioned logo */
-    min-height: clamp(180px, 40vmin, 320px);
+    z-index: 10;
+    /* Top padding accounts for fixed logo (position + size) + spacing */
+    padding: clamp(320px, 55vmin, 520px) clamp(16px, 4vmin, 32px) clamp(20px, 4vmin, 40px);
+    /* Hidden initially - appears as logo moves up */
+    opacity: 0;
+    transform: translateY(30px);
+    pointer-events: none;
+    animation: contentFadeIn 0.8s ease-out 3.8s forwards;
+}
+
+@keyframes contentFadeIn {
+    0% {
+        opacity: 0;
+        transform: translateY(30px);
+        pointer-events: none;
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+    }
+}
+
+/* Items stagger animation */
+.login-box,
+.login-features,
+.login-bottom-btns {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .login-logo-img {
-    width: clamp(320px, 70vmin, 580px);
+    width: clamp(280px, 60vmin, 520px);
     height: auto;
     object-fit: contain;
-    /* Absolute centering - immune to sibling layout changes */
-    position: absolute;
-    left: 50%;
     /* Cinematic 3D reveal - LOST style */
     opacity: 0;
     transform-style: preserve-3d;
     transform: 
-        translateX(-50%)
         translateZ(-150px) 
         translateY(-20px)
         rotateX(10deg) 
         scale(0.8);
-    /* Layered warm glow to mask dark PNG edges */
+    /* Subtle feather effect - soft fade at edges without harsh glow */
     filter: 
-        drop-shadow(0 0 2px rgba(255, 100, 30, 0.4))
-        drop-shadow(0 0 8px rgba(255, 60, 10, 0.3))
-        drop-shadow(0 0 20px rgba(200, 40, 0, 0.2))
-        drop-shadow(0 4px 12px rgba(0, 0, 0, 0.7))
+        drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5))
         blur(12px);
     animation: logoReveal3D 3s cubic-bezier(0.23, 1, 0.32, 1) 0.3s forwards;
 }
@@ -880,13 +870,9 @@ const loginStyles = `
     0% {
         opacity: 0;
         filter: 
-            drop-shadow(0 0 2px rgba(255, 100, 30, 0.4))
-            drop-shadow(0 0 8px rgba(255, 60, 10, 0.3))
-            drop-shadow(0 0 20px rgba(200, 40, 0, 0.2))
-            drop-shadow(0 4px 12px rgba(0, 0, 0, 0.7))
+            drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5))
             blur(12px);
         transform: 
-            translateX(-50%)
             translateZ(-150px) 
             translateY(-20px)
             rotateX(10deg) 
@@ -895,13 +881,9 @@ const loginStyles = `
     100% {
         opacity: 1;
         filter: 
-            drop-shadow(0 0 2px rgba(255, 100, 30, 0.4))
-            drop-shadow(0 0 8px rgba(255, 60, 10, 0.3))
-            drop-shadow(0 0 20px rgba(200, 40, 0, 0.2))
-            drop-shadow(0 4px 12px rgba(0, 0, 0, 0.7))
+            drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5))
             blur(0px);
         transform: 
-            translateX(-50%)
             translateZ(0) 
             translateY(0)
             rotateX(0deg) 
@@ -941,7 +923,7 @@ const loginStyles = `
 .login-buttons {
     display: flex;
     flex-direction: column;
-    gap: clamp(12px, 2.5vmin, 18px);
+    gap: clamp(10px, 2vmin, 16px);
 }
 
 /* ==================== EPIC FANTASY BUTTONS ==================== */
@@ -950,15 +932,15 @@ const loginStyles = `
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 14px;
-    padding: clamp(14px, 3vmin, 20px) clamp(24px, 5vmin, 36px);
+    gap: 12px;
+    padding: clamp(12px, 2.5vmin, 18px) clamp(24px, 5vmin, 36px);
     font-family: 'Cinzel', serif;
-    font-size: clamp(13px, 2.6vmin, 17px);
+    font-size: clamp(12px, 2.4vmin, 16px);
     font-weight: 700;
     border: none;
     cursor: pointer;
     text-transform: uppercase;
-    letter-spacing: 3px;
+    letter-spacing: 2px;
     overflow: hidden;
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     clip-path: polygon(
@@ -1011,8 +993,8 @@ const loginStyles = `
 }
 
 .login-icon {
-    width: clamp(20px, 4.5vmin, 26px);
-    height: clamp(20px, 4.5vmin, 26px);
+    width: clamp(18px, 4vmin, 24px);
+    height: clamp(18px, 4vmin, 24px);
     flex-shrink: 0;
     position: relative;
     z-index: 2;
@@ -1107,8 +1089,8 @@ const loginStyles = `
 .login-features {
     display: flex;
     flex-direction: column;
-    gap: clamp(10px, 2vmin, 16px);
-    padding: clamp(16px, 3.5vmin, 24px);
+    gap: clamp(6px, 1.2vmin, 12px);
+    padding: clamp(10px, 2vmin, 18px);
     background: linear-gradient(
         180deg,
         rgba(30, 15, 8, 0.85) 0%,
@@ -1116,7 +1098,7 @@ const loginStyles = `
     );
     border: 1px solid rgba(255, 120, 40, 0.15);
     width: 100%;
-    max-width: 340px;
+    max-width: 320px;
     clip-path: polygon(
         12px 0%, calc(100% - 12px) 0%, 100% 12px, 100% calc(100% - 12px),
         calc(100% - 12px) 100%, 12px 100%, 0% calc(100% - 12px), 0% 12px
@@ -1145,9 +1127,11 @@ const loginStyles = `
 /* ==================== BOTTOM BUTTONS ==================== */
 .login-bottom-btns {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
     align-items: center;
-    gap: clamp(10px, 2vmin, 14px);
+    gap: clamp(8px, 1.5vmin, 12px);
     margin-top: clamp(8px, 2vmin, 16px);
 }
 
@@ -1155,11 +1139,11 @@ const loginStyles = `
     background: linear-gradient(180deg, rgba(20, 12, 8, 0.9) 0%, rgba(10, 6, 4, 0.95) 100%);
     border: 1px solid rgba(255, 120, 40, 0.35);
     color: #dd9966;
-    padding: clamp(12px, 2.5vmin, 16px) clamp(24px, 5vmin, 36px);
+    padding: clamp(10px, 2vmin, 14px) clamp(20px, 4vmin, 32px);
     font-family: 'Cinzel', serif;
-    font-size: clamp(10px, 2vmin, 13px);
+    font-size: clamp(10px, 1.8vmin, 12px);
     font-weight: 600;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     text-transform: uppercase;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -1573,85 +1557,73 @@ const loginStyles = `
 /* ===== LANDSCAPE MODE ===== */
 @media (max-height: 500px) and (orientation: landscape) {
     #login-screen {
+        flex-direction: column;
         padding: 10px 20px;
-        align-items: center;
     }
     
-    .login-container {
-        flex-direction: row;
-        flex-wrap: wrap;
-        justify-content: center;
-        align-items: center;
-        gap: 16px 40px;
-        max-width: 950px;
-        padding: 10px 0;
-        animation: none;
+    /* Logo wrapper in landscape - slides to top-left area */
+    .login-logo-wrapper {
+        animation: wrapperSlideToTopLandscape 1.5s ease 3.3s forwards;
     }
     
-    /* Reset logo to relative positioning in landscape */
-    .login-logo {
-        width: auto;
-        min-height: auto;
-        transform: translateX(170px);
-        animation: logoSlideLeft 1.4s ease-in-out 3.3s forwards;
+    @keyframes wrapperSlideToTopLandscape {
+        0% {
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+        100% {
+            top: clamp(20px, 5vmin, 40px);
+            transform: translate(-50%, 0);
+        }
     }
     
     .login-logo-img {
-        position: relative;
-        left: auto;
-        transform: 
-            translateZ(-150px) 
-            translateY(-20px)
-            rotateX(10deg) 
-            scale(0.8);
-    }
-    
-    /* Items appear after logo moves */
-    .login-box,
-    .login-features,
-    .login-bottom-btns {
-        animation-delay: 4s;
-    }
-}
-
-@keyframes logoSlideLeft {
-    0% { transform: translateX(170px); }
-    100% { transform: translateX(0); }
-}
-    
-    .login-logo-img {
         width: auto;
-        height: clamp(120px, 48vh, 260px);
-        max-width: 48vw;
+        height: clamp(80px, 40vh, 180px);
+        max-width: 55vw;
+    }
+    
+    /* Content in landscape - accounts for smaller logo */
+    .login-content {
+        max-width: 100%;
+        width: 100%;
+        padding: clamp(140px, 50vh, 220px) 20px 10px;
+        gap: 10px;
+        flex-direction: column;
+        align-items: center;
     }
     
     .login-box {
-        max-width: 300px;
-        flex: 0 0 auto;
+        max-width: 400px;
+        width: 100%;
+        text-align: center;
     }
     
     .login-box h2 {
         font-size: 16px;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
     }
     
     .login-prompt {
         font-size: 11px;
-        margin-bottom: 12px;
+        margin-bottom: 10px;
     }
     
     .login-buttons {
-        gap: 10px;
+        gap: 12px;
+        flex-direction: row;
+        justify-content: center;
     }
     
     .login-btn {
-        padding: 12px 24px;
+        padding: 10px 24px;
         font-size: 12px;
+        gap: 10px;
     }
     
     .login-icon {
-        width: 18px;
-        height: 18px;
+        width: 16px;
+        height: 16px;
     }
     
     .login-features {
@@ -1660,58 +1632,87 @@ const loginStyles = `
     
     .login-bottom-btns {
         flex-direction: row;
-        flex-wrap: wrap;
         justify-content: center;
         gap: 10px;
-        width: 100%;
-        flex-basis: 100%;
-        margin-top: 8px;
+        margin: 0;
     }
     
     .skip-login-btn {
-        padding: 10px 20px;
-        font-size: 10px;
+        padding: 8px 18px;
+        font-size: 9px;
     }
 }
 
 /* ===== VERY SHORT LANDSCAPE ===== */
 @media (max-height: 380px) and (orientation: landscape) {
-    .login-container {
-        gap: 12px 30px;
+    #login-screen {
+        gap: 8px;
+        padding: 4px 12px;
+    }
+    
+    .login-logo-wrapper {
+        animation: wrapperSlideToTopVeryShort 1.5s ease 3.3s forwards;
+    }
+    
+    @keyframes wrapperSlideToTopVeryShort {
+        0% {
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+        100% {
+            top: 15px;
+            transform: translate(-50%, 0);
+        }
     }
     
     .login-logo-img {
-        height: clamp(100px, 42vh, 200px);
-        max-width: 44vw;
+        height: clamp(60px, 38vh, 120px);
+        max-width: 35vw;
+    }
+    
+    .login-content {
+        gap: 6px;
+        padding: clamp(100px, 45vh, 150px) 10px 4px;
     }
     
     .login-box {
-        max-width: 260px;
+        max-width: 300px;
     }
     
     .login-box h2 {
-        font-size: 14px;
+        font-size: 12px;
+        margin-bottom: 2px;
+    }
+    
+    .login-prompt {
+        font-size: 9px;
+        margin-bottom: 6px;
     }
     
     .login-btn {
-        padding: 10px 20px;
-        font-size: 11px;
+        padding: 6px 12px;
+        font-size: 9px;
+    }
+    
+    .login-icon {
+        width: 12px;
+        height: 12px;
     }
     
     .skip-login-btn {
-        padding: 8px 16px;
-        font-size: 9px;
+        padding: 4px 10px;
+        font-size: 7px;
     }
 }
 
 /* ===== PORTRAIT MODE ===== */
 @media (orientation: portrait) {
-    .login-container {
-        gap: clamp(18px, 4vmin, 32px);
+    .login-content {
+        gap: clamp(12px, 2.5vmin, 20px);
     }
     
     .login-logo-img {
-        width: clamp(300px, 85vw, 520px);
+        width: clamp(220px, 65vw, 400px);
     }
     
     .login-box {
@@ -1720,47 +1721,114 @@ const loginStyles = `
     
     .login-features {
         max-width: clamp(260px, 72vw, 340px);
+        padding: clamp(10px, 2vmin, 16px);
+        gap: clamp(6px, 1.5vmin, 12px);
+    }
+    
+    .feature {
+        font-size: clamp(11px, 2.2vmin, 14px);
     }
 }
 
 /* ===== NARROW PORTRAIT ===== */
 @media (max-width: 380px) and (orientation: portrait) {
-    .login-container {
-        gap: clamp(14px, 3vmin, 24px);
+    .login-content {
+        gap: 10px;
     }
     
     .login-logo-img {
-        width: clamp(240px, 92vw, 380px);
+        width: clamp(180px, 70vw, 280px);
     }
     
     .login-btn {
-        padding: 12px 20px;
-        font-size: 12px;
+        padding: 10px 18px;
+        font-size: 11px;
     }
     
     .login-features {
-        padding: 14px;
-        gap: 10px;
+        padding: 10px;
+        gap: 8px;
     }
     
     .feature {
-        font-size: 12px;
-        gap: 10px;
+        font-size: 11px;
+        gap: 8px;
     }
     
     .feature-icon {
-        font-size: 16px;
+        font-size: 14px;
+    }
+    
+    .skip-login-btn {
+        padding: 8px 14px;
+        font-size: 9px;
+    }
+}
+
+/* ===== SHORT PORTRAIT (less than 700px) ===== */
+@media (max-height: 700px) and (orientation: portrait) {
+    .login-logo-img {
+        width: clamp(180px, 50vw, 320px);
+    }
+    
+    .login-features {
+        display: none;
+    }
+    
+    .login-content {
+        gap: 10px;
+        padding-top: clamp(220px, 40vmin, 320px);
+    }
+}
+
+/* ===== VERY SHORT PORTRAIT ===== */
+@media (max-height: 600px) and (orientation: portrait) {
+    .login-logo-wrapper {
+        animation: wrapperSlideToTopShortPortrait 1.5s ease 3.3s forwards;
+    }
+    
+    @keyframes wrapperSlideToTopShortPortrait {
+        0% {
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+        100% {
+            top: clamp(30px, 6vmin, 50px);
+            transform: translate(-50%, 0);
+        }
+    }
+    
+    .login-logo-img {
+        width: clamp(150px, 45vw, 260px);
+    }
+    
+    .login-box h2 {
+        font-size: clamp(14px, 3vmin, 18px);
+    }
+    
+    .login-content {
+        padding-top: clamp(180px, 35vmin, 260px);
+    }
+    
+    .login-btn {
+        padding: 10px 20px;
+        font-size: 12px;
+    }
+    
+    .skip-login-btn {
+        padding: 8px 14px;
+        font-size: 9px;
     }
 }
 
 /* ===== TALL PORTRAIT ===== */
-@media (min-height: 700px) and (orientation: portrait) {
-    .login-container {
-        gap: clamp(24px, 5vmin, 40px);
+@media (min-height: 800px) and (orientation: portrait) {
+    .login-content {
+        gap: clamp(16px, 3vmin, 28px);
     }
     
     .login-logo-img {
-        width: clamp(340px, 75vw, 560px);
+        width: clamp(280px, 60vw, 480px);
     }
 }
 `;

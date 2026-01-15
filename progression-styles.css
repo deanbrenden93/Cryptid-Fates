@@ -264,32 +264,9 @@
     pointer-events: none;
 }
 
-/* ===== LOGO GLOW EFFECT ===== */
+/* ===== LOGO GLOW EFFECT (disabled - using feather instead) ===== */
 .logo-glow {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 120%;
-    height: 120%;
-    background: radial-gradient(ellipse at center, 
-        rgba(255, 150, 50, 0.15) 0%, 
-        rgba(255, 100, 30, 0.08) 30%, 
-        transparent 70%);
-    animation: logoGlowPulse 4s ease-in-out infinite;
-    pointer-events: none;
-    z-index: -1;
-}
-
-@keyframes logoGlowPulse {
-    0%, 100% {
-        opacity: 0.6;
-        transform: translate(-50%, -50%) scale(1);
-    }
-    50% {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1.15);
-    }
+    display: none;
 }
 
 /* ===== BUTTON PRESS ANIMATIONS ===== */
@@ -467,102 +444,24 @@
     position: relative;
 }
 
+/* Removed glow aura - using feather effect on image instead */
 .logo-container::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 140%;
-    height: 140%;
-    background: 
-        radial-gradient(ellipse at 50% 50%, 
-            rgba(200, 160, 100, 0.06) 0%,
-            rgba(180, 140, 80, 0.03) 30%,
-            transparent 55%),
-        radial-gradient(ellipse at 30% 40%, 
-            rgba(120, 80, 60, 0.04) 0%,
-            transparent 40%),
-        radial-gradient(ellipse at 70% 60%, 
-            rgba(100, 60, 40, 0.04) 0%,
-            transparent 40%);
-    pointer-events: none;
-    animation: logoAura 8s ease-in-out infinite;
+    display: none;
 }
 
-/* Particle-like ember effects */
+/* Removed ember particles */
 .logo-container::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 80%;
-    height: 80%;
-    background-image: 
-        radial-gradient(1px 1px at 20% 30%, rgba(255, 180, 100, 0.4) 0%, transparent 100%),
-        radial-gradient(1px 1px at 80% 40%, rgba(255, 200, 120, 0.3) 0%, transparent 100%),
-        radial-gradient(1px 1px at 40% 70%, rgba(255, 160, 80, 0.35) 0%, transparent 100%),
-        radial-gradient(1px 1px at 65% 80%, rgba(255, 180, 100, 0.25) 0%, transparent 100%),
-        radial-gradient(1px 1px at 10% 60%, rgba(255, 200, 120, 0.3) 0%, transparent 100%),
-        radial-gradient(1px 1px at 90% 20%, rgba(255, 160, 80, 0.25) 0%, transparent 100%);
-    pointer-events: none;
-    animation: logoEmbers 4s ease-in-out infinite alternate;
-    opacity: 0.6;
-    z-index: 0;
-}
-
-@keyframes logoEmbers {
-    0% { transform: translate(-50%, -50%) translateY(0); opacity: 0.4; }
-    100% { transform: translate(-50%, -50%) translateY(-8px); opacity: 0.7; }
+    display: none;
 }
 
 .logo-image {
     max-width: min(550px, 90vw);
     width: 100%;
     height: auto;
-    /* Layered warm glow to mask dark PNG edges */
-    filter: 
-        drop-shadow(0 0 2px rgba(255, 100, 30, 0.5))
-        drop-shadow(0 0 6px rgba(255, 60, 10, 0.35))
-        drop-shadow(0 0 15px rgba(200, 40, 0, 0.25))
-        drop-shadow(0 0 60px rgba(200, 160, 100, 0.15))
-        drop-shadow(0 15px 40px rgba(0, 0, 0, 0.7));
-    animation: logoBreath 6s ease-in-out infinite;
+    /* Subtle feather effect - soft shadow without colored glow */
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
     position: relative;
     z-index: 1;
-}
-
-@keyframes logoBreath {
-    0%, 100% { 
-        filter: 
-            drop-shadow(0 0 2px rgba(255, 100, 30, 0.5))
-            drop-shadow(0 0 6px rgba(255, 60, 10, 0.35))
-            drop-shadow(0 0 15px rgba(200, 40, 0, 0.25))
-            drop-shadow(0 0 50px rgba(200, 160, 100, 0.12))
-            drop-shadow(0 15px 40px rgba(0, 0, 0, 0.7));
-        transform: scale(1);
-    }
-    50% { 
-        filter: 
-            drop-shadow(0 0 3px rgba(255, 120, 40, 0.6))
-            drop-shadow(0 0 8px rgba(255, 70, 15, 0.4))
-            drop-shadow(0 0 18px rgba(220, 50, 0, 0.3))
-            drop-shadow(0 0 80px rgba(220, 180, 120, 0.2))
-            drop-shadow(0 18px 45px rgba(0, 0, 0, 0.75));
-        transform: scale(1.01);
-    }
-}
-
-@keyframes logoAura {
-    0%, 100% {
-        opacity: 0.6;
-        transform: translate(-50%, -50%) scale(1);
-    }
-    50% {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1.1);
-    }
 }
 
 /* Stats Row */
@@ -976,12 +875,12 @@ div.menu-btn#tile-collection {
     from {
         opacity: 0;
         transform: scale(0.9);
-        filter: drop-shadow(0 0 80px rgba(255, 255, 255, 0.3));
+        filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
     }
     to {
         opacity: 1;
         transform: scale(1);
-        filter: drop-shadow(0 0 40px rgba(255, 255, 255, 0.1));
+        filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
     }
 }
 
@@ -1060,7 +959,7 @@ div.menu-btn#tile-collection {
     to {
         opacity: 0;
         transform: scale(1.1);
-        filter: drop-shadow(0 0 100px rgba(200, 160, 100, 0.4));
+        filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
     }
 }
 
@@ -1188,20 +1087,12 @@ div.menu-btn#tile-collection {
     from {
         opacity: 0;
         transform: scale(1.1);
-        filter: 
-            drop-shadow(0 0 4px rgba(255, 120, 40, 0.6))
-            drop-shadow(0 0 10px rgba(255, 70, 15, 0.4))
-            drop-shadow(0 0 100px rgba(255, 200, 150, 0.3));
+        filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
     }
     to {
         opacity: 1;
         transform: scale(1);
-        filter: 
-            drop-shadow(0 0 2px rgba(255, 100, 30, 0.5))
-            drop-shadow(0 0 6px rgba(255, 60, 10, 0.35))
-            drop-shadow(0 0 15px rgba(200, 40, 0, 0.25))
-            drop-shadow(0 0 50px rgba(200, 160, 100, 0.12))
-            drop-shadow(0 15px 40px rgba(0, 0, 0, 0.7));
+        filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
     }
 }
 
@@ -1273,12 +1164,8 @@ div.menu-btn#tile-collection {
     max-width: 300px;
     width: 70vw;
     margin-bottom: 16px;
-    /* Warm glow to mask dark PNG edges */
-    filter: 
-        drop-shadow(0 0 2px rgba(255, 100, 30, 0.5))
-        drop-shadow(0 0 6px rgba(255, 60, 10, 0.35))
-        drop-shadow(0 0 15px rgba(200, 40, 0, 0.25))
-        drop-shadow(0 0 40px rgba(255, 200, 150, 0.15));
+    /* Subtle feather effect - soft shadow without colored glow */
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
 }
 
 @media (max-height: 600px) {
