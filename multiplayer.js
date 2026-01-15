@@ -2020,16 +2020,80 @@ function initializeMultiplayerMatch(matchData) {
     // Apply any kindling sync that arrived before game was ready
     Multiplayer.applyPendingKindlingSync();
     
+    // Block all input during match start sequence
+    if (typeof window.setAnimating === 'function') {
+        window.setAnimating(true);
+    }
+    
+    // Hide hand BEFORE rendering if we're going to animate (class bypasses transition)
+    var shouldAnimateHand = window.CombatEffects && typeof window.CombatEffects.playStartingHandAnimation === 'function';
+    var handContainer = document.getElementById('hand-container');
+    if (shouldAnimateHand && handContainer) {
+        handContainer.classList.add('drawing-animation');
+    }
+    
     if (typeof renderAll === 'function') renderAll();
     if (typeof updateButtons === 'function') updateButtons();
+    
+    // Function to play the match start sequence after hand is revealed
+    var playMatchStartSequence = function() {
+        // Step 1: Show "BATTLE!" banner
+        if (window.CombatEffects && window.CombatEffects.playBattleBanner) {
+            window.CombatEffects.playBattleBanner(function() {
+                // Step 2: After BATTLE banner, show turn banner
+                setTimeout(function() {
+                    var turnOwner = matchData.goesFirst ? 'player' : 'enemy';
+                    if (window.CombatEffects && window.CombatEffects.playTurnTransition) {
+                        window.CombatEffects.playTurnTransition(turnOwner, function() {
+                            // Actions enabled by playTurnTransition callback
+                        });
+                    } else {
+                        if (typeof window.setAnimating === 'function') {
+                            window.setAnimating(false);
+                        }
+                    }
+                }, 300);
+            });
+        } else {
+            // Fallback to simple messages if CombatEffects not available
+            showMessage("⚔ BATTLE! ⚔", 1200);
+            setTimeout(function() {
+                showMessage(matchData.goesFirst ? "Your Turn" : (matchData.opponentName || 'Opponent') + "'s Turn", 1500);
+                setTimeout(function() {
+                    if (typeof window.setAnimating === 'function') {
+                        window.setAnimating(false);
+                    }
+                }, 1200);
+            }, 1000);
+        }
+    };
     
     setTimeout(function() {
         if (typeof window.calculateTilePositions === 'function') {
             window.calculateTilePositions();
         }
+        
+        // Play starting hand animation after positions calculated
+        if (shouldAnimateHand) {
+            window.CombatEffects.playStartingHandAnimation(g.playerHand.length, function() {
+                var hc = document.getElementById('hand-container');
+                if (hc) {
+                    hc.classList.remove('drawing-animation');
+                }
+                if (typeof renderHandAnimated === 'function') {
+                    renderHandAnimated();
+                }
+                
+                // Wait for hand reveal animation, then play match start sequence
+                setTimeout(function() {
+                    playMatchStartSequence();
+                }, 600);
+            });
+        } else {
+            // No animation - start sequence immediately
+            playMatchStartSequence();
+        }
     }, 100);
-    
-    showMessage(matchData.goesFirst ? 'You go first!' : (matchData.opponentName || 'Opponent') + ' goes first!');
     
     // TEMPORARY: Enable cheat mode for multiplayer testing
     // Remove this block when done testing!

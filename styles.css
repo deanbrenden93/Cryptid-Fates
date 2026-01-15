@@ -1956,6 +1956,13 @@ body {
     transition: opacity 0.3s ease;
 }
 
+/* Hide hand instantly during starting draw animation (no transition) */
+#hand-container.drawing-animation {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: none !important;
+}
+
 /* Scroll wrapper - simple flex container, NO position relative */
 .hand-scroll-wrapper {
     display: flex;

@@ -2256,6 +2256,63 @@ window.CombatEffects = {
         }
     },
     
+    // ==================== BATTLE START BANNER ====================
+    // Dramatic "BATTLE!" announcement at match start
+    
+    /**
+     * Play the BATTLE! start banner animation
+     * @param {Function} onComplete - Callback when animation completes
+     */
+    playBattleBanner(onComplete) {
+        const gameContainer = document.getElementById('game-container');
+        const battlefield = document.getElementById('battlefield-area');
+        
+        if (!gameContainer || !battlefield) {
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        // Create BATTLE banner
+        const banner = document.createElement('div');
+        banner.className = 'turn-banner battle-banner';
+        banner.innerHTML = `<span class="turn-banner-text battle-text">⚔ BATTLE! ⚔</span>`;
+        banner.style.setProperty('--banner-color', '#fbbf24'); // Gold/amber color
+        gameContainer.appendChild(banner);
+        
+        // Animate banner sweep
+        requestAnimationFrame(() => {
+            banner.classList.add('turn-banner-active');
+        });
+        
+        // Battlefield flash effect
+        setTimeout(() => {
+            const flash = document.createElement('div');
+            flash.className = 'battle-start-flash';
+            battlefield.appendChild(flash);
+            setTimeout(() => flash.remove(), 500);
+        }, 150);
+        
+        // All cryptids do a ready bounce
+        setTimeout(() => {
+            const sprites = document.querySelectorAll('.cryptid-sprite');
+            sprites.forEach((sprite, i) => {
+                setTimeout(() => {
+                    sprite.classList.add('ready-stance');
+                    setTimeout(() => sprite.classList.remove('ready-stance'), 300);
+                }, i * 60);
+            });
+        }, 300);
+        
+        // Cleanup
+        setTimeout(() => {
+            banner.classList.add('turn-banner-exit');
+            setTimeout(() => {
+                banner.remove();
+                if (onComplete) onComplete();
+            }, 300);
+        }, 1000);
+    },
+    
     // ==================== TURN TRANSITION ANIMATION ====================
     // Features: Banner sweep, battlefield pulse, ready stance
     
@@ -2544,8 +2601,34 @@ window.CombatEffects = {
             window.setAnimating(true);
         }
         
+        // Wait for layout to stabilize with double RAF
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                this._executeStartingHandAnimation(gameContainer, handContainer, cardCount, onComplete);
+            });
+        });
+    },
+    
+    /**
+     * Internal: Execute starting hand animation after layout is stable
+     */
+    _executeStartingHandAnimation(gameContainer, handContainer, cardCount, onComplete) {
+        // Force reflow to ensure layout is calculated
+        gameContainer.offsetHeight;
+        handContainer.offsetHeight;
+        
         const containerRect = gameContainer.getBoundingClientRect();
         const handRect = handContainer.getBoundingClientRect();
+        
+        // Validate rects - if invalid, skip animation
+        if (containerRect.width === 0 || handRect.width === 0) {
+            console.warn('[CombatEffects] Invalid container rects, skipping starting hand animation');
+            if (typeof window.setAnimating === 'function') {
+                window.setAnimating(false);
+            }
+            if (onComplete) onComplete();
+            return;
+        }
         
         // Deck position (top right)
         const deckX = containerRect.width - 80;
@@ -2562,13 +2645,20 @@ window.CombatEffects = {
         const flyDuration = 350;
         const flipDelay = 200;
         
+        // Pre-create all card elements at once (ensures consistent positioning)
+        const cardElements = [];
         for (let i = 0; i < cardCount; i++) {
             const targetX = handCenterX + startOffset + (i * cardSpacing);
-            
-            setTimeout(() => {
-                this._createStartingCard(gameContainer, deckX, deckY, targetX, handY, flyDuration, flipDelay, i);
-            }, i * cardDelay);
+            const card = this._createStartingCardElement(gameContainer, deckX, deckY, i);
+            cardElements.push({ card, targetX, index: i });
         }
+        
+        // Then animate them with stagger (positions are already calculated)
+        cardElements.forEach(({ card, targetX, index }) => {
+            setTimeout(() => {
+                this._animateStartingCard(card, targetX, handY, flyDuration, flipDelay, index);
+            }, index * cardDelay);
+        });
         
         // Complete after all cards settle
         const totalDuration = (cardCount - 1) * cardDelay + flyDuration + flipDelay + 400;
@@ -2581,9 +2671,9 @@ window.CombatEffects = {
     },
     
     /**
-     * Create a starting hand card with flip reveal
+     * Create a starting card element (hidden, ready to animate)
      */
-    _createStartingCard(container, startX, startY, endX, endY, flyDuration, flipDelay, index) {
+    _createStartingCardElement(container, startX, startY, index) {
         const card = document.createElement('div');
         card.className = 'starting-card';
         
@@ -2593,9 +2683,6 @@ window.CombatEffects = {
                 <div class="starting-card-glow"></div>
             </div>
         `;
-        
-        // Slight rotation variation for natural look
-        const rotation = (index - 2) * 3;
         
         card.style.cssText = `
             position: absolute;
@@ -2610,25 +2697,42 @@ window.CombatEffects = {
         `;
         
         container.appendChild(card);
+        return card;
+    },
+    
+    /**
+     * Animate a starting card flying to position
+     */
+    _animateStartingCard(card, endX, endY, flyDuration, flipDelay, index) {
+        if (!card || !card.parentElement) return;
         
-        // Phase 1: Fly to position
+        // Slight rotation variation for natural look
+        const rotation = (index - 2) * 3;
+        
+        // Use double RAF to ensure element is in DOM before animating
         requestAnimationFrame(() => {
-            card.style.transition = `all ${flyDuration}ms cubic-bezier(0.2, 0.8, 0.3, 1)`;
-            card.style.opacity = '1';
-            card.style.left = `${endX - 43}px`;
-            card.style.top = `${endY}px`;
-            card.style.transform = `scale(1) rotate(${rotation}deg)`;
+            requestAnimationFrame(() => {
+                card.style.transition = `all ${flyDuration}ms cubic-bezier(0.2, 0.8, 0.3, 1)`;
+                card.style.opacity = '1';
+                card.style.left = `${endX - 43}px`;
+                card.style.top = `${endY}px`;
+                card.style.transform = `scale(1) rotate(${rotation}deg)`;
+            });
         });
         
         // Phase 2: Glow pulse on arrival
         setTimeout(() => {
-            card.classList.add('card-arrived');
+            if (card.parentElement) card.classList.add('card-arrived');
         }, flyDuration);
         
         // Phase 3: Fade out as real cards appear
         setTimeout(() => {
-            card.classList.add('card-dissolve');
-            setTimeout(() => card.remove(), 300);
+            if (card.parentElement) {
+                card.classList.add('card-dissolve');
+                setTimeout(() => {
+                    if (card.parentElement) card.remove();
+                }, 300);
+            }
         }, flyDuration + flipDelay + 200);
     },
     
@@ -5888,6 +5992,42 @@ window.CombatEffects = {
         @keyframes bannerExit {
             0% { left: 0; opacity: 1; }
             100% { left: 100%; opacity: 0; }
+        }
+        
+        /* BATTLE! banner specific styles */
+        .battle-banner {
+            padding: 24px 0;
+            box-shadow: 
+                0 0 60px rgba(251, 191, 36, 0.8),
+                0 0 100px rgba(251, 191, 36, 0.4),
+                inset 0 0 60px rgba(251, 191, 36, 0.1);
+        }
+        
+        .battle-text {
+            font-size: clamp(28px, 8vw, 54px) !important;
+            letter-spacing: 12px !important;
+            animation: battleTextPulse 0.5s ease-in-out 2;
+        }
+        
+        @keyframes battleTextPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        /* Battle start flash effect */
+        .battle-start-flash {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at center, rgba(251, 191, 36, 0.4) 0%, transparent 70%);
+            animation: battleFlash 0.5s ease-out forwards;
+            pointer-events: none;
+            z-index: 100;
+        }
+        
+        @keyframes battleFlash {
+            0% { opacity: 0; transform: scale(0.8); }
+            30% { opacity: 1; transform: scale(1.1); }
+            100% { opacity: 0; transform: scale(1.3); }
         }
         
         /* Turn pulse wave */

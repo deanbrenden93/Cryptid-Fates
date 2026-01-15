@@ -123,16 +123,20 @@ function initGame() {
     const firstPlayer = window.playerGoesFirst !== false ? 'player' : 'enemy';
     game.startTurn(firstPlayer);
     
-    // Check if we should animate the starting hand
-    const shouldAnimateHand = window.CombatEffects?.playStartingHandAnimation && !window.testMode;
+    // Check if we should animate the starting hand (skip for test mode and tutorials)
+    const shouldAnimateHand = window.CombatEffects?.playStartingHandAnimation && !window.testMode && !window.isTutorial;
     
-    // Hide hand IMMEDIATELY before any rendering can occur
+    // Hide hand IMMEDIATELY before any rendering can occur (class bypasses transition)
     if (shouldAnimateHand) {
         const handContainer = document.getElementById('hand-container');
         if (handContainer) {
-            handContainer.style.opacity = '0';
-            handContainer.style.pointerEvents = 'none';
+            handContainer.classList.add('drawing-animation');
         }
+    }
+    
+    // Block all input during match start sequence
+    if (typeof window.setAnimating === 'function') {
+        window.setAnimating(true);
     }
     
     setTimeout(() => {
@@ -141,6 +145,52 @@ function initGame() {
         // Render everything (hand is already hidden if animating)
         renderAll();
         lastBattlefieldHeight = document.getElementById('battlefield-area').offsetHeight;
+        updateButtons();
+        
+        // Function to play the match start sequence after hand is revealed
+        const playMatchStartSequence = () => {
+            // Step 1: Show "BATTLE!" banner
+            if (window.CombatEffects?.playBattleBanner) {
+                window.CombatEffects.playBattleBanner(() => {
+                    // Step 2: After BATTLE banner, show turn banner
+                    setTimeout(() => {
+                        if (window.CombatEffects?.playTurnTransition) {
+                            window.CombatEffects.playTurnTransition(firstPlayer, () => {
+                                // Step 3: After turn banner, run AI if enemy goes first
+                                if (firstPlayer === 'enemy') {
+                                    if (!window.TutorialManager?.isActive || window.TutorialManager?.freePlayMode) {
+                                        setTimeout(() => {
+                                            if (!game.gameOver) window.runEnemyAI();
+                                        }, 300);
+                                    }
+                                }
+                            });
+                        } else {
+                            // Fallback if no turn transition
+                            if (typeof window.setAnimating === 'function') {
+                                window.setAnimating(false);
+                            }
+                        }
+                    }, 300);
+                });
+            } else {
+                // Fallback to simple messages if CombatEffects not available
+                showMessage("⚔ BATTLE! ⚔", 1200);
+                setTimeout(() => {
+                    showMessage(firstPlayer === 'player' ? "Your Turn" : "Enemy Turn", 1500);
+                    setTimeout(() => {
+                        if (typeof window.setAnimating === 'function') {
+                            window.setAnimating(false);
+                        }
+                        if (firstPlayer === 'enemy' && (!window.TutorialManager?.isActive || window.TutorialManager?.freePlayMode)) {
+                            setTimeout(() => {
+                                if (!game.gameOver) window.runEnemyAI();
+                            }, 300);
+                        }
+                    }, 1200);
+                }, 1000);
+            }
+        };
         
         // Now play the starting hand animation
         if (shouldAnimateHand && window.CombatEffects?.playStartingHandAnimation) {
@@ -152,9 +202,9 @@ function initGame() {
                     console.warn('[initGame] Starting hand animation safety timeout triggered');
                     const hc = document.getElementById('hand-container');
                     if (hc) {
-                        hc.style.opacity = '1';
-                        hc.style.pointerEvents = '';
+                        hc.classList.remove('drawing-animation');
                     }
+                    playMatchStartSequence();
                 }
             }, 5000);
             
@@ -164,36 +214,34 @@ function initGame() {
                 // Show actual cards with entering animation after draw animation completes
                 const hc = document.getElementById('hand-container');
                 if (hc) {
-                    hc.style.opacity = '1';
-                    hc.style.pointerEvents = '';
+                    hc.classList.remove('drawing-animation');
                 }
                 renderHandAnimated();
+                
+                // Wait for hand reveal animation, then play match start sequence
+                setTimeout(() => {
+                    playMatchStartSequence();
+                }, 600);
             });
-        } else if (shouldAnimateHand) {
-            // Animation was supposed to happen but CombatEffects not available - unhide
-            const hc = document.getElementById('hand-container');
-            if (hc) {
-                hc.style.opacity = '1';
-                hc.style.pointerEvents = '';
+        } else {
+            // No animation - unhide hand if needed
+            if (shouldAnimateHand) {
+                const hc = document.getElementById('hand-container');
+                if (hc) {
+                    hc.classList.remove('drawing-animation');
+                }
+            }
+            
+            // Skip match start sequence for tutorials (they have their own flow)
+            if (window.isTutorial) {
+                if (typeof window.setAnimating === 'function') {
+                    window.setAnimating(false);
+                }
+            } else {
+                playMatchStartSequence();
             }
         }
     }, 50);
-    
-    updateButtons();
-    
-    if (firstPlayer === 'player') {
-        showMessage("The ritual begins... Your move, Seeker.", TIMING.messageDisplay);
-    } else {
-        // Check if tutorial - don't run AI during tutorial
-        if (window.TutorialManager?.isActive && !window.TutorialManager?.freePlayMode) {
-            showMessage("The ritual begins...", TIMING.messageDisplay);
-        } else {
-            showMessage("The Warden moves first...", TIMING.messageDisplay);
-            setTimeout(() => {
-                if (!game.gameOver) window.runEnemyAI();
-            }, TIMING.messageDisplay + 400);
-        }
-    }
     
     window.game = game;
 }
