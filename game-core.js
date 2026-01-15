@@ -4955,20 +4955,112 @@ class Game {
     
     getStatusIcons(cryptid) {
         const icons = [];
-        // Ailments
-        if (cryptid.burnTurns > 0) icons.push('🔥');
-        if (cryptid.paralyzed) icons.push('⚡');
-        if (cryptid.bleedTurns > 0) icons.push('🩸');
-        if (cryptid.curseTokens > 0) icons.push(`🔮${cryptid.curseTokens}`);
-        if (cryptid.calamityCounters > 0) icons.push(`💀${cryptid.calamityCounters}`);
-        // Buffs/abilities
-        if (cryptid.protectionCharges > 0) icons.push(`🛡️${cryptid.protectionCharges > 1 ? cryptid.protectionCharges : ''}`);
-        if (cryptid.hasFocus) icons.push('🎯');
-        if (cryptid.hasFlying) icons.push('🪽');
-        if (cryptid.isHidden) icons.push('👁');
-        if (cryptid.latchedTo || cryptid.latchedBy) icons.push('🔗');
-        if (cryptid.auras?.length > 0) icons.push('✨');
-        if (cryptid.hasDestroyer) icons.push('💥');
+        // Ailments (negative effects)
+        if (cryptid.burnTurns > 0) {
+            const turns = cryptid.burnTurns;
+            icons.push({ 
+                icon: '🔥', 
+                category: 'ailment-burn', 
+                count: turns > 1 ? turns : null, 
+                tooltip: `Burn: ${turns} turn${turns > 1 ? 's' : ''} remaining. Takes 1 damage at turn start.`
+            });
+        }
+        if (cryptid.paralyzed) {
+            const turns = cryptid.paralyzeTurns || 1;
+            icons.push({ 
+                icon: '⚡', 
+                category: 'ailment-paralyze', 
+                count: turns > 1 ? turns : null, 
+                tooltip: `Paralyzed: ${turns} turn${turns > 1 ? 's' : ''} remaining. Cannot untap or attack.`
+            });
+        }
+        if (cryptid.bleedTurns > 0) {
+            const turns = cryptid.bleedTurns;
+            icons.push({ 
+                icon: '🩸', 
+                category: 'ailment-bleed', 
+                count: turns > 1 ? turns : null, 
+                tooltip: `Bleed: ${turns} turn${turns > 1 ? 's' : ''} remaining. Takes double damage when attacked.`
+            });
+        }
+        if (cryptid.curseTokens > 0) {
+            const stacks = cryptid.curseTokens;
+            icons.push({ 
+                icon: '🔮', 
+                category: 'ailment-curse', 
+                count: stacks, 
+                tooltip: `Curse: ${stacks} stack${stacks > 1 ? 's' : ''}. -${stacks} ATK. Dies instantly at 3 stacks.`
+            });
+        }
+        if (cryptid.calamityCounters > 0) {
+            const stacks = cryptid.calamityCounters;
+            icons.push({ 
+                icon: '💀', 
+                category: 'ailment-calamity', 
+                count: stacks, 
+                tooltip: `Calamity: ${stacks}/3 counters. Dies instantly when reaching 3 counters.`
+            });
+        }
+        // Buffs/abilities (positive effects)
+        if (cryptid.protectionCharges > 0) {
+            const charges = cryptid.protectionCharges;
+            icons.push({ 
+                icon: '🛡️', 
+                category: 'buff-protection', 
+                count: charges > 1 ? charges : null, 
+                tooltip: `Protected: ${charges} charge${charges > 1 ? 's' : ''}. Blocks the next ${charges} instance${charges > 1 ? 's' : ''} of damage.`
+            });
+        }
+        if (cryptid.hasFocus) {
+            icons.push({ 
+                icon: '🎯', 
+                category: 'buff-focus', 
+                count: null, 
+                tooltip: 'Focus: Can attack without resting afterward.'
+            });
+        }
+        if (cryptid.hasFlying) {
+            icons.push({ 
+                icon: '🪽', 
+                category: 'buff-flying', 
+                count: null, 
+                tooltip: 'Flying: Can only be blocked by other Flying cryptids.'
+            });
+        }
+        if (cryptid.isHidden) {
+            icons.push({ 
+                icon: '👁', 
+                category: 'buff-hidden', 
+                count: null, 
+                tooltip: 'Hidden: Identity and stats unknown to enemy. Revealed when attacking or taking damage.'
+            });
+        }
+        if (cryptid.latchedTo || cryptid.latchedBy) {
+            icons.push({ 
+                icon: '🔗', 
+                category: 'status-latch', 
+                count: null, 
+                tooltip: 'Latched: Bound to another cryptid. Cannot move independently.'
+            });
+        }
+        if (cryptid.auras?.length > 0) {
+            const count = cryptid.auras.length;
+            const auraNames = cryptid.auras.map(a => a.name).join(', ');
+            icons.push({ 
+                icon: '✨', 
+                category: 'buff-aura', 
+                count: count > 1 ? count : null, 
+                tooltip: `Enchanted: ${auraNames}`
+            });
+        }
+        if (cryptid.hasDestroyer) {
+            icons.push({ 
+                icon: '💥', 
+                category: 'buff-destroyer', 
+                count: null, 
+                tooltip: 'Destroyer: Deals double damage to enemy cryptids.'
+            });
+        }
         return icons;
     }
     

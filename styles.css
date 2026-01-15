@@ -2761,6 +2761,66 @@ body {
     white-space: nowrap;
 }
 
+/* Status Effect Tooltip - appears at top center of battlefield */
+#status-tooltip {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%) scale(0.95);
+    background: linear-gradient(135deg, rgba(25, 22, 18, 0.98) 0%, rgba(40, 35, 28, 0.96) 100%);
+    color: #e8e0d4;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: 'Trebuchet MS', sans-serif;
+    font-weight: 500;
+    line-height: 1.5;
+    text-align: center;
+    min-width: 280px;
+    max-width: 400px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.1), 0 0 20px rgba(232, 169, 62, 0.15);
+    border: 1px solid rgba(120, 100, 70, 0.6);
+    z-index: 650;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+}
+
+#status-tooltip.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) scale(1);
+}
+
+#status-tooltip .status-tooltip-title {
+    font-family: 'Cinzel', serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--candlelight);
+    margin-bottom: 4px;
+}
+
+#status-tooltip .status-tooltip-desc {
+    color: #c8c0b4;
+    font-size: 12px;
+}
+
+@media (max-height: 500px) {
+    #status-tooltip {
+        top: 45px;
+        padding: 8px 16px;
+        min-width: 220px;
+        font-size: 11px;
+    }
+    #status-tooltip .status-tooltip-title {
+        font-size: 13px;
+    }
+    #status-tooltip .status-tooltip-desc {
+        font-size: 11px;
+    }
+}
+
 /* ==================== GAME OVER ==================== */
 #game-over {
     position: fixed;

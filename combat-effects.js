@@ -3481,18 +3481,35 @@ window.CombatEffects = {
             gap: 2px;
         }
         
-        /* Player monsters: stats on LEFT, flex-direction puts HP bar on outside */
+        /* Player monsters: stats on LEFT (back row), flex-direction puts HP bar on outside */
         .cryptid-sprite[data-owner="player"] .combat-stats {
             left: calc(var(--sprite-size, 40px) * -1.1);
             right: auto;
             flex-direction: row;
         }
         
-        /* Enemy monsters: stats on RIGHT, flex-direction reversed */
+        /* Enemy monsters: stats on RIGHT (back row), flex-direction reversed */
         .cryptid-sprite[data-owner="enemy"] .combat-stats {
             right: calc(var(--sprite-size, 40px) * -1.1);
             left: auto;
             flex-direction: row-reverse;
+        }
+        
+        /* Top and bottom rows: stats on FRONT (opposite side for space saving) */
+        /* Player top/bottom rows: stats on RIGHT (front) */
+        .cryptid-sprite[data-owner="player"][data-row="0"] .combat-stats,
+        .cryptid-sprite[data-owner="player"][data-row="2"] .combat-stats {
+            left: auto;
+            right: calc(var(--sprite-size, 40px) * -1.1);
+            flex-direction: row-reverse;
+        }
+        
+        /* Enemy top/bottom rows: stats on LEFT (front) */
+        .cryptid-sprite[data-owner="enemy"][data-row="0"] .combat-stats,
+        .cryptid-sprite[data-owner="enemy"][data-row="2"] .combat-stats {
+            right: auto;
+            left: calc(var(--sprite-size, 40px) * -1.1);
+            flex-direction: row;
         }
         
         /* Vertical HP Bar */
@@ -3545,7 +3562,12 @@ window.CombatEffects = {
             50% { opacity: 0.8; box-shadow: 0 0 12px rgba(255, 50, 50, 0.9); }
         }
         
-        /* Status Icons Column - positioned outside the stat bar, doesn't affect layout */
+        /* Combat stats container - needs pointer events for interactive children */
+        .cryptid-sprite .combat-stats {
+            pointer-events: auto !important;
+        }
+        
+        /* Status Icons Column - positioned outside the stat bar */
         .combat-stats .stat-icons-column {
             position: absolute;
             top: 0;
@@ -3553,42 +3575,246 @@ window.CombatEffects = {
             flex-direction: column;
             justify-content: flex-start;
             align-items: center;
-            gap: 1px;
-            min-width: calc(var(--sprite-size, 40px) * 0.28);
-            height: 100%;
-            overflow: hidden;
-            padding: 2px 1px;
-            background: rgba(10, 8, 6, 0.6);
-            border-radius: 2px;
-            border: 1px solid rgba(50, 45, 40, 0.4);
+            gap: 3px;
+            min-width: calc(var(--sprite-size, 40px) * 0.32);
+            height: 100%; /* Match HP bar height */
+            max-height: 100%;
+            overflow: hidden; /* Clip excess icons */
+            padding: 3px 2px;
+            background: linear-gradient(135deg, rgba(15, 12, 10, 0.85) 0%, rgba(25, 20, 18, 0.75) 100%);
+            border-radius: 6px;
+            border: 1px solid rgba(80, 70, 55, 0.5);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            pointer-events: auto !important;
+            z-index: 50;
         }
         
-        /* Player: icons on far left (outer edge) */
+        /* Inner wrapper for icons - handles scrolling animation */
+        .combat-stats .stat-icons-column .status-icons-scroll-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            width: 100%;
+        }
+        
+        /* Auto-scroll animation when icons overflow */
+        .combat-stats .stat-icons-column.has-overflow .status-icons-scroll-wrapper {
+            animation: statusIconsScroll var(--scroll-duration, 4s) ease-in-out infinite;
+        }
+        
+        /* Pause scroll on hover */
+        .combat-stats .stat-icons-column:hover .status-icons-scroll-wrapper {
+            animation-play-state: paused !important;
+        }
+        
+        @keyframes statusIconsScroll {
+            0%, 15% { transform: translateY(0); }
+            42.5%, 57.5% { transform: translateY(var(--scroll-distance, 0px)); }
+            85%, 100% { transform: translateY(0); }
+        }
+        
+        /* Status icons must be hoverable */
+        .combat-stats .status-icon-item {
+            pointer-events: auto !important;
+            cursor: pointer;
+        }
+        
+        /* Player: icons on far left (outer edge) - default for middle row */
         .cryptid-sprite[data-owner="player"] .stat-icons-column {
             right: 100%;
-            margin-right: 2px;
+            left: auto;
+            margin-right: 3px;
+            margin-left: 0;
         }
         
-        /* Enemy: icons on far right (outer edge) */
+        /* Enemy: icons on far right (outer edge) - default for middle row */
         .cryptid-sprite[data-owner="enemy"] .stat-icons-column {
             left: 100%;
-            margin-left: 2px;
+            right: auto;
+            margin-left: 3px;
+            margin-right: 0;
+        }
+        
+        /* Top/bottom rows: icons on opposite side (since stats are flipped to front) */
+        .cryptid-sprite[data-owner="player"][data-row="0"] .stat-icons-column,
+        .cryptid-sprite[data-owner="player"][data-row="2"] .stat-icons-column {
+            right: auto;
+            left: 100%;
+            margin-right: 0;
+            margin-left: 3px;
+        }
+        
+        .cryptid-sprite[data-owner="enemy"][data-row="0"] .stat-icons-column,
+        .cryptid-sprite[data-owner="enemy"][data-row="2"] .stat-icons-column {
+            left: auto;
+            right: 100%;
+            margin-left: 0;
+            margin-right: 3px;
         }
         
         .combat-stats .status-icon-item,
         .stat-icons-column .status-icon-item,
         span.status-icon-item {
-            font-size: calc(var(--sprite-size, 40px) * 0.28);
-            line-height: 1;
-            filter: drop-shadow(0 1px 1px rgba(0,0,0,0.8));
+            position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
-            flex: 0 1 auto;
-            min-height: 0;
+            width: calc(var(--sprite-size, 40px) * 0.30);
+            height: calc(var(--sprite-size, 40px) * 0.30);
+            min-width: 16px;
+            min-height: 16px;
+            border-radius: 50%;
+            background: radial-gradient(ellipse at 30% 30%, rgba(50, 45, 40, 0.9), rgba(20, 18, 15, 0.95));
+            border: 1.5px solid rgba(90, 80, 65, 0.6);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.08);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            cursor: default;
+            animation: statusIconAppear 0.3s ease-out backwards;
+        }
+        
+        .status-icon-item:nth-child(1) { animation-delay: 0ms; }
+        .status-icon-item:nth-child(2) { animation-delay: 50ms; }
+        .status-icon-item:nth-child(3) { animation-delay: 100ms; }
+        .status-icon-item:nth-child(4) { animation-delay: 150ms; }
+        .status-icon-item:nth-child(5) { animation-delay: 200ms; }
+        
+        @keyframes statusIconAppear {
+            0% { transform: scale(0); opacity: 0; }
+            60% { transform: scale(1.15); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .status-icon-item .status-icon-emoji {
+            font-size: calc(var(--sprite-size, 40px) * 0.18);
+            line-height: 1;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+        }
+        
+        .status-icon-item .status-icon-count {
+            position: absolute;
+            bottom: -1px;
+            right: -3px;
+            font-size: 9px;
+            font-weight: 900;
+            font-family: 'Trebuchet MS', sans-serif;
+            color: #fff;
+            background: none;
+            padding: 0;
+            line-height: 1;
+            text-shadow: 
+                -1px -1px 0 #000,
+                1px -1px 0 #000,
+                -1px 1px 0 #000,
+                1px 1px 0 #000,
+                0 0 4px rgba(0, 0, 0, 0.9),
+                0 0 6px rgba(0, 0, 0, 0.7);
+            min-width: auto;
             text-align: center;
-            max-width: calc(var(--sprite-size, 40px) * 0.28);
-            width: calc(var(--sprite-size, 40px) * 0.28);
+        }
+        
+        /* Ailment category styling - red/orange tones */
+        .status-icon-item.ailment-burn {
+            background: radial-gradient(ellipse at 30% 30%, rgba(120, 50, 30, 0.95), rgba(60, 20, 10, 0.98));
+            border-color: rgba(255, 120, 60, 0.6);
+            box-shadow: 0 0 8px rgba(255, 100, 30, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 200, 100, 0.15);
+            animation: statusIconAppear 0.3s ease-out backwards, burnPulse 2s ease-in-out infinite;
+        }
+        
+        .status-icon-item.ailment-paralyze {
+            background: radial-gradient(ellipse at 30% 30%, rgba(100, 90, 30, 0.95), rgba(50, 45, 10, 0.98));
+            border-color: rgba(255, 230, 80, 0.6);
+            box-shadow: 0 0 8px rgba(255, 230, 80, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 150, 0.15);
+        }
+        
+        .status-icon-item.ailment-bleed {
+            background: radial-gradient(ellipse at 30% 30%, rgba(100, 20, 30, 0.95), rgba(50, 10, 15, 0.98));
+            border-color: rgba(200, 50, 70, 0.6);
+            box-shadow: 0 0 8px rgba(200, 50, 70, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 100, 120, 0.15);
+        }
+        
+        .status-icon-item.ailment-curse {
+            background: radial-gradient(ellipse at 30% 30%, rgba(80, 40, 100, 0.95), rgba(40, 20, 50, 0.98));
+            border-color: rgba(180, 100, 220, 0.6);
+            box-shadow: 0 0 8px rgba(180, 100, 220, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(220, 150, 255, 0.15);
+        }
+        
+        .status-icon-item.ailment-calamity {
+            background: radial-gradient(ellipse at 30% 30%, rgba(60, 50, 60, 0.95), rgba(30, 25, 30, 0.98));
+            border-color: rgba(150, 130, 150, 0.6);
+            box-shadow: 0 0 8px rgba(150, 130, 150, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(200, 180, 200, 0.15);
+            animation: statusIconAppear 0.3s ease-out backwards, calamityPulse 1.5s ease-in-out infinite;
+        }
+        
+        /* Buff category styling - green/blue/gold tones */
+        .status-icon-item.buff-protection {
+            background: radial-gradient(ellipse at 30% 30%, rgba(30, 80, 100, 0.95), rgba(15, 40, 50, 0.98));
+            border-color: rgba(80, 200, 255, 0.6);
+            box-shadow: 0 0 8px rgba(80, 200, 255, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(150, 230, 255, 0.15);
+        }
+        
+        .status-icon-item.buff-focus {
+            background: radial-gradient(ellipse at 30% 30%, rgba(100, 80, 30, 0.95), rgba(50, 40, 15, 0.98));
+            border-color: rgba(255, 200, 80, 0.6);
+            box-shadow: 0 0 8px rgba(255, 200, 80, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 230, 150, 0.15);
+        }
+        
+        .status-icon-item.buff-flying {
+            background: radial-gradient(ellipse at 30% 30%, rgba(70, 90, 100, 0.95), rgba(35, 45, 50, 0.98));
+            border-color: rgba(180, 220, 255, 0.6);
+            box-shadow: 0 0 8px rgba(180, 220, 255, 0.3), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(220, 240, 255, 0.15);
+        }
+        
+        .status-icon-item.buff-hidden {
+            background: radial-gradient(ellipse at 30% 30%, rgba(50, 60, 70, 0.95), rgba(25, 30, 35, 0.98));
+            border-color: rgba(120, 140, 160, 0.6);
+            box-shadow: 0 0 8px rgba(120, 140, 160, 0.3), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(180, 200, 220, 0.15);
+        }
+        
+        .status-icon-item.status-latch {
+            background: radial-gradient(ellipse at 30% 30%, rgba(90, 70, 50, 0.95), rgba(45, 35, 25, 0.98));
+            border-color: rgba(180, 150, 100, 0.6);
+            box-shadow: 0 0 8px rgba(180, 150, 100, 0.3), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(220, 190, 140, 0.15);
+        }
+        
+        .status-icon-item.buff-aura {
+            background: radial-gradient(ellipse at 30% 30%, rgba(80, 70, 100, 0.95), rgba(40, 35, 50, 0.98));
+            border-color: rgba(200, 180, 255, 0.6);
+            box-shadow: 0 0 10px rgba(200, 180, 255, 0.5), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(230, 210, 255, 0.2);
+            animation: statusIconAppear 0.3s ease-out backwards, auraPulse 2.5s ease-in-out infinite;
+        }
+        
+        .status-icon-item.buff-destroyer {
+            background: radial-gradient(ellipse at 30% 30%, rgba(120, 60, 30, 0.95), rgba(60, 30, 15, 0.98));
+            border-color: rgba(255, 150, 50, 0.6);
+            box-shadow: 0 0 8px rgba(255, 150, 50, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 200, 100, 0.15);
+        }
+        
+        /* Pulse animations for dangerous statuses */
+        @keyframes burnPulse {
+            0%, 100% { box-shadow: 0 0 8px rgba(255, 100, 30, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 200, 100, 0.15); }
+            50% { box-shadow: 0 0 14px rgba(255, 120, 40, 0.6), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 200, 100, 0.25); }
+        }
+        
+        @keyframes calamityPulse {
+            0%, 100% { box-shadow: 0 0 8px rgba(150, 130, 150, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(200, 180, 200, 0.15); }
+            50% { box-shadow: 0 0 14px rgba(180, 160, 180, 0.6), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(200, 180, 200, 0.25); }
+        }
+        
+        @keyframes auraPulse {
+            0%, 100% { box-shadow: 0 0 10px rgba(200, 180, 255, 0.5), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(230, 210, 255, 0.2); }
+            50% { box-shadow: 0 0 16px rgba(220, 200, 255, 0.7), 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(230, 210, 255, 0.3); }
+        }
+        
+        /* Hover effect */
+        .status-icon-item:hover {
+            transform: scale(1.15);
+            z-index: 100;
+        }
+        
+        /* Status icon tooltips use JavaScript-based tooltip at top of battlefield */
+        .status-icon-item[data-tooltip] {
+            position: relative;
         }
         
         /* Stat Badges Column */
@@ -3707,18 +3933,42 @@ window.CombatEffects = {
             .cryptid-sprite[data-owner="enemy"] .combat-stats {
                 right: calc(var(--sprite-size, 40px) * -0.9);
             }
+            /* Flipped rows */
+            .cryptid-sprite[data-owner="player"][data-row="0"] .combat-stats,
+            .cryptid-sprite[data-owner="player"][data-row="2"] .combat-stats {
+                left: auto;
+                right: calc(var(--sprite-size, 40px) * -0.9);
+            }
+            .cryptid-sprite[data-owner="enemy"][data-row="0"] .combat-stats,
+            .cryptid-sprite[data-owner="enemy"][data-row="2"] .combat-stats {
+                right: auto;
+                left: calc(var(--sprite-size, 40px) * -0.9);
+            }
             .combat-stats .hp-bar-vertical {
                 width: 5px;
             }
             .combat-stats .stat-icons-column {
-                min-width: calc(var(--sprite-size, 40px) * 0.24);
-                gap: 0px;
+                min-width: calc(var(--sprite-size, 40px) * 0.28);
+                gap: 2px;
+                padding: 2px 1px;
             }
             .combat-stats .status-icon-item,
             span.status-icon-item {
-                font-size: calc(var(--sprite-size, 40px) * 0.24);
-                max-width: calc(var(--sprite-size, 40px) * 0.24);
-                width: calc(var(--sprite-size, 40px) * 0.24);
+                width: calc(var(--sprite-size, 40px) * 0.26);
+                height: calc(var(--sprite-size, 40px) * 0.26);
+                min-width: 14px;
+                min-height: 14px;
+            }
+            .status-icon-item .status-icon-emoji {
+                font-size: calc(var(--sprite-size, 40px) * 0.15);
+            }
+            .status-icon-item .status-icon-count {
+                font-size: 8px;
+                bottom: 0px;
+                right: -2px;
+            }
+            .status-icons-scroll-wrapper {
+                gap: 2px;
             }
             .combat-stats .stat-badge {
                 padding: 1px 3px;
@@ -3743,18 +3993,42 @@ window.CombatEffects = {
             .cryptid-sprite[data-owner="enemy"] .combat-stats {
                 right: calc(var(--sprite-size, 40px) * -0.8);
             }
+            /* Flipped rows */
+            .cryptid-sprite[data-owner="player"][data-row="0"] .combat-stats,
+            .cryptid-sprite[data-owner="player"][data-row="2"] .combat-stats {
+                left: auto;
+                right: calc(var(--sprite-size, 40px) * -0.8);
+            }
+            .cryptid-sprite[data-owner="enemy"][data-row="0"] .combat-stats,
+            .cryptid-sprite[data-owner="enemy"][data-row="2"] .combat-stats {
+                right: auto;
+                left: calc(var(--sprite-size, 40px) * -0.8);
+            }
             .combat-stats .hp-bar-vertical {
                 width: 4px;
             }
             .combat-stats .stat-icons-column {
-                min-width: calc(var(--sprite-size, 40px) * 0.22);
-                gap: 0px;
+                min-width: calc(var(--sprite-size, 40px) * 0.24);
+                gap: 2px;
+                padding: 2px 1px;
             }
             .combat-stats .status-icon-item,
             span.status-icon-item {
-                font-size: calc(var(--sprite-size, 40px) * 0.22);
-                max-width: calc(var(--sprite-size, 40px) * 0.22);
                 width: calc(var(--sprite-size, 40px) * 0.22);
+                height: calc(var(--sprite-size, 40px) * 0.22);
+                min-width: 12px;
+                min-height: 12px;
+            }
+            .status-icon-item .status-icon-emoji {
+                font-size: calc(var(--sprite-size, 40px) * 0.13);
+            }
+            .status-icon-item .status-icon-count {
+                font-size: 7px;
+                bottom: 0px;
+                right: -1px;
+            }
+            .status-icons-scroll-wrapper {
+                gap: 2px;
             }
             .combat-stats .stat-badge {
                 padding: 1px 2px;
@@ -3771,13 +4045,27 @@ window.CombatEffects = {
         /* Large desktops - slightly bigger stats */
         @media (min-width: 1400px) and (min-height: 800px) {
             .combat-stats .stat-icons-column {
-                min-width: calc(var(--sprite-size, 40px) * 0.32);
+                min-width: calc(var(--sprite-size, 40px) * 0.36);
+                gap: 4px;
+                padding: 4px 3px;
             }
             .combat-stats .status-icon-item,
             span.status-icon-item {
-                font-size: calc(var(--sprite-size, 40px) * 0.32);
-                max-width: calc(var(--sprite-size, 40px) * 0.32);
-                width: calc(var(--sprite-size, 40px) * 0.32);
+                width: calc(var(--sprite-size, 40px) * 0.34);
+                height: calc(var(--sprite-size, 40px) * 0.34);
+                min-width: 20px;
+                min-height: 20px;
+            }
+            .status-icon-item .status-icon-emoji {
+                font-size: calc(var(--sprite-size, 40px) * 0.22);
+            }
+            .status-icon-item .status-icon-count {
+                font-size: 10px;
+                bottom: -1px;
+                right: -4px;
+            }
+            .status-icons-scroll-wrapper {
+                gap: 4px;
             }
         }
         

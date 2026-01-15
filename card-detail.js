@@ -260,7 +260,7 @@ window.CardDetail = {
                 display: flex;
                 flex-direction: column;
                 gap: 12px;
-                overflow: hidden;
+                overflow: visible;
             }
             
             .battle-detail-content .detail-title-bar {
@@ -397,21 +397,185 @@ window.CardDetail = {
                 border-color: #6b7280;
             }
             
-            /* Status effects display */
+            /* Status effects display - new styled icons */
+            .battle-detail-content .detail-statuses-section {
+                background: rgba(0,0,0,0.2);
+                border-radius: 8px;
+                padding: 12px;
+                margin-top: 8px;
+            }
             .battle-detail-content .detail-statuses {
                 display: flex;
                 flex-wrap: wrap;
-                gap: 6px;
+                gap: 10px;
                 margin-top: 8px;
             }
-            .battle-detail-content .detail-status {
+            .battle-detail-content .detail-status-icon {
+                position: relative;
                 display: flex;
                 align-items: center;
-                gap: 4px;
-                padding: 4px 8px;
-                background: rgba(255,255,255,0.1);
-                border-radius: 4px;
-                font-size: 0.8rem;
+                gap: 8px;
+                padding: 6px 12px 6px 8px;
+                border-radius: 20px;
+                background: radial-gradient(ellipse at 30% 30%, rgba(50, 45, 40, 0.9), rgba(20, 18, 15, 0.95));
+                border: 1.5px solid rgba(90, 80, 65, 0.6);
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.08);
+                cursor: default;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            .battle-detail-content .detail-status-icon:hover {
+                transform: translateY(-2px);
+                z-index: 10;
+            }
+            .battle-detail-content .detail-status-emoji {
+                font-size: 1.1rem;
+                line-height: 1;
+                filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+            }
+            .battle-detail-content .detail-status-count {
+                font-size: 0.75rem;
+                font-weight: 800;
+                font-family: 'Trebuchet MS', sans-serif;
+                color: #fff;
+                text-shadow: 
+                    -1px -1px 0 #000,
+                    1px -1px 0 #000,
+                    -1px 1px 0 #000,
+                    1px 1px 0 #000;
+                margin-left: -4px;
+            }
+            .battle-detail-content .detail-status-name {
+                font-size: 0.85rem;
+                font-weight: 600;
+                color: #e8e0d4;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+            }
+            
+            /* Ailment category styling */
+            .battle-detail-content .detail-status-icon.ailment-burn {
+                background: radial-gradient(ellipse at 30% 30%, rgba(120, 50, 30, 0.95), rgba(60, 20, 10, 0.98));
+                border-color: rgba(255, 120, 60, 0.6);
+                box-shadow: 0 0 10px rgba(255, 100, 30, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.ailment-paralyze {
+                background: radial-gradient(ellipse at 30% 30%, rgba(100, 90, 30, 0.95), rgba(50, 45, 10, 0.98));
+                border-color: rgba(255, 230, 80, 0.6);
+                box-shadow: 0 0 10px rgba(255, 230, 80, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.ailment-bleed {
+                background: radial-gradient(ellipse at 30% 30%, rgba(100, 20, 30, 0.95), rgba(50, 10, 15, 0.98));
+                border-color: rgba(200, 50, 70, 0.6);
+                box-shadow: 0 0 10px rgba(200, 50, 70, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.ailment-curse {
+                background: radial-gradient(ellipse at 30% 30%, rgba(80, 40, 100, 0.95), rgba(40, 20, 50, 0.98));
+                border-color: rgba(180, 100, 220, 0.6);
+                box-shadow: 0 0 10px rgba(180, 100, 220, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.ailment-calamity {
+                background: radial-gradient(ellipse at 30% 30%, rgba(60, 50, 60, 0.95), rgba(30, 25, 30, 0.98));
+                border-color: rgba(150, 130, 150, 0.6);
+                box-shadow: 0 0 10px rgba(150, 130, 150, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            
+            /* Buff category styling */
+            .battle-detail-content .detail-status-icon.buff-protection {
+                background: radial-gradient(ellipse at 30% 30%, rgba(30, 80, 100, 0.95), rgba(15, 40, 50, 0.98));
+                border-color: rgba(80, 200, 255, 0.6);
+                box-shadow: 0 0 10px rgba(80, 200, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.buff-focus {
+                background: radial-gradient(ellipse at 30% 30%, rgba(100, 80, 30, 0.95), rgba(50, 40, 15, 0.98));
+                border-color: rgba(255, 200, 80, 0.6);
+                box-shadow: 0 0 10px rgba(255, 200, 80, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.buff-flying {
+                background: radial-gradient(ellipse at 30% 30%, rgba(70, 90, 100, 0.95), rgba(35, 45, 50, 0.98));
+                border-color: rgba(180, 220, 255, 0.6);
+                box-shadow: 0 0 10px rgba(180, 220, 255, 0.25), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.buff-hidden {
+                background: radial-gradient(ellipse at 30% 30%, rgba(50, 60, 70, 0.95), rgba(25, 30, 35, 0.98));
+                border-color: rgba(120, 140, 160, 0.6);
+                box-shadow: 0 0 10px rgba(120, 140, 160, 0.25), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.status-latch {
+                background: radial-gradient(ellipse at 30% 30%, rgba(90, 70, 50, 0.95), rgba(45, 35, 25, 0.98));
+                border-color: rgba(180, 150, 100, 0.6);
+                box-shadow: 0 0 10px rgba(180, 150, 100, 0.25), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.buff-aura {
+                background: radial-gradient(ellipse at 30% 30%, rgba(80, 70, 100, 0.95), rgba(40, 35, 50, 0.98));
+                border-color: rgba(200, 180, 255, 0.6);
+                box-shadow: 0 0 12px rgba(200, 180, 255, 0.4), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.buff-destroyer {
+                background: radial-gradient(ellipse at 30% 30%, rgba(120, 60, 30, 0.95), rgba(60, 30, 15, 0.98));
+                border-color: rgba(255, 150, 50, 0.6);
+                box-shadow: 0 0 10px rgba(255, 150, 50, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            .battle-detail-content .detail-status-icon.status-tapped {
+                background: radial-gradient(ellipse at 30% 30%, rgba(60, 60, 70, 0.95), rgba(30, 30, 35, 0.98));
+                border-color: rgba(140, 140, 160, 0.6);
+                box-shadow: 0 0 10px rgba(140, 140, 160, 0.25), 0 2px 6px rgba(0, 0, 0, 0.4);
+            }
+            
+            /* Tooltip for detail status icons - positioned below to avoid overflow clipping */
+            .battle-detail-content .detail-statuses {
+                position: relative;
+                overflow: visible;
+            }
+            .battle-detail-content .detail-status-icon[data-tooltip] {
+                position: relative;
+            }
+            .battle-detail-content .detail-status-icon[data-tooltip]::after {
+                content: attr(data-tooltip);
+                position: absolute;
+                top: calc(100% + 10px);
+                left: 50%;
+                transform: translateX(-50%) scale(0.9);
+                background: linear-gradient(135deg, rgba(20, 18, 15, 0.98) 0%, rgba(35, 30, 25, 0.96) 100%);
+                color: #e8e0d4;
+                padding: 10px 14px;
+                border-radius: 8px;
+                font-size: 0.85rem;
+                font-weight: 400;
+                line-height: 1.4;
+                white-space: normal;
+                max-width: 260px;
+                min-width: 180px;
+                text-align: left;
+                box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(100, 90, 70, 0.5);
+                opacity: 0;
+                visibility: hidden;
+                transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+                z-index: 10000;
+                pointer-events: none;
+            }
+            .battle-detail-content .detail-status-icon[data-tooltip]::before {
+                content: '';
+                position: absolute;
+                top: calc(100% + 4px);
+                left: 50%;
+                transform: translateX(-50%);
+                border: 6px solid transparent;
+                border-bottom-color: rgba(35, 30, 25, 0.96);
+                opacity: 0;
+                visibility: hidden;
+                transition: opacity 0.2s ease, visibility 0.2s;
+                z-index: 10001;
+            }
+            .battle-detail-content .detail-status-icon[data-tooltip]:hover::after,
+            .battle-detail-content .detail-status-icon[data-tooltip]:hover::before {
+                opacity: 1;
+                visibility: visible;
+            }
+            .battle-detail-content .detail-status-icon[data-tooltip]:hover::after {
+                transform: translateX(-50%) scale(1);
+            }
+            .battle-detail-content .detail-statuses-section {
+                overflow: visible;
             }
         `;
         document.head.appendChild(style);
@@ -650,25 +814,150 @@ window.CardDetail = {
         if (!cryptid) return '';
         
         const statuses = [];
-        if (cryptid.burnTurns > 0) statuses.push({ icon: '🔥', name: 'Burn', value: cryptid.burnTurns });
-        if (cryptid.paralyzed) statuses.push({ icon: '⚡', name: 'Paralyzed' });
-        if (cryptid.bleedTurns > 0) statuses.push({ icon: '🩸', name: 'Bleed', value: cryptid.bleedTurns });
-        if (cryptid.calamityCounters > 0) statuses.push({ icon: '💀', name: 'Calamity', value: cryptid.calamityCounters });
-        if (cryptid.protectionCharges > 0) statuses.push({ icon: '🛡️', name: 'Protected', value: cryptid.protectionCharges });
-        if (cryptid.tapped) statuses.push({ icon: '💤', name: 'Tapped' });
-        if (cryptid.hasFocus) statuses.push({ icon: '🎯', name: 'Focus' });
-        if (cryptid.hasFlight) statuses.push({ icon: '🦅', name: 'Flight' });
+        
+        // Ailments (negative effects)
+        if (cryptid.burnTurns > 0) {
+            const turns = cryptid.burnTurns;
+            statuses.push({ 
+                icon: '🔥', 
+                category: 'ailment-burn', 
+                name: 'Burn',
+                count: turns,
+                tooltip: `Burn: ${turns} turn${turns > 1 ? 's' : ''} remaining. Takes 1 damage at turn start.`
+            });
+        }
+        if (cryptid.paralyzed) {
+            const turns = cryptid.paralyzeTurns || 1;
+            statuses.push({ 
+                icon: '⚡', 
+                category: 'ailment-paralyze', 
+                name: 'Paralyzed',
+                count: turns > 1 ? turns : null,
+                tooltip: `Paralyzed: ${turns} turn${turns > 1 ? 's' : ''} remaining. Cannot untap or attack.`
+            });
+        }
+        if (cryptid.bleedTurns > 0) {
+            const turns = cryptid.bleedTurns;
+            statuses.push({ 
+                icon: '🩸', 
+                category: 'ailment-bleed', 
+                name: 'Bleed',
+                count: turns,
+                tooltip: `Bleed: ${turns} turn${turns > 1 ? 's' : ''} remaining. Takes double damage when attacked.`
+            });
+        }
+        if (cryptid.curseTokens > 0) {
+            const stacks = cryptid.curseTokens;
+            statuses.push({ 
+                icon: '🔮', 
+                category: 'ailment-curse', 
+                name: 'Curse',
+                count: stacks,
+                tooltip: `Curse: ${stacks} stack${stacks > 1 ? 's' : ''}. -${stacks} ATK. Dies instantly at 3 stacks.`
+            });
+        }
+        if (cryptid.calamityCounters > 0) {
+            const stacks = cryptid.calamityCounters;
+            statuses.push({ 
+                icon: '💀', 
+                category: 'ailment-calamity', 
+                name: 'Calamity',
+                count: stacks,
+                tooltip: `Calamity: ${stacks}/3 counters. Dies instantly when reaching 3 counters.`
+            });
+        }
+        
+        // Buffs/abilities (positive effects)
+        if (cryptid.protectionCharges > 0) {
+            const charges = cryptid.protectionCharges;
+            statuses.push({ 
+                icon: '🛡️', 
+                category: 'buff-protection', 
+                name: 'Protected',
+                count: charges > 1 ? charges : null,
+                tooltip: `Protected: ${charges} charge${charges > 1 ? 's' : ''}. Blocks the next ${charges} instance${charges > 1 ? 's' : ''} of damage.`
+            });
+        }
+        if (cryptid.hasFocus) {
+            statuses.push({ 
+                icon: '🎯', 
+                category: 'buff-focus', 
+                name: 'Focus',
+                count: null,
+                tooltip: 'Focus: Can attack without resting afterward.'
+            });
+        }
+        if (cryptid.hasFlying) {
+            statuses.push({ 
+                icon: '🪽', 
+                category: 'buff-flying', 
+                name: 'Flying',
+                count: null,
+                tooltip: 'Flying: Can only be blocked by other Flying cryptids.'
+            });
+        }
+        if (cryptid.isHidden) {
+            statuses.push({ 
+                icon: '👁', 
+                category: 'buff-hidden', 
+                name: 'Hidden',
+                count: null,
+                tooltip: 'Hidden: Identity and stats unknown to enemy. Revealed when attacking or taking damage.'
+            });
+        }
+        if (cryptid.latchedTo || cryptid.latchedBy) {
+            statuses.push({ 
+                icon: '🔗', 
+                category: 'status-latch', 
+                name: 'Latched',
+                count: null,
+                tooltip: 'Latched: Bound to another cryptid. Cannot move independently.'
+            });
+        }
+        if (cryptid.auras?.length > 0) {
+            const count = cryptid.auras.length;
+            const auraNames = cryptid.auras.map(a => a.name).join(', ');
+            statuses.push({ 
+                icon: '✨', 
+                category: 'buff-aura', 
+                name: 'Enchanted',
+                count: count > 1 ? count : null,
+                tooltip: `Enchanted: ${auraNames}`
+            });
+        }
+        if (cryptid.hasDestroyer) {
+            statuses.push({ 
+                icon: '💥', 
+                category: 'buff-destroyer', 
+                name: 'Destroyer',
+                count: null,
+                tooltip: 'Destroyer: Deals double damage to enemy cryptids.'
+            });
+        }
+        if (cryptid.tapped) {
+            statuses.push({ 
+                icon: '💤', 
+                category: 'status-tapped', 
+                name: 'Tapped',
+                count: null,
+                tooltip: 'Tapped: Cannot attack this turn. Untaps at the start of your next turn.'
+            });
+        }
         
         if (statuses.length === 0) return '';
         
         return `
-            <div class="detail-statuses">
-                ${statuses.map(s => `
-                    <span class="detail-status">
-                        <span>${s.icon}</span>
-                        <span>${s.name}${s.value ? ` (${s.value})` : ''}</span>
-                    </span>
-                `).join('')}
+            <div class="detail-statuses-section">
+                <div class="detail-section-title">Status Effects</div>
+                <div class="detail-statuses">
+                    ${statuses.map(s => `
+                        <span class="detail-status-icon ${s.category}" data-tooltip="${s.tooltip.replace(/"/g, '&quot;')}">
+                            <span class="detail-status-emoji">${s.icon}</span>
+                            ${s.count ? `<span class="detail-status-count">${s.count}</span>` : ''}
+                            <span class="detail-status-name">${s.name}</span>
+                        </span>
+                    `).join('')}
+                </div>
             </div>
         `;
     },

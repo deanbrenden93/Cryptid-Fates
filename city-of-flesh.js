@@ -673,7 +673,7 @@ CardRegistry.registerCryptid('hellhound', {
 CardRegistry.registerCryptid('mothman', {
     name: "Mothman",
     sprite: "sprites/mothman.png",
-    spriteScale: 1.9,
+    spriteScale: 1.5,
     element: "steel",
     cost: 5,
     hp: 9,
@@ -1026,7 +1026,7 @@ CardRegistry.registerCryptid('vampireInitiate', {
 CardRegistry.registerCryptid('elderVampire', {
     name: "Elder Vampire",
     sprite: "sprites/vampire-lord.png",
-    spriteScale: 1.9,
+    spriteScale: 1.5,
     element: "blood",
     cost: 4,
     hp: 4,

@@ -662,9 +662,12 @@ function renderSprites() {
                     
                     const statusIcons = game.getStatusIcons(cryptid);
                     
-                    // Build status icons HTML for inline display
+                    // Generate signature for comparing icon sets (just categories, not counts)
+                    const iconSignature = statusIcons.map(s => s.category).join('|');
+                    
+                    // Build status icons HTML for inline display with styled containers
                     const statusIconsHtml = statusIcons.length > 0 
-                        ? statusIcons.map(icon => `<span class="status-icon-item">${icon}</span>`).join('')
+                        ? `<div class="status-icons-scroll-wrapper">${statusIcons.map(s => `<span class="status-icon-item ${s.category}" data-tooltip="${s.tooltip.replace(/"/g, '&quot;')}" data-category="${s.category}"><span class="status-icon-emoji">${s.icon}</span>${s.count ? `<span class="status-icon-count">${s.count}</span>` : ''}</span>`).join('')}</div>`
                         : '';
                     
                     // For existing sprites with image-based cryptids, update stats without replacing the image
@@ -688,15 +691,51 @@ function renderSprites() {
                                 hpFill.className = 'hp-fill' + (hpPercent <= 25 ? ' hp-low' : hpPercent <= 50 ? ' hp-medium' : '');
                             }
                             
-                            // Update status icons in the integrated column
+                            // Smart status icon updates - only rebuild if icons added/removed
                             const iconsColumn = sprite.querySelector('.stat-icons-column');
                             if (iconsColumn) {
-                                if (statusIcons.length > 0) {
+                                const currentSignature = iconsColumn.dataset.iconSignature || '';
+                                
+                                if (statusIcons.length === 0) {
+                                    // No icons - hide column
+                                    if (currentSignature !== '') {
+                                        iconsColumn.innerHTML = '';
+                                        iconsColumn.style.display = 'none';
+                                        iconsColumn.dataset.iconSignature = '';
+                                        iconsColumn.classList.remove('has-overflow');
+                                    }
+                                } else if (iconSignature !== currentSignature) {
+                                    // Icons changed (added/removed) - full rebuild
                                     iconsColumn.innerHTML = statusIconsHtml;
                                     iconsColumn.style.display = 'flex';
+                                    iconsColumn.dataset.iconSignature = iconSignature;
+                                    // Check for overflow and setup scrolling
+                                    checkStatusIconOverflow(iconsColumn);
                                 } else {
-                                    iconsColumn.innerHTML = '';
-                                    iconsColumn.style.display = 'none';
+                                    // Same icons, just update counts and tooltips
+                                    statusIcons.forEach(s => {
+                                        const iconEl = iconsColumn.querySelector(`.status-icon-item[data-category="${s.category}"]`);
+                                        if (iconEl) {
+                                            // Update tooltip
+                                            iconEl.dataset.tooltip = s.tooltip;
+                                            // Update count
+                                            const countEl = iconEl.querySelector('.status-icon-count');
+                                            if (s.count) {
+                                                if (countEl) {
+                                                    countEl.textContent = s.count;
+                                                } else {
+                                                    // Add count element if didn't exist
+                                                    const newCount = document.createElement('span');
+                                                    newCount.className = 'status-icon-count';
+                                                    newCount.textContent = s.count;
+                                                    iconEl.appendChild(newCount);
+                                                }
+                                            } else if (countEl) {
+                                                // Remove count if no longer needed
+                                                countEl.remove();
+                                            }
+                                        }
+                                    });
                                 }
                             }
                             
@@ -718,7 +757,7 @@ function renderSprites() {
                                 <div class="hp-bar-vertical">
                                     <div class="hp-fill${hpPercent <= 25 ? ' hp-low' : hpPercent <= 50 ? ' hp-medium' : ''}" style="height: ${hpFillHeight}%"></div>
                                 </div>
-                                <div class="stat-icons-column" style="${statusIcons.length > 0 ? '' : 'display: none;'}">
+                                <div class="stat-icons-column" data-icon-signature="${iconSignature}" style="${statusIcons.length > 0 ? '' : 'display: none;'}">
                                     ${statusIconsHtml}
                                 </div>
                                 <div class="stat-badges-column">
@@ -736,6 +775,12 @@ function renderSprites() {
                         `;
                         
                         sprite.innerHTML = html;
+                        
+                        // Check for overflow on newly built icons column
+                        if (statusIcons.length > 0) {
+                            const iconsColumn = sprite.querySelector('.stat-icons-column');
+                            checkStatusIconOverflow(iconsColumn);
+                        }
                     }
                     // Skip position updates for sprites in active promotion animation
                     // (the sprite stays at support position until animateSupportPromotion moves it)
@@ -859,6 +904,9 @@ function renderSprites() {
     
     // Render support link lines during combat phase
     renderSupportLinks();
+    
+    // Setup status icon tooltip listeners
+    setupStatusIconListeners();
 }
 
 // Render visual links between combatants and their supports
@@ -3948,6 +3996,68 @@ function showMessage(text, duration = 2000) {
     document.getElementById('message-text').textContent = text;
     overlay.classList.add('show');
     setTimeout(() => overlay.classList.remove('show'), duration);
+}
+
+// Status effect tooltip - shows at top center of battlefield
+function showStatusTooltip(tooltipText) {
+    const tooltip = document.getElementById('status-tooltip');
+    if (!tooltip || !tooltipText) return;
+    
+    // Parse tooltip text to extract title and description
+    const colonIndex = tooltipText.indexOf(':');
+    if (colonIndex > -1) {
+        const title = tooltipText.substring(0, colonIndex).trim();
+        const desc = tooltipText.substring(colonIndex + 1).trim();
+        tooltip.innerHTML = `<div class="status-tooltip-title">${title}</div><div class="status-tooltip-desc">${desc}</div>`;
+    } else {
+        tooltip.innerHTML = `<div class="status-tooltip-desc">${tooltipText}</div>`;
+    }
+    
+    tooltip.classList.add('show');
+}
+
+function hideStatusTooltip() {
+    const tooltip = document.getElementById('status-tooltip');
+    if (tooltip) tooltip.classList.remove('show');
+}
+
+// Setup status icon tooltip listeners (called after rendering)
+function setupStatusIconListeners() {
+    document.querySelectorAll('.status-icon-item[data-tooltip]').forEach(icon => {
+        // Only add listeners if not already added
+        if (!icon.dataset.tooltipListenerAdded) {
+            icon.addEventListener('mouseenter', (e) => {
+                showStatusTooltip(e.currentTarget.dataset.tooltip);
+            });
+            icon.addEventListener('mouseleave', hideStatusTooltip);
+            icon.dataset.tooltipListenerAdded = 'true';
+        }
+    });
+}
+
+// Check if status icons overflow and setup auto-scroll
+function checkStatusIconOverflow(iconsColumn) {
+    if (!iconsColumn) return;
+    
+    requestAnimationFrame(() => {
+        const wrapper = iconsColumn.querySelector('.status-icons-scroll-wrapper');
+        if (!wrapper) return;
+        
+        const columnHeight = iconsColumn.clientHeight;
+        const wrapperHeight = wrapper.scrollHeight;
+        
+        if (wrapperHeight > columnHeight + 2) { // +2 for small tolerance
+            iconsColumn.classList.add('has-overflow');
+            // Calculate scroll distance to show all icons (with padding for last icon)
+            const scrollDist = wrapperHeight - columnHeight + 8;
+            iconsColumn.style.setProperty('--scroll-distance', `-${scrollDist}px`);
+            // Adjust scroll duration based on how much content needs to scroll
+            const duration = Math.max(3, Math.min(6, scrollDist / 15));
+            iconsColumn.style.setProperty('--scroll-duration', `${duration}s`);
+        } else {
+            iconsColumn.classList.remove('has-overflow');
+        }
+    });
 }
 
 function showCardTooltip(card, e) {
