@@ -292,6 +292,26 @@ const LoginScreen = {
         const overlay = document.createElement('div');
         overlay.id = 'login-screen';
         overlay.innerHTML = `
+            <!-- SVG filter for heat distortion -->
+            <svg style="position:absolute;width:0;height:0;pointer-events:none;">
+                <defs>
+                    <filter id="heatDistortion" x="-20%" y="-20%" width="140%" height="140%">
+                        <feTurbulence type="fractalNoise" baseFrequency="0.015 0.02" numOctaves="2" result="noise" seed="5">
+                            <animate attributeName="baseFrequency" dur="7.5s" values="0.015 0.02;0.018 0.025;0.012 0.018;0.015 0.02" repeatCount="indefinite"/>
+                        </feTurbulence>
+                        <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G"/>
+                    </filter>
+                </defs>
+            </svg>
+            
+            <!-- Background image with heat distortion -->
+            <div class="login-bg">
+                <img src="sprites/loginbg.jpg" alt="" class="login-bg-img">
+            </div>
+            
+            <!-- Canvas for 3D ember tunnel effect -->
+            <canvas id="login-ember-canvas"></canvas>
+            
             <div class="login-container">
                 <div class="login-logo">
                      <img src="sprites/new-logo.png" alt="Cryptid Fates" class="login-logo-img">
@@ -309,14 +329,14 @@ const LoginScreen = {
                                 <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
                                 <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                             </svg>
-                            Google
+                            <span>Google</span>
                         </button>
                         
                         <button class="login-btn discord-btn" onclick="Auth.loginWithDiscord()">
                             <svg class="login-icon" viewBox="0 0 24 24">
                                 <path fill="currentColor" d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
                             </svg>
-                            Discord
+                            <span>Discord</span>
                         </button>
                     </div>
                 </div>
@@ -354,10 +374,216 @@ const LoginScreen = {
         
         document.body.appendChild(overlay);
         
+        // Start the 3D ember tunnel effect
+        this.initEmberTunnel();
+        
         // Animate in
         requestAnimationFrame(() => {
             overlay.classList.add('visible');
         });
+    },
+    
+    /**
+     * Hellfire Spark Effect - Streaking embers with tails flying in arcs
+     */
+    emberCanvas: null,
+    emberCtx: null,
+    sparks: [],
+    emberAnimationId: null,
+    lastTime: 0,
+    
+    initEmberTunnel() {
+        this.emberCanvas = document.getElementById('login-ember-canvas');
+        if (!this.emberCanvas) return;
+        
+        this.emberCtx = this.emberCanvas.getContext('2d');
+        this.sparks = [];
+        
+        // Set canvas size
+        this.resizeEmberCanvas();
+        window.addEventListener('resize', () => this.resizeEmberCanvas());
+        
+        // Create initial embers
+        for (let i = 0; i < 40; i++) {
+            this.sparks.push(this.createEmber(true));
+        }
+        
+        // Start animation
+        this.lastTime = performance.now();
+        this.animateEmbers();
+    },
+    
+    resizeEmberCanvas() {
+        if (!this.emberCanvas) return;
+        this.emberCanvas.width = window.innerWidth;
+        this.emberCanvas.height = window.innerHeight;
+    },
+    
+    createEmber(randomProgress = false) {
+        const canvas = this.emberCanvas;
+        
+        // Spawn from bottom half of screen, weighted toward center-bottom (near lava ring)
+        const spawnX = canvas.width * (0.15 + Math.random() * 0.7);
+        const spawnY = canvas.height * (0.5 + Math.random() * 0.5);
+        
+        // Determine ember type
+        const type = Math.random();
+        let color, size, speed;
+        
+        if (type < 0.15) {
+            // White hot sparks - small, fast
+            color = { r: 255, g: 250, b: 230 };
+            size = 0.8 + Math.random() * 1.5;
+            speed = 40 + Math.random() * 60;
+        } else if (type < 0.45) {
+            // Bright orange embers
+            color = { r: 255, g: 140 + Math.random() * 80, b: 30 + Math.random() * 50 };
+            size = 1 + Math.random() * 2.5;
+            speed = 25 + Math.random() * 45;
+        } else if (type < 0.75) {
+            // Orange-red embers - medium
+            color = { r: 255, g: 70 + Math.random() * 70, b: 15 + Math.random() * 35 };
+            size = 1.5 + Math.random() * 3;
+            speed = 20 + Math.random() * 35;
+        } else {
+            // Deep red embers - larger, slower
+            color = { r: 200 + Math.random() * 55, g: 30 + Math.random() * 50, b: 5 + Math.random() * 25 };
+            size = 2 + Math.random() * 3.5;
+            speed = 12 + Math.random() * 28;
+        }
+        
+        // Horizontal drift - slight side-to-side movement
+        const driftSpeed = (Math.random() - 0.5) * 30;
+        const driftPhase = Math.random() * Math.PI * 2;
+        const driftAmplitude = 15 + Math.random() * 40;
+        
+        // Life progress
+        const life = randomProgress ? Math.random() * 0.7 : 0;
+        const maxLife = 0.9 + Math.random() * 0.3; // When ember fades out
+        
+        return {
+            x: spawnX,
+            y: spawnY,
+            startX: spawnX,
+            speed,
+            color,
+            size,
+            life,
+            maxLife,
+            driftSpeed,
+            driftPhase,
+            driftAmplitude,
+            flicker: Math.random() * Math.PI * 2,
+            flickerSpeed: 8 + Math.random() * 12
+        };
+    },
+    
+    animateEmbers() {
+        const canvas = this.emberCanvas;
+        const ctx = this.emberCtx;
+        
+        if (!canvas || !ctx) return;
+        
+        const now = performance.now();
+        const dt = Math.min((now - this.lastTime) / 1000, 0.05);
+        this.lastTime = now;
+        
+        // Clear canvas (transparent to show background image)
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Update and draw embers
+        for (let i = this.sparks.length - 1; i >= 0; i--) {
+            const ember = this.sparks[i];
+            
+            // Update life
+            ember.life += dt * (ember.speed / canvas.height);
+            ember.flicker += dt * ember.flickerSpeed;
+            ember.driftPhase += dt * ember.driftSpeed * 0.1;
+            
+            // Calculate current position
+            const lifeProgress = ember.life / ember.maxLife;
+            const y = ember.y - (ember.life * canvas.height * 0.9);
+            const drift = Math.sin(ember.driftPhase) * ember.driftAmplitude * lifeProgress;
+            const x = ember.startX + drift;
+            
+            // Fade in at start, fade out at end
+            let alpha = 1;
+            if (lifeProgress < 0.1) {
+                alpha = lifeProgress / 0.1;
+            } else if (lifeProgress > 0.7) {
+                alpha = 1 - ((lifeProgress - 0.7) / 0.3);
+            }
+            
+            // Check if dead or off screen
+            if (ember.life >= ember.maxLife || y < -50) {
+                this.sparks[i] = this.createEmber(false);
+                continue;
+            }
+            
+            // Flicker effect
+            const flickerVal = 0.75 + 0.25 * Math.sin(ember.flicker);
+            const finalAlpha = alpha * flickerVal;
+            
+            // Skip nearly invisible embers
+            if (finalAlpha < 0.05) continue;
+            
+            // Size decreases slightly as ember rises and cools
+            const currentSize = ember.size * (1 - lifeProgress * 0.3);
+            
+            // Color cools as it rises (shifts from bright to darker)
+            const coolFactor = lifeProgress * 0.4;
+            const r = Math.floor(ember.color.r * (1 - coolFactor * 0.2));
+            const g = Math.floor(ember.color.g * (1 - coolFactor * 0.5));
+            const b = Math.floor(ember.color.b * (1 - coolFactor * 0.3));
+            
+            // Outer glow
+            const glowRadius = currentSize * 6;
+            if (glowRadius > 2) {
+                const emberGlow = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
+                emberGlow.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.4 * finalAlpha})`);
+                emberGlow.addColorStop(0.4, `rgba(${r}, ${Math.floor(g * 0.6)}, ${Math.floor(b * 0.4)}, ${0.15 * finalAlpha})`);
+                emberGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = emberGlow;
+                ctx.beginPath();
+                ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Ember core
+            if (currentSize > 0.3) {
+                ctx.beginPath();
+                ctx.arc(x, y, currentSize, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${finalAlpha})`;
+                ctx.fill();
+                
+                // Bright center for larger embers
+                if (currentSize > 1.2 && finalAlpha > 0.5) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, currentSize * 0.4, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, ${200 + Math.floor(g * 0.3)}, ${150 + Math.floor(b)}, ${finalAlpha * 0.8})`;
+                    ctx.fill();
+                }
+            }
+        }
+        
+        // Spawn new embers occasionally
+        if (Math.random() < 0.12 && this.sparks.length < 50) {
+            this.sparks.push(this.createEmber(false));
+        }
+        
+        // Continue animation
+        this.emberAnimationId = requestAnimationFrame(() => this.animateEmbers());
+    },
+    
+    stopEmberTunnel() {
+        if (this.emberAnimationId) {
+            cancelAnimationFrame(this.emberAnimationId);
+            this.emberAnimationId = null;
+        }
+        window.removeEventListener('resize', () => this.resizeEmberCanvas());
+        this.emberCanvas = null;
+        this.emberCtx = null;
+        this.sparks = [];
     },
     
     /**
@@ -419,6 +645,9 @@ const LoginScreen = {
         const overlay = document.getElementById('login-screen');
         if (!overlay) return;
         
+        // Stop ember tunnel effect
+        this.stopEmberTunnel();
+        
         overlay.classList.remove('visible');
         
         setTimeout(() => {
@@ -440,339 +669,532 @@ const LoginScreen = {
 // ==================== CSS STYLES ====================
 
 const loginStyles = `
+/* ==================== CANVAS EMBER TUNNEL ==================== */
+#login-ember-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+}
+
 /* Loading Screen */
 #loading-screen {
     position: fixed;
     inset: 0;
-    background: 
-        radial-gradient(ellipse at 50% 20%, rgba(232, 169, 62, 0.15) 0%, transparent 50%),
-        radial-gradient(ellipse at 20% 80%, rgba(107, 28, 28, 0.2) 0%, transparent 40%),
-        radial-gradient(ellipse at 80% 80%, rgba(107, 28, 28, 0.2) 0%, transparent 40%),
-        linear-gradient(180deg, #0a0d12 0%, #151a1f 40%, #1a1510 100%);
+    background: #030201;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 10001;
 }
 
-#loading-screen::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.06'/%3E%3C/svg%3E");
-    pointer-events: none;
-    mix-blend-mode: overlay;
-}
-
 .loading-content {
     text-align: center;
-    color: #a09080;
+    color: #ff9050;
     position: relative;
     z-index: 1;
+    font-family: 'Cinzel', serif;
 }
 
 .loading-spinner {
-    width: clamp(35px, 8vw, 50px);
-    height: clamp(35px, 8vw, 50px);
-    border: 3px solid rgba(232, 169, 62, 0.2);
-    border-top-color: #e8a93e;
+    width: 60px;
+    height: 60px;
+    border: 3px solid rgba(255, 100, 30, 0.1);
+    border-top-color: #ff6020;
     border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto clamp(10px, 2vh, 15px);
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 20px;
+    box-shadow: 
+        0 0 30px rgba(255, 80, 20, 0.4),
+        inset 0 0 20px rgba(255, 100, 30, 0.1);
 }
 
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
 
-/* Login Screen */
+/* ==================== LOGIN SCREEN ==================== */
 #login-screen {
     position: fixed;
     inset: 0;
-    background: 
-        radial-gradient(ellipse at 50% 20%, rgba(232, 169, 62, 0.15) 0%, transparent 50%),
-        radial-gradient(ellipse at 20% 80%, rgba(107, 28, 28, 0.2) 0%, transparent 40%),
-        radial-gradient(ellipse at 80% 80%, rgba(107, 28, 28, 0.2) 0%, transparent 40%),
-        linear-gradient(180deg, #0a0d12 0%, #151a1f 40%, #1a1510 100%);
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 10000;
     opacity: 0;
-    transition: opacity 0.6s ease;
+    transition: opacity 1s ease;
     padding: clamp(16px, 4vmin, 32px);
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden;
 }
 
 #login-screen.visible {
     opacity: 1;
 }
 
-#login-screen::before {
+/* Background image layer with heat distortion */
+.login-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    background: #030201;
+}
+
+.login-bg-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    filter: url(#heatDistortion);
+}
+
+/* Subtle pulsing glow overlay for the lava */
+.login-bg::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.06'/%3E%3C/svg%3E");
+    background: radial-gradient(ellipse at 50% 35%, rgba(255, 60, 10, 0.08) 0%, transparent 50%);
+    animation: lavaPulse 4s ease-in-out infinite;
     pointer-events: none;
-    mix-blend-mode: overlay;
 }
 
-/* Default: Vertical column layout (portrait & desktop) */
+@keyframes lavaPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+/* ==================== MAIN CONTAINER ==================== */
 .login-container {
     position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: clamp(16px, 4vmin, 28px);
-    max-width: 400px;
+    gap: clamp(20px, 4vmin, 32px);
+    max-width: 440px;
     width: 100%;
-    z-index: 1;
+    z-index: 10;
+    padding: clamp(20px, 4vmin, 40px) 0;
+    /* Start pushed down so logo appears centered, animate up to final position */
+    transform: translateY(22vh);
+    animation: containerSlideUp 1.2s ease-out 3.3s forwards;
 }
 
+@keyframes containerSlideUp {
+    0% { transform: translateY(22vh); }
+    100% { transform: translateY(0); }
+}
+
+/* Items hidden and collapsed initially */
+.login-box,
+.login-features,
+.login-bottom-btns {
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    margin-top: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    pointer-events: none;
+    animation: itemsExpand 0.8s ease-out forwards;
+    animation-delay: 3.5s;
+}
+
+.login-features {
+    animation-delay: 3.7s;
+}
+
+.login-bottom-btns {
+    animation-delay: 3.9s;
+}
+
+@keyframes itemsExpand {
+    0% {
+        opacity: 0;
+        max-height: 0;
+        pointer-events: none;
+    }
+    50% {
+        max-height: 300px;
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+        max-height: 300px;
+        pointer-events: auto;
+        overflow: visible;
+    }
+}
+
+/* ==================== LOGO ==================== */
 .login-logo {
     text-align: center;
     flex-shrink: 0;
+    position: relative;
+    perspective: 1000px;
+    /* Heat distortion on the container */
+    filter: url(#heatDistortion);
+    /* Prevent horizontal shift during animations */
+    width: 100%;
+    display: flex;
+    justify-content: center;
 }
 
-/* The main logo image - HERO element */
 .login-logo-img {
-    width: clamp(280px, 60vmin, 500px);
+    width: clamp(260px, 55vmin, 480px);
     height: auto;
-    filter: drop-shadow(0 0 40px rgba(232, 169, 62, 0.3));
-    animation: logoGlow 4s ease-in-out infinite;
+    object-fit: contain;
+    position: relative;
+    /* Cinematic 3D reveal - LOST style */
+    opacity: 0;
+    transform-style: preserve-3d;
+    transform: 
+        translateZ(-150px) 
+        translateY(-20px)
+        rotateX(10deg) 
+        scale(0.8);
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.9)) blur(12px);
+    animation: logoReveal3D 3s cubic-bezier(0.23, 1, 0.32, 1) 0.3s forwards;
 }
 
-@keyframes logoGlow {
-    0%, 100% { 
-        filter: drop-shadow(0 0 30px rgba(232, 169, 62, 0.3));
+/* 3D float-in with smooth blur */
+@keyframes logoReveal3D {
+    0% {
+        opacity: 0;
+        filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.9)) blur(12px);
+        transform: 
+            translateZ(-150px) 
+            translateY(-20px)
+            rotateX(10deg) 
+            scale(0.8);
     }
-    50% { 
-        filter: drop-shadow(0 0 50px rgba(232, 169, 62, 0.5));
+    100% {
+        opacity: 1;
+        filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.9)) blur(0px);
+        transform: 
+            translateZ(0) 
+            translateY(0)
+            rotateX(0deg) 
+            scale(1);
     }
 }
 
+/* ==================== LOGIN BOX ==================== */
 .login-box {
     width: 100%;
-    max-width: clamp(260px, 45vmin, 340px);
+    max-width: clamp(280px, 50vmin, 380px);
+    text-align: center;
 }
 
 .login-box h2 {
     font-family: 'Cinzel', serif;
-    margin: 0 0 clamp(4px, 1vmin, 6px);
-    font-size: clamp(14px, 3vmin, 20px);
-    color: #d4c4a0;
-    text-align: center;
-    letter-spacing: 2px;
+    margin: 0 0 8px;
+    font-size: clamp(18px, 4vmin, 26px);
+    color: #fff;
+    letter-spacing: 4px;
+    text-shadow: 
+        0 0 10px rgba(255, 150, 80, 0.8),
+        0 0 30px rgba(255, 100, 40, 0.5),
+        0 4px 8px rgba(0, 0, 0, 0.9);
+    text-transform: uppercase;
 }
 
 .login-prompt {
-    margin: 0 0 clamp(10px, 2vmin, 16px);
-    color: #706050;
-    text-align: center;
-    font-size: clamp(10px, 2vmin, 13px);
-    letter-spacing: 1px;
+    margin: 0 0 clamp(16px, 3vmin, 24px);
+    color: #8a6a4a;
+    font-size: clamp(11px, 2.2vmin, 14px);
+    letter-spacing: 2px;
+    font-family: 'Source Sans Pro', sans-serif;
 }
 
+/* ==================== BUTTON CONTAINER ==================== */
 .login-buttons {
     display: flex;
     flex-direction: column;
-    gap: clamp(8px, 1.5vmin, 12px);
+    gap: clamp(12px, 2.5vmin, 18px);
 }
 
+/* ==================== EPIC FANTASY BUTTONS ==================== */
 .login-btn {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: clamp(8px, 1.5vmin, 10px);
-    padding: clamp(10px, 2vmin, 14px) clamp(16px, 3vmin, 24px);
+    gap: 14px;
+    padding: clamp(14px, 3vmin, 20px) clamp(24px, 5vmin, 36px);
     font-family: 'Cinzel', serif;
-    font-size: clamp(11px, 2.2vmin, 14px);
+    font-size: clamp(13px, 2.6vmin, 17px);
     font-weight: 700;
-    border: 2px solid;
-    border-radius: 8px;
+    border: none;
     cursor: pointer;
-    transition: all 0.3s ease;
     text-transform: uppercase;
-    letter-spacing: clamp(1px, 0.3vmin, 2px);
-    position: relative;
+    letter-spacing: 3px;
     overflow: hidden;
-    width: 100%;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    clip-path: polygon(
+        8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px),
+        calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px
+    );
 }
 
+/* Button border frame */
 .login-btn::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 50%;
-    background: linear-gradient(180deg, rgba(255,255,255,0.15), transparent);
+    inset: 0;
+    padding: 2px;
+    clip-path: polygon(
+        8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px),
+        calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px
+    );
+    -webkit-mask: 
+        linear-gradient(#fff 0 0) content-box, 
+        linear-gradient(#fff 0 0);
+    mask: 
+        linear-gradient(#fff 0 0) content-box, 
+        linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
     pointer-events: none;
 }
 
-.login-icon {
-    width: clamp(16px, 4vmin, 20px);
-    height: clamp(16px, 4vmin, 20px);
-    flex-shrink: 0;
+/* Shine effect */
+.login-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -150%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    transition: left 0.6s ease;
+    pointer-events: none;
 }
 
+.login-btn:hover::after {
+    left: 150%;
+}
+
+.login-icon {
+    width: clamp(20px, 4.5vmin, 26px);
+    height: clamp(20px, 4.5vmin, 26px);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+}
+
+.login-btn span:not(.btn-glow) {
+    position: relative;
+    z-index: 2;
+}
+
+/* Google Button - Molten Silver */
 .google-btn {
-    background: linear-gradient(180deg, 
-        rgba(220, 220, 230, 0.95) 0%, 
-        rgba(180, 180, 195, 0.9) 20%,
-        rgba(140, 140, 155, 0.85) 50%,
-        rgba(100, 100, 115, 0.9) 80%,
-        rgba(70, 70, 85, 0.95) 100%);
-    border-color: rgba(255, 255, 255, 0.4);
-    color: #151518;
+    background: linear-gradient(
+        180deg,
+        #5a5a65 0%,
+        #45454f 30%,
+        #35353e 70%,
+        #28282f 100%
+    );
+    color: #e8e8f0;
     box-shadow: 
-        0 0 60px rgba(200, 200, 220, 0.25),
-        0 0 30px rgba(255, 255, 255, 0.1),
-        0 4px 20px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.6),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.3);
-    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+        0 0 0 1px rgba(255, 255, 255, 0.1) inset,
+        0 8px 32px rgba(0, 0, 0, 0.8),
+        0 0 60px rgba(150, 150, 180, 0.15);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.google-btn::before {
+    background: linear-gradient(
+        180deg,
+        rgba(200, 200, 220, 0.5),
+        rgba(120, 120, 140, 0.3),
+        rgba(80, 80, 100, 0.4),
+        rgba(200, 200, 220, 0.5)
+    );
 }
 
 .google-btn:hover {
-    transform: translateY(-3px) scale(1.02);
+    transform: translateY(-4px) scale(1.03);
     box-shadow: 
-        0 0 100px rgba(200, 200, 220, 0.4),
-        0 0 50px rgba(255, 255, 255, 0.2),
-        0 8px 30px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.7),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+        0 0 0 1px rgba(255, 255, 255, 0.2) inset,
+        0 12px 48px rgba(0, 0, 0, 0.9),
+        0 0 80px rgba(180, 180, 220, 0.25),
+        0 0 120px rgba(150, 150, 200, 0.15);
 }
 
+.google-btn:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* Discord Button - Arcane Purple */
 .discord-btn {
-    background: linear-gradient(180deg, 
-        rgba(88, 101, 242, 0.95) 0%, 
-        rgba(71, 82, 196, 0.9) 50%,
-        rgba(57, 66, 157, 0.95) 100%);
-    border-color: rgba(130, 145, 255, 0.4);
+    background: linear-gradient(
+        180deg,
+        #6875f2 0%,
+        #5560d8 30%,
+        #444eb8 70%,
+        #353d98 100%
+    );
     color: #fff;
     box-shadow: 
-        0 0 40px rgba(88, 101, 242, 0.2),
-        0 4px 20px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.3);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        0 0 0 1px rgba(150, 160, 255, 0.2) inset,
+        0 8px 32px rgba(0, 0, 0, 0.8),
+        0 0 60px rgba(88, 101, 242, 0.3);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.discord-btn::before {
+    background: linear-gradient(
+        180deg,
+        rgba(150, 160, 255, 0.6),
+        rgba(100, 110, 220, 0.3),
+        rgba(70, 80, 180, 0.4),
+        rgba(150, 160, 255, 0.6)
+    );
 }
 
 .discord-btn:hover {
-    transform: translateY(-3px) scale(1.02);
+    transform: translateY(-4px) scale(1.03);
     box-shadow: 
-        0 0 60px rgba(88, 101, 242, 0.4),
-        0 8px 30px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.3),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+        0 0 0 1px rgba(150, 160, 255, 0.3) inset,
+        0 12px 48px rgba(0, 0, 0, 0.9),
+        0 0 80px rgba(88, 101, 242, 0.5),
+        0 0 120px rgba(100, 120, 255, 0.3);
 }
 
-.login-divider {
-    display: flex;
-    align-items: center;
-    gap: clamp(10px, 2vmin, 16px);
-    margin: clamp(4px, 1vmin, 8px) 0;
-    color: #504030;
-    font-size: clamp(10px, 2vmin, 12px);
-    letter-spacing: 2px;
+.discord-btn:active {
+    transform: translateY(0) scale(0.98);
 }
 
-.login-divider::before,
-.login-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(160, 144, 128, 0.3), transparent);
-}
-
+/* ==================== FEATURES BOX ==================== */
 .login-features {
     display: flex;
     flex-direction: column;
-    gap: clamp(8px, 1.5vmin, 12px);
-    padding: clamp(14px, 3vmin, 20px);
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
-    border: 1px solid rgba(160, 144, 128, 0.1);
+    gap: clamp(10px, 2vmin, 16px);
+    padding: clamp(16px, 3.5vmin, 24px);
+    background: linear-gradient(
+        180deg,
+        rgba(30, 15, 8, 0.85) 0%,
+        rgba(15, 8, 4, 0.9) 100%
+    );
+    border: 1px solid rgba(255, 120, 40, 0.15);
     width: 100%;
-    max-width: 320px;
+    max-width: 340px;
+    clip-path: polygon(
+        12px 0%, calc(100% - 12px) 0%, 100% 12px, 100% calc(100% - 12px),
+        calc(100% - 12px) 100%, 12px 100%, 0% calc(100% - 12px), 0% 12px
+    );
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.6),
+        inset 0 1px 0 rgba(255, 150, 80, 0.1);
 }
 
 .feature {
     display: flex;
     align-items: center;
-    gap: clamp(10px, 2vmin, 14px);
-    font-size: clamp(12px, 2.8vmin, 14px);
-    color: #908070;
+    gap: clamp(12px, 2.5vmin, 18px);
+    font-size: clamp(12px, 2.6vmin, 15px);
+    color: #b89070;
     letter-spacing: 0.5px;
+    font-family: 'Source Sans Pro', sans-serif;
 }
 
 .feature-icon {
-    font-size: clamp(16px, 3.5vmin, 20px);
-    filter: grayscale(0.3);
+    font-size: clamp(18px, 4vmin, 24px);
+    filter: drop-shadow(0 0 8px rgba(255, 120, 40, 0.5));
     flex-shrink: 0;
 }
 
-/* Bottom buttons wrapper */
+/* ==================== BOTTOM BUTTONS ==================== */
 .login-bottom-btns {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: clamp(8px, 1.5vmin, 12px);
+    gap: clamp(10px, 2vmin, 14px);
+    margin-top: clamp(8px, 2vmin, 16px);
 }
 
 .skip-login-btn {
-    background: transparent;
-    border: 1px solid rgba(160, 144, 128, 0.2);
-    color: #605040;
-    padding: clamp(10px, 2vmin, 14px) clamp(20px, 4vmin, 28px);
-    border-radius: 6px;
+    background: linear-gradient(180deg, rgba(20, 12, 8, 0.9) 0%, rgba(10, 6, 4, 0.95) 100%);
+    border: 1px solid rgba(255, 120, 40, 0.35);
+    color: #dd9966;
+    padding: clamp(12px, 2.5vmin, 16px) clamp(24px, 5vmin, 36px);
     font-family: 'Cinzel', serif;
-    font-size: clamp(10px, 2.2vmin, 12px);
-    letter-spacing: clamp(1px, 0.4vmin, 2px);
+    font-size: clamp(10px, 2vmin, 13px);
+    font-weight: 600;
+    letter-spacing: 2px;
     text-transform: uppercase;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.3s ease;
+    position: relative;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    box-shadow: 
+        0 2px 8px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 150, 80, 0.1);
+    clip-path: polygon(
+        6px 0%, calc(100% - 6px) 0%, 100% 6px, 100% calc(100% - 6px),
+        calc(100% - 6px) 100%, 6px 100%, 0% calc(100% - 6px), 0% 6px
+    );
 }
 
 .skip-login-btn:hover {
-    background: rgba(160, 144, 128, 0.05);
-    color: #908070;
-    border-color: rgba(160, 144, 128, 0.3);
+    background: linear-gradient(180deg, rgba(40, 20, 10, 0.95) 0%, rgba(20, 10, 5, 0.98) 100%);
+    border-color: rgba(255, 120, 40, 0.6);
+    color: #ffbb88;
+    box-shadow: 
+        0 4px 20px rgba(255, 100, 40, 0.25),
+        0 2px 8px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 150, 80, 0.2);
+    text-shadow: 0 0 20px rgba(255, 150, 80, 0.6);
 }
 
 .dev-tutorial-btn {
-    border-color: rgba(100, 180, 100, 0.3);
-    color: #4a7a4a;
+    border-color: rgba(80, 200, 120, 0.35);
+    color: #70b080;
 }
 
 .dev-tutorial-btn:hover {
-    background: rgba(100, 180, 100, 0.1);
-    color: #6a9a6a;
-    border-color: rgba(100, 180, 100, 0.5);
+    background: linear-gradient(180deg, rgba(15, 30, 20, 0.95) 0%, rgba(8, 15, 10, 0.98) 100%);
+    border-color: rgba(80, 200, 120, 0.6);
+    color: #90e0a0;
+    box-shadow: 
+        0 4px 20px rgba(80, 200, 120, 0.2),
+        0 2px 8px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 0 20px rgba(100, 220, 140, 0.6);
 }
 
 .dev-rewards-btn {
-    border-color: rgba(255, 180, 60, 0.3);
-    color: #a08040;
+    border-color: rgba(255, 200, 80, 0.35);
+    color: #ccaa66;
 }
 
 .dev-rewards-btn:hover {
-    background: rgba(255, 180, 60, 0.1);
-    color: #c0a060;
-    border-color: rgba(255, 180, 60, 0.5);
+    background: linear-gradient(180deg, rgba(35, 28, 12, 0.95) 0%, rgba(18, 14, 6, 0.98) 100%);
+    border-color: rgba(255, 200, 80, 0.6);
+    color: #ffe088;
+    box-shadow: 
+        0 4px 20px rgba(255, 200, 80, 0.2),
+        0 2px 8px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 0 20px rgba(255, 220, 100, 0.6);
 }
 
-/* Username Entry Screen */
+/* ==================== USERNAME ENTRY SCREEN ==================== */
 #username-entry-screen {
     position: fixed;
     inset: 0;
-    background: 
-        radial-gradient(ellipse at 50% 20%, rgba(232, 169, 62, 0.15) 0%, transparent 50%),
-        radial-gradient(ellipse at 20% 80%, rgba(107, 28, 28, 0.2) 0%, transparent 40%),
-        radial-gradient(ellipse at 80% 80%, rgba(107, 28, 28, 0.2) 0%, transparent 40%),
-        linear-gradient(180deg, #0a0d12 0%, #151a1f 40%, #1a1510 100%);
+    background: #030201;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -780,16 +1202,7 @@ const loginStyles = `
     opacity: 0;
     transition: opacity 0.5s ease;
     padding: clamp(12px, 3vw, 24px);
-    overflow-y: auto;
-}
-
-#username-entry-screen::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.06'/%3E%3C/svg%3E");
-    pointer-events: none;
-    mix-blend-mode: overlay;
+    overflow: hidden;
 }
 
 #username-entry-screen.visible {
@@ -803,109 +1216,157 @@ const loginStyles = `
 .username-container {
     position: relative;
     text-align: center;
-    max-width: 400px;
+    max-width: 420px;
     width: 100%;
-    z-index: 1;
+    z-index: 10;
 }
 
 .username-container h2 {
     font-family: 'Cinzel', serif;
-    color: #d4c4a0;
-    font-size: clamp(18px, 5vmin, 32px);
-    letter-spacing: clamp(2px, 0.5vw, 4px);
-    margin: 0 0 clamp(8px, 1.5vh, 12px);
-    text-shadow: 0 0 30px rgba(232, 169, 62, 0.3);
+    color: #fff;
+    font-size: clamp(20px, 5vmin, 36px);
+    letter-spacing: 4px;
+    margin: 0 0 12px;
+    text-shadow: 
+        0 0 10px rgba(255, 150, 80, 0.8),
+        0 0 30px rgba(255, 100, 40, 0.5),
+        0 4px 8px rgba(0, 0, 0, 0.9);
+    text-transform: uppercase;
 }
 
 .username-container p {
-    color: #706050;
-    margin: 0 0 clamp(16px, 4vh, 32px);
-    font-size: clamp(12px, 2.5vmin, 14px);
+    color: #8a6a4a;
+    margin: 0 0 clamp(20px, 4vh, 36px);
+    font-size: clamp(12px, 2.5vmin, 15px);
     letter-spacing: 1px;
 }
 
 .username-input-wrapper {
     position: relative;
-    margin-bottom: clamp(16px, 3vh, 24px);
+    margin-bottom: clamp(20px, 4vh, 32px);
 }
 
 #username-input {
     width: 100%;
-    padding: clamp(12px, 2.5vh, 18px) clamp(50px, 10vw, 70px) clamp(12px, 2.5vh, 18px) clamp(16px, 3vw, 24px);
+    padding: clamp(14px, 3vh, 20px) clamp(50px, 12vw, 80px) clamp(14px, 3vh, 20px) clamp(20px, 4vw, 30px);
     font-family: 'Cinzel', serif;
-    font-size: clamp(14px, 3vmin, 18px);
-    letter-spacing: 2px;
-    background: rgba(10, 13, 18, 0.8);
-    border: 2px solid rgba(160, 144, 128, 0.3);
-    border-radius: 8px;
-    color: #d4c4a0;
+    font-size: clamp(15px, 3.5vmin, 20px);
+    letter-spacing: 3px;
+    background: rgba(20, 10, 5, 0.9);
+    border: 2px solid rgba(255, 120, 40, 0.25);
+    color: #ffd0a0;
     text-align: center;
     outline: none;
     transition: all 0.3s;
     box-sizing: border-box;
+    clip-path: polygon(
+        8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px),
+        calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px
+    );
+    box-shadow: 
+        inset 0 4px 16px rgba(0, 0, 0, 0.6),
+        0 0 30px rgba(255, 80, 20, 0.1);
 }
 
 #username-input::placeholder {
-    color: #504030;
+    color: #5a4030;
 }
 
 #username-input:focus {
-    border-color: rgba(232, 169, 62, 0.5);
-    box-shadow: 0 0 30px rgba(232, 169, 62, 0.15);
+    border-color: rgba(255, 120, 40, 0.5);
+    box-shadow: 
+        inset 0 4px 16px rgba(0, 0, 0, 0.6),
+        0 0 40px rgba(255, 100, 30, 0.25),
+        0 0 80px rgba(255, 80, 20, 0.15);
 }
 
 #username-input.error {
-    border-color: rgba(180, 80, 80, 0.6);
+    border-color: rgba(255, 60, 60, 0.6);
     animation: shake 0.3s ease;
 }
 
 @keyframes shake {
     0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
-    75% { transform: translateX(5px); }
+    25% { transform: translateX(-8px); }
+    75% { transform: translateX(8px); }
 }
 
 .char-count {
     position: absolute;
-    right: clamp(12px, 2.5vw, 18px);
+    right: clamp(14px, 3vw, 22px);
     top: 50%;
     transform: translateY(-50%);
-    color: #504030;
-    font-size: clamp(10px, 2vmin, 12px);
+    color: #5a4030;
+    font-size: clamp(10px, 2vmin, 13px);
     letter-spacing: 1px;
+    font-family: 'Source Sans Pro', sans-serif;
 }
 
+/* Confirm button - Ember Blaze style */
 .confirm-btn {
-    background: linear-gradient(180deg, 
-        rgba(220, 220, 230, 0.95) 0%, 
-        rgba(180, 180, 195, 0.9) 20%,
-        rgba(140, 140, 155, 0.85) 50%,
-        rgba(100, 100, 115, 0.9) 80%,
-        rgba(70, 70, 85, 0.95) 100%);
-    border: 2px solid rgba(255, 255, 255, 0.4);
-    color: #151518;
-    padding: clamp(12px, 2vh, 16px) clamp(32px, 6vw, 48px);
+    position: relative;
+    background: linear-gradient(
+        180deg,
+        #b85020 0%,
+        #943818 30%,
+        #702810 70%,
+        #501808 100%
+    );
+    border: none;
+    color: #ffeedd;
+    padding: clamp(14px, 3vh, 20px) clamp(40px, 8vw, 60px);
     font-family: 'Cinzel', serif;
-    font-size: clamp(12px, 2.5vmin, 15px);
+    font-size: clamp(13px, 2.8vmin, 17px);
     font-weight: 700;
-    letter-spacing: clamp(2px, 0.4vw, 3px);
+    letter-spacing: 3px;
     text-transform: uppercase;
-    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    clip-path: polygon(
+        8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px),
+        calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px
+    );
     box-shadow: 
-        0 0 60px rgba(200, 200, 220, 0.25),
-        0 4px 20px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.6);
-    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+        0 8px 32px rgba(0, 0, 0, 0.8),
+        0 0 60px rgba(255, 80, 20, 0.3),
+        inset 0 1px 0 rgba(255, 200, 150, 0.3);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8), 0 0 20px rgba(255, 150, 80, 0.5);
+}
+
+.confirm-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 2px;
+    background: linear-gradient(
+        180deg,
+        rgba(255, 180, 100, 0.6),
+        rgba(200, 100, 50, 0.3),
+        rgba(150, 60, 30, 0.4),
+        rgba(255, 180, 100, 0.6)
+    );
+    clip-path: polygon(
+        8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px),
+        calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px
+    );
+    -webkit-mask: 
+        linear-gradient(#fff 0 0) content-box, 
+        linear-gradient(#fff 0 0);
+    mask: 
+        linear-gradient(#fff 0 0) content-box, 
+        linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
 }
 
 .confirm-btn:hover {
-    transform: translateY(-3px) scale(1.02);
+    transform: translateY(-4px) scale(1.03);
     box-shadow: 
-        0 0 100px rgba(200, 200, 220, 0.4),
-        0 8px 30px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        0 12px 48px rgba(0, 0, 0, 0.9),
+        0 0 80px rgba(255, 80, 20, 0.5),
+        0 0 120px rgba(255, 60, 10, 0.3),
+        inset 0 1px 0 rgba(255, 200, 150, 0.4);
 }
 
 .confirm-btn:disabled {
@@ -914,15 +1375,11 @@ const loginStyles = `
     transform: none;
 }
 
-/* Tutorial Screen */
+/* ==================== TUTORIAL SCREEN ==================== */
 #tutorial-screen {
     position: fixed;
     inset: 0;
-    background: 
-        radial-gradient(ellipse at 50% 20%, rgba(232, 169, 62, 0.15) 0%, transparent 50%),
-        radial-gradient(ellipse at 20% 80%, rgba(107, 28, 28, 0.2) 0%, transparent 40%),
-        radial-gradient(ellipse at 80% 80%, rgba(107, 28, 28, 0.2) 0%, transparent 40%),
-        linear-gradient(180deg, #0a0d12 0%, #151a1f 40%, #1a1510 100%);
+    background: #030201;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -930,16 +1387,7 @@ const loginStyles = `
     opacity: 0;
     transition: opacity 0.5s ease;
     padding: clamp(12px, 3vw, 24px);
-    overflow-y: auto;
-}
-
-#tutorial-screen::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.06'/%3E%3C/svg%3E");
-    pointer-events: none;
-    mix-blend-mode: overlay;
+    overflow: hidden;
 }
 
 #tutorial-screen.visible {
@@ -953,137 +1401,151 @@ const loginStyles = `
 .tutorial-container {
     position: relative;
     text-align: center;
-    max-width: 480px;
+    max-width: 500px;
     width: 100%;
-    z-index: 1;
+    z-index: 10;
 }
 
 .tutorial-container h2 {
     font-family: 'Cinzel', serif;
-    color: #d4c4a0;
-    font-size: clamp(18px, 5vmin, 32px);
-    letter-spacing: clamp(2px, 0.5vw, 4px);
-    margin: 0 0 clamp(16px, 3vh, 32px);
-    text-shadow: 0 0 30px rgba(232, 169, 62, 0.3);
+    color: #fff;
+    font-size: clamp(20px, 5vmin, 36px);
+    letter-spacing: 4px;
+    margin: 0 0 clamp(20px, 4vh, 36px);
+    text-shadow: 
+        0 0 10px rgba(255, 150, 80, 0.8),
+        0 0 30px rgba(255, 100, 40, 0.5),
+        0 4px 8px rgba(0, 0, 0, 0.9);
+    text-transform: uppercase;
 }
 
 .tutorial-content {
     display: flex;
     flex-direction: column;
-    gap: clamp(10px, 2vh, 16px);
-    margin-bottom: clamp(16px, 3vh, 32px);
+    gap: clamp(12px, 2.5vh, 20px);
+    margin-bottom: clamp(20px, 4vh, 36px);
 }
 
 .tutorial-step {
     display: flex;
     align-items: center;
-    gap: clamp(10px, 2vw, 16px);
-    background: rgba(10, 13, 18, 0.6);
-    padding: clamp(10px, 2vh, 16px) clamp(12px, 2.5vw, 20px);
-    border-radius: 8px;
-    border: 1px solid rgba(160, 144, 128, 0.15);
+    gap: clamp(12px, 2.5vw, 20px);
+    background: linear-gradient(180deg, rgba(30, 15, 8, 0.8) 0%, rgba(15, 8, 4, 0.85) 100%);
+    padding: clamp(12px, 2.5vh, 20px) clamp(14px, 3vw, 24px);
+    border: 1px solid rgba(255, 120, 40, 0.15);
     text-align: left;
+    clip-path: polygon(
+        8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px),
+        calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px
+    );
 }
 
 .tutorial-step .step-icon {
-    font-size: clamp(20px, 4.5vmin, 28px);
+    font-size: clamp(22px, 5vmin, 32px);
     flex-shrink: 0;
-    filter: drop-shadow(0 0 8px rgba(232, 169, 62, 0.3));
+    filter: drop-shadow(0 0 12px rgba(255, 120, 40, 0.6));
 }
 
 .tutorial-step p {
-    color: #a09080;
+    color: #b89070;
     margin: 0;
-    font-size: clamp(11px, 2.5vmin, 14px);
-    line-height: 1.5;
+    font-size: clamp(12px, 2.6vmin, 15px);
+    line-height: 1.6;
     letter-spacing: 0.5px;
 }
 
 .tutorial-step strong {
-    color: #d4c4a0;
+    color: #ffd0a0;
 }
 
 .skip-future {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: clamp(6px, 1.5vw, 10px);
-    margin-top: clamp(12px, 2.5vh, 20px);
-    color: #504030;
-    font-size: clamp(10px, 2vmin, 12px);
+    gap: clamp(8px, 2vw, 12px);
+    margin-top: clamp(14px, 3vh, 24px);
+    color: #6a5040;
+    font-size: clamp(11px, 2.2vmin, 13px);
     cursor: pointer;
     letter-spacing: 1px;
 }
 
 .skip-future input {
     cursor: pointer;
-    accent-color: #e8a93e;
+    accent-color: #ff6030;
+    width: 18px;
+    height: 18px;
 }
 
-/* User profile bar */
+/* ==================== USER PROFILE BAR ==================== */
 .user-profile-bar {
     display: flex;
     align-items: center;
-    gap: clamp(8px, 1.5vw, 12px);
-    padding: clamp(6px, 1.2vh, 10px) clamp(12px, 2vw, 18px);
-    background: rgba(10, 13, 18, 0.9);
-    border: 1px solid rgba(160, 144, 128, 0.2);
-    border-radius: 25px;
+    gap: clamp(10px, 2vw, 14px);
+    padding: clamp(8px, 1.5vh, 12px) clamp(14px, 2.5vw, 20px);
+    background: linear-gradient(180deg, rgba(30, 15, 8, 0.95) 0%, rgba(15, 8, 4, 0.98) 100%);
+    border: 1px solid rgba(255, 120, 40, 0.2);
     position: absolute;
-    top: clamp(8px, 1.5vh, 15px);
-    right: clamp(8px, 1.5vw, 15px);
+    top: clamp(10px, 2vh, 18px);
+    right: clamp(10px, 2vw, 18px);
     z-index: 100;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    clip-path: polygon(
+        10px 0%, calc(100% - 10px) 0%, 100% 10px, 100% calc(100% - 10px),
+        calc(100% - 10px) 100%, 10px 100%, 0% calc(100% - 10px), 0% 10px
+    );
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
 }
 
 .user-avatar {
-    width: clamp(26px, 5vmin, 36px);
-    height: clamp(26px, 5vmin, 36px);
+    width: clamp(28px, 5.5vmin, 40px);
+    height: clamp(28px, 5.5vmin, 40px);
     border-radius: 50%;
-    border: 2px solid rgba(232, 169, 62, 0.5);
+    border: 2px solid rgba(255, 120, 40, 0.4);
     object-fit: cover;
+    box-shadow: 0 0 15px rgba(255, 80, 20, 0.3);
 }
 
 .user-avatar.placeholder {
-    background: linear-gradient(135deg, rgba(232, 169, 62, 0.3), rgba(180, 100, 50, 0.3));
+    background: linear-gradient(135deg, rgba(255, 100, 30, 0.4), rgba(180, 50, 20, 0.4));
     display: flex;
     align-items: center;
     justify-content: center;
     font-family: 'Cinzel', serif;
-    font-size: clamp(10px, 2.5vmin, 14px);
-    color: #d4c4a0;
+    font-size: clamp(11px, 2.5vmin, 15px);
+    color: #ffd0a0;
     font-weight: bold;
 }
 
 .user-name {
     font-family: 'Cinzel', serif;
-    font-size: clamp(10px, 2.5vmin, 14px);
+    font-size: clamp(11px, 2.5vmin, 15px);
     font-weight: 600;
-    color: #d4c4a0;
+    color: #ffd0a0;
     letter-spacing: 1px;
 }
 
 .user-stats {
-    font-size: clamp(9px, 2vmin, 11px);
-    color: #706050;
+    font-size: clamp(9px, 2vmin, 12px);
+    color: #8a6a4a;
     letter-spacing: 0.5px;
 }
 
 .user-menu-btn {
     background: none;
     border: none;
-    color: #706050;
+    color: #8a6a4a;
     cursor: pointer;
-    padding: clamp(2px, 0.5vh, 4px) clamp(4px, 1vw, 8px);
-    font-size: clamp(12px, 3vmin, 16px);
-    transition: color 0.3s;
+    padding: 4px 8px;
+    font-size: clamp(14px, 3.5vmin, 18px);
+    transition: all 0.3s;
 }
 
 .user-menu-btn:hover {
-    color: #e8a93e;
+    color: #ff8040;
+    text-shadow: 0 0 15px rgba(255, 100, 40, 0.6);
 }
 
-/* ===== LANDSCAPE MODE (short height) ===== */
+/* ===== LANDSCAPE MODE ===== */
 @media (max-height: 500px) and (orientation: landscape) {
     #login-screen {
         padding: 10px 20px;
@@ -1094,40 +1556,106 @@ const loginStyles = `
         flex-wrap: wrap;
         justify-content: center;
         align-items: center;
-        gap: 16px 32px;
-        max-width: 900px;
+        gap: 16px 40px;
+        max-width: 950px;
+        padding: 10px 0;
+        /* No vertical shift needed in landscape */
+        transform: translateY(0);
+        animation: none;
     }
     
-    /* Logo - hero element, takes up good space */
+    /* Logo starts centered horizontally, slides left */
+    .login-logo {
+        width: auto;
+        transform: translateX(22vw);
+        animation: logoSlideLeft 1.2s ease-out 3.3s forwards;
+    }
+    
+    /* Items expand beside logo */
+    .login-box,
+    .login-features,
+    .login-bottom-btns {
+        animation-delay: 3.5s;
+    }
+}
+
+@keyframes logoSlideLeft {
+    0% { transform: translateX(22vw); }
+    100% { transform: translateX(0); }
+}
+    
     .login-logo-img {
         width: auto;
-        height: clamp(100px, 35vh, 180px);
-        max-width: 45vw;
+        height: clamp(100px, 38vh, 200px);
+        max-width: 42vw;
     }
     
-    /* Right side content */
     .login-box {
-        max-width: 280px;
+        max-width: 300px;
         flex: 0 0 auto;
     }
     
-    /* Show welcome text - adds context */
     .login-box h2 {
-        display: block;
-        font-size: 14px;
-        margin-bottom: 4px;
+        font-size: 16px;
+        margin-bottom: 6px;
     }
     
     .login-prompt {
-        display: block;
-        font-size: 10px;
-        margin-bottom: 10px;
+        font-size: 11px;
+        margin-bottom: 12px;
     }
     
-    /* Buttons stacked but compact */
     .login-buttons {
-        flex-direction: column;
-        gap: 8px;
+        gap: 10px;
+    }
+    
+    .login-btn {
+        padding: 12px 24px;
+        font-size: 12px;
+    }
+    
+    .login-icon {
+        width: 18px;
+        height: 18px;
+    }
+    
+    .login-features {
+        display: none;
+    }
+    
+    .login-bottom-btns {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        flex-basis: 100%;
+        margin-top: 8px;
+    }
+    
+    .skip-login-btn {
+        padding: 10px 20px;
+        font-size: 10px;
+    }
+}
+
+/* ===== VERY SHORT LANDSCAPE ===== */
+@media (max-height: 380px) and (orientation: landscape) {
+    .login-container {
+        gap: 12px 30px;
+    }
+    
+    .login-logo-img {
+        height: clamp(80px, 32vh, 150px);
+        max-width: 38vw;
+    }
+    
+    .login-box {
+        max-width: 260px;
+    }
+    
+    .login-box h2 {
+        font-size: 14px;
     }
     
     .login-btn {
@@ -1135,126 +1663,69 @@ const loginStyles = `
         font-size: 11px;
     }
     
-    .login-icon {
-        width: 16px;
-        height: 16px;
-    }
-    
-    /* Hide features in landscape */
-    .login-features {
-        display: none;
-    }
-    
-    /* Bottom buttons - full width row */
-    .login-bottom-btns {
-        flex-direction: row;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 8px;
-        width: 100%;
-        flex-basis: 100%;
-    }
-    
     .skip-login-btn {
         padding: 8px 16px;
         font-size: 9px;
-    }
-}
-
-/* ===== VERY SHORT LANDSCAPE (iPhone SE, small phones) ===== */
-@media (max-height: 380px) and (orientation: landscape) {
-    #login-screen {
-        padding: 8px 16px;
-    }
-    
-    .login-container {
-        gap: 10px 24px;
-    }
-    
-    .login-logo-img {
-        height: clamp(80px, 30vh, 140px);
-        max-width: 40vw;
-    }
-    
-    .login-box {
-        max-width: 240px;
-    }
-    
-    .login-box h2 {
-        font-size: 12px;
-    }
-    
-    .login-prompt {
-        font-size: 9px;
-    }
-    
-    .login-btn {
-        padding: 8px 16px;
-        font-size: 10px;
-    }
-    
-    .skip-login-btn {
-        padding: 6px 12px;
-        font-size: 8px;
     }
 }
 
 /* ===== PORTRAIT MODE ===== */
 @media (orientation: portrait) {
     .login-container {
-        gap: clamp(16px, 4vmin, 28px);
+        gap: clamp(18px, 4vmin, 32px);
     }
     
     .login-logo-img {
-        width: clamp(240px, 70vw, 420px);
+        width: clamp(240px, 68vw, 420px);
     }
     
     .login-box {
-        max-width: clamp(240px, 70vw, 320px);
+        max-width: clamp(260px, 72vw, 360px);
     }
     
     .login-features {
-        max-width: clamp(240px, 70vw, 320px);
+        max-width: clamp(260px, 72vw, 340px);
     }
 }
 
-/* ===== NARROW PORTRAIT (small phones) ===== */
+/* ===== NARROW PORTRAIT ===== */
 @media (max-width: 380px) and (orientation: portrait) {
     .login-container {
-        gap: clamp(12px, 3vmin, 20px);
+        gap: clamp(14px, 3vmin, 24px);
     }
     
     .login-logo-img {
-        width: clamp(200px, 85vw, 300px);
+        width: clamp(200px, 88vw, 320px);
     }
     
     .login-btn {
-        padding: 10px 16px;
+        padding: 12px 20px;
+        font-size: 12px;
     }
     
     .login-features {
-        padding: 12px;
-        gap: 8px;
+        padding: 14px;
+        gap: 10px;
     }
     
     .feature {
-        font-size: 11px;
-        gap: 8px;
+        font-size: 12px;
+        gap: 10px;
     }
     
     .feature-icon {
-        font-size: 14px;
+        font-size: 16px;
     }
 }
 
-/* ===== TALL PORTRAIT (good height) ===== */
+/* ===== TALL PORTRAIT ===== */
 @media (min-height: 700px) and (orientation: portrait) {
     .login-container {
-        gap: clamp(20px, 4vmin, 32px);
+        gap: clamp(24px, 5vmin, 40px);
     }
     
     .login-logo-img {
-        width: clamp(280px, 65vw, 450px);
+        width: clamp(280px, 62vw, 460px);
     }
 }
 `;
