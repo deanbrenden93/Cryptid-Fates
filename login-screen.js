@@ -722,13 +722,14 @@ const loginStyles = `
     inset: 0;
     background: transparent;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     z-index: 10000;
     opacity: 0;
     transition: opacity 1s ease;
     padding: clamp(16px, 4vmin, 32px);
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 #login-screen.visible {
@@ -778,16 +779,20 @@ const loginStyles = `
     gap: clamp(20px, 4vmin, 32px);
     max-width: 440px;
     width: 100%;
+    min-width: min(100%, 440px);
     z-index: 10;
-    padding: clamp(20px, 4vmin, 40px) 0;
-    /* Start pushed down so logo appears centered, animate up to final position */
-    transform: translateY(22vh);
-    animation: containerSlideUp 1.2s ease-out 3.3s forwards;
+    /* Start with padding to center logo at ~50% of viewport height */
+    padding: calc(50vh - 120px) 0 clamp(20px, 4vmin, 40px) 0;
+    animation: containerPaddingCollapse 1.2s ease-in-out 3.3s forwards;
 }
 
-@keyframes containerSlideUp {
-    0% { transform: translateY(22vh); }
-    100% { transform: translateY(0); }
+@keyframes containerPaddingCollapse {
+    0% {
+        padding-top: calc(50vh - 120px);
+    }
+    100% {
+        padding-top: clamp(20px, 4vmin, 40px);
+    }
 }
 
 /* Items hidden and collapsed initially */
@@ -797,35 +802,34 @@ const loginStyles = `
     opacity: 0;
     max-height: 0;
     overflow: hidden;
-    margin-top: 0;
-    padding-top: 0;
-    padding-bottom: 0;
+    transform: translateY(20px);
     pointer-events: none;
-    animation: itemsExpand 0.8s ease-out forwards;
-    animation-delay: 3.5s;
+    animation: itemsFadeIn 0.7s ease-out forwards;
+    animation-delay: 3.6s;
+    /* Prevent width changes during expansion */
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .login-features {
-    animation-delay: 3.7s;
+    animation-delay: 3.8s;
 }
 
 .login-bottom-btns {
-    animation-delay: 3.9s;
+    animation-delay: 4s;
 }
 
-@keyframes itemsExpand {
+@keyframes itemsFadeIn {
     0% {
         opacity: 0;
         max-height: 0;
+        transform: translateY(20px);
         pointer-events: none;
-    }
-    50% {
-        max-height: 300px;
-        opacity: 0.5;
     }
     100% {
         opacity: 1;
-        max-height: 300px;
+        max-height: 500px;
+        transform: translateY(0);
         pointer-events: auto;
         overflow: visible;
     }
@@ -839,26 +843,35 @@ const loginStyles = `
     perspective: 1000px;
     /* Heat distortion on the container */
     filter: url(#heatDistortion);
-    /* Prevent horizontal shift during animations */
+    /* Fixed centering - immune to sibling layout changes */
     width: 100%;
-    display: flex;
-    justify-content: center;
+    /* Height for absolutely positioned logo */
+    min-height: clamp(180px, 40vmin, 320px);
 }
 
 .login-logo-img {
-    width: clamp(260px, 55vmin, 480px);
+    width: clamp(320px, 70vmin, 580px);
     height: auto;
     object-fit: contain;
-    position: relative;
+    /* Absolute centering - immune to sibling layout changes */
+    position: absolute;
+    left: 50%;
     /* Cinematic 3D reveal - LOST style */
     opacity: 0;
     transform-style: preserve-3d;
     transform: 
+        translateX(-50%)
         translateZ(-150px) 
         translateY(-20px)
         rotateX(10deg) 
         scale(0.8);
-    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.9)) blur(12px);
+    /* Layered warm glow to mask dark PNG edges */
+    filter: 
+        drop-shadow(0 0 2px rgba(255, 100, 30, 0.4))
+        drop-shadow(0 0 8px rgba(255, 60, 10, 0.3))
+        drop-shadow(0 0 20px rgba(200, 40, 0, 0.2))
+        drop-shadow(0 4px 12px rgba(0, 0, 0, 0.7))
+        blur(12px);
     animation: logoReveal3D 3s cubic-bezier(0.23, 1, 0.32, 1) 0.3s forwards;
 }
 
@@ -866,8 +879,14 @@ const loginStyles = `
 @keyframes logoReveal3D {
     0% {
         opacity: 0;
-        filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.9)) blur(12px);
+        filter: 
+            drop-shadow(0 0 2px rgba(255, 100, 30, 0.4))
+            drop-shadow(0 0 8px rgba(255, 60, 10, 0.3))
+            drop-shadow(0 0 20px rgba(200, 40, 0, 0.2))
+            drop-shadow(0 4px 12px rgba(0, 0, 0, 0.7))
+            blur(12px);
         transform: 
+            translateX(-50%)
             translateZ(-150px) 
             translateY(-20px)
             rotateX(10deg) 
@@ -875,8 +894,14 @@ const loginStyles = `
     }
     100% {
         opacity: 1;
-        filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.9)) blur(0px);
+        filter: 
+            drop-shadow(0 0 2px rgba(255, 100, 30, 0.4))
+            drop-shadow(0 0 8px rgba(255, 60, 10, 0.3))
+            drop-shadow(0 0 20px rgba(200, 40, 0, 0.2))
+            drop-shadow(0 4px 12px rgba(0, 0, 0, 0.7))
+            blur(0px);
         transform: 
+            translateX(-50%)
             translateZ(0) 
             translateY(0)
             rotateX(0deg) 
@@ -1549,6 +1574,7 @@ const loginStyles = `
 @media (max-height: 500px) and (orientation: landscape) {
     #login-screen {
         padding: 10px 20px;
+        align-items: center;
     }
     
     .login-container {
@@ -1559,35 +1585,44 @@ const loginStyles = `
         gap: 16px 40px;
         max-width: 950px;
         padding: 10px 0;
-        /* No vertical shift needed in landscape */
-        transform: translateY(0);
         animation: none;
     }
     
-    /* Logo starts centered horizontally, slides left */
+    /* Reset logo to relative positioning in landscape */
     .login-logo {
         width: auto;
-        transform: translateX(22vw);
-        animation: logoSlideLeft 1.2s ease-out 3.3s forwards;
+        min-height: auto;
+        transform: translateX(170px);
+        animation: logoSlideLeft 1.4s ease-in-out 3.3s forwards;
     }
     
-    /* Items expand beside logo */
+    .login-logo-img {
+        position: relative;
+        left: auto;
+        transform: 
+            translateZ(-150px) 
+            translateY(-20px)
+            rotateX(10deg) 
+            scale(0.8);
+    }
+    
+    /* Items appear after logo moves */
     .login-box,
     .login-features,
     .login-bottom-btns {
-        animation-delay: 3.5s;
+        animation-delay: 4s;
     }
 }
 
 @keyframes logoSlideLeft {
-    0% { transform: translateX(22vw); }
+    0% { transform: translateX(170px); }
     100% { transform: translateX(0); }
 }
     
     .login-logo-img {
         width: auto;
-        height: clamp(100px, 38vh, 200px);
-        max-width: 42vw;
+        height: clamp(120px, 48vh, 260px);
+        max-width: 48vw;
     }
     
     .login-box {
@@ -1646,8 +1681,8 @@ const loginStyles = `
     }
     
     .login-logo-img {
-        height: clamp(80px, 32vh, 150px);
-        max-width: 38vw;
+        height: clamp(100px, 42vh, 200px);
+        max-width: 44vw;
     }
     
     .login-box {
@@ -1676,7 +1711,7 @@ const loginStyles = `
     }
     
     .login-logo-img {
-        width: clamp(240px, 68vw, 420px);
+        width: clamp(300px, 85vw, 520px);
     }
     
     .login-box {
@@ -1695,7 +1730,7 @@ const loginStyles = `
     }
     
     .login-logo-img {
-        width: clamp(200px, 88vw, 320px);
+        width: clamp(240px, 92vw, 380px);
     }
     
     .login-btn {
@@ -1725,7 +1760,7 @@ const loginStyles = `
     }
     
     .login-logo-img {
-        width: clamp(280px, 62vw, 460px);
+        width: clamp(340px, 75vw, 560px);
     }
 }
 `;

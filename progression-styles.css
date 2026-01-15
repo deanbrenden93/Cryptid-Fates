@@ -518,12 +518,15 @@
 }
 
 .logo-image {
-    max-width: min(450px, 75vw);
+    max-width: min(550px, 90vw);
     width: 100%;
     height: auto;
+    /* Layered warm glow to mask dark PNG edges */
     filter: 
-        drop-shadow(0 0 80px rgba(200, 160, 100, 0.15))
-        drop-shadow(0 0 40px rgba(180, 140, 80, 0.2))
+        drop-shadow(0 0 2px rgba(255, 100, 30, 0.5))
+        drop-shadow(0 0 6px rgba(255, 60, 10, 0.35))
+        drop-shadow(0 0 15px rgba(200, 40, 0, 0.25))
+        drop-shadow(0 0 60px rgba(200, 160, 100, 0.15))
         drop-shadow(0 15px 40px rgba(0, 0, 0, 0.7));
     animation: logoBreath 6s ease-in-out infinite;
     position: relative;
@@ -533,15 +536,19 @@
 @keyframes logoBreath {
     0%, 100% { 
         filter: 
-            drop-shadow(0 0 60px rgba(200, 160, 100, 0.12))
-            drop-shadow(0 0 30px rgba(180, 140, 80, 0.15))
+            drop-shadow(0 0 2px rgba(255, 100, 30, 0.5))
+            drop-shadow(0 0 6px rgba(255, 60, 10, 0.35))
+            drop-shadow(0 0 15px rgba(200, 40, 0, 0.25))
+            drop-shadow(0 0 50px rgba(200, 160, 100, 0.12))
             drop-shadow(0 15px 40px rgba(0, 0, 0, 0.7));
         transform: scale(1);
     }
     50% { 
         filter: 
-            drop-shadow(0 0 100px rgba(220, 180, 120, 0.2))
-            drop-shadow(0 0 50px rgba(200, 160, 100, 0.25))
+            drop-shadow(0 0 3px rgba(255, 120, 40, 0.6))
+            drop-shadow(0 0 8px rgba(255, 70, 15, 0.4))
+            drop-shadow(0 0 18px rgba(220, 50, 0, 0.3))
+            drop-shadow(0 0 80px rgba(220, 180, 120, 0.2))
             drop-shadow(0 18px 45px rgba(0, 0, 0, 0.75));
         transform: scale(1.01);
     }
@@ -824,8 +831,8 @@ div.menu-btn#tile-collection {
     .icon-btn { width: 24px; height: 24px; font-size: 11px; }
     
     .home-center { padding: 10px; }
-    .logo-container { margin-bottom: 12px; }
-    .logo-image { max-width: min(380px, 65vw); }
+    .logo-container { margin-bottom: 8px; }
+    .logo-image { max-width: min(340px, 55vw); }
     
     .stats-row { padding: 6px 16px; gap: 14px; }
     .stat-val { font-size: 14px; }
@@ -843,7 +850,7 @@ div.menu-btn#tile-collection {
 
 /* Very short landscape */
 @media (max-height: 380px) {
-    .logo-image { max-width: min(300px, 55vw); }
+    .logo-image { max-width: min(280px, 48vw); }
     .stats-row { padding: 5px 12px; gap: 10px; }
     .home-menubar { padding: 8px 12px; gap: 6px; }
     
@@ -860,7 +867,7 @@ div.menu-btn#tile-collection {
         gap: 8px;
     }
     
-    .logo-image { max-width: min(420px, 85vw); }
+    .logo-image { max-width: min(520px, 92vw); }
     
     .home-menubar {
         flex-wrap: wrap;
@@ -1181,12 +1188,20 @@ div.menu-btn#tile-collection {
     from {
         opacity: 0;
         transform: scale(1.1);
-        filter: drop-shadow(0 0 100px rgba(255, 255, 255, 0.3));
+        filter: 
+            drop-shadow(0 0 4px rgba(255, 120, 40, 0.6))
+            drop-shadow(0 0 10px rgba(255, 70, 15, 0.4))
+            drop-shadow(0 0 100px rgba(255, 200, 150, 0.3));
     }
     to {
         opacity: 1;
         transform: scale(1);
-        filter: drop-shadow(0 0 60px rgba(255, 255, 255, 0.08));
+        filter: 
+            drop-shadow(0 0 2px rgba(255, 100, 30, 0.5))
+            drop-shadow(0 0 6px rgba(255, 60, 10, 0.35))
+            drop-shadow(0 0 15px rgba(200, 40, 0, 0.25))
+            drop-shadow(0 0 50px rgba(200, 160, 100, 0.12))
+            drop-shadow(0 15px 40px rgba(0, 0, 0, 0.7));
     }
 }
 
@@ -1258,7 +1273,12 @@ div.menu-btn#tile-collection {
     max-width: 300px;
     width: 70vw;
     margin-bottom: 16px;
-    filter: drop-shadow(0 0 40px rgba(255, 255, 255, 0.1));
+    /* Warm glow to mask dark PNG edges */
+    filter: 
+        drop-shadow(0 0 2px rgba(255, 100, 30, 0.5))
+        drop-shadow(0 0 6px rgba(255, 60, 10, 0.35))
+        drop-shadow(0 0 15px rgba(200, 40, 0, 0.25))
+        drop-shadow(0 0 40px rgba(255, 200, 150, 0.15));
 }
 
 @media (max-height: 600px) {
