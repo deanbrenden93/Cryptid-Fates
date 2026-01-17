@@ -297,7 +297,7 @@ window.HomeScreen = {
                 cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'vampireInitiate', 'elderVampire', 
                            'sewerAlligator', 'kuchisakeOnna', 'hellhound', 'mothman', 'bogeyman', 
                            'theFlayer', 'mutatedRat'],
-                kindling: ['myling', 'shadowPerson', 'hellhoundPup', 'elDuende', 'boggart'],
+                kindling: ['hellpup', 'myling', 'vampireBat', 'gremlin', 'boggart'],
                 pyres: ['pyre', 'freshKill', 'ratKing', 'nightfall'],
                 traps: ['crossroads', 'bloodCovenant', 'turnToStone'],
                 bursts: ['wakingNightmare', 'faceOff', 'rockSlide'],

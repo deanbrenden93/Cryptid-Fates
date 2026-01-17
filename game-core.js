@@ -1064,6 +1064,13 @@ const EventFeedback = {
             if (data.target) this.showFloatingIndicator(data.target, '🛡️ BLOCKED', '#4488ff');
         });
         
+        // Guard ability (Hellpup)
+        GameEvents.on('onGuardUsed', (data) => {
+            const name = data.cryptid?.name || 'Cryptid';
+            this.queue(`${name} guards and burns the attacker!`, 'guard');
+            if (data.cryptid) this.showFloatingIndicator(data.cryptid, '🛡️ GUARD', '#ff8800');
+        });
+        
         // === PYRE CHANGES ===
         GameEvents.on('onPyreGained', (data) => {
             const isPlayer = data.owner === 'player';
@@ -1992,6 +1999,18 @@ const MatchLog = {
                 col: data.target?.col,
                 row: data.target?.row,
                 effect: `Blocked attack from ${data.attacker?.name || 'attacker'}`,
+                owner: data.owner
+            });
+        });
+        
+        // Guard (Hellpup)
+        GameEvents.on('onGuardUsed', (data) => {
+            this.log('ABILITY', 'Guard Used', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Guard',
+                col: data.cryptid?.col,
+                row: data.cryptid?.row,
+                effect: `Blocked attack from ${data.attacker?.name || 'attacker'} and burned them`,
                 owner: data.owner
             });
         });
@@ -3478,37 +3497,37 @@ window.EventLog = EventLog;
 
 // ==================== ANIMATION TIMING ====================
 const TIMING = {
-    // Core animations
-    attackAnim: 650,        // Attack lunge animation
-    damageAnim: 700,        // Damage shake/flash
-    deathAnim: 800,         // Death spiral animation
-    summonAnim: 700,        // Summon appearance
-    promoteAnim: 600,       // Promote slide animation
-    evolveAnim: 900,        // Evolution transformation
-    protectionAnim: 750,    // Protection block glow
+    // Core animations (increased to prevent cut-off)
+    attackAnim: 700,        // Attack lunge animation (140 anticipation + 160 lunge + 100 hitstop + 220 recovery + buffer)
+    damageAnim: 750,        // Damage shake/flash
+    deathAnim: 900,         // Death spiral animation  
+    summonAnim: 850,        // Summon appearance (common 500ms, ultimate 1000ms - use middle ground + buffer)
+    promoteAnim: 650,       // Promote slide animation
+    evolveAnim: 1000,       // Evolution transformation
+    protectionAnim: 850,    // Protection block glow (shield bubble is ~800ms)
     
     // Traps
-    trapTriggerAnim: 900,   // Trap activation flash
+    trapTriggerAnim: 1000,  // Trap activation flash
     trapMessageDelay: 500,  // Delay before trap message
     
-    // Combat pacing
-    attackDelay: 400,       // Delay between attack declaration and hit
-    postAttackDelay: 500,   // Pause after attack resolves
-    betweenAttacksDelay: 300, // Gap between sequential attacks
+    // Combat pacing (increased for smoother feel)
+    attackDelay: 450,       // Delay between attack declaration and hit
+    postAttackDelay: 700,   // Pause after attack resolves (was 500, increased to let animations complete)
+    betweenAttacksDelay: 400, // Gap between sequential attacks
     
     // AI pacing
     aiPhaseDelay: 1000,     // AI thinking pause at phase start
-    aiActionDelay: 800,     // Delay between AI actions
-    aiAttackDelay: 600,     // AI attack timing
+    aiActionDelay: 900,     // Delay between AI actions
+    aiAttackDelay: 700,     // AI attack timing (was 600)
     
     // UI feedback
     messageDisplay: 1400,   // How long messages show
     pyreBurnEffect: 1400,   // Pyre burn visual duration
-    spellEffect: 800,       // Spell cast visual
+    spellEffect: 900,       // Spell cast visual
     
     // Death/promotion cascade
-    cascadeDelay: 400,      // Delay between death checks
-    promotionPause: 300     // Pause after promotion
+    cascadeDelay: 450,      // Delay between death checks
+    promotionPause: 350     // Pause after promotion
 };
 
 // ==================== TRAP QUEUE ====================
@@ -4512,6 +4531,12 @@ class Game {
     // Status Effects
     applyBurn(cryptid) {
         if (!cryptid) return false;
+        
+        // Check for ailment immunity (Boggart)
+        if (cryptid.ailmentImmune && cryptid.onAilmentAttempt) {
+            return cryptid.onAilmentAttempt(cryptid, 'burn', this);
+        }
+        
         const wasAlreadyBurning = cryptid.burnTurns > 0;
         cryptid.burnTurns = 3;
         GameEvents.emit('onStatusApplied', { status: 'burn', cryptid, owner: cryptid.owner, refreshed: wasAlreadyBurning });
@@ -4544,6 +4569,12 @@ class Game {
     
     applyCalamity(cryptid, count = 3) {
         if (!cryptid || cryptid.calamityCounters > 0) return false;
+        
+        // Check for ailment immunity (Boggart)
+        if (cryptid.ailmentImmune && cryptid.onAilmentAttempt) {
+            return cryptid.onAilmentAttempt(cryptid, 'calamity', this);
+        }
+        
         cryptid.calamityCounters = count;
         cryptid.hadCalamity = true;
         GameEvents.emit('onStatusApplied', { status: 'calamity', cryptid, owner: cryptid.owner, count });
@@ -4553,6 +4584,12 @@ class Game {
     // Paralyze - prevents untap on owner's next turn, then clears
     applyParalyze(cryptid) {
         if (!cryptid || cryptid.paralyzed) return false;
+        
+        // Check for ailment immunity (Boggart)
+        if (cryptid.ailmentImmune && cryptid.onAilmentAttempt) {
+            return cryptid.onAilmentAttempt(cryptid, 'paralyze', this);
+        }
+        
         cryptid.paralyzed = true;
         cryptid.paralyzeTurns = 1; // Skip exactly 1 untap phase
         cryptid.tapped = true;
@@ -4565,6 +4602,12 @@ class Game {
     // Bleed - 2x damage from attacks, lasts 3 turns
     applyBleed(cryptid) {
         if (!cryptid) return false;
+        
+        // Check for ailment immunity (Boggart)
+        if (cryptid.ailmentImmune && cryptid.onAilmentAttempt) {
+            return cryptid.onAilmentAttempt(cryptid, 'bleed', this);
+        }
+        
         const wasAlreadyBleeding = cryptid.bleedTurns > 0;
         cryptid.bleedTurns = 3;
         GameEvents.emit('onStatusApplied', { status: 'bleed', cryptid, owner: cryptid.owner, refreshed: wasAlreadyBleeding });
@@ -5399,6 +5442,28 @@ class Game {
         // This prevents double-buffing while keeping the effect timing correct
         
         let damage = this.calculateAttackDamage(attacker);
+        
+        // Gremlin Combat Ability - Enemy combatant across has -1 ATK per ailment token
+        // Check if there's a Gremlin in combat across from the attacker
+        const attackerOwner = attacker.owner;
+        const gremlinOwner = attackerOwner === 'player' ? 'enemy' : 'player';
+        const gremlinField = gremlinOwner === 'player' ? this.playerField : this.enemyField;
+        const gremlinCombatCol = this.getCombatCol(gremlinOwner);
+        const gremlinAcross = gremlinField[gremlinCombatCol][attacker.row];
+        if (gremlinAcross?.appliesAilmentAtkDebuff) {
+            // Count attacker's ailment tokens
+            let tokens = 0;
+            if (attacker.burnTurns > 0) tokens += attacker.burnTurns;
+            if (attacker.paralyzed || attacker.paralyzeTurns > 0) tokens += 1;
+            if (attacker.bleedTurns > 0) tokens += attacker.bleedTurns;
+            if (attacker.calamityCounters > 0) tokens += attacker.calamityCounters;
+            
+            if (tokens > 0) {
+                damage = Math.max(0, damage - tokens);
+                GameEvents.emit('onGremlinAtkDebuff', { gremlin: gremlinAcross, attacker, debuff: tokens });
+            }
+        }
+        
         if (attacker.onCombatAttack) {
             GameEvents.emit('onCardCallback', { type: 'onCombatAttack', card: attacker, owner: attacker.owner, target, col: attacker.col, row: attacker.row });
             damage += attacker.onCombatAttack(attacker, target, this) || 0;
@@ -5451,6 +5516,14 @@ class Game {
         const originalDamage = damage;
         damage = Math.max(0, damage - reduction);
         
+        // Gremlin Support Ability - Ailmented enemies deal half damage to combatant
+        const gremlinSupport = target.gremlinSupport;
+        if (target.halfDamageFromAilmented && gremlinSupport && this.getSupport(target) === gremlinSupport && this.hasStatusAilment(attacker)) {
+            const originalAmount = damage;
+            damage = Math.floor(damage / 2);
+            GameEvents.emit('onGremlinHalfDamage', { gremlin: gremlinSupport, attacker, target, originalDamage: originalAmount, reducedDamage: damage });
+        }
+        
         // Emit protection event if damage was reduced
         if (reduction > 0 && originalDamage > 0) {
             GameEvents.emit('onDamageReduced', { 
@@ -5502,6 +5575,33 @@ class Game {
             if (target.onTakeDamage) {
                 GameEvents.emit('onCardCallback', { type: 'onTakeDamage', card: target, owner: target.owner, attacker, damage, col: target.col, row: target.row });
                 target.onTakeDamage(target, attacker, damage, this);
+            }
+            
+            // Myling Support Ability - When combatant takes damage, burn the attacker
+            const mylingSupport = target.mylingSupport;
+            if (target.burnAttackersOnDamage && mylingSupport && this.getSupport(target) === mylingSupport) {
+                this.applyBurn(attacker);
+                GameEvents.emit('onMylingBurn', { myling: mylingSupport, combatant: target, attacker, owner: target.owner });
+            }
+            
+            // Vampire Bat Support Ability - When combatant deals damage, gain 1 pyre
+            const batSupport = attacker.vampireBatSupport;
+            if (attacker.grantPyreOnDamage && batSupport && this.getSupport(attacker) === batSupport) {
+                const attackerOwner = attacker.owner;
+                if (attackerOwner === 'player') this.playerPyre++;
+                else this.enemyPyre++;
+                
+                GameEvents.emit('onPyreGained', { owner: attackerOwner, amount: 1, source: 'Vampire Bat', sourceCryptid: batSupport });
+            }
+            
+            // Lifesteal - Attacker heals for damage dealt (Vampire Bat combat ability)
+            if (attacker.hasLifesteal) {
+                const maxHp = attacker.maxHp || attacker.hp;
+                const healAmount = Math.min(damage, maxHp - (attacker.currentHp || attacker.hp));
+                if (healAmount > 0) {
+                    attacker.currentHp = (attacker.currentHp || attacker.hp) + healAmount;
+                    GameEvents.emit('onLifesteal', { cryptid: attacker, amount: healAmount, damageDealt: damage, owner: attacker.owner });
+                }
             }
             
             if (attacker.attacksApplyCalamity) this.applyCalamity(target, attacker.attacksApplyCalamity);

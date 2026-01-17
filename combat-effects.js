@@ -230,6 +230,59 @@ window.CombatEffects = {
         setTimeout(() => container.remove(), 1200);
     },
     
+    // ==================== SHIELD BUBBLE EFFECT ====================
+    
+    /**
+     * Creates an elegant shield bubble effect around a cryptid when blocking
+     * @param {Object} target - The cryptid being protected
+     * @param {string} color - Shield color (default blue)
+     */
+    playShieldBubble(target, color = '#88ccff') {
+        if (!target) return;
+        
+        const key = `${target.owner}-${target.col}-${target.row}`;
+        const pos = window.tilePositions?.[key];
+        if (!pos) return;
+        
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield) return;
+        
+        // Create shield bubble container
+        const shield = document.createElement('div');
+        shield.className = 'shield-bubble';
+        shield.style.left = pos.x + 'px';
+        shield.style.top = pos.y + 'px';
+        shield.style.setProperty('--shield-color', color);
+        
+        // Inner glow ring
+        const innerRing = document.createElement('div');
+        innerRing.className = 'shield-inner-ring';
+        shield.appendChild(innerRing);
+        
+        // Outer expanding ring
+        const outerRing = document.createElement('div');
+        outerRing.className = 'shield-outer-ring';
+        shield.appendChild(outerRing);
+        
+        // Sparkle particles
+        for (let i = 0; i < 8; i++) {
+            const sparkle = document.createElement('div');
+            sparkle.className = 'shield-sparkle';
+            const angle = (Math.PI * 2 / 8) * i;
+            sparkle.style.setProperty('--angle', angle + 'rad');
+            sparkle.style.animationDelay = (i * 50) + 'ms';
+            shield.appendChild(sparkle);
+        }
+        
+        battlefield.appendChild(shield);
+        
+        // Light screen flash for impact
+        this.lightImpact();
+        
+        // Remove after animation completes
+        setTimeout(() => shield.remove(), 800);
+    },
+    
     showHealNumber(target, amount) {
         if (!target || !amount) return;
         

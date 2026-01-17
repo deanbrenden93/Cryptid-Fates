@@ -834,16 +834,16 @@ window.Multiplayer = {
     },
     
     playAnimation(action, onComplete) {
-        // Timing constants - increased for smoother animations over network
+        // Timing constants - increased to match game-core.js TIMING + network buffer
         const TIMING = {
-            summon: 800,      // summonAnim is 0.6s + buffer
-            attack: 900,      // attackLeft/Right is 0.6s + damage flash + buffer
-            spell: 1000,      // spellTargetPulse is 0.8s + buffer
-            death: 900,       // dying animation is 0.7s + buffer
-            evolve: 1000,     // evolveAnim is 0.8s + buffer
-            trap: 600,        // trapSpawn is 0.4s + buffer
-            aura: 1000,       // auraTargetShimmer + buffer
-            message: 800      // Message display time
+            summon: 950,      // summonAnim is ~850ms + network buffer
+            attack: 1000,     // attackAnim is ~700ms + damage effects + buffer
+            spell: 1100,      // spellTargetPulse is 0.9s + buffer
+            death: 1000,      // dying animation is ~900ms + buffer
+            evolve: 1100,     // evolveAnim is 1s + buffer
+            trap: 700,        // trapSpawn is 0.5s + buffer
+            aura: 1100,       // auraTargetShimmer + buffer
+            message: 900      // Message display time
         };
         
         // Safety wrapper for onComplete

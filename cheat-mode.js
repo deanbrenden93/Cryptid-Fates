@@ -723,7 +723,7 @@ window.CheatMode = {
             cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'sewerAlligator', 'kuchisakeOnna', 
                        'hellhound', 'mothman', 'bogeyman', 'theFlayer', 'mutatedRat',
                        'vampireInitiate', 'elderVampire'],
-            kindling: ['myling', 'shadowPerson', 'hellhoundPup', 'elDuende', 'boggart'],
+            kindling: ['hellpup', 'myling', 'vampireBat', 'gremlin', 'boggart'],
             pyres: ['pyre', 'freshKill', 'ratKing', 'nightfall'],
             traps: ['crossroads', 'bloodCovenant', 'turnToStone'],
             bursts: ['wakingNightmare', 'faceOff'],

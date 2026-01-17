@@ -843,18 +843,28 @@ function renderSprites() {
                     // Row-based z-index for depth: top row (0) = back, bottom row (2) = front
                     sprite.style.zIndex = (row + 1) * 10;
                     if (isNewSprite) {
+                        // SUMMON FLASH FIX: Hide sprite initially if it's a new summon
+                        // The playSummonAnimation will reveal it with proper animation
+                        if (wasJustSummoned && window.CombatEffects?.playSummonAnimation) {
+                            sprite.style.opacity = '0';
+                            sprite.style.visibility = 'hidden';
+                        }
+                        
                         spriteLayer.appendChild(sprite);
                         
                         // Trigger enhanced summon animation for new sprites
                         if (wasJustSummoned && window.CombatEffects?.playSummonAnimation) {
-                            // Small delay to ensure sprite is in DOM
-                            setTimeout(() => {
+                            // Use requestAnimationFrame to ensure DOM is ready before animation
+                            requestAnimationFrame(() => {
+                                // Remove hiding styles - animation CSS will take over
+                                sprite.style.opacity = '';
+                                sprite.style.visibility = '';
                                 window.CombatEffects.playSummonAnimation(
                                     sprite, 
                                     cryptid.element || 'steel', 
                                     cryptid.rarity || 'common'
                                 );
-                            }, 10);
+                            });
                         }
                     }
                 }
@@ -3120,18 +3130,19 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         }
     }
     
-    // Handle negated attacks (e.g., Hellhound Pup protection, Primal Wendigo counter-kill)
+    // Handle negated attacks (e.g., Hellpup Guard, Primal Wendigo counter-kill)
     if (result.negated) {
-        // Show protection animation on defender with combat effects
-        if (targetSprite && !result.attackerKilled) {
-            console.log('[Protection] Negated attack, adding animation to target:', targetSprite);
-            targetSprite.classList.add('protection-block');
-            setTimeout(() => targetSprite.classList.remove('protection-block'), TIMING.protectionAnim);
+        console.log('[Protection] Negated attack - showing shield bubble animation');
+        
+        // Show elegant shield bubble effect on defender
+        if (!result.attackerKilled && result.target) {
+            if (window.CombatEffects?.playShieldBubble) {
+                CombatEffects.playShieldBubble(result.target, '#88ccff');
+            }
             
-            // Show blocked damage number
-            if (window.CombatEffects && result.target) {
+            // Show "BLOCKED" floating text
+            if (window.CombatEffects) {
                 CombatEffects.showDamageNumber(result.target, 0, false, true);
-                CombatEffects.lightImpact();
             }
         }
         

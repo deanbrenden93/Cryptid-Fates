@@ -456,6 +456,43 @@ function aiCombat(onComplete) {
             impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
         }
         
+        // Handle negated attacks (e.g., Hellpup Guard, Primal Wendigo counter-kill)
+        if (result.negated) {
+            console.log('[AI Attack] Attack negated - showing shield bubble animation');
+            
+            if (!result.attackerKilled && result.target) {
+                // Show elegant shield bubble effect
+                if (window.CombatEffects?.playShieldBubble) {
+                    CombatEffects.playShieldBubble(result.target, '#88ccff');
+                }
+                
+                // Show "BLOCKED" floating text
+                if (window.CombatEffects) {
+                    CombatEffects.showDamageNumber(result.target, 0, false, true);
+                }
+                
+                // Show message
+                window.showMessage('🛡️ Attack blocked!', 800);
+            }
+            
+            // Handle attacker killed by counter-attack
+            if (result.attackerKilled && attackerSprite) {
+                const attackerRarity = attacker?.rarity || 'common';
+                if (window.CombatEffects?.playDramaticDeath) {
+                    window.CombatEffects.playDramaticDeath(attackerSprite, 'enemy', attackerRarity);
+                } else {
+                    attackerSprite.classList.add('dying-right');
+                }
+            }
+            
+            // Continue to next attack after animation completes
+            setTimeout(() => {
+                window.renderAll();
+                nextCallback(index + 1);
+            }, 900);
+            return;
+        }
+        
         // Track if using dramatic death
         let usingDramaticDeath = false;
         const targetRarity = result.target?.rarity || 'common';

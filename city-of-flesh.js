@@ -105,159 +105,72 @@ window.CardRegistry = window.CardRegistry || {
 
 // ==================== CITY OF FLESH - KINDLING ====================
 
-// Myling - Kindling - Uncommon - 2 ATK / 2HP - Blood
-CardRegistry.registerKindling('myling', {
-    name: "Myling",
-    sprite: "sprites/myling.png",
-    spriteScale: 1.0,
-    element: "blood",
-    cost: 1,
-    hp: 2,
-    atk: 2,
-    rarity: "uncommon",
-    combatAbility: "Paralyze enemy cryptid upon damage",
-    supportAbility: "Cleanse combatant ailments on summon, +1/+1 per ailment cleansed",
-    // COMBAT: Paralyze enemy on damage - uses existing flag that's inside damage > 0 check
-    attacksApplyParalyze: true,
-    // SUPPORT: On summon, cleanse all status ailments from combatant, gain +1/+1 per ailment
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            let ailmentsCleared = 0;
-            
-            // Check and clear each ailment type
-            if (combatant.paralyzed) {
-                combatant.paralyzed = false;
-                combatant.paralyzeTurns = 0;
-                ailmentsCleared++;
-            }
-            if (combatant.burnTurns > 0) {
-                combatant.burnTurns = 0;
-                ailmentsCleared++;
-            }
-            if (combatant.bleedTurns > 0) {
-                combatant.bleedTurns = 0;
-                ailmentsCleared++;
-            }
-            if (combatant.calamityCounters > 0) {
-                combatant.calamityCounters = 0;
-                ailmentsCleared++;
-            }
-            
-            // Grant Myling +1/+1 for each ailment cleared
-            if (ailmentsCleared > 0) {
-                cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + ailmentsCleared;
-                cryptid.currentHp = (cryptid.currentHp || cryptid.hp) + ailmentsCleared;
-                cryptid.maxHp = (cryptid.maxHp || cryptid.hp) + ailmentsCleared;
-                GameEvents.emit('onCleanse', { cryptid: combatant, cleansedBy: cryptid, ailmentsCleared, owner });
-            }
-        }
-    }
-});
-
-// Shadow Person - Kindling - Common - 0 ATK / 3HP - Void
-CardRegistry.registerKindling('shadowPerson', {
-    name: "Shadow Person",
-    sprite: "sprites/shadow-person.png",
-    spriteScale: 1.0,
-    element: "void",
-    cost: 1,
-    hp: 3,
-    atk: 0,
-    rarity: "common",
-    evolvesInto: 'bogeyman',
-    combatAbility: "Enemies who damage Shadow Person become paralyzed. +2 damage vs paralyzed",
-    supportAbility: "Combatant doesn't tap after attacking. +1 damage to paralyzed",
-    // COMBAT: Paralyze attackers when they deal damage, bonus vs paralyzed
-    bonusVsParalyzed: 2,
-    onTakeDamage: (cryptid, attacker, damage, game) => {
-        // Only paralyze if actually took damage
-        if (damage > 0 && attacker) {
-            game.applyParalyze(attacker);
-        }
-    },
-    // SUPPORT: Combatant doesn't tap, bonus vs paralyzed
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        console.log('[Shadow Person] onSupport called, cryptid:', cryptid.name, 'row:', cryptid.row, 'combatant:', combatant?.name);
-        if (combatant) {
-            combatant.noTapOnAttack = true;
-            combatant.bonusVsParalyzed = (combatant.bonusVsParalyzed || 0) + 1;
-            console.log('[Shadow Person] Set noTapOnAttack=true on', combatant.name);
-        }
-    }
-});
-
-// Hellhound Pup - Kindling - Common - 1 ATK / 1HP - Blood - Evolves into Hellhound
-CardRegistry.registerKindling('hellhoundPup', {
-    name: "Hellhound Pup",
+// Hellpup - Kindling - Common - 1 ATK / 1HP - Blood - Evolves into Hellhound
+CardRegistry.registerKindling('hellpup', {
+    name: "Hellpup",
     sprite: "sprites/hellhound_pup.png",
     spriteScale: 1.0,
     element: "blood",
-    cost: 1,
+    cost: 0,
     hp: 1,
     atk: 1,
     rarity: "common",
     evolvesInto: 'hellhound',
-    combatAbility: "Protect from 1 attack/turn, burn attacker",
-    supportAbility: "Regen combatant 2HP/turn if enemy has ailment",
-    otherAbility: "If dies from burn, evolve into Hellhound",
-    // COMBAT: Each turn, protect from 1 attack and burn the attacker
+    combatAbility: "Guard: Negate the first attack against Hellpup each turn. Burn the attacker.",
+    supportAbility: "Combatant's attacks apply burn.",
+    otherAbility: "If Hellpup would die from burn, evolve into Hellhound instead.",
+    
+    // COMBAT: Guard - negate first attack each turn, burn attacker
     onCombat: (cryptid, owner, game) => {
-        cryptid.protectedFromAttack = true;
+        cryptid.guardAvailable = true;
     },
     onTurnStart: (cryptid, owner, game) => {
-        // Reset protection each turn
+        // Reset guard each turn if in combat
         const combatCol = game.getCombatCol(owner);
         if (cryptid.col === combatCol) {
-            cryptid.protectedFromAttack = true;
+            cryptid.guardAvailable = true;
         }
     },
     onBeforeDefend: (cryptid, attacker, game) => {
-        if (cryptid.protectedFromAttack) {
-            cryptid.protectedFromAttack = false;
+        if (cryptid.guardAvailable) {
+            cryptid.guardAvailable = false;
+            console.log('[Hellpup Guard] Triggered! Burning attacker and negating damage');
             // Burn the attacker
             game.applyBurn(attacker);
-            // Negate the damage
+            // Negate the damage - this triggers the existing protection-block animation in game-ui.js
             cryptid.negateIncomingAttack = true;
-            GameEvents.emit('onProtectionUsed', { cryptid, attacker, owner: cryptid.owner });
+            GameEvents.emit('onGuardUsed', { cryptid, attacker, owner: cryptid.owner });
         }
     },
-    // SUPPORT: Regen combatant 2HP if enemy across has ailment
+    
+    // SUPPORT: Combatant's attacks apply burn
     onSupport: (cryptid, owner, game) => {
-        cryptid.hasHellhoundPupSupport = true;
-    },
-    // Check for regen at turn start (when support)
-    onTurnStartSupport: (cryptid, owner, game) => {
         const combatant = game.getCombatant(cryptid);
-        if (!combatant) return;
-        
-        // Check if any enemy across has ailment
-        const enemiesAcross = game.getCryptidsAcross(cryptid);
-        const hasAilmentedEnemy = enemiesAcross.some(e => game.hasStatusAilment(e));
-        
-        if (hasAilmentedEnemy) {
-            const maxHp = combatant.maxHp || combatant.hp;
-            combatant.currentHp = Math.min(maxHp, combatant.currentHp + 2);
-            GameEvents.emit('onHeal', { cryptid: combatant, amount: 2, source: 'Hellhound Pup', owner });
+        if (combatant) {
+            combatant.attacksApplyBurn = true;
+            combatant.hellpupSupport = cryptid;
         }
     },
-    // BOTH: If dies from burn, evolve into Hellhound
+    
+    // OTHER: If dies from burn, evolve into Hellhound instead
+    // IMPORTANT: Only triggers if killedBy === 'burn', NOT just from having burn while dying
     onDeath: (cryptid, game) => {
-        if (cryptid.killedBy === 'burn' || cryptid.burnTurns > 0) {
+        if (cryptid.killedBy === 'burn') {
             const owner = cryptid.owner;
             // Look for Hellhound in hand or deck
-            const hellhoundInHand = game.findCardInHand(owner, 'hellhound');
-            const hellhoundInDeck = game.findCardInDeck(owner, 'hellhound');
+            const hellhoundInHand = game.findCardInHand ? game.findCardInHand(owner, 'hellhound') : null;
+            const hellhoundInDeck = game.findCardInDeck ? game.findCardInDeck(owner, 'hellhound') : null;
             
             if (hellhoundInHand || hellhoundInDeck) {
                 cryptid.preventDeath = true;
                 const hellhoundCard = hellhoundInHand || hellhoundInDeck;
-                game.evolveInPlace(cryptid, hellhoundCard, owner);
+                if (game.evolveInPlace) {
+                    game.evolveInPlace(cryptid, hellhoundCard, owner);
+                }
                 
-                if (hellhoundInHand) {
+                if (hellhoundInHand && game.removeFromHand) {
                     game.removeFromHand(owner, hellhoundInHand);
-                } else {
+                } else if (hellhoundInDeck && game.removeFromDeck) {
                     game.removeFromDeck(owner, hellhoundInDeck);
                 }
                 
@@ -267,117 +180,203 @@ CardRegistry.registerKindling('hellhoundPup', {
     }
 });
 
-// El Duende - Kindling - Common - 2 ATK / 1HP - Nature
-CardRegistry.registerKindling('elDuende', {
-    name: "El Duende",
-    sprite: "🧝",
+// Myling - Kindling - Common - 0 ATK / 3HP - Blood
+CardRegistry.registerKindling('myling', {
+    name: "Myling",
+    sprite: "sprites/myling.png",
     spriteScale: 1.0,
-    element: "nature",
-    cost: 2,
-    hp: 1,
-    atk: 2,
+    element: "blood",
+    cost: 0,
+    hp: 3,
+    atk: 0,
     rarity: "common",
-    combatAbility: "Remove 1 aura or protection from target before attack",
-    supportAbility: "Trap cards cost -1 pyre for you, +1 for opponent",
-    // COMBAT: Remove aura or protection before attack
-    onBeforeAttack: (attacker, target, game) => {
-        // Try to remove protection first
-        if (target.protectionCharges > 0) {
-            game.removeProtection(target, 1);
-            return;
+    combatAbility: "+1 damage to burning enemies.",
+    supportAbility: "When combatant takes damage from an enemy attack, burn the attacker.",
+    otherAbility: "When Myling dies, burn all cryptids in the enemy row across from it.",
+    
+    // COMBAT: +1 damage to burning enemies
+    bonusVsBurning: 1,
+    onCombatAttack: (attacker, target, game) => {
+        if (target.burnTurns > 0) {
+            return 1; // +1 bonus damage
         }
-        
-        // Otherwise try to remove a random aura
-        if (target.auras && target.auras.length > 0) {
-            const randomIndex = Math.floor(Math.random() * target.auras.length);
-            const removedAura = target.auras.splice(randomIndex, 1)[0];
-            GameEvents.emit('onAuraRemoved', { target, aura: removedAura, removedBy: attacker, owner: attacker.owner });
+        return 0;
+    },
+    
+    // SUPPORT: When combatant takes damage, burn the attacker (handled by game-core)
+    onSupport: (cryptid, owner, game) => {
+        const combatant = game.getCombatant(cryptid);
+        if (combatant) {
+            combatant.mylingSupport = cryptid;
+            combatant.burnAttackersOnDamage = true;
         }
     },
-    // SUPPORT: Modify trap costs - uses the support-based cost modifier system
-    // Owner's traps cost -1, enemy traps cost +1
-    onSupport: (cryptid, owner, game) => {
-        // Set cost modifier on self (checked by getModifiedCost)
-        cryptid.trapCostModifier = -1;  // Your traps cost 1 less
-        cryptid.enemyTrapCostModifier = 1;  // Enemy traps cost 1 more
+    
+    // OTHER: When Myling dies, burn all cryptids in enemy row across
+    onDeath: (cryptid, game) => {
+        const owner = cryptid.owner;
+        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
+        const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
+        const row = cryptid.row;
+        
+        // Burn both combat and support in that row
+        for (let col = 0; col < 2; col++) {
+            const enemy = enemyField[col][row];
+            if (enemy) {
+                game.applyBurn(enemy);
+            }
+        }
+        
+        GameEvents.emit('onMylingDeathBurn', { cryptid, row, owner });
     }
 });
 
-// Boggart - Kindling - Common - 1 ATK / 2HP - Nature
+// Vampire Bat - Kindling - Common - 1 ATK / 2HP - Blood - Evolves into Vampire Initiate
+CardRegistry.registerKindling('vampireBat', {
+    name: "Vampire Bat",
+    sprite: "🦇",
+    spriteScale: 1.0,
+    element: "blood",
+    cost: 0,
+    hp: 2,
+    atk: 1,
+    rarity: "common",
+    evolvesInto: 'vampireInitiate',
+    combatAbility: "Lifesteal: When Vampire Bat deals damage, heal that much HP.",
+    supportAbility: "When combatant deals damage, gain 1 pyre.",
+    
+    // COMBAT: Lifesteal - heals for damage dealt (handled by game-core via hasLifesteal flag)
+    hasLifesteal: true,
+    
+    // SUPPORT: When combatant deals damage, gain 1 pyre (handled by game-core)
+    onSupport: (cryptid, owner, game) => {
+        const combatant = game.getCombatant(cryptid);
+        if (combatant) {
+            combatant.vampireBatSupport = cryptid;
+            combatant.grantPyreOnDamage = true;
+        }
+    }
+});
+
+// Gremlin - Kindling - Common - 1 ATK / 2HP - Steel
+CardRegistry.registerKindling('gremlin', {
+    name: "Gremlin",
+    sprite: "👺",
+    spriteScale: 1.0,
+    element: "steel",
+    cost: 0,
+    hp: 2,
+    atk: 1,
+    rarity: "common",
+    combatAbility: "Enemy combatant across has -1 ATK per ailment token. (Burn grants 3 tokens, paralysis grants 1, etc.)",
+    supportAbility: "Ailmented enemies deal half damage (rounded down) to combatant.",
+    
+    // COMBAT: Enemy combatant across has -1 ATK per ailment token
+    onCombat: (cryptid, owner, game) => {
+        cryptid.appliesAilmentAtkDebuff = true;
+    },
+    
+    // Calculate ATK debuff for enemy across (called by damage calculation)
+    getEnemyAtkDebuff: (cryptid, enemy, game) => {
+        if (!cryptid.appliesAilmentAtkDebuff) return 0;
+        
+        let tokens = 0;
+        // Count ailment tokens
+        if (enemy.burnTurns > 0) tokens += enemy.burnTurns;
+        if (enemy.paralyzed || enemy.paralyzeTurns > 0) tokens += 1;
+        if (enemy.bleedTurns > 0) tokens += enemy.bleedTurns;
+        if (enemy.calamityCounters > 0) tokens += enemy.calamityCounters;
+        
+        return tokens; // -1 ATK per token
+    },
+    
+    // SUPPORT: Ailmented enemies deal half damage to combatant
+    onSupport: (cryptid, owner, game) => {
+        const combatant = game.getCombatant(cryptid);
+        if (combatant) {
+            combatant.gremlinSupport = cryptid;
+            combatant.halfDamageFromAilmented = true;
+        }
+    }
+});
+
+// Boggart - Kindling - Common - 2 ATK / 1HP - Steel - Evolves into Redcap
 CardRegistry.registerKindling('boggart', {
     name: "Boggart",
     sprite: "sprites/boggart.png",
     spriteScale: 1.0,
-    element: "nature",
-    cost: 3,
-    hp: 2,
-    atk: 1,
+    element: "steel",
+    cost: 0,
+    hp: 1,
+    atk: 2,
     rarity: "common",
-    combatAbility: "When damaging ailmented enemy, copy ailment to adjacent enemy",
-    supportAbility: "Traps on same side of field can't be destroyed/negated",
-    // COMBAT: Copy ailment to adjacent enemy when damaging ailmented target
-    onCombatAttack: (attacker, target, game) => {
-        // Check if target has any ailment
-        const hasAilment = game.hasStatusAilment(target);
-        if (!hasAilment) return 0;
+    evolvesInto: 'redcap',
+    combatAbility: "Immune to ailments. When Boggart would gain an ailment, instead gain +1 ATK until end of your current or next turn.",
+    supportAbility: "On enter: Cleanse all ailments from combatant and grant combatant +1 HP per unique ailment cleansed.",
+    
+    // COMBAT: Immune to ailments, gain ATK instead
+    ailmentImmune: true,
+    onAilmentAttempt: (cryptid, ailmentType, game) => {
+        // Instead of gaining ailment, gain +1 ATK temporarily
+        cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + 1;
+        cryptid.tempAtkBonus = (cryptid.tempAtkBonus || 0) + 1;
+        cryptid.tempAtkExpiresTurn = (game.turnNumber || 0) + 1;
         
-        // Find adjacent enemies (above, below, behind)
-        const adjacentTargets = [];
-        const { owner: targetOwner, row: targetRow, col: targetCol } = target;
-        const enemySupportCol = game.getSupportCol(targetOwner);
+        GameEvents.emit('onAilmentImmunity', { 
+            cryptid, 
+            ailmentType, 
+            atkGained: 1, 
+            owner: cryptid.owner 
+        });
         
-        // Above
-        if (targetRow > 0) {
-            const above = game.getFieldCryptid(targetOwner, targetCol, targetRow - 1);
-            if (above) adjacentTargets.push(above);
-        }
-        // Below
-        if (targetRow < 2) {
-            const below = game.getFieldCryptid(targetOwner, targetCol, targetRow + 1);
-            if (below) adjacentTargets.push(below);
-        }
-        // Behind (support)
-        const behind = game.getFieldCryptid(targetOwner, enemySupportCol, targetRow);
-        if (behind && behind !== target) adjacentTargets.push(behind);
-        
-        if (adjacentTargets.length > 0) {
-            const randomTarget = adjacentTargets[Math.floor(Math.random() * adjacentTargets.length)];
-            
-            // Copy ailments
-            if (target.paralyzed) game.applyParalyze(randomTarget);
-            if (target.burnTurns > 0) game.applyBurn(randomTarget);
-            if (target.bleedTurns > 0) game.applyBleed(randomTarget);
-            if (target.calamityCounters > 0) game.applyCalamity(randomTarget, target.calamityCounters);
-            
-            GameEvents.emit('onAilmentSpread', { source: attacker, from: target, to: randomTarget, owner: attacker.owner });
-        }
-        return 0;
+        return false; // Prevent ailment application
     },
-    // SUPPORT: Protect traps on same side (top/bottom row)
-    // Note: Field has rows 0-2 (top, center, bottom), trap slots are 0-1 (top, bottom)
+    
+    // Clear temp ATK at appropriate turn
+    onTurnStart: (cryptid, owner, game) => {
+        if (cryptid.tempAtkBonus && game.turnNumber > cryptid.tempAtkExpiresTurn) {
+            cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) - cryptid.tempAtkBonus;
+            cryptid.tempAtkBonus = 0;
+        }
+    },
+    
+    // SUPPORT: On enter, cleanse combatant and grant +1 HP per unique ailment
     onSupport: (cryptid, owner, game) => {
-        // Only works if Boggart is in top or bottom row, not center
-        if (cryptid.row === 1) return; // Center row - no effect
-        
-        cryptid.protectsTraps = true;
-        // Map field row to trap slot: row 0 → trap 0, row 2 → trap 1
-        const trapSlot = cryptid.row === 0 ? 0 : 1;
-        cryptid.protectedTrapSlot = trapSlot;
-        
-        // Mark traps on this side as protected
-        const traps = owner === 'player' ? game.playerTraps : game.enemyTraps;
-        if (traps[trapSlot]) {
-            traps[trapSlot].protected = true;
-        }
-    },
-    onDeath: (cryptid, game) => {
-        // Remove trap protection when Boggart dies
-        if (cryptid.protectsTraps && cryptid.protectedTrapSlot !== undefined) {
-            const owner = cryptid.owner;
-            const traps = owner === 'player' ? game.playerTraps : game.enemyTraps;
-            const trapSlot = cryptid.protectedTrapSlot;
-            if (traps[trapSlot]) {
-                traps[trapSlot].protected = false;
+        const combatant = game.getCombatant(cryptid);
+        if (combatant) {
+            let uniqueAilments = 0;
+            
+            // Check and clear each ailment type
+            if (combatant.paralyzed || combatant.paralyzeTurns > 0) {
+                combatant.paralyzed = false;
+                combatant.paralyzeTurns = 0;
+                uniqueAilments++;
+            }
+            if (combatant.burnTurns > 0) {
+                combatant.burnTurns = 0;
+                uniqueAilments++;
+            }
+            if (combatant.bleedTurns > 0) {
+                combatant.bleedTurns = 0;
+                uniqueAilments++;
+            }
+            if (combatant.calamityCounters > 0) {
+                combatant.calamityCounters = 0;
+                uniqueAilments++;
+            }
+            
+            // Grant +1 HP per unique ailment cleansed
+            if (uniqueAilments > 0) {
+                combatant.currentHp = (combatant.currentHp || combatant.hp) + uniqueAilments;
+                combatant.maxHp = (combatant.maxHp || combatant.hp) + uniqueAilments;
+                
+                GameEvents.emit('onBoggartCleanse', { 
+                    boggart: cryptid, 
+                    combatant, 
+                    ailmentsCleansed: uniqueAilments, 
+                    hpGranted: uniqueAilments,
+                    owner 
+                });
             }
         }
     }
@@ -621,7 +620,7 @@ CardRegistry.registerCryptid('hellhound', {
     hp: 5,
     atk: 1,
     rarity: "common",
-    evolvesFrom: 'hellhoundPup',
+    evolvesFrom: 'hellpup',
     combatAbility: "Inferno: Burns target before damage. If already burned, burn adjacent enemy",
     supportAbility: "Scorch: Combatant burns enemies across if they have no ailments",
     // COMBAT: Before damage, burn target. If already burned, burn random adjacent
