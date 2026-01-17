@@ -4540,6 +4540,7 @@ class Game {
         const wasAlreadyBurning = cryptid.burnTurns > 0;
         cryptid.burnTurns = 3;
         GameEvents.emit('onStatusApplied', { status: 'burn', cryptid, owner: cryptid.owner, refreshed: wasAlreadyBurning });
+        this.updateAllGremlinDebuffs(); // Update Gremlin ATK debuffs
         return true;
     }
     
@@ -4578,6 +4579,7 @@ class Game {
         cryptid.calamityCounters = count;
         cryptid.hadCalamity = true;
         GameEvents.emit('onStatusApplied', { status: 'calamity', cryptid, owner: cryptid.owner, count });
+        this.updateAllGremlinDebuffs(); // Update Gremlin ATK debuffs
         return true;
     }
     
@@ -4596,6 +4598,7 @@ class Game {
         cryptid.canAttack = false;
         console.log(`[Paralyze] Applied to ${cryptid.name} (${cryptid.owner}): will skip 1 untap`);
         GameEvents.emit('onStatusApplied', { status: 'paralyze', cryptid, owner: cryptid.owner });
+        this.updateAllGremlinDebuffs(); // Update Gremlin ATK debuffs
         return true;
     }
     
@@ -4611,6 +4614,7 @@ class Game {
         const wasAlreadyBleeding = cryptid.bleedTurns > 0;
         cryptid.bleedTurns = 3;
         GameEvents.emit('onStatusApplied', { status: 'bleed', cryptid, owner: cryptid.owner, refreshed: wasAlreadyBleeding });
+        this.updateAllGremlinDebuffs(); // Update Gremlin ATK debuffs
         return true;
     }
     
@@ -4619,6 +4623,7 @@ class Game {
         if (!cryptid || cryptid.curseImmune) return false;
         cryptid.curseTokens = (cryptid.curseTokens || 0) + tokens;
         GameEvents.emit('onStatusApplied', { status: 'curse', cryptid, owner: cryptid.owner, tokens, totalTokens: cryptid.curseTokens });
+        this.updateAllGremlinDebuffs(); // Update Gremlin ATK debuffs
         return true;
     }
     
@@ -4815,6 +4820,67 @@ class Game {
         return this.getEnemyCombatantAcross(cryptid);
     }
     
+    // Calculate Gremlin ailment tokens for an enemy
+    countAilmentTokens(cryptid) {
+        if (!cryptid) return 0;
+        let tokens = 0;
+        if (cryptid.burnTurns > 0) tokens += cryptid.burnTurns;
+        if (cryptid.paralyzed || cryptid.paralyzeTurns > 0) tokens += 1;
+        if (cryptid.bleedTurns > 0) tokens += cryptid.bleedTurns;
+        if (cryptid.calamityCounters > 0) tokens += cryptid.calamityCounters;
+        if (cryptid.curseTokens > 0) tokens += cryptid.curseTokens;
+        return tokens;
+    }
+    
+    // Update Gremlin's ATK debuff on enemy across (called when Gremlin enters combat or ailments change)
+    updateGremlinDebuff(gremlin) {
+        if (!gremlin?.appliesAilmentAtkDebuff) return;
+        
+        const enemyAcross = this.getEnemyCombatantAcross(gremlin);
+        if (enemyAcross) {
+            const tokens = this.countAilmentTokens(enemyAcross);
+            enemyAcross.gremlinAtkDebuff = tokens;
+            enemyAcross.gremlinDebuffSource = gremlin;
+            
+            if (tokens > 0) {
+                GameEvents.emit('onGremlinAtkDebuff', { gremlin, target: enemyAcross, debuff: tokens });
+            }
+        }
+    }
+    
+    // Update all Gremlin debuffs (called when ailments change on any cryptid)
+    updateAllGremlinDebuffs() {
+        // Check both player and enemy fields for Gremlins in combat
+        for (const owner of ['player', 'enemy']) {
+            const field = owner === 'player' ? this.playerField : this.enemyField;
+            const combatCol = this.getCombatCol(owner);
+            
+            for (let row = 0; row < 3; row++) {
+                const cryptid = field[combatCol]?.[row];
+                if (cryptid?.appliesAilmentAtkDebuff) {
+                    this.updateGremlinDebuff(cryptid);
+                }
+            }
+        }
+    }
+    
+    // Remove Gremlin debuff from an enemy (called when Gremlin dies or leaves combat)
+    removeGremlinDebuff(gremlin) {
+        // Find and clear debuff from any enemy that was debuffed by this Gremlin
+        for (const owner of ['player', 'enemy']) {
+            const field = owner === 'player' ? this.playerField : this.enemyField;
+            for (let col = 0; col < 2; col++) {
+                for (let row = 0; row < 3; row++) {
+                    const cryptid = field[col]?.[row];
+                    if (cryptid?.gremlinDebuffSource === gremlin) {
+                        cryptid.gremlinAtkDebuff = 0;
+                        cryptid.gremlinDebuffSource = null;
+                    }
+                }
+            }
+        }
+    }
+    
     // Get adjacent cryptids (same owner, above/below)
     getAdjacentAllies(cryptid) {
         if (!cryptid) return [];
@@ -4922,18 +4988,22 @@ class Game {
     processBurnDamage(owner) {
         const field = owner === 'player' ? this.playerField : this.enemyField;
         const deaths = [];
+        let burnChanged = false;
         for (let c = 0; c < 2; c++) {
             for (let r = 0; r < 3; r++) {
                 const cryptid = field[c][r];
                 if (cryptid && cryptid.burnTurns > 0) {
                     cryptid.currentHp -= 1;
                     cryptid.burnTurns--;
+                    burnChanged = true;
                     GameEvents.emit('onBurnDamage', { cryptid, owner, damage: 1, turnsRemaining: cryptid.burnTurns });
                     // Use getEffectiveHp to consider support HP pooling for combatants
                     if (this.getEffectiveHp(cryptid) <= 0) deaths.push({ cryptid, col: c, row: r });
                 }
             }
         }
+        // Update Gremlin debuffs if any burn changed
+        if (burnChanged) this.updateAllGremlinDebuffs();
         return deaths;
     }
     
@@ -5325,6 +5395,11 @@ class Game {
                 GameEvents.emit('onCardCallback', { type: 'onEnemySummonedAcross', card: enemyAcross, owner: enemy, col: enemyCombatCol, row, triggerCryptid: cryptid });
                 enemyAcross.onEnemySummonedAcross(enemyAcross, cryptid, this);
             }
+            
+            // Check if enemy has Gremlin across - apply ailment debuff to newly summoned cryptid
+            if (enemyAcross?.appliesAilmentAtkDebuff) {
+                this.updateGremlinDebuff(enemyAcross);
+            }
         }
         
         // Multiplayer hook - AFTER all callbacks complete so state is final
@@ -5351,8 +5426,8 @@ class Game {
         const { owner, col, row } = attacker;
         const combatCol = this.getCombatCol(owner);
         const supportCol = this.getSupportCol(owner);
-        // ATK reduction from debuffs and curse tokens
-        let damage = attacker.currentAtk - (attacker.atkDebuff || 0) - (attacker.curseTokens || 0);
+        // ATK reduction from debuffs, curse tokens, and Gremlin ailment debuff
+        let damage = attacker.currentAtk - (attacker.atkDebuff || 0) - (attacker.curseTokens || 0) - (attacker.gremlinAtkDebuff || 0);
         if (col === combatCol) {
             const support = this.getFieldCryptid(owner, supportCol, row);
             if (support) damage += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0);
@@ -5441,28 +5516,8 @@ class Game {
         // Insatiable Hunger buff is now applied in executeAttack() before attack animation
         // This prevents double-buffing while keeping the effect timing correct
         
+        // Gremlin combat ability ATK debuff is applied via gremlinAtkDebuff in calculateAttackDamage
         let damage = this.calculateAttackDamage(attacker);
-        
-        // Gremlin Combat Ability - Enemy combatant across has -1 ATK per ailment token
-        // Check if there's a Gremlin in combat across from the attacker
-        const attackerOwner = attacker.owner;
-        const gremlinOwner = attackerOwner === 'player' ? 'enemy' : 'player';
-        const gremlinField = gremlinOwner === 'player' ? this.playerField : this.enemyField;
-        const gremlinCombatCol = this.getCombatCol(gremlinOwner);
-        const gremlinAcross = gremlinField[gremlinCombatCol][attacker.row];
-        if (gremlinAcross?.appliesAilmentAtkDebuff) {
-            // Count attacker's ailment tokens
-            let tokens = 0;
-            if (attacker.burnTurns > 0) tokens += attacker.burnTurns;
-            if (attacker.paralyzed || attacker.paralyzeTurns > 0) tokens += 1;
-            if (attacker.bleedTurns > 0) tokens += attacker.bleedTurns;
-            if (attacker.calamityCounters > 0) tokens += attacker.calamityCounters;
-            
-            if (tokens > 0) {
-                damage = Math.max(0, damage - tokens);
-                GameEvents.emit('onGremlinAtkDebuff', { gremlin: gremlinAcross, attacker, debuff: tokens });
-            }
-        }
         
         if (attacker.onCombatAttack) {
             GameEvents.emit('onCardCallback', { type: 'onCombatAttack', card: attacker, owner: attacker.owner, target, col: attacker.col, row: attacker.row });
@@ -5516,12 +5571,21 @@ class Game {
         const originalDamage = damage;
         damage = Math.max(0, damage - reduction);
         
-        // Gremlin Support Ability - Ailmented enemies deal half damage to combatant
+        // Gremlin Support Ability - Ailmented enemies deal half damage, otherwise -1 damage
         const gremlinSupport = target.gremlinSupport;
-        if (target.halfDamageFromAilmented && gremlinSupport && this.getSupport(target) === gremlinSupport && this.hasStatusAilment(attacker)) {
+        const actualSupport = this.getSupport(target);
+        const gremlinIsSupport = gremlinSupport && actualSupport === gremlinSupport && !this.isSupportNegated(gremlinSupport);
+        if (gremlinIsSupport) {
             const originalAmount = damage;
-            damage = Math.floor(damage / 2);
-            GameEvents.emit('onGremlinHalfDamage', { gremlin: gremlinSupport, attacker, target, originalDamage: originalAmount, reducedDamage: damage });
+            if (this.hasStatusAilment(attacker)) {
+                // Ailmented attacker deals half damage
+                damage = Math.floor(damage / 2);
+                GameEvents.emit('onGremlinHalfDamage', { gremlin: gremlinSupport, attacker, target, originalDamage: originalAmount, reducedDamage: damage });
+            } else {
+                // Non-ailmented attacker deals 1 less damage
+                damage = Math.max(0, damage - 1);
+                GameEvents.emit('onGremlinDamageReduction', { gremlin: gremlinSupport, attacker, target, originalDamage: originalAmount, reducedDamage: damage });
+            }
         }
         
         // Emit protection event if damage was reduced
@@ -5871,6 +5935,16 @@ class Game {
         this.removeLatch(cryptid);
         this.setFieldCryptid(owner, col, row, null);
         
+        // If the dying cryptid was a Gremlin, remove its debuff from enemies
+        if (cryptid.appliesAilmentAtkDebuff) {
+            this.removeGremlinDebuff(cryptid);
+        }
+        // If the dying cryptid had a Gremlin debuff, clear the reference
+        if (cryptid.gremlinDebuffSource) {
+            cryptid.gremlinAtkDebuff = 0;
+            cryptid.gremlinDebuffSource = null;
+        }
+        
         const oldDeaths = owner === 'player' ? this.playerDeaths : this.enemyDeaths;
         if (owner === 'player') {
             this.playerDeaths += deathCount;
@@ -6118,6 +6192,15 @@ class Game {
             }
             GameEvents.emit('onEnterCombat', { cryptid: support, owner, row, source: 'promotion' });
             
+            // Check if enemy has Gremlin across - apply ailment debuff to promoted cryptid
+            const enemyOwner = owner === 'player' ? 'enemy' : 'player';
+            const enemyCombatCol = this.getCombatCol(enemyOwner);
+            const enemyField = enemyOwner === 'player' ? this.playerField : this.enemyField;
+            const enemyAcross = enemyField[enemyCombatCol]?.[row];
+            if (enemyAcross?.appliesAilmentAtkDebuff) {
+                this.updateGremlinDebuff(enemyAcross);
+            }
+            
             return support;
         }
         return null;
@@ -6179,6 +6262,15 @@ class Game {
             if (existingSupport?.onSupport && !this.isSupportNegated(existingSupport)) {
                 GameEvents.emit('onCardCallback', { type: 'onSupport', card: existingSupport, owner, col: supportCol, row, reason: 'kindlingSummoned', combatant: cryptid });
                 existingSupport.onSupport(existingSupport, owner, this);
+            }
+            
+            // Check if enemy has Gremlin across - apply ailment debuff to newly summoned kindling
+            const enemyOwner = owner === 'player' ? 'enemy' : 'player';
+            const enemyCombatCol = this.getCombatCol(enemyOwner);
+            const enemyField = enemyOwner === 'player' ? this.playerField : this.enemyField;
+            const enemyAcross = enemyField[enemyCombatCol]?.[row];
+            if (enemyAcross?.appliesAilmentAtkDebuff) {
+                this.updateGremlinDebuff(enemyAcross);
             }
         }
         GameEvents.emit('onSummon', { owner, cryptid, col, row, isSupport: col === supportCol, isKindling: true });

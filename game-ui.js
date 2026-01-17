@@ -680,7 +680,7 @@ function renderSprites() {
                         continue;
                     }
                     
-                    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0);
+                    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0) - (cryptid.gremlinAtkDebuff || 0);
                     let displayHp = cryptid.currentHp;
                     let displayMaxHp = cryptid.maxHp || cryptid.hp;
                     if (col === combatCol) {
@@ -4353,7 +4353,7 @@ function showCryptidTooltip(cryptid, col, row, owner) {
     
     const combatCol = game.getCombatCol(owner);
     const supportCol = game.getSupportCol(owner);
-    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0);
+    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0) - (cryptid.gremlinAtkDebuff || 0);
     let displayHp = cryptid.currentHp;
     let displayMaxHp = cryptid.maxHp;
     
@@ -5106,13 +5106,21 @@ function setupGameEventListeners() {
             setTimeout(() => targetEl.classList.remove('pyre-flash-gain'), 400);
         }
         
-        // Trigger ember animation for special pyre sources (not turn start, pyre burn handled elsewhere)
+        // Trigger ember animation for pyre gains (skip sources handled elsewhere)
         const amount = data.amount || 1;
         if (data.owner === 'player' && amount > 0 && window.CombatEffects?.playPyreBurn) {
-            // Only animate for specific sources (pyreFuel, huntTrap, etc.)
-            // Skip: turnStart (every turn), pyreBurn (handled by button), pyreCard (handled by executePyreCard)
-            const animatedSources = ['pyreFuel', 'huntTrap'];
-            if (animatedSources.includes(data.source)) {
+            // Skip sources that are handled elsewhere (have their own animations)
+            // - pyreBurn: handled by pyre burn button with its own animation
+            // - pyreCard: handled by executePyreCard with its own animation
+            // - Sources with manual playPyreBurn calls in their card definitions:
+            const skipSources = [
+                'pyreBurn', 'Pyre card',
+                // Cards that manually animate (putrid-swamp.js)
+                'Swamp Rat support', 'Plague Rat support', 'Mama Brigitte',
+                // Cards that manually animate (city-of-flesh.js)
+                'The Flayer', 'Vampire Initiate Siphon', 'Blood Pact', 'Elder Vampire Undying'
+            ];
+            if (!skipSources.includes(data.source)) {
                 // Find source cryptid sprite if available for start position
                 const sourceCryptid = data.sourceCryptid;
                 let sourceElement = null;
@@ -5170,14 +5178,14 @@ window.updateSpriteHealthBar = function(owner, col, row) {
     const combatCol = game.getCombatCol(owner);
     const supportCol = game.getSupportCol(owner);
     
-    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0);
+    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0) - (cryptid.gremlinAtkDebuff || 0);
     let displayHp = cryptid.currentHp;
     let displayMaxHp = cryptid.maxHp || cryptid.hp;
     
     if (col === combatCol) {
         const support = game.getFieldCryptid(owner, supportCol, row);
         if (support) {
-            displayAtk += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0);
+            displayAtk += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0) - (support.gremlinAtkDebuff || 0);
             displayHp += support.currentHp;
             displayMaxHp += support.maxHp || support.hp;
         }

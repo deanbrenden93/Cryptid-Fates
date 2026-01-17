@@ -269,33 +269,21 @@ CardRegistry.registerKindling('gremlin', {
     atk: 1,
     rarity: "common",
     combatAbility: "Enemy combatant across has -1 ATK per ailment token. (Burn grants 3 tokens, paralysis grants 1, etc.)",
-    supportAbility: "Ailmented enemies deal half damage (rounded down) to combatant.",
+    supportAbility: "Ailmented enemies deal half damage when attacking combatant. Otherwise, combatant receives one fewer damage from attacks.",
     
-    // COMBAT: Enemy combatant across has -1 ATK per ailment token
+    // COMBAT: Enemy combatant across has -1 ATK per ailment token (visible debuff)
     onCombat: (cryptid, owner, game) => {
         cryptid.appliesAilmentAtkDebuff = true;
+        // Apply initial debuff to enemy across
+        game.updateGremlinDebuff(cryptid);
     },
     
-    // Calculate ATK debuff for enemy across (called by damage calculation)
-    getEnemyAtkDebuff: (cryptid, enemy, game) => {
-        if (!cryptid.appliesAilmentAtkDebuff) return 0;
-        
-        let tokens = 0;
-        // Count ailment tokens
-        if (enemy.burnTurns > 0) tokens += enemy.burnTurns;
-        if (enemy.paralyzed || enemy.paralyzeTurns > 0) tokens += 1;
-        if (enemy.bleedTurns > 0) tokens += enemy.bleedTurns;
-        if (enemy.calamityCounters > 0) tokens += enemy.calamityCounters;
-        
-        return tokens; // -1 ATK per token
-    },
-    
-    // SUPPORT: Ailmented enemies deal half damage to combatant
+    // SUPPORT: Gremlin protection - half damage from ailmented, or -1 damage from non-ailmented
     onSupport: (cryptid, owner, game) => {
+        cryptid.isGremlinSupport = true;
         const combatant = game.getCombatant(cryptid);
         if (combatant) {
             combatant.gremlinSupport = cryptid;
-            combatant.halfDamageFromAilmented = true;
         }
     }
 });
