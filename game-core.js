@@ -2423,6 +2423,37 @@ const MatchLog = {
             });
         });
         
+        // Gargoyle of the Grand Library - Stone Bastion half damage
+        GameEvents.on('onStoneBastionHalfDamage', (data) => {
+            this.log('ABILITY', 'Stone Bastion', {
+                cardName: data.target?.name,
+                abilityName: 'Stone Bastion',
+                effect: `Half damage from ailmented attacker (${data.originalDamage} → ${data.reducedDamage})`,
+                owner: data.owner
+            });
+        });
+        
+        // Gargoyle of the Grand Library - Draw on ailmented attack
+        GameEvents.on('onGargoyleDrawFromDefense', (data) => {
+            this.log('ABILITY', 'Stone Bastion Draw', {
+                cardName: data.cryptid?.name,
+                abilityName: 'Stone Bastion',
+                effect: 'Drew a card after being attacked by ailmented enemy',
+                owner: data.owner
+            });
+        });
+        
+        // Gargoyle of the Grand Library - Support draw on ailmented kill
+        GameEvents.on('onLibraryGargoyleSupportDraw', (data) => {
+            this.log('ABILITY', 'Library Gargoyle Support', {
+                cardName: data.support?.name,
+                abilityName: 'Support',
+                target: data.target?.name,
+                effect: 'Drew 2 cards after combatant killed ailmented enemy',
+                owner: data.owner
+            });
+        });
+        
         // Primal Wendigo Counter
         GameEvents.on('onPrimalCounter', (data) => {
             this.log('ABILITY', 'Counter', {
@@ -3219,6 +3250,36 @@ const EventLog = {
             this.addEntry({
                 type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🗿',
                 text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> ${effect} ${combatantName}!`
+            });
+        });
+        
+        // Gargoyle of the Grand Library - Stone Bastion half damage
+        GameEvents.on('onStoneBastionHalfDamage', (data) => {
+            const name = data.target?.name || 'Gargoyle';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🗿',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> Stone Bastion: halved damage (${data.originalDamage} → ${data.reducedDamage})!`
+            });
+        });
+        
+        // Gargoyle of the Grand Library - Draw on ailmented attack
+        GameEvents.on('onGargoyleDrawFromDefense', (data) => {
+            const name = data.cryptid?.name || 'Gargoyle';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '📚',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span> Stone Bastion: drew a card from ailmented attacker!`
+            });
+        });
+        
+        // Gargoyle of the Grand Library - Support draw on ailmented kill
+        GameEvents.on('onLibraryGargoyleSupportDraw', (data) => {
+            const supportName = data.support?.name || 'Gargoyle';
+            const isPlayer = data.owner === 'player';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '📚',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> support: drew 2 cards from ailmented kill!`
             });
         });
         
@@ -5645,6 +5706,15 @@ class Game {
             }
         }
         
+        // Gargoyle of the Grand Library Combat Ability - Stone Bastion: Half damage from ailmented enemies
+        if (target.stoneBastion && this.hasStatusAilment(attacker)) {
+            const originalAmount = damage;
+            damage = Math.floor(damage / 2);
+            target.stoneBastion = false; // Reset flag
+            GameEvents.emit('onStoneBastionHalfDamage', { target, attacker, originalDamage: originalAmount, reducedDamage: damage, owner: target.owner });
+        }
+        target.stoneBastion = false; // Always reset flag after check
+        
         // Emit protection event if damage was reduced
         if (reduction > 0 && originalDamage > 0) {
             GameEvents.emit('onDamageReduced', { 
@@ -5696,6 +5766,12 @@ class Game {
             if (target.onTakeDamage) {
                 GameEvents.emit('onCardCallback', { type: 'onTakeDamage', card: target, owner: target.owner, attacker, damage, col: target.col, row: target.row });
                 target.onTakeDamage(target, attacker, damage, this);
+            }
+            
+            // onDamaged callback - triggers after taking damage (e.g., Gargoyle of the Grand Library)
+            if (target.onDamaged) {
+                GameEvents.emit('onCardCallback', { type: 'onDamaged', card: target, owner: target.owner, attacker, damage, col: target.col, row: target.row });
+                target.onDamaged(target, attacker, damage, this);
             }
             
             // Myling Support Ability - When combatant takes damage, burn the attacker

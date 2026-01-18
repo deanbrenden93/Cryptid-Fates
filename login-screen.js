@@ -280,6 +280,8 @@ const GameFlow = {
 
 const LoginScreen = {
     isVisible: false,
+    animationCompleted: false,
+    animationSkipped: false,
     
     /**
      * Create and show the login screen
@@ -287,6 +289,8 @@ const LoginScreen = {
     show() {
         if (this.isVisible) return;
         this.isVisible = true;
+        this.animationCompleted = false;
+        this.animationSkipped = false;
         
         // Create overlay
         const overlay = document.createElement('div');
@@ -385,6 +389,136 @@ const LoginScreen = {
         requestAnimationFrame(() => {
             overlay.classList.add('visible');
         });
+        
+        // Track animation completion
+        this.setupAnimationTracking(overlay);
+        
+        // Add click/tap to skip animation
+        this.setupAnimationSkip(overlay);
+        
+        // Handle resize - preserve animation state
+        this.resizeHandler = () => this.preserveAnimationState();
+        window.addEventListener('resize', this.resizeHandler);
+    },
+    
+    /**
+     * Setup tracking for when intro animation completes
+     */
+    setupAnimationTracking(overlay) {
+        const content = overlay.querySelector('.login-content');
+        if (content) {
+            content.addEventListener('animationend', (e) => {
+                if (e.animationName === 'contentFadeIn') {
+                    this.animationCompleted = true;
+                    this.applyFinalAnimationState();
+                }
+            });
+        }
+        
+        // Also set a fallback timer in case animationend doesn't fire
+        setTimeout(() => {
+            if (!this.animationCompleted && !this.animationSkipped) {
+                this.animationCompleted = true;
+                this.applyFinalAnimationState();
+            }
+        }, 5000); // Animation should complete by ~4.6s (3.8s delay + 0.8s animation)
+    },
+    
+    /**
+     * Setup click/tap handler to skip animation
+     */
+    setupAnimationSkip(overlay) {
+        const skipHandler = (e) => {
+            // Don't skip if clicking on buttons or inputs
+            if (e.target.closest('button, input, a')) return;
+            // Don't skip if animation already done
+            if (this.animationCompleted || this.animationSkipped) return;
+            
+            this.skipAnimation();
+        };
+        
+        overlay.addEventListener('click', skipHandler);
+        overlay.addEventListener('touchstart', skipHandler, { passive: true });
+    },
+    
+    /**
+     * Skip all intro animations and show final state immediately
+     */
+    skipAnimation() {
+        if (this.animationSkipped) return;
+        this.animationSkipped = true;
+        this.animationCompleted = true;
+        
+        const overlay = document.getElementById('login-screen');
+        if (!overlay) return;
+        
+        // Add class to disable all animations
+        overlay.classList.add('animation-skipped');
+        
+        // Apply final state
+        this.applyFinalAnimationState();
+    },
+    
+    /**
+     * Apply the final animation state directly via inline styles
+     * This prevents resize from resetting animations
+     */
+    applyFinalAnimationState() {
+        const overlay = document.getElementById('login-screen');
+        if (!overlay) return;
+        
+        const logoWrapper = overlay.querySelector('.login-logo-wrapper');
+        const logoImg = overlay.querySelector('.login-logo-img');
+        const content = overlay.querySelector('.login-content');
+        
+        if (logoWrapper) {
+            // Apply final position based on current viewport
+            logoWrapper.style.animation = 'none';
+            logoWrapper.style.top = this.getLogoFinalTop();
+            logoWrapper.style.transform = 'translate(-50%, 0)';
+        }
+        
+        if (logoImg) {
+            logoImg.style.animation = 'none';
+            logoImg.style.opacity = '1';
+            logoImg.style.filter = 'drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5)) blur(0px)';
+            logoImg.style.transform = 'translateZ(0) translateY(0) rotateX(0deg) scale(1)';
+        }
+        
+        if (content) {
+            content.style.animation = 'none';
+            content.style.opacity = '1';
+            content.style.transform = 'translateY(0)';
+            content.style.pointerEvents = 'auto';
+        }
+    },
+    
+    /**
+     * Get the final top position for the logo based on current viewport
+     */
+    getLogoFinalTop() {
+        const height = window.innerHeight;
+        const isLandscape = window.innerWidth > window.innerHeight;
+        
+        if (isLandscape) {
+            if (height <= 380) {
+                return '15px';
+            } else if (height <= 500) {
+                return `clamp(20px, 5vmin, 40px)`;
+            }
+        }
+        // Portrait or regular
+        return `clamp(20px, 4vh, 60px)`;
+    },
+    
+    /**
+     * Preserve animation state on resize
+     */
+    preserveAnimationState() {
+        if (this.animationCompleted || this.animationSkipped) {
+            // Re-apply final state with potentially new values for responsive layout
+            this.applyFinalAnimationState();
+        }
     },
     
     /**
@@ -652,11 +786,19 @@ const LoginScreen = {
         // Stop ember tunnel effect
         this.stopEmberTunnel();
         
+        // Remove resize handler
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
+            this.resizeHandler = null;
+        }
+        
         overlay.classList.remove('visible');
         
         setTimeout(() => {
             overlay.remove();
             this.isVisible = false;
+            this.animationCompleted = false;
+            this.animationSkipped = false;
         }, 300);
     },
     
@@ -737,6 +879,26 @@ const loginStyles = `
 
 #login-screen.visible {
     opacity: 1;
+}
+
+/* Animation skipped - show final state immediately */
+#login-screen.animation-skipped .login-logo-wrapper,
+#login-screen.animation-skipped .login-logo-img,
+#login-screen.animation-skipped .login-content {
+    animation: none !important;
+    transition: none !important;
+}
+
+#login-screen.animation-skipped .login-logo-img {
+    opacity: 1 !important;
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5)) blur(0px) !important;
+    transform: translateZ(0) translateY(0) rotateX(0deg) scale(1) !important;
+}
+
+#login-screen.animation-skipped .login-content {
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+    pointer-events: auto !important;
 }
 
 /* Background image layer with heat distortion */

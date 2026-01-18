@@ -381,6 +381,11 @@ window.Multiplayer = {
             hasRooftopGargoyleSupport: cryptid.hasRooftopGargoyleSupport || false,
             gargoyleSaveUsed: cryptid.gargoyleSaveUsed || false,
             
+            // Gargoyle of the Grand Library
+            hasLibraryGargoyleSupport: cryptid.hasLibraryGargoyleSupport || false,
+            libraryGargoyleHpBuff: cryptid.libraryGargoyleHpBuff || false,
+            stoneBastion: cryptid.stoneBastion || false,
+            
             // Graveyard Guardian
             negatesEnemySupport: cryptid.negatesEnemySupport || false,
             
@@ -652,6 +657,9 @@ window.Multiplayer = {
                     ourCryptid.splitDamageActive = theirView.splitDamageActive;
                     ourCryptid.hasRooftopGargoyleSupport = theirView.hasRooftopGargoyleSupport;
                     ourCryptid.gargoyleSaveUsed = theirView.gargoyleSaveUsed;
+                    ourCryptid.hasLibraryGargoyleSupport = theirView.hasLibraryGargoyleSupport;
+                    ourCryptid.libraryGargoyleHpBuff = theirView.libraryGargoyleHpBuff;
+                    ourCryptid.stoneBastion = theirView.stoneBastion;
                     ourCryptid.negatesEnemySupport = theirView.negatesEnemySupport;
                     ourCryptid.hasSpiritFireSupport = theirView.hasSpiritFireSupport;
                     ourCryptid.explodeOnDeath = theirView.explodeOnDeath;

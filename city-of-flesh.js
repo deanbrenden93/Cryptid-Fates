@@ -429,56 +429,218 @@ CardRegistry.registerCryptid('rooftopGargoyle', {
     }
 });
 
-// Library Gargoyle - Common - 2 ATK / 4HP - Steel - 3 Pyres - Evolves from Rooftop Gargoyle
+// Gargoyle of the Grand Library - Uncommon - 3 ATK / 6HP - Steel - 5 Pyres - Evolves from Rooftop Gargoyle
 CardRegistry.registerCryptid('libraryGargoyle', {
-    name: "Library Gargoyle",
+    name: "Gargoyle of the Grand Library",
     sprite: "sprites/library-gargoylealt2.png",
     spriteScale: 1.3,
     cardSpriteScale: 1.0,
     spriteFlip: true,
     element: "steel",
-    cost: 3,
-    hp: 4,
-    atk: 2,
-    rarity: "common",
+    cost: 5,
+    hp: 6,
+    atk: 3,
+    rarity: "uncommon",
     evolvesFrom: 'rooftopGargoyle',
-    combatAbility: "When damaging calamity target: remove 1 counter, gain +1/+2",
-    supportAbility: "If combatant diagonal from ailmented enemy: +2/+2",
-    // COMBAT: Remove calamity, gain stats when damaging calamity target
-    onCombatAttack: (attacker, target, game) => {
-        if (target.calamityCounters > 0) {
-            // Remove 1 calamity counter
-            target.calamityCounters--;
-            if (target.calamityCounters <= 0) {
-                target.calamityCounters = 0;
-                target.hadCalamity = false;
-            }
-            
-            // Grant Library Gargoyle +1 ATK / +2 HP permanently
-            attacker.currentAtk = (attacker.currentAtk || attacker.atk) + 1;
-            attacker.baseAtk = (attacker.baseAtk || attacker.atk) + 1;
-            attacker.currentHp = (attacker.currentHp || attacker.hp) + 2;
-            attacker.maxHp = (attacker.maxHp || attacker.hp) + 2;
-            
-            GameEvents.emit('onCalamityConsume', { attacker, target, owner: attacker.owner });
+    combatAbility: "Stone Bastion: Take half damage from ailmented enemies (rounded down). When attacked by an ailmented enemy, draw a card.",
+    supportAbility: "On becoming support, if any enemy has an ailment, grant +3 HP to combatant. When combatant kills an ailmented enemy, draw 2 cards.",
+    otherAbility: "At turn start, if 2+ enemies are ailmented, gain 1 pyre.",
+    
+    // COMBAT: Stone Bastion - Take half damage from ailmented enemies
+    // Note: This returns a multiplier for damage reduction, not a flat value
+    // For "half damage rounded down", we need special handling
+    onDefend: (defender, attacker, game) => {
+        if (game.hasStatusAilment(attacker)) {
+            // Mark for half damage processing (handled in attack function)
+            defender.stoneBastion = true;
+            return 0; // Actual reduction handled via stoneBastion flag
         }
         return 0;
     },
-    // SUPPORT: Check for diagonal enemies with ailments
+    
+    // COMBAT: When attacked by ailmented enemy, draw a card (triggers after taking damage)
+    onDamaged: (cryptid, attacker, damage, game) => {
+        if (attacker && game.hasStatusAilment(attacker)) {
+            // Draw a card for the gargoyle's owner
+            const owner = cryptid.owner;
+            if (owner === 'player') {
+                game.drawCard('player');
+                if (typeof queueAbilityAnimation !== 'undefined') {
+                    queueAbilityAnimation({
+                        type: 'draw',
+                        target: cryptid,
+                        message: `📚 ${cryptid.name} draws from ailmented attack!`
+                    });
+                }
+            } else {
+                game.drawCard('enemy');
+            }
+            GameEvents.emit('onGargoyleDrawFromDefense', { cryptid, attacker, owner });
+        }
+    },
+    
+    // SUPPORT: On becoming support, if any enemy has ailment, grant +3 HP to combatant.
+    // When combatant kills an ailmented enemy, draw 2 cards.
     onSupport: (cryptid, owner, game) => {
         const combatant = game.getCombatant(cryptid);
         if (!combatant) return;
         
-        // Get diagonal enemies
-        const diagonals = game.getDiagonalEnemies(combatant);
-        const hasAilmentedDiagonal = diagonals.some(e => game.hasStatusAilment(e));
+        // Mark support relationship
+        combatant.hasLibraryGargoyleSupport = true;
+        combatant.libraryGargoyleSupport = cryptid;
         
-        if (hasAilmentedDiagonal) {
-            combatant.currentAtk = (combatant.currentAtk || combatant.atk) + 2;
-            combatant.currentHp = (combatant.currentHp || combatant.hp) + 2;
-            combatant.maxHp = (combatant.maxHp || combatant.hp) + 2;
-            combatant.libraryGargoyleBuff = true;
-            GameEvents.emit('onLibraryGargoyleBuff', { support: cryptid, combatant, owner });
+        // On becoming support: Check if any enemy has an ailment, grant +3 HP (one-time)
+        if (!combatant.libraryGargoyleHpBuff) {
+            const enemyField = owner === 'player' ? game.enemyField : game.playerField;
+            let anyEnemyAilmented = false;
+            for (let col = 0; col < 2; col++) {
+                for (let row = 0; row < 3; row++) {
+                    const enemy = enemyField[col]?.[row];
+                    if (enemy && game.hasStatusAilment(enemy)) {
+                        anyEnemyAilmented = true;
+                        break;
+                    }
+                }
+                if (anyEnemyAilmented) break;
+            }
+            
+            if (anyEnemyAilmented) {
+                combatant.currentHp = (combatant.currentHp || combatant.hp) + 3;
+                combatant.maxHp = (combatant.maxHp || combatant.hp) + 3;
+                combatant.libraryGargoyleHpBuff = true;
+                
+                if (typeof queueAbilityAnimation !== 'undefined') {
+                    queueAbilityAnimation({
+                        type: 'buff',
+                        target: combatant,
+                        message: `📚 ${cryptid.name} grants +3 HP!`
+                    });
+                }
+            }
+        }
+        
+        // Set up kill listener for drawing 2 cards (only once)
+        if (!cryptid.libraryGargoyleKillListenerSet) {
+            cryptid.libraryGargoyleKillListenerSet = true;
+            
+            const killListener = (data) => {
+                // Check if this gargoyle is still in support position
+                const myCombatant = game.getCombatant(cryptid);
+                if (!myCombatant) return;
+                
+                const currentSupport = game.getSupport(myCombatant);
+                if (currentSupport !== cryptid) return;
+                
+                // Check if the combatant (this gargoyle's combatant) made the kill
+                // Compare by position since object references can be unreliable
+                // Note: onKill uses "killer" and "victim", not "attacker" and "target"
+                const killerMatches = data.killer && 
+                    data.killer.owner === myCombatant.owner && 
+                    data.killer.col === myCombatant.col && 
+                    data.killer.row === myCombatant.row;
+                
+                if (!killerMatches) return;
+                
+                // Check if victim was ailmented
+                const victimWasAilmented = data.victim && (
+                    data.victim.burnTurns > 0 ||
+                    data.victim.paralyzed ||
+                    data.victim.bleedTurns > 0 ||
+                    data.victim.calamityCounters > 0 ||
+                    data.victim.curseTokens > 0
+                );
+                
+                if (victimWasAilmented) {
+                    // Draw 2 cards
+                    const gargoyleOwner = cryptid.owner;
+                    if (gargoyleOwner === 'player') {
+                        game.drawCard('player');
+                        game.drawCard('player');
+                        if (typeof queueAbilityAnimation !== 'undefined') {
+                            queueAbilityAnimation({
+                                type: 'draw',
+                                target: cryptid,
+                                message: `📚 ${cryptid.name} grants 2 cards for ailmented kill!`
+                            });
+                        }
+                    } else {
+                        game.drawCard('enemy');
+                        game.drawCard('enemy');
+                    }
+                    GameEvents.emit('onLibraryGargoyleSupportDraw', { support: cryptid, combatant: myCombatant, target: data.victim, owner: gargoyleOwner });
+                }
+            };
+            
+            GameEvents.on('onKill', killListener);
+            cryptid.libraryGargoyleKillListener = killListener;
+        }
+    },
+    
+    // Clean up when leaving support
+    onDeath: (cryptid, game) => {
+        // Clean up kill listener
+        if (cryptid.libraryGargoyleKillListener) {
+            GameEvents.off('onKill', cryptid.libraryGargoyleKillListener);
+            cryptid.libraryGargoyleKillListener = null;
+            cryptid.libraryGargoyleKillListenerSet = false;
+        }
+        
+        // Clean up combatant reference
+        const combatant = game.getCombatant(cryptid);
+        if (combatant && combatant.libraryGargoyleSupport === cryptid) {
+            combatant.hasLibraryGargoyleSupport = false;
+            combatant.libraryGargoyleSupport = null;
+            // Note: HP buff stays even if support dies (it was granted while condition was met)
+        }
+    },
+    
+    // OTHER: At turn start, if 2+ enemies are ailmented, gain 1 pyre
+    onTurnStart: (cryptid, owner, game) => {
+        // Only trigger on the gargoyle owner's turn
+        if (game.currentTurn !== owner) return;
+        
+        const enemyField = owner === 'player' ? game.enemyField : game.playerField;
+        let ailmentedCount = 0;
+        for (let col = 0; col < 2; col++) {
+            for (let row = 0; row < 3; row++) {
+                const enemy = enemyField[col]?.[row];
+                if (enemy && game.hasStatusAilment(enemy)) {
+                    ailmentedCount++;
+                }
+            }
+        }
+        
+        if (ailmentedCount >= 2) {
+            if (owner === 'player') {
+                game.playerPyre = (game.playerPyre || 0) + 1;
+            } else {
+                game.enemyPyre = (game.enemyPyre || 0) + 1;
+            }
+            
+            GameEvents.emit('onPyreGained', { 
+                owner, 
+                amount: 1, 
+                source: `${cryptid.name}'s ailment mastery`,
+                cryptid 
+            });
+            
+            if (typeof queueAbilityAnimation !== 'undefined') {
+                queueAbilityAnimation({
+                    type: 'pyre',
+                    target: cryptid,
+                    message: `🔥 ${cryptid.name} gains pyre from ${ailmentedCount} ailmented enemies!`
+                });
+            }
+        }
+    },
+    
+    // When promoted to combat, clean up support mechanics
+    onCombat: (cryptid, owner, game) => {
+        // Clean up kill listener from support role
+        if (cryptid.libraryGargoyleKillListener) {
+            GameEvents.off('onKill', cryptid.libraryGargoyleKillListener);
+            cryptid.libraryGargoyleKillListener = null;
+            cryptid.libraryGargoyleKillListenerSet = false;
         }
     }
 });
