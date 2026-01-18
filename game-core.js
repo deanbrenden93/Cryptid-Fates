@@ -2412,6 +2412,17 @@ const MatchLog = {
             });
         });
         
+        // Rooftop Gargoyle Stone Skin Save
+        GameEvents.on('onGargoyleSave', (data) => {
+            this.log('ABILITY', 'Stone Skin Save', {
+                cardName: data.support?.name,
+                abilityName: 'Stone Skin',
+                target: data.combatant?.name,
+                effect: data.fullHeal ? 'Saved at FULL HP (ailmented attacker)' : 'Saved at 1 HP',
+                owner: data.owner
+            });
+        });
+        
         // Primal Wendigo Counter
         GameEvents.on('onPrimalCounter', (data) => {
             this.log('ABILITY', 'Counter', {
@@ -3196,6 +3207,18 @@ const EventLog = {
             this.addEntry({
                 type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🛡️',
                 text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${name}</span>'s Bulwark: damage reduced to 1!`
+            });
+        });
+        
+        // Rooftop Gargoyle Stone Skin Save
+        GameEvents.on('onGargoyleSave', (data) => {
+            const supportName = data.support?.name || 'Rooftop Gargoyle';
+            const combatantName = data.combatant?.name || 'combatant';
+            const isPlayer = data.owner === 'player';
+            const effect = data.fullHeal ? 'restored to full HP' : 'saved at 1 HP';
+            this.addEntry({
+                type: 'ability', ownerClass: isPlayer ? 'player-action' : 'enemy-action', icon: '🗿',
+                text: `<span class="name-${isPlayer ? 'player' : 'enemy'}">${supportName}</span> ${effect} ${combatantName}!`
             });
         });
         
@@ -4820,6 +4843,34 @@ class Game {
         return this.getEnemyCombatantAcross(cryptid);
     }
     
+    // Get all adjacent cryptids on the SAME side (above, below, and to the side/behind)
+    // Used for spreading effects like Hellhound's burn spread
+    getAdjacentCryptids(cryptid) {
+        if (!cryptid) return [];
+        const { owner, col, row } = cryptid;
+        const field = owner === 'player' ? this.playerField : this.enemyField;
+        const adjacent = [];
+        
+        // Above (same column, row - 1)
+        if (row > 0) {
+            const above = field[col][row - 1];
+            if (above) adjacent.push(above);
+        }
+        
+        // Below (same column, row + 1)
+        if (row < 2) {
+            const below = field[col][row + 1];
+            if (below) adjacent.push(below);
+        }
+        
+        // To the side (other column, same row - combat/support partner)
+        const otherCol = col === 0 ? 1 : 0;
+        const side = field[otherCol][row];
+        if (side) adjacent.push(side);
+        
+        return adjacent;
+    }
+    
     // Calculate Gremlin ailment tokens for an enemy
     countAilmentTokens(cryptid) {
         if (!cryptid) return 0;
@@ -5548,7 +5599,13 @@ class Game {
         if (target.paralyzed && attacker.bonusVsParalyzed) damage += attacker.bonusVsParalyzed;
         if (attacker.bonusVsAilment && this.hasStatusAilment(target)) damage += attacker.bonusVsAilment;
         
-        // Double damage vs tapped/resting (Elder Vampire support)
+        // Bonus damage vs burning enemies (Hellhound support, Myling combat, etc.)
+        if (target.burnTurns > 0 && attacker.bonusVsBurning) {
+            damage += attacker.bonusVsBurning;
+            GameEvents.emit('onBonusVsBurning', { attacker, target, bonus: attacker.bonusVsBurning });
+        }
+        
+        // Double damage vs tapped/resting
         if (target.tapped && attacker.doubleDamageVsTapped) {
             damage *= 2;
         }
@@ -5664,7 +5721,13 @@ class Game {
                 const healAmount = Math.min(damage, maxHp - (attacker.currentHp || attacker.hp));
                 if (healAmount > 0) {
                     attacker.currentHp = (attacker.currentHp || attacker.hp) + healAmount;
-                    GameEvents.emit('onLifesteal', { cryptid: attacker, amount: healAmount, damageDealt: damage, owner: attacker.owner });
+                    GameEvents.emit('onLifesteal', { 
+                        cryptid: attacker, 
+                        target: target, 
+                        amount: healAmount, 
+                        damageDealt: damage, 
+                        owner: attacker.owner 
+                    });
                 }
             }
             
@@ -5713,6 +5776,62 @@ class Game {
                     damage: damage,
                     message: `⚔ ${attacker.name} cleaves!`
                 });
+            }
+        }
+        
+        // Rooftop Gargoyle Support Ability - Lethal damage prevention
+        // Check BEFORE death processing, AFTER damage is applied
+        if (target.currentHp <= 0 && target.hasRooftopGargoyleSupport) {
+            const gargoyleSupport = target.rooftopGargoyleSupport;
+            // Only triggers if support still exists and ability not used
+            if (gargoyleSupport && !gargoyleSupport.gargoyleSaveUsed && this.getSupport(target) === gargoyleSupport) {
+                // Mark ability as used (one-time only)
+                gargoyleSupport.gargoyleSaveUsed = true;
+                
+                // Remove the support ability from combatant
+                target.hasRooftopGargoyleSupport = false;
+                target.rooftopGargoyleSupport = null;
+                
+                // Check if attacker has an ailment for full HP restore
+                const attackerHasAilment = this.hasStatusAilment(attacker);
+                
+                if (attackerHasAilment) {
+                    // Full HP restore if attacker has ailment
+                    target.currentHp = target.maxHp || target.hp;
+                    GameEvents.emit('onGargoyleSave', { 
+                        support: gargoyleSupport, 
+                        combatant: target, 
+                        attacker, 
+                        fullHeal: true,
+                        owner: target.owner 
+                    });
+                    
+                    if (typeof queueAbilityAnimation !== 'undefined') {
+                        queueAbilityAnimation({
+                            type: 'heal',
+                            target: target,
+                            message: `🗿 ${gargoyleSupport.name} saves ${target.name} at FULL HP!`
+                        });
+                    }
+                } else {
+                    // Survive at 1 HP
+                    target.currentHp = 1;
+                    GameEvents.emit('onGargoyleSave', { 
+                        support: gargoyleSupport, 
+                        combatant: target, 
+                        attacker, 
+                        fullHeal: false,
+                        owner: target.owner 
+                    });
+                    
+                    if (typeof queueAbilityAnimation !== 'undefined') {
+                        queueAbilityAnimation({
+                            type: 'buff',
+                            target: target,
+                            message: `🗿 ${gargoyleSupport.name} saves ${target.name} at 1 HP!`
+                        });
+                    }
+                }
             }
         }
         
@@ -5848,20 +5967,6 @@ class Game {
             this.attackersThisTurn[attacker.owner].push({ key: attacker.key, name: attacker.name });
         }
         
-        // Elder Vampire support - heal 2HP after attack
-        if (attacker.elderVampireSupport) {
-            const hpBefore = attacker.currentHp;
-            attacker.currentHp = Math.min(attacker.maxHp, attacker.currentHp + 2);
-            if (attacker.currentHp > hpBefore) {
-                GameEvents.emit('onHeal', { 
-                    target: attacker, 
-                    amount: 2, 
-                    source: attacker.elderVampireSupport, 
-                    sourceType: 'elderVampireDarkGift' 
-                });
-            }
-        }
-        
         // Multi-attack - hit other enemy combatants (Weaponized Tree)
         if (attacker.hasMultiAttack && !attacker.multiAttackProcessed) {
             attacker.multiAttackProcessed = true; // Prevent recursion
@@ -5899,7 +6004,7 @@ class Game {
             attacker.multiAttackProcessed = false;
         }
         
-        return { damage, killed, protectionBlocked, target, effectiveHpBefore };
+        return { damage, killed, protectionBlocked, target, effectiveHpBefore, hpBefore };
     }
 
     killCryptid(cryptid, killerOwner = null) {

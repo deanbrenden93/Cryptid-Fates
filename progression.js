@@ -280,7 +280,7 @@ window.PlayerData = {
         const starterDecks = {
             'city-of-flesh': {
                 name: 'City of Flesh',
-                cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'vampireInitiate', 'elderVampire', 
+                cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'vampireInitiate', 'vampireLord', 
                            'sewerAlligator', 'kuchisakeOnna', 'hellhound', 'mothman', 'bogeyman', 
                            'theFlayer', 'mutatedRat'],
                 kindling: ['hellpup', 'myling', 'vampireBat', 'gremlin', 'boggart'],

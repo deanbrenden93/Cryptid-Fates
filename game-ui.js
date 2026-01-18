@@ -3243,8 +3243,8 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
     // Combat effects for successful hit (plays in parallel with death zoom if killed)
     if (window.CombatEffects) {
         const damage = result.damage || 0;
-        // Cap displayed damage to effective HP if killed (shows actual HP absorbed, not overkill)
-        const displayDamage = result.killed && result.effectiveHpBefore !== undefined
+        // Always cap displayed damage to target's effective HP (no overdamage display)
+        const displayDamage = result.effectiveHpBefore !== undefined
             ? Math.min(damage, result.effectiveHpBefore)
             : damage;
         const isCrit = displayDamage >= 5;
@@ -4385,7 +4385,12 @@ function showCryptidTooltip(cryptid, col, row, owner) {
     const elementDisplay = elementName ? ` | ${getElementIcon(cryptid.element)} ${elementName}` : '';
     document.getElementById('tooltip-desc').textContent = `HP: ${displayHp}/${displayMaxHp} | ATK: ${displayAtk}${elementDisplay}`;
     document.getElementById('tooltip-combat').textContent = `⚔ ${cryptid.combatAbility || 'None'}`;
-    document.getElementById('tooltip-support').textContent = `✧ ${cryptid.supportAbility || 'None'}`;
+    
+    // Use dynamic getSupportAbility if available (for cards with spendable abilities like Rooftop Gargoyle)
+    const supportAbilityText = cryptid.getSupportAbility 
+        ? cryptid.getSupportAbility(cryptid) 
+        : (cryptid.supportAbility || 'None');
+    document.getElementById('tooltip-support').textContent = `✧ ${supportAbilityText}`;
     
     // Display other ability if present
     const otherAbilityEl = document.getElementById('tooltip-other');
@@ -5115,10 +5120,12 @@ function setupGameEventListeners() {
             // - Sources with manual playPyreBurn calls in their card definitions:
             const skipSources = [
                 'pyreBurn', 'Pyre card',
+                // Pyre cards that animate via executePyreCard
+                'Fresh Kill', 'Rat King', 'Nightfall', 'Burial Ground', 'Cursed Woods', 'Animal Pelts', 'Gris-Gris Bag', 'Swamp Gas',
                 // Cards that manually animate (putrid-swamp.js)
                 'Swamp Rat support', 'Plague Rat support', 'Mama Brigitte',
                 // Cards that manually animate (city-of-flesh.js)
-                'The Flayer', 'Vampire Initiate Siphon', 'Blood Pact', 'Elder Vampire Undying'
+                'The Flayer', 'Vampire Initiate', 'Vampire Initiate Siphon', 'Blood Pact', 'Vampire Lord'
             ];
             if (!skipSources.includes(data.source)) {
                 // Find source cryptid sprite if available for start position
@@ -5146,6 +5153,30 @@ function setupGameEventListeners() {
         if (targetEl) {
             targetEl.classList.add('pyre-flash-spend');
             setTimeout(() => targetEl.classList.remove('pyre-flash-spend'), 400);
+        }
+    });
+    
+    // ==================== BURN APPLICATION ANIMATION ====================
+    // Beautiful fire effect when a monster gets burned for the first time
+    GameEvents.on('onStatusApplied', (data) => {
+        if (data.status === 'burn' && !data.refreshed && data.cryptid && window.CombatEffects?.playBurnApplication) {
+            window.CombatEffects.playBurnApplication(data.cryptid);
+        }
+    });
+    
+    // ==================== LIFESTEAL ANIMATION ====================
+    // Elegant sapping effect showing health flowing from victim to lifestealer
+    GameEvents.on('onLifesteal', (data) => {
+        if (data.cryptid && data.target && data.amount > 0 && window.CombatEffects?.playLifesteal) {
+            window.CombatEffects.playLifesteal(data.cryptid, data.target, data.amount);
+        }
+    });
+    
+    // ==================== GARGOYLE SAVE ANIMATION ====================
+    // Stone guardian protection when Rooftop Gargoyle prevents lethal damage
+    GameEvents.on('onGargoyleSave', (data) => {
+        if (data.support && data.combatant && window.CombatEffects?.playGargoyleSave) {
+            window.CombatEffects.playGargoyleSave(data.support, data.combatant, data.fullHeal);
         }
     });
     

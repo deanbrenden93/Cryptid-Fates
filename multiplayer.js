@@ -377,6 +377,10 @@ window.Multiplayer = {
             soulLinkedTo: cryptid.soulLinkedTo ? { col: cryptid.soulLinkedTo.col, row: cryptid.soulLinkedTo.row } : null,
             splitDamageActive: cryptid.splitDamageActive || false,
             
+            // Rooftop Gargoyle
+            hasRooftopGargoyleSupport: cryptid.hasRooftopGargoyleSupport || false,
+            gargoyleSaveUsed: cryptid.gargoyleSaveUsed || false,
+            
             // Graveyard Guardian
             negatesEnemySupport: cryptid.negatesEnemySupport || false,
             
@@ -646,6 +650,8 @@ window.Multiplayer = {
                     ourCryptid.hasSwampHagSupport = theirView.hasSwampHagSupport;
                     ourCryptid.hasEffigySupport = theirView.hasEffigySupport;
                     ourCryptid.splitDamageActive = theirView.splitDamageActive;
+                    ourCryptid.hasRooftopGargoyleSupport = theirView.hasRooftopGargoyleSupport;
+                    ourCryptid.gargoyleSaveUsed = theirView.gargoyleSaveUsed;
                     ourCryptid.negatesEnemySupport = theirView.negatesEnemySupport;
                     ourCryptid.hasSpiritFireSupport = theirView.hasSpiritFireSupport;
                     ourCryptid.explodeOnDeath = theirView.explodeOnDeath;

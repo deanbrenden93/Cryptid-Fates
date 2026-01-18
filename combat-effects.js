@@ -283,6 +283,96 @@ window.CombatEffects = {
         setTimeout(() => shield.remove(), 800);
     },
     
+    /**
+     * Dramatic stone guardian save animation when Rooftop Gargoyle prevents lethal damage
+     * @param {Object} support - The Rooftop Gargoyle support
+     * @param {Object} combatant - The combatant being saved
+     * @param {boolean} fullHeal - Whether it's a full heal (attacker had ailment) or 1 HP save
+     */
+    playGargoyleSave(support, combatant, fullHeal = false) {
+        if (!combatant) return;
+        
+        const combatantKey = `${combatant.owner}-${combatant.col}-${combatant.row}`;
+        const combatantPos = window.tilePositions?.[combatantKey];
+        if (!combatantPos) return;
+        
+        const supportKey = support ? `${support.owner}-${support.col}-${support.row}` : null;
+        const supportPos = supportKey ? window.tilePositions?.[supportKey] : null;
+        
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield) return;
+        
+        // Create main container
+        const container = document.createElement('div');
+        container.className = 'gargoyle-save-container';
+        container.style.left = combatantPos.x + 'px';
+        container.style.top = combatantPos.y + 'px';
+        battlefield.appendChild(container);
+        
+        // Stone fragments flying in from gargoyle position
+        const numFragments = 12;
+        for (let i = 0; i < numFragments; i++) {
+            const fragment = document.createElement('div');
+            fragment.className = 'gargoyle-stone-fragment';
+            
+            // Start from gargoyle support position if available, otherwise from below
+            const startAngle = supportPos 
+                ? Math.atan2(combatantPos.y - supportPos.y, combatantPos.x - supportPos.x)
+                : Math.PI / 2; // From below
+            
+            const spread = (Math.random() - 0.5) * 1.5;
+            const distance = 80 + Math.random() * 40;
+            const startX = -Math.cos(startAngle + spread) * distance;
+            const startY = -Math.sin(startAngle + spread) * distance;
+            
+            fragment.style.setProperty('--start-x', startX + 'px');
+            fragment.style.setProperty('--start-y', startY + 'px');
+            fragment.style.animationDelay = (i * 30) + 'ms';
+            fragment.style.width = (4 + Math.random() * 6) + 'px';
+            fragment.style.height = (4 + Math.random() * 6) + 'px';
+            
+            container.appendChild(fragment);
+        }
+        
+        // Stone shield forming around combatant
+        const stoneShield = document.createElement('div');
+        stoneShield.className = 'gargoyle-stone-shield';
+        container.appendChild(stoneShield);
+        
+        // Inner protective glow
+        const innerGlow = document.createElement('div');
+        innerGlow.className = fullHeal ? 'gargoyle-heal-glow' : 'gargoyle-save-glow';
+        container.appendChild(innerGlow);
+        
+        // Text indicator
+        const text = document.createElement('div');
+        text.className = 'gargoyle-save-text';
+        text.textContent = fullHeal ? '🗿 RESTORED!' : '🗿 SAVED!';
+        text.style.color = fullHeal ? '#44ff88' : '#aaccff';
+        container.appendChild(text);
+        
+        // If full heal, add extra healing particles
+        if (fullHeal) {
+            for (let i = 0; i < 8; i++) {
+                const healParticle = document.createElement('div');
+                healParticle.className = 'gargoyle-heal-particle';
+                const angle = (Math.PI * 2 / 8) * i;
+                healParticle.style.setProperty('--angle', angle + 'rad');
+                healParticle.style.animationDelay = (200 + i * 50) + 'ms';
+                container.appendChild(healParticle);
+            }
+        }
+        
+        // Screen flash
+        this.lightImpact();
+        
+        // Small screen shake for impact
+        this.screenShake(6, 200);
+        
+        // Remove after animation
+        setTimeout(() => container.remove(), 1200);
+    },
+    
     showHealNumber(target, amount) {
         if (!target || !amount) return;
         
@@ -303,6 +393,170 @@ window.CombatEffects = {
         
         battlefield.appendChild(container);
         setTimeout(() => container.remove(), 1000);
+    },
+    
+    // ==================== BURN APPLICATION EFFECT ====================
+    /**
+     * Beautiful fire engulfing animation when a monster gets burned for the first time
+     * @param {Object} target - The cryptid being burned
+     */
+    playBurnApplication(target) {
+        if (!target) return;
+        
+        const key = `${target.owner}-${target.col}-${target.row}`;
+        const pos = window.tilePositions?.[key];
+        if (!pos) return;
+        
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield) return;
+        
+        // Create the burn effect container
+        const burnEffect = document.createElement('div');
+        burnEffect.className = 'burn-application-effect';
+        burnEffect.style.left = pos.x + 'px';
+        burnEffect.style.top = pos.y + 'px';
+        
+        // Create multiple flame particles that rise and spread
+        const flameCount = 12;
+        for (let i = 0; i < flameCount; i++) {
+            const flame = document.createElement('div');
+            flame.className = 'burn-flame';
+            const angle = (Math.PI * 2 / flameCount) * i;
+            const delay = Math.random() * 150;
+            flame.style.setProperty('--flame-angle', angle + 'rad');
+            flame.style.setProperty('--flame-delay', delay + 'ms');
+            flame.style.animationDelay = delay + 'ms';
+            burnEffect.appendChild(flame);
+        }
+        
+        // Inner fire burst
+        const fireBurst = document.createElement('div');
+        fireBurst.className = 'burn-fire-burst';
+        burnEffect.appendChild(fireBurst);
+        
+        // Rising embers
+        for (let i = 0; i < 8; i++) {
+            const ember = document.createElement('div');
+            ember.className = 'burn-ember';
+            ember.style.setProperty('--ember-x', (Math.random() - 0.5) * 60 + 'px');
+            ember.style.animationDelay = (Math.random() * 200) + 'ms';
+            burnEffect.appendChild(ember);
+        }
+        
+        // "BURN" text indicator
+        const burnText = document.createElement('div');
+        burnText.className = 'burn-text-indicator';
+        burnText.textContent = '🔥 BURN';
+        burnEffect.appendChild(burnText);
+        
+        battlefield.appendChild(burnEffect);
+        
+        // Add burn glow to the actual sprite temporarily
+        const sprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${target.owner}"][data-col="${target.col}"][data-row="${target.row}"]`
+        );
+        if (sprite) {
+            sprite.classList.add('burn-applied');
+            setTimeout(() => sprite.classList.remove('burn-applied'), 800);
+        }
+        
+        // Light shake for impact
+        this.lightImpact();
+        
+        // Remove after animation
+        setTimeout(() => burnEffect.remove(), 1000);
+    },
+    
+    // ==================== LIFESTEAL EFFECT ====================
+    /**
+     * Elegant sapping animation showing health flowing from target to lifestealer
+     * @param {Object} attacker - The cryptid with lifesteal
+     * @param {Object} target - The victim being drained
+     * @param {number} amount - Amount of health stolen
+     */
+    playLifesteal(attacker, target, amount) {
+        if (!attacker || !target || !amount) return;
+        
+        const attackerKey = `${attacker.owner}-${attacker.col}-${attacker.row}`;
+        const targetKey = `${target.owner}-${target.col}-${target.row}`;
+        const attackerPos = window.tilePositions?.[attackerKey];
+        const targetPos = window.tilePositions?.[targetKey];
+        
+        if (!attackerPos || !targetPos) return;
+        
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield) return;
+        
+        // Calculate direction from target to attacker
+        const dx = attackerPos.x - targetPos.x;
+        const dy = attackerPos.y - targetPos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Create lifesteal container at target position
+        const lifestealEffect = document.createElement('div');
+        lifestealEffect.className = 'lifesteal-effect';
+        lifestealEffect.style.left = targetPos.x + 'px';
+        lifestealEffect.style.top = targetPos.y + 'px';
+        
+        // Create multiple blood/energy orbs that travel from target to attacker
+        const orbCount = Math.min(amount + 2, 6);
+        for (let i = 0; i < orbCount; i++) {
+            const orb = document.createElement('div');
+            orb.className = 'lifesteal-orb';
+            
+            // Each orb takes a slightly different curved path
+            const curve = (Math.random() - 0.5) * 80;
+            const delay = i * 80;
+            
+            orb.style.setProperty('--target-x', dx + 'px');
+            orb.style.setProperty('--target-y', dy + 'px');
+            orb.style.setProperty('--curve', curve + 'px');
+            orb.style.animationDelay = delay + 'ms';
+            
+            lifestealEffect.appendChild(orb);
+        }
+        
+        // Create drain effect on target (red tint pulse)
+        const drainEffect = document.createElement('div');
+        drainEffect.className = 'lifesteal-drain';
+        lifestealEffect.appendChild(drainEffect);
+        
+        battlefield.appendChild(lifestealEffect);
+        
+        // Add visual effect to target sprite (being drained)
+        const targetSprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${target.owner}"][data-col="${target.col}"][data-row="${target.row}"]`
+        );
+        if (targetSprite) {
+            targetSprite.classList.add('being-drained');
+            setTimeout(() => targetSprite.classList.remove('being-drained'), 600);
+        }
+        
+        // Create heal effect at attacker position after orbs arrive
+        setTimeout(() => {
+            const healBurst = document.createElement('div');
+            healBurst.className = 'lifesteal-heal-burst';
+            healBurst.style.left = attackerPos.x + 'px';
+            healBurst.style.top = attackerPos.y + 'px';
+            battlefield.appendChild(healBurst);
+            
+            // Show heal number
+            this.showHealNumber(attacker, amount);
+            
+            // Add heal glow to attacker sprite
+            const attackerSprite = document.querySelector(
+                `.cryptid-sprite[data-owner="${attacker.owner}"][data-col="${attacker.col}"][data-row="${attacker.row}"]`
+            );
+            if (attackerSprite) {
+                attackerSprite.classList.add('lifesteal-heal');
+                setTimeout(() => attackerSprite.classList.remove('lifesteal-heal'), 600);
+            }
+            
+            setTimeout(() => healBurst.remove(), 800);
+        }, 400);
+        
+        // Remove main effect after animation
+        setTimeout(() => lifestealEffect.remove(), 1000);
     },
     
     // ==================== DESTROYER RESIDUE EFFECT ====================

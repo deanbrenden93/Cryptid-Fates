@@ -294,7 +294,7 @@ window.HomeScreen = {
         // Grant starter deck cards to player's collection
         const starterDecks = {
             'city-of-flesh': {
-                cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'vampireInitiate', 'elderVampire', 
+                cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'vampireInitiate', 'vampireLord', 
                            'sewerAlligator', 'kuchisakeOnna', 'hellhound', 'mothman', 'bogeyman', 
                            'theFlayer', 'mutatedRat'],
                 kindling: ['hellpup', 'myling', 'vampireBat', 'gremlin', 'boggart'],

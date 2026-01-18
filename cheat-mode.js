@@ -722,7 +722,7 @@ window.CheatMode = {
         'city-of-flesh': {
             cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'sewerAlligator', 'kuchisakeOnna', 
                        'hellhound', 'mothman', 'bogeyman', 'theFlayer', 'mutatedRat',
-                       'vampireInitiate', 'elderVampire'],
+                       'vampireInitiate', 'vampireLord'],
             kindling: ['hellpup', 'myling', 'vampireBat', 'gremlin', 'boggart'],
             pyres: ['pyre', 'freshKill', 'ratKing', 'nightfall'],
             traps: ['crossroads', 'bloodCovenant', 'turnToStone'],

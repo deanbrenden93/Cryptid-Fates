@@ -383,46 +383,49 @@ CardRegistry.registerCryptid('rooftopGargoyle', {
     atk: 1,
     rarity: "common",
     evolvesInto: 'libraryGargoyle',
-    combatAbility: "Stone Skin: Ailment-afflicted attackers deal -2 damage. Removes 1 calamity from target before attacking.",
-    supportAbility: "Vengeance: If combatant dies by enemy attack, give attacker 3 calamity",
-    // COMBAT: Reduce damage from enemies with ailments, remove calamity before attacking
+    combatAbility: "Stone Skin: Take 2 less damage from ailmented enemies.",
+    supportAbility: "Guardian's Sacrifice: When combatant would take lethal damage from an enemy, survive with 1 HP. If enemy has ailment, regain full HP instead. One use only.",
+    
+    // Dynamic support ability text based on whether it's been used
+    getSupportAbility: function(cryptid) {
+        if (cryptid?.gargoyleSaveUsed) {
+            return "Guardian's Sacrifice: [SPENT] - Ability has been used.";
+        }
+        return "Guardian's Sacrifice: When combatant would take lethal damage from an enemy, survive with 1 HP. If enemy has ailment, regain full HP instead. One use only.";
+    },
+    
+    // COMBAT: Stone Skin - Take 2 less damage from ailmented enemies
     onDefend: (defender, attacker, game) => {
         if (game.hasStatusAilment(attacker)) {
             return 2; // Reduce damage by 2
         }
         return 0;
     },
-    onBeforeAttack: (attacker, target, game) => {
-        // Remove 1 calamity from target before damage
-        if (target.calamityCounters > 0) {
-            target.calamityCounters -= 1;
-            if (target.calamityCounters <= 0) {
-                target.calamityCounters = 0;
-                target.hadCalamity = false;
-            }
+    
+    // SUPPORT: Lethal damage prevention for combatant
+    onSupport: (cryptid, owner, game) => {
+        const combatant = game.getCombatant(cryptid);
+        if (combatant && !cryptid.gargoyleSaveUsed) {
+            combatant.hasRooftopGargoyleSupport = true;
+            combatant.rooftopGargoyleSupport = cryptid;
         }
     },
-    // SUPPORT: On combatant death, give attacker calamity
-    onSummon: (cryptid, owner, game) => {
-        // Use the unsubscribe function returned by GameEvents.on() for clean cleanup
-        cryptid._unsubscribeVengeance = GameEvents.on('onDeath', (data) => {
-            // Check if the dead cryptid was our combatant
-            const combatant = game.getCombatant(cryptid);
-            if (data.cryptid === combatant && data.killerOwner && data.killerOwner !== owner) {
-                // Use killedBySource to find the actual attacker (handles canTargetAny attackers)
-                const attacker = data.killedBySource;
-                if (attacker) {
-                    game.applyCalamity(attacker, 3);
-                    GameEvents.emit('onVengeanceTriggered', { support: cryptid, victim: combatant, attacker, owner });
-                }
-            }
-        });
-    },
+    
+    // Clean up when leaving support (death or promotion)
     onDeath: (cryptid, game) => {
-        if (cryptid._unsubscribeVengeance) {
-            cryptid._unsubscribeVengeance();
-            cryptid._unsubscribeVengeance = null;
+        // Clean up combatant reference if we were supporting
+        const combatant = game.getCombatant(cryptid);
+        if (combatant && combatant.rooftopGargoyleSupport === cryptid) {
+            combatant.hasRooftopGargoyleSupport = false;
+            combatant.rooftopGargoyleSupport = null;
         }
+    },
+    
+    // When promoted to combat, clean up the support ability
+    onCombat: (cryptid, owner, game) => {
+        // If we were a support, find our old combatant (which is now dead/gone)
+        // The flag should already be cleaned up by killCryptid flow
+        cryptid.gargoyleSaveUsed = cryptid.gargoyleSaveUsed || false;
     }
 });
 
@@ -598,60 +601,105 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
     }
 });
 
-// Hellhound - Blood, Common, Cost 4 (evolves from Hellhound Pup)
+// Hellhound - Blood, Common, Cost 3 (evolves from Hellpup)
 CardRegistry.registerCryptid('hellhound', {
     name: "Hellhound",
     sprite: "sprites/hellhound.png",
     spriteScale: 1.0,
     element: "blood",
-    cost: 4,
-    hp: 5,
-    atk: 1,
+    cost: 3,
+    hp: 4,
+    atk: 2,
     rarity: "common",
     evolvesFrom: 'hellpup',
-    combatAbility: "Inferno: Burns target before damage. If already burned, burn adjacent enemy",
-    supportAbility: "Scorch: Combatant burns enemies across if they have no ailments",
-    // COMBAT: Before damage, burn target. If already burned, burn random adjacent
+    combatAbility: "When targeting an enemy to attack, burn the target. If already burning, also burn one random adjacent enemy.",
+    supportAbility: "Combatant deals +2 damage to burning enemies. When combatant kills a burning enemy, spread burn to one adjacent enemy.",
+    
+    // COMBAT: Before attack, burn target. If already burned, burn random adjacent enemy
     onBeforeAttack: (attacker, target, game) => {
         const wasAlreadyBurned = target.burnTurns > 0;
         game.applyBurn(target);
         
         if (wasAlreadyBurned) {
-            // Burn random adjacent enemy (above, below, or behind)
-            const adjacentTargets = [];
-            const { owner: targetOwner, row: targetRow, col: targetCol } = target;
-            const enemySupportCol = game.getSupportCol(targetOwner);
-            
-            // Above
-            if (targetRow > 0) {
-                const above = game.getFieldCryptid(targetOwner, targetCol, targetRow - 1);
-                if (above) adjacentTargets.push(above);
-            }
-            // Below  
-            if (targetRow < 2) {
-                const below = game.getFieldCryptid(targetOwner, targetCol, targetRow + 1);
-                if (below) adjacentTargets.push(below);
-            }
-            // Behind (support)
-            const behind = game.getFieldCryptid(targetOwner, enemySupportCol, targetRow);
-            if (behind && behind !== target) adjacentTargets.push(behind);
+            // Burn random adjacent enemy (above, below, or to side/behind)
+            const adjacentTargets = game.getAdjacentCryptids(target);
             
             if (adjacentTargets.length > 0) {
                 const randomTarget = adjacentTargets[Math.floor(Math.random() * adjacentTargets.length)];
                 game.applyBurn(randomTarget);
+                
+                GameEvents.emit('onHellhoundSpreadBurn', { 
+                    hellhound: attacker, 
+                    originalTarget: target, 
+                    burnedTarget: randomTarget,
+                    source: 'combat',
+                    owner: attacker.owner 
+                });
             }
         }
     },
-    // SUPPORT: Before combatant attacks, if no enemy across has ailments, burn them
-    onCombatantBeforeAttack: (support, combatant, target, game) => {
-        const enemiesAcross = game.getCryptidsAcross(support);
-        const anyHasAilment = enemiesAcross.some(e => game.hasStatusAilment(e));
-        
-        if (!anyHasAilment) {
-            // Burn all enemies across
-            for (const enemy of enemiesAcross) {
-                game.applyBurn(enemy);
+    
+    // SUPPORT: Combatant deals +2 damage to burning enemies and spreads burn on kill
+    onSupport: (cryptid, owner, game) => {
+        const combatant = game.getCombatant(cryptid);
+        if (combatant) {
+            combatant.hellhoundSupport = cryptid;
+            combatant.bonusVsBurning = (combatant.bonusVsBurning || 0) + 2;
+        }
+    },
+    
+    // Set up kill listener for burn spread (persistent while on field)
+    onSummon: (cryptid, owner, game) => {
+        // Listen for kills - spread burn when combatant kills burning enemy
+        cryptid._unsubscribeKillBurnSpread = GameEvents.on('onKill', (data) => {
+            // Check if our combatant killed a burning target
+            const combatant = game.getCombatant(cryptid);
+            if (!combatant) return;
+            
+            if (data.killer === combatant && data.victim?.burnTurns > 0) {
+                console.log('[Hellhound Support] Combatant killed burning enemy - spreading burn');
+                
+                // Get adjacent enemies to the victim
+                const adjacentTargets = game.getAdjacentCryptids(data.victim);
+                
+                if (adjacentTargets.length > 0) {
+                    const randomTarget = adjacentTargets[Math.floor(Math.random() * adjacentTargets.length)];
+                    game.applyBurn(randomTarget);
+                    
+                    // Visual feedback
+                    if (typeof queueAbilityAnimation !== 'undefined') {
+                        queueAbilityAnimation({
+                            type: 'debuff',
+                            target: randomTarget,
+                            message: `🔥 Hellhound: Burn spreads to ${randomTarget.name}!`
+                        });
+                    }
+                    
+                    GameEvents.emit('onHellhoundSpreadBurn', { 
+                        hellhound: cryptid, 
+                        killer: combatant,
+                        originalTarget: data.victim, 
+                        burnedTarget: randomTarget,
+                        source: 'support',
+                        owner 
+                    });
+                }
             }
+        });
+    },
+    
+    // Clean up listener on death
+    onDeath: (cryptid, game) => {
+        if (cryptid._unsubscribeKillBurnSpread) {
+            cryptid._unsubscribeKillBurnSpread();
+            cryptid._unsubscribeKillBurnSpread = null;
+        }
+        
+        // Clear support buff from combatant if we were supporting
+        const combatant = game.getCombatant(cryptid);
+        if (combatant && combatant.hellhoundSupport === cryptid) {
+            combatant.bonusVsBurning = Math.max(0, (combatant.bonusVsBurning || 0) - 2);
+            combatant.hellhoundSupport = null;
         }
     }
 });
@@ -906,25 +954,26 @@ CardRegistry.registerCryptid('mutatedRat', {
     }
 });
 
-// Vampire Initiate - Blood, Common, Cost 1 (evolves into Elder Vampire)
+// Vampire Initiate - Blood, Common, Cost 2 (evolves from Vampire Bat, into Vampire Lord)
 CardRegistry.registerCryptid('vampireInitiate', {
     name: "Vampire Initiate",
     sprite: "sprites/vampire-initiate.png",
     spriteScale: 1.2,
     spriteFlip: false,
     element: "blood",
-    cost: 1,
+    cost: 2,
     hp: 3,
-    atk: 1,
+    atk: 2,
     rarity: "common",
-    evolvesInto: 'elderVampire',
-    combatAbility: "Siphon: On attack, regen 1HP and gain 1 pyre",
-    supportAbility: "Blood Pact: Once per turn, deal 1 damage to combatant to gain 1 pyre",
-    // COMBAT: After attack, heal 1HP and gain 1 pyre
+    evolvesFrom: 'vampireBat',
+    evolvesInto: 'vampireLord',
+    combatAbility: "Siphon: Lifesteal. On attack, gain 1 pyre.",
+    supportAbility: "Blood Pact: Once per turn, you may deal 1 damage to combatant to gain 1 pyre.",
+    
+    // COMBAT: Lifesteal + gain 1 pyre on attack
+    hasLifesteal: true,
     onCombatAttack: (attacker, target, game) => {
-        // Heal 1 HP
-        attacker.currentHp = Math.min(attacker.maxHp, attacker.currentHp + 1);
-        // Gain 1 pyre
+        // Gain 1 pyre on attack
         if (attacker.owner === 'player') game.playerPyre++;
         else game.enemyPyre++;
         
@@ -936,14 +985,25 @@ CardRegistry.registerCryptid('vampireInitiate', {
             window.CombatEffects.playPyreBurn(vampSprite, 1);
         }
         
-        GameEvents.emit('onPyreGained', { owner: attacker.owner, amount: 1, source: 'Vampire Initiate Siphon', sourceCryptid: attacker });
-        return 0;
+        GameEvents.emit('onPyreGained', { owner: attacker.owner, amount: 1, source: 'Vampire Initiate', sourceCryptid: attacker });
+        return 0; // No bonus damage
     },
-    // SUPPORT: Activatable ability - deal 1 damage to combatant for 1 pyre
+    
+    // SUPPORT: Activatable ability - deal 1 damage to combatant for 2 pyre
     onSupport: (cryptid, owner, game) => {
         cryptid.hasBloodPactAbility = true;
         cryptid.bloodPactAvailable = true;
     },
+    
+    // Reset Blood Pact availability each turn
+    onTurnStart: (cryptid, owner, game) => {
+        // Only reset if in support position
+        const supportCol = game.getSupportCol(owner);
+        if (cryptid.col === supportCol && cryptid.hasBloodPactAbility) {
+            cryptid.bloodPactAvailable = true;
+        }
+    },
+    
     // Called when player activates the blood pact ability
     activateBloodPact: (cryptid, game) => {
         const combatant = game.getCombatant(cryptid);
@@ -960,8 +1020,8 @@ CardRegistry.registerCryptid('vampireInitiate', {
         combatant.currentHp -= 1;
         
         // Gain 1 pyre
-        if (owner === 'player') game.playerPyre++;
-        else game.enemyPyre++;
+        if (owner === 'player') game.playerPyre += 1;
+        else game.enemyPyre += 1;
         
         // Play pyre gain animation from Vampire Initiate sprite
         const vampSprite = document.querySelector(
@@ -975,6 +1035,7 @@ CardRegistry.registerCryptid('vampireInitiate', {
         GameEvents.emit('onBloodPactActivated', { 
             cryptid, 
             victim: combatant, 
+            pyreGained: 1,
             owner
         });
         
@@ -1010,71 +1071,124 @@ CardRegistry.registerCryptid('vampireInitiate', {
     }
 });
 
-// Elder Vampire - Blood, Rare, Cost 4 (evolves from Vampire Initiate) - REVISED
-CardRegistry.registerCryptid('elderVampire', {
-    name: "Elder Vampire",
+// Vampire Lord - Blood, Rare, Cost 4 (evolves from Vampire Initiate)
+CardRegistry.registerCryptid('vampireLord', {
+    name: "Vampire Lord",
     sprite: "sprites/vampire-lord.png",
     cardBg: "sprites/vampire-lord-bg.png",
     spriteScale: 1.6,
     spriteFlip: true,
     element: "blood",
     cost: 4,
-    hp: 4,
-    atk: 2,
+    hp: 6,
+    atk: 4,
     rarity: "rare",
     evolvesFrom: 'vampireInitiate',
-    combatAbility: "Dominate: On enter, force all enemy combatants to tap. -1 ATK to tapped targets (min 1)",
-    supportAbility: "Blood Frenzy: Combatant deals double damage to resting cryptids",
-    otherAbility: "Undying: At turn start, regenerate 4HP and gain 1 pyre",
-    // COMBAT: On entering combat, tap all enemy combatants. Reduce ATK of tapped targets
-    onEnterCombat: (cryptid, owner, game) => {
-        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
-        const enemyCombatCol = game.getCombatCol(enemyOwner);
-        
-        for (let r = 0; r < 3; r++) {
-            const enemy = enemyField[enemyCombatCol][r];
-            if (enemy) {
-                enemy.tapped = true;
-                enemy.canAttack = false;
-                GameEvents.emit('onForceRest', { cryptid: enemy, owner: enemyOwner });
+    combatAbility: "Lifesteal. +3 damage to burning enemies. When Vampire Lord kills a burning enemy, gain pyre equal to their base cost.",
+    supportAbility: "Combatant has Lifesteal and +2 damage to burning enemies. When combatant kills a burning enemy, draw a card.",
+    
+    // COMBAT: Lifesteal + bonus vs burning + pyre on burning kill
+    hasLifesteal: true,
+    bonusVsBurning: 3,
+    
+    // Track kills of burning enemies for pyre gain
+    onKill: (cryptid, victim, game) => {
+        // Only trigger if victim was burning
+        if (victim.burnTurns > 0) {
+            const pyreGain = victim.cost || 0;
+            if (pyreGain > 0) {
+                const owner = cryptid.owner;
+                if (owner === 'player') game.playerPyre += pyreGain;
+                else game.enemyPyre += pyreGain;
+                
+                // Play pyre gain animation
+                const vampSprite = document.querySelector(
+                    `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
+                );
+                if (window.CombatEffects?.playPyreBurn) {
+                    window.CombatEffects.playPyreBurn(vampSprite, pyreGain);
+                }
+                
+                // Visual feedback
+                if (typeof queueAbilityAnimation !== 'undefined') {
+                    queueAbilityAnimation({
+                        type: 'buff',
+                        target: cryptid,
+                        message: `🧛 Vampire Lord drains ${pyreGain} pyre from ${victim.name}!`
+                    });
+                }
+                
+                GameEvents.emit('onPyreGained', { 
+                    owner, 
+                    amount: pyreGain, 
+                    source: 'Vampire Lord', 
+                    sourceCryptid: cryptid,
+                    victim: victim
+                });
             }
         }
     },
-    onCombatAttack: (attacker, target, game) => {
-        // Reduce tapped target's ATK by 1 (minimum 1)
-        if (target.tapped && target.currentAtk > 1) {
-            target.currentAtk -= 1;
-            target.baseAtk = Math.max(1, target.baseAtk - 1);
-        }
-        return 0;
-    },
-    // SUPPORT: Combatant deals double damage to resting (tapped) cryptids
+    
+    // SUPPORT: Grant combatant lifesteal + bonus vs burning + draw on burning kill
     onSupport: (cryptid, owner, game) => {
         const combatant = game.getCombatant(cryptid);
         if (combatant) {
-            combatant.doubleDamageVsTapped = true;
+            combatant.vampireLordSupport = cryptid;
+            combatant.hasLifesteal = true;
+            combatant.bonusVsBurning = (combatant.bonusVsBurning || 0) + 2;
         }
     },
-    // OTHER: At turn start, regenerate 4HP and gain 1 pyre
-    onTurnStart: (cryptid, owner, game) => {
-        // Regenerate 4HP
-        const maxHp = cryptid.maxHp || cryptid.hp;
-        cryptid.currentHp = Math.min(maxHp, cryptid.currentHp + 4);
-        
-        // Gain 1 pyre
-        if (owner === 'player') game.playerPyre++;
-        else game.enemyPyre++;
-        
-        // Play pyre gain animation from Elder Vampire sprite
-        const vampSprite = document.querySelector(
-            `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
-        );
-        if (window.CombatEffects?.playPyreBurn) {
-            window.CombatEffects.playPyreBurn(vampSprite, 1);
+    
+    // Set up kill listener for draw on burning kill (persistent while on field)
+    onSummon: (cryptid, owner, game) => {
+        cryptid._unsubscribeVampireLordKill = GameEvents.on('onKill', (data) => {
+            // Check if we're in support position
+            const supportCol = game.getSupportCol(owner);
+            if (cryptid.col !== supportCol) return;
+            
+            // Check if our combatant killed a burning target
+            const combatant = game.getCombatant(cryptid);
+            if (!combatant) return;
+            
+            if (data.killer === combatant && data.victim?.burnTurns > 0) {
+                console.log('[Vampire Lord Support] Combatant killed burning enemy - drawing card');
+                
+                // Draw a card
+                game.drawCard(owner, 'Vampire Lord');
+                
+                // Visual feedback
+                if (typeof queueAbilityAnimation !== 'undefined') {
+                    queueAbilityAnimation({
+                        type: 'buff',
+                        target: cryptid,
+                        message: `🧛 Vampire Lord: Draw a card!`
+                    });
+                }
+                
+                GameEvents.emit('onVampireLordDraw', { 
+                    vampireLord: cryptid, 
+                    killer: combatant,
+                    victim: data.victim, 
+                    owner 
+                });
+            }
+        });
+    },
+    
+    // Clean up listener on death
+    onDeath: (cryptid, game) => {
+        if (cryptid._unsubscribeVampireLordKill) {
+            cryptid._unsubscribeVampireLordKill();
+            cryptid._unsubscribeVampireLordKill = null;
         }
         
-        GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'Elder Vampire Undying', sourceCryptid: cryptid });
+        // Clear support buffs from combatant if we were supporting
+        const combatant = game.getCombatant(cryptid);
+        if (combatant && combatant.vampireLordSupport === cryptid) {
+            combatant.hasLifesteal = false;
+            combatant.bonusVsBurning = Math.max(0, (combatant.bonusVsBurning || 0) - 2);
+            combatant.vampireLordSupport = null;
+        }
     }
 });
 

@@ -518,8 +518,8 @@ function aiCombat(onComplete) {
         // Apply combat effects for successful hit (plays in parallel with death zoom)
         if (!result.negated && !result.protectionBlocked && window.CombatEffects) {
             const damage = result.damage || 0;
-            // Cap displayed damage to effective HP if killed (shows actual HP absorbed, not overkill)
-            const displayDamage = result.killed && result.effectiveHpBefore !== undefined
+            // Always cap displayed damage to target's effective HP (no overdamage display)
+            const displayDamage = result.effectiveHpBefore !== undefined
                 ? Math.min(damage, result.effectiveHpBefore)
                 : damage;
             const isCrit = displayDamage >= 5;
