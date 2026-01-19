@@ -240,7 +240,7 @@ body {
     inset: 0;
     z-index: 0;
     background-size: cover;
-    background-position: center 40%; /* Moved up from center */
+    background-position: center 70%; /* Moved up from center */
     background-repeat: no-repeat;
     pointer-events: none;
     /* Feather from left, fade toward center divider */
@@ -254,7 +254,7 @@ body {
     inset: 0;
     z-index: 0;
     background-size: cover;
-    background-position: center 40%; /* Moved up from center */
+    background-position: center 70%; /* Moved up from center */
     background-repeat: no-repeat;
     pointer-events: none;
     /* Feather from right, fade toward center divider */
@@ -274,7 +274,7 @@ body {
     position: absolute;
     inset: 0;
     z-index: 0;
-    background: url('sprites/test-battlefield-bg.jpg') center 40% / cover no-repeat;
+    background: url('sprites/test-battlefield-bg.jpg') center 70% / cover no-repeat;
     pointer-events: none;
 }
 
@@ -809,6 +809,7 @@ body {
     gap: 14px; /* Increased horizontal spacing between columns */
     transform: rotateX(45deg) rotateZ(0deg);
     transform-style: preserve-3d;
+    max-width: 100vw; /* Prevent overflow */
 }
 
 @media (max-height: 500px) {
@@ -854,6 +855,48 @@ body {
 
 #enemy-support-col {
     margin-right: clamp(30px, 5vw, 60px);
+}
+
+/* Tall screens - reduce margins since tiles are already large */
+@media (min-height: 800px) {
+    #player-trap-col {
+        margin-right: clamp(15px, 2vw, 30px);
+    }
+    #player-support-col {
+        margin-right: clamp(18px, 2.5vw, 35px);
+    }
+    #player-combat-col {
+        margin-right: clamp(10px, 1.5vw, 20px);
+    }
+    #enemy-combat-col {
+        margin-left: clamp(10px, 1.5vw, 20px);
+        margin-right: clamp(18px, 2.5vw, 35px);
+    }
+    #enemy-support-col {
+        margin-right: clamp(15px, 2vw, 30px);
+    }
+    .grid-divider {
+        width: clamp(30px, 4vw, 50px);
+    }
+}
+
+/* Very tall screens - minimal margins */
+@media (min-height: 1000px) {
+    #player-trap-col,
+    #player-support-col,
+    #enemy-support-col {
+        margin-right: clamp(10px, 1.5vw, 20px);
+    }
+    #player-combat-col {
+        margin-right: clamp(8px, 1vw, 15px);
+    }
+    #enemy-combat-col {
+        margin-left: clamp(8px, 1vw, 15px);
+        margin-right: clamp(10px, 1.5vw, 20px);
+    }
+    .grid-divider {
+        width: clamp(25px, 3vw, 40px);
+    }
 }
 
 /* Chevron formation - severe offset: top/bottom far back, middle pushes forward */
