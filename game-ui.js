@@ -680,7 +680,7 @@ function renderSprites() {
                         continue;
                     }
                     
-                    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0) - (cryptid.gremlinAtkDebuff || 0);
+                    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0) - (cryptid.gremlinAtkDebuff || 0) - (cryptid.decayRatAtkDebuff || 0);
                     let displayHp = cryptid.currentHp;
                     let displayMaxHp = cryptid.maxHp || cryptid.hp;
                     if (col === combatCol) {
@@ -4212,11 +4212,13 @@ function hideTooltip() {
     const thermalBtn = document.getElementById('tooltip-thermal-btn');
     const rageHealBtn = document.getElementById('tooltip-rageheal-btn');
     const bloodFrenzyBtn = document.getElementById('tooltip-bloodfrenzy-btn');
+    const decayRatBtn = document.getElementById('tooltip-decayrat-btn');
     if (sacrificeBtn) sacrificeBtn.style.display = 'none';
     if (bloodPactBtn) bloodPactBtn.style.display = 'none';
     if (thermalBtn) thermalBtn.style.display = 'none';
     if (rageHealBtn) rageHealBtn.style.display = 'none';
     if (bloodFrenzyBtn) bloodFrenzyBtn.style.display = 'none';
+    if (decayRatBtn) decayRatBtn.style.display = 'none';
     ui.cardTooltipVisible = false;
 }
 
@@ -4353,7 +4355,7 @@ function showCryptidTooltip(cryptid, col, row, owner) {
     
     const combatCol = game.getCombatCol(owner);
     const supportCol = game.getSupportCol(owner);
-    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0) - (cryptid.gremlinAtkDebuff || 0);
+    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0) - (cryptid.gremlinAtkDebuff || 0) - (cryptid.decayRatAtkDebuff || 0);
     let displayHp = cryptid.currentHp;
     let displayMaxHp = cryptid.maxHp;
     
@@ -4640,6 +4642,82 @@ function showCryptidTooltip(cryptid, col, row, owner) {
             tooltip.classList.add('has-sacrifice');
         } else {
             bloodFrenzyBtn.style.display = 'none';
+        }
+    }
+    
+    // Handle Decay Rat button
+    const decayRatBtn = document.getElementById('tooltip-decayrat-btn');
+    if (decayRatBtn) {
+        // Check if this is Decay Rat in support position with ability available
+        const isDecayRatSupport = cryptid.hasDecayRatAbility && 
+                                  cryptid.decayRatDebuffAvailable && 
+                                  cryptid.col === supportCol &&
+                                  owner === 'player' && 
+                                  game.currentTurn === 'player';
+        
+        // Check if there's a valid target (ailmented enemy across from Decay Rat)
+        let hasValidTarget = false;
+        if (isDecayRatSupport) {
+            const enemyCombatCol = game.getCombatCol('enemy');
+            const targetEnemy = game.enemyField[enemyCombatCol]?.[cryptid.row];
+            if (targetEnemy && game.hasStatusAilment(targetEnemy)) {
+                hasValidTarget = true;
+            }
+        }
+        
+        if (isDecayRatSupport && hasValidTarget) {
+            decayRatBtn.style.display = 'block';
+            decayRatBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (cryptid.activateDecayDebuff) {
+                    const targetRow = cryptid.row;
+                    const enemyCombatCol = game.getCombatCol('enemy');
+                    const targetEnemy = game.enemyField[enemyCombatCol]?.[targetRow];
+                    
+                    // Multiplayer hook
+                    if (game.isMultiplayer && typeof window.Multiplayer !== 'undefined' && !window.Multiplayer.processingOpponentAction) {
+                        window.Multiplayer.actionActivateAbility('decayRatDebuff', cryptid.col, cryptid.row, { targetRow });
+                    }
+                    
+                    // Show activation message
+                    showMessage(`🦠 ${cryptid.name} spreads decay!`, 1000);
+                    
+                    // Visual feedback on target
+                    const targetSprite = document.querySelector(
+                        `.cryptid-sprite[data-owner="enemy"][data-col="${enemyCombatCol}"][data-row="${targetRow}"]`
+                    );
+                    if (targetSprite) {
+                        targetSprite.classList.add('debuff-applied');
+                        setTimeout(() => targetSprite.classList.remove('debuff-applied'), 500);
+                    }
+                    
+                    // Visual feedback on Decay Rat
+                    const ratSprite = document.querySelector(
+                        `.cryptid-sprite[data-owner="${owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
+                    );
+                    if (ratSprite) {
+                        ratSprite.classList.add('ability-activate');
+                        setTimeout(() => ratSprite.classList.remove('ability-activate'), 500);
+                    }
+                    
+                    GameEvents.emit('onActivatedAbility', { 
+                        ability: 'decayRatDebuff', 
+                        card: cryptid, 
+                        owner, 
+                        col: cryptid.col, 
+                        row: cryptid.row, 
+                        targetRow,
+                        target: targetEnemy 
+                    });
+                    
+                    cryptid.activateDecayDebuff(cryptid, game, targetRow);
+                    hideTooltip();
+                    setTimeout(() => renderAll(), 400);
+                }
+            };
+            tooltip.classList.add('has-sacrifice');
+        } else {
+            decayRatBtn.style.display = 'none';
         }
     }
     
@@ -5209,14 +5287,14 @@ window.updateSpriteHealthBar = function(owner, col, row) {
     const combatCol = game.getCombatCol(owner);
     const supportCol = game.getSupportCol(owner);
     
-    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0) - (cryptid.gremlinAtkDebuff || 0);
+    let displayAtk = cryptid.currentAtk - (cryptid.atkDebuff || 0) - (cryptid.curseTokens || 0) - (cryptid.gremlinAtkDebuff || 0) - (cryptid.decayRatAtkDebuff || 0);
     let displayHp = cryptid.currentHp;
     let displayMaxHp = cryptid.maxHp || cryptid.hp;
     
     if (col === combatCol) {
         const support = game.getFieldCryptid(owner, supportCol, row);
         if (support) {
-            displayAtk += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0) - (support.gremlinAtkDebuff || 0);
+            displayAtk += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0) - (support.gremlinAtkDebuff || 0) - (support.decayRatAtkDebuff || 0);
             displayHp += support.currentHp;
             displayMaxHp += support.maxHp || support.hp;
         }

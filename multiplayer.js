@@ -386,6 +386,13 @@ window.Multiplayer = {
             libraryGargoyleHpBuff: cryptid.libraryGargoyleHpBuff || false,
             stoneBastion: cryptid.stoneBastion || false,
             
+            // Decay Rat
+            hasDecayRatAbility: cryptid.hasDecayRatAbility || false,
+            decayRatDebuffAvailable: cryptid.decayRatDebuffAvailable || false,
+            decayRatAtkDebuff: cryptid.decayRatAtkDebuff || 0,
+            decayRatHpDebuff: cryptid.decayRatHpDebuff || 0,
+            hasDecayRatDebuff: cryptid.hasDecayRatDebuff || false,
+            
             // Graveyard Guardian
             negatesEnemySupport: cryptid.negatesEnemySupport || false,
             
@@ -660,6 +667,11 @@ window.Multiplayer = {
                     ourCryptid.hasLibraryGargoyleSupport = theirView.hasLibraryGargoyleSupport;
                     ourCryptid.libraryGargoyleHpBuff = theirView.libraryGargoyleHpBuff;
                     ourCryptid.stoneBastion = theirView.stoneBastion;
+                    ourCryptid.hasDecayRatAbility = theirView.hasDecayRatAbility;
+                    ourCryptid.decayRatDebuffAvailable = theirView.decayRatDebuffAvailable;
+                    ourCryptid.decayRatAtkDebuff = theirView.decayRatAtkDebuff;
+                    ourCryptid.decayRatHpDebuff = theirView.decayRatHpDebuff;
+                    ourCryptid.hasDecayRatDebuff = theirView.hasDecayRatDebuff;
                     ourCryptid.negatesEnemySupport = theirView.negatesEnemySupport;
                     ourCryptid.hasSpiritFireSupport = theirView.hasSpiritFireSupport;
                     ourCryptid.explodeOnDeath = theirView.explodeOnDeath;

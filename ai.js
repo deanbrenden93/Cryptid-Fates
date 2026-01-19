@@ -159,6 +159,21 @@ function aiPlayCards(onComplete) {
         actions.push({ type: 'pyreBurn' });
     }
     
+    // Check for Decay Rat ability - use it if there's a valid ailmented target
+    const supportCol = game.getSupportCol('enemy');
+    for (let row = 0; row < 3; row++) {
+        const support = game.enemyField[supportCol]?.[row];
+        if (support?.hasDecayRatAbility && support.decayRatDebuffAvailable) {
+            // Check for ailmented enemy across from Decay Rat
+            const playerCombatCol = game.getCombatCol('player');
+            const targetEnemy = game.playerField[playerCombatCol]?.[row];
+            if (targetEnemy && game.hasStatusAilment(targetEnemy)) {
+                actions.push({ type: 'decayRatDebuff', support, targetRow: row });
+                break; // Only use one Decay Rat ability per turn
+            }
+        }
+    }
+    
     // Process actions sequentially with pacing
     function processNextAction(index) {
         if (index >= actions.length) {
@@ -273,6 +288,38 @@ function aiPlayCards(onComplete) {
             window.showMessage(`🜂 Warden burns pyre! 🜂`, TIMING.messageDisplay);
             setTimeout(() => {
                 game.pyreBurn('enemy');
+                window.renderAll();
+                setTimeout(() => processNextAction(index + 1), 600);
+            }, 400);
+            return;
+            
+        } else if (action.type === 'decayRatDebuff') {
+            const { support, targetRow } = action;
+            window.showMessage(`🦠 ${support.name} spreads decay!`, TIMING.messageDisplay);
+            
+            // Visual feedback on target
+            const playerCombatCol = game.getCombatCol('player');
+            const targetSprite = document.querySelector(
+                `.cryptid-sprite[data-owner="player"][data-col="${playerCombatCol}"][data-row="${targetRow}"]`
+            );
+            if (targetSprite) {
+                targetSprite.classList.add('debuff-applied');
+                setTimeout(() => targetSprite.classList.remove('debuff-applied'), 500);
+            }
+            
+            // Visual feedback on Decay Rat
+            const ratSprite = document.querySelector(
+                `.cryptid-sprite[data-owner="enemy"][data-col="${support.col}"][data-row="${support.row}"]`
+            );
+            if (ratSprite) {
+                ratSprite.classList.add('ability-activate');
+                setTimeout(() => ratSprite.classList.remove('ability-activate'), 500);
+            }
+            
+            setTimeout(() => {
+                if (support.activateDecayDebuff) {
+                    support.activateDecayDebuff(support, game, targetRow);
+                }
                 window.renderAll();
                 setTimeout(() => processNextAction(index + 1), 600);
             }, 400);

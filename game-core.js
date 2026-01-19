@@ -1128,7 +1128,8 @@ const EventFeedback = {
             const abilityNames = {
                 'bloodPact': 'Blood Pact',
                 'sacrifice': 'Sacrifice',
-                'thermal': 'Thermal Swap'
+                'thermal': 'Thermal Swap',
+                'decayRatDebuff': 'Decay'
             };
             const abilityName = abilityNames[data.ability] || data.ability;
             this.queue(`${cardName} activates ${abilityName}!`, 'ability');
@@ -2271,6 +2272,9 @@ const MatchLog = {
                     break;
                 case 'rageHeal':
                     description = 'Rage Heal Activated';
+                    break;
+                case 'decayRatDebuff':
+                    description = 'Decay Activated';
                     break;
                 default:
                     description = `${ability} Activated`;
@@ -4780,6 +4784,34 @@ class Game {
                cryptid.curseTokens > 0;
     }
     
+    // Clean up Decay Rat debuffs at end of turn
+    cleanupDecayRatDebuffs(owner) {
+        const cleanupField = (field) => {
+            for (let col = 0; col < 2; col++) {
+                for (let row = 0; row < 3; row++) {
+                    const c = field[col]?.[row];
+                    if (c && c.hasDecayRatDebuff && c.decayRatDebuffOwner === owner) {
+                        // Restore HP (but don't exceed max)
+                        const hpToRestore = c.decayRatHpDebuff || 0;
+                        c.currentHp = Math.min(
+                            (c.maxHp || c.hp),
+                            (c.currentHp || c.hp) + hpToRestore
+                        );
+                        
+                        // Clear debuff tracking
+                        c.decayRatAtkDebuff = 0;
+                        c.decayRatHpDebuff = 0;
+                        c.hasDecayRatDebuff = false;
+                        c.decayRatDebuffOwner = null;
+                    }
+                }
+            }
+        };
+        
+        cleanupField(this.playerField);
+        cleanupField(this.enemyField);
+    }
+    
     // Get all status ailments on a cryptid
     getStatusAilments(cryptid) {
         if (!cryptid) return [];
@@ -5538,11 +5570,11 @@ class Game {
         const { owner, col, row } = attacker;
         const combatCol = this.getCombatCol(owner);
         const supportCol = this.getSupportCol(owner);
-        // ATK reduction from debuffs, curse tokens, and Gremlin ailment debuff
-        let damage = attacker.currentAtk - (attacker.atkDebuff || 0) - (attacker.curseTokens || 0) - (attacker.gremlinAtkDebuff || 0);
+        // ATK reduction from debuffs, curse tokens, Gremlin ailment debuff, and Decay Rat debuff
+        let damage = attacker.currentAtk - (attacker.atkDebuff || 0) - (attacker.curseTokens || 0) - (attacker.gremlinAtkDebuff || 0) - (attacker.decayRatAtkDebuff || 0);
         if (col === combatCol) {
             const support = this.getFieldCryptid(owner, supportCol, row);
-            if (support) damage += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0);
+            if (support) damage += support.currentAtk - (support.atkDebuff || 0) - (support.curseTokens || 0) - (support.decayRatAtkDebuff || 0);
         }
         if (attacker.bonusDamage) damage += attacker.bonusDamage;
         if (applyToxic && this.isTileToxic(owner, col, row)) damage -= 1;
@@ -6966,6 +6998,9 @@ class Game {
                 }
             }
         }
+        
+        // Clean up Decay Rat debuffs (backup in case Decay Rat died)
+        this.cleanupDecayRatDebuffs(currentPlayer);
         
         GameEvents.emit('onTurnEnd', { owner: this.currentTurn, turnNumber: this.turnNumber });
         

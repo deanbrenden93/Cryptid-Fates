@@ -282,7 +282,7 @@ window.PlayerData = {
                 name: 'City of Flesh',
                 cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'vampireInitiate', 'vampireLord', 
                            'sewerAlligator', 'kuchisakeOnna', 'hellhound', 'mothman', 'bogeyman', 
-                           'theFlayer', 'mutatedRat'],
+                           'theFlayer', 'mutatedRat', 'decayRat'],
                 kindling: ['hellpup', 'myling', 'vampireBat', 'gremlin', 'boggart'],
                 pyres: ['pyre', 'freshKill', 'ratKing', 'nightfall'],
                 traps: ['crossroads', 'bloodCovenant', 'turnToStone'],

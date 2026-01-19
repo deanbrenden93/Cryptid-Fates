@@ -165,7 +165,7 @@ CardRegistry.registerKindling('hellpup', {
                 cryptid.preventDeath = true;
                 const hellhoundCard = hellhoundInHand || hellhoundInDeck;
                 if (game.evolveInPlace) {
-                    game.evolveInPlace(cryptid, hellhoundCard, owner);
+                game.evolveInPlace(cryptid, hellhoundCard, owner);
                 }
                 
                 if (hellhoundInHand && game.removeFromHand) {
@@ -414,7 +414,7 @@ CardRegistry.registerCryptid('rooftopGargoyle', {
     // Clean up when leaving support (death or promotion)
     onDeath: (cryptid, game) => {
         // Clean up combatant reference if we were supporting
-        const combatant = game.getCombatant(cryptid);
+            const combatant = game.getCombatant(cryptid);
         if (combatant && combatant.rooftopGargoyleSupport === cryptid) {
             combatant.hasRooftopGargoyleSupport = false;
             combatant.rooftopGargoyleSupport = null;
@@ -823,10 +823,10 @@ CardRegistry.registerCryptid('hellhound', {
                 
                 // Get adjacent enemies to the victim
                 const adjacentTargets = game.getAdjacentCryptids(data.victim);
-                
-                if (adjacentTargets.length > 0) {
-                    const randomTarget = adjacentTargets[Math.floor(Math.random() * adjacentTargets.length)];
-                    game.applyBurn(randomTarget);
+            
+            if (adjacentTargets.length > 0) {
+                const randomTarget = adjacentTargets[Math.floor(Math.random() * adjacentTargets.length)];
+                game.applyBurn(randomTarget);
                     
                     // Visual feedback
                     if (typeof queueAbilityAnimation !== 'undefined') {
@@ -1113,6 +1113,184 @@ CardRegistry.registerCryptid('mutatedRat', {
                 game.applyCalamity(attacker, 3);
             }
         };
+    }
+});
+
+// Decay Rat - Blood, Uncommon, Cost 3
+CardRegistry.registerCryptid('decayRat', {
+    name: "Decay Rat",
+    sprite: "🐀",
+    spriteScale: 1.0,
+    element: "blood",
+    cost: 3,
+    hp: 4,
+    atk: 3,
+    rarity: "uncommon",
+    combatAbility: "Pestilence: When Decay Rat deals damage to an ailmented enemy, add 1 turn to each of their ailments.",
+    supportAbility: "Once per turn, choose an ailmented enemy across from Decay Rat. It gets -1/-1 per ailment stack until end of turn.",
+    
+    // COMBAT: Pestilence - extend ailment durations when dealing damage to ailmented enemies
+    onCombatAttack: (attacker, target, game) => {
+        // Only trigger if target has at least one ailment
+        if (!game.hasStatusAilment(target)) return 0;
+        
+        let ailmentsExtended = 0;
+        
+        // Extend burn duration
+        if (target.burnTurns > 0) {
+            target.burnTurns += 1;
+            ailmentsExtended++;
+        }
+        
+        // Extend bleed duration
+        if (target.bleedTurns > 0) {
+            target.bleedTurns += 1;
+            ailmentsExtended++;
+        }
+        
+        // Extend paralyze duration
+        if (target.paralyzeTurns > 0) {
+            target.paralyzeTurns += 1;
+            ailmentsExtended++;
+        }
+        
+        // Calamity doesn't have turns - add 1 counter instead
+        if (target.calamityCounters > 0) {
+            target.calamityCounters += 1;
+            ailmentsExtended++;
+        }
+        
+        // Curse tokens - add 1
+        if (target.curseTokens > 0) {
+            target.curseTokens += 1;
+            ailmentsExtended++;
+        }
+        
+        if (ailmentsExtended > 0) {
+            GameEvents.emit('onPestilenceExtend', { 
+                source: attacker, 
+                target, 
+                ailmentsExtended,
+                owner: attacker.owner 
+            });
+            
+            if (typeof queueAbilityAnimation !== 'undefined') {
+                queueAbilityAnimation({
+                    type: 'debuff',
+                    target: target,
+                    message: `🦠 Pestilence: +1 to ${ailmentsExtended} ailment(s)!`
+                });
+            }
+        }
+        
+        return 0;
+    },
+    
+    // SUPPORT: Setup for activatable ability
+    onSupport: (cryptid, owner, game) => {
+        cryptid.hasDecayRatAbility = true;
+        cryptid.decayRatDebuffAvailable = true;
+    },
+    
+    // Reset ability availability each turn
+    onTurnStart: (cryptid, owner, game) => {
+        const supportCol = game.getSupportCol(owner);
+        if (cryptid.col === supportCol && cryptid.hasDecayRatAbility) {
+            cryptid.decayRatDebuffAvailable = true;
+        }
+        
+        // Clean up expired debuffs from previous turn
+        // (the actual cleanup happens in endTurn, but this is a safety check)
+    },
+    
+    // Called when player activates the decay ability
+    activateDecayDebuff: (cryptid, game, targetRow) => {
+        if (!cryptid.decayRatDebuffAvailable) return false;
+        
+        const owner = cryptid.owner;
+        const decayRatRow = cryptid.row;
+        
+        // Validate target is in the same row (across from Decay Rat)
+        if (targetRow !== decayRatRow) return false;
+        
+        // Find enemy cryptid across from Decay Rat
+        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
+        const enemyCombatCol = game.getCombatCol(enemyOwner);
+        const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
+        const targetEnemy = enemyField[enemyCombatCol]?.[targetRow];
+        
+        if (!targetEnemy) return false;
+        
+        // Check if target has any ailments
+        if (!game.hasStatusAilment(targetEnemy)) return false;
+        
+        // Count ailment stacks
+        let ailmentStacks = 0;
+        if (targetEnemy.burnTurns > 0) ailmentStacks += targetEnemy.burnTurns;
+        if (targetEnemy.bleedTurns > 0) ailmentStacks += targetEnemy.bleedTurns;
+        if (targetEnemy.paralyzeTurns > 0) ailmentStacks += targetEnemy.paralyzeTurns;
+        if (targetEnemy.calamityCounters > 0) ailmentStacks += targetEnemy.calamityCounters;
+        if (targetEnemy.curseTokens > 0) ailmentStacks += targetEnemy.curseTokens;
+        
+        if (ailmentStacks <= 0) return false;
+        
+        // Mark ability as used
+        cryptid.decayRatDebuffAvailable = false;
+        
+        // Apply -1/-1 per ailment stack (temporary until end of turn)
+        targetEnemy.decayRatAtkDebuff = (targetEnemy.decayRatAtkDebuff || 0) + ailmentStacks;
+        targetEnemy.decayRatHpDebuff = (targetEnemy.decayRatHpDebuff || 0) + ailmentStacks;
+        targetEnemy.currentHp = Math.max(1, (targetEnemy.currentHp || targetEnemy.hp) - ailmentStacks);
+        
+        // Track that this is a temporary debuff (for end of turn cleanup)
+        targetEnemy.hasDecayRatDebuff = true;
+        targetEnemy.decayRatDebuffOwner = owner;
+        
+        GameEvents.emit('onDecayRatDebuff', { 
+            source: cryptid, 
+            target: targetEnemy, 
+            debuffAmount: ailmentStacks,
+            owner 
+        });
+        
+        if (typeof queueAbilityAnimation !== 'undefined') {
+            queueAbilityAnimation({
+                type: 'debuff',
+                target: targetEnemy,
+                message: `🦠 Decay: -${ailmentStacks}/-${ailmentStacks}!`
+            });
+        }
+        
+        return true;
+    },
+    
+    // Clean up debuffs at end of turn
+    onTurnEnd: (cryptid, owner, game) => {
+        // Find all cryptids with decay rat debuffs and clean them up
+        const cleanupDebuffs = (field) => {
+            for (let col = 0; col < 2; col++) {
+                for (let row = 0; row < 3; row++) {
+                    const c = field[col]?.[row];
+                    if (c && c.hasDecayRatDebuff && c.decayRatDebuffOwner === owner) {
+                        // Restore HP (but don't exceed max)
+                        const hpToRestore = c.decayRatHpDebuff || 0;
+                        c.currentHp = Math.min(
+                            (c.maxHp || c.hp),
+                            (c.currentHp || c.hp) + hpToRestore
+                        );
+                        
+                        // Clear debuff tracking
+                        c.decayRatAtkDebuff = 0;
+                        c.decayRatHpDebuff = 0;
+                        c.hasDecayRatDebuff = false;
+                        c.decayRatDebuffOwner = null;
+                    }
+                }
+            }
+        };
+        
+        cleanupDebuffs(game.playerField);
+        cleanupDebuffs(game.enemyField);
     }
 });
 
