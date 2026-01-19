@@ -21,6 +21,7 @@ window.Multiplayer = {
     playerId: null,
     opponentId: null,
     opponentName: 'Opponent',
+    opponentBackground: null, // Opponent's equipped battlefield background
     mode: null,
     deckId: null,
     
@@ -1297,7 +1298,8 @@ window.Multiplayer = {
                 type: 'findMatch',
                 mode,
                 deckId,
-                playerName: this.getPlayerName()
+                playerName: this.getPlayerName(),
+                equippedBackground: PlayerData?.getEquippedBackground?.() || 'default'
             });
             
             const statusEl = document.getElementById('qp-status');
@@ -1353,6 +1355,8 @@ window.Multiplayer = {
         this.matchId = msg.matchId;
         this.opponentId = msg.opponentId;
         this.opponentName = msg.opponentName || 'Opponent';
+        this.opponentBackground = msg.opponentBackground || null; // Store opponent's equipped background
+        window.opponentBackground = this.opponentBackground; // Expose for background system
         this.playerWins = 0;
         this.opponentWins = 0;
         this.currentGame = 1;

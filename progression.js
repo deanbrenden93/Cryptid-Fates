@@ -59,6 +59,34 @@ window.PlayerData = {
         legendary: 0
     },
     
+    // Cosmetics - backgrounds, card backs, etc.
+    cosmetics: {
+        backgrounds: {
+            owned: ['default'], // IDs of owned backgrounds
+            equipped: 'default' // Currently equipped background ID
+        }
+    },
+    
+    // Available backgrounds registry
+    backgroundRegistry: {
+        'default': {
+            id: 'default',
+            name: 'Classic Battlefield',
+            description: 'The original battlefield, shrouded in darkness.',
+            image: 'sprites/test-battlefield-bg.jpg',
+            price: 0, // Free (default)
+            currency: 'embers'
+        },
+        'frozen-tundra': {
+            id: 'frozen-tundra',
+            name: 'Frozen Tundra',
+            description: 'An icy wasteland where ancient horrors lie frozen.',
+            image: 'sprites/test-battlefield-snow.jpg',
+            price: 500,
+            currency: 'embers'
+        }
+    },
+    
     // ==================== XP & LEVELING ====================
     
     /**
@@ -591,6 +619,68 @@ window.PlayerData = {
         return { cards, kindling };
     },
     
+    // ==================== COSMETICS ====================
+    
+    /**
+     * Get the currently equipped background
+     */
+    getEquippedBackground() {
+        return this.cosmetics?.backgrounds?.equipped || 'default';
+    },
+    
+    /**
+     * Get background data by ID
+     */
+    getBackground(bgId) {
+        return this.backgroundRegistry[bgId] || this.backgroundRegistry['default'];
+    },
+    
+    /**
+     * Get all available backgrounds
+     */
+    getAllBackgrounds() {
+        return Object.values(this.backgroundRegistry);
+    },
+    
+    /**
+     * Check if player owns a background
+     */
+    ownsBackground(bgId) {
+        return this.cosmetics?.backgrounds?.owned?.includes(bgId) || bgId === 'default';
+    },
+    
+    /**
+     * Purchase a background
+     */
+    purchaseBackground(bgId) {
+        const bg = this.backgroundRegistry[bgId];
+        if (!bg) return { success: false, error: 'Background not found' };
+        if (this.ownsBackground(bgId)) return { success: false, error: 'Already owned' };
+        
+        const currency = bg.currency || 'embers';
+        const price = bg.price || 0;
+        
+        if (this[currency] < price) {
+            return { success: false, error: 'Insufficient ' + currency };
+        }
+        
+        this[currency] -= price;
+        this.cosmetics.backgrounds.owned.push(bgId);
+        this.save();
+        
+        return { success: true };
+    },
+    
+    /**
+     * Equip a background
+     */
+    equipBackground(bgId) {
+        if (!this.ownsBackground(bgId)) return false;
+        this.cosmetics.backgrounds.equipped = bgId;
+        this.save();
+        return true;
+    },
+    
     // ==================== PERSISTENCE ====================
     
     /**
@@ -612,6 +702,7 @@ window.PlayerData = {
             boosters: this.boosters,
             pendingBoosters: this.pendingBoosters || 0,
             starterDeck: this.starterDeck,
+            cosmetics: this.cosmetics,
             lastSave: Date.now()
         };
         
@@ -642,6 +733,15 @@ window.PlayerData = {
                 // Ensure boosters object exists
                 if (!data.boosters) {
                     data.boosters = { standard: 0, premium: 0, legendary: 0 };
+                }
+                // Ensure cosmetics object exists (backwards compatibility)
+                if (!data.cosmetics) {
+                    data.cosmetics = {
+                        backgrounds: {
+                            owned: ['default'],
+                            equipped: 'default'
+                        }
+                    };
                 }
                 Object.assign(this, data);
                 console.log('Player data loaded. Level:', this.level);

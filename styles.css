@@ -192,12 +192,74 @@ body {
     height: 100dvh;
     position: fixed;
     inset: 0;
-    /* Battlefield background image - extends behind all areas except HUD */
-    background: 
-        url('sprites/test-battlefield-bg.jpg') center center / cover no-repeat;
-    overflow: visible; /* Allow hand cards to extend above container */
+    /* Base dark background - custom backgrounds layer on top */
+    background: #0a0a10;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
+}
+
+/* ==================== GAME SCREEN WRAPPER - Contains all shakeable/zoomable content ==================== */
+#game-screen-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: visible;
+    /* Transform origin for zoom effects - will be set dynamically */
+    transform-origin: center center;
+    /* Smooth transitions for zoom effects */
+    will-change: transform;
+}
+
+/* ==================== BATTLEFIELD BACKGROUNDS - Split/Feathered System ==================== */
+/* Player background (left half - player's side) */
+.battlefield-bg-player {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-size: cover;
+    background-position: top center; /* Anchored to top center */
+    background-repeat: no-repeat;
+    pointer-events: none;
+    /* Feather from left, fade toward center divider */
+    -webkit-mask-image: linear-gradient(to right, black 35%, transparent 65%);
+    mask-image: linear-gradient(to right, black 35%, transparent 65%);
+}
+
+/* Enemy background (right half - enemy's side) */
+.battlefield-bg-enemy {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-size: cover;
+    background-position: top center; /* Anchored to top center */
+    background-repeat: no-repeat;
+    pointer-events: none;
+    /* Feather from right, fade toward center divider */
+    -webkit-mask-image: linear-gradient(to left, black 35%, transparent 65%);
+    mask-image: linear-gradient(to left, black 35%, transparent 65%);
+}
+
+/* When only one player has a background, show it fully */
+.battlefield-bg-player.solo-bg,
+.battlefield-bg-enemy.solo-bg {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+/* Default background when neither player has a custom one */
+.battlefield-bg-default {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: url('sprites/test-battlefield-bg.jpg') top center / cover no-repeat;
+    pointer-events: none;
+}
+
+/* Screen shake animation on wrapper */
+#game-screen-wrapper.screen-shaking {
+    animation: screenShake 0.35s ease-out;
 }
 
 /* Subtle grunge overlay texture - reduced for background image */
@@ -326,7 +388,7 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 0 16px;
-    background: linear-gradient(180deg, rgba(30, 28, 35, 0.95) 0%, rgba(20, 18, 25, 0.92) 100%);
+    background: rgba(20, 18, 25, 0.6);
     border-bottom: 1px solid rgba(200, 200, 210, 0.12);
     position: relative;
     z-index: 100;
@@ -681,8 +743,8 @@ body {
 
 /* Landscape mobile / short screens */
 @media (max-height: 500px) {
-    .grid-column { gap: clamp(10px, 2.5vh, 18px); }
-    .grid-column.trap-column { gap: clamp(14px, 3vh, 24px); }
+    .grid-column { gap: clamp(14px, 3.5vh, 24px); }
+    .grid-column.trap-column { gap: clamp(18px, 4vh, 30px); }
     #player-trap-col,
     #player-support-col,
     #enemy-combat-col,
@@ -709,7 +771,7 @@ body {
 
 /* Portrait mobile - maintain spacing and chevron */
 @media (max-width: 600px) and (orientation: portrait) {
-    .grid-column { gap: clamp(12px, 2.5vh, 20px); }
+    .grid-column { gap: clamp(16px, 3.5vh, 26px); }
     .grid-column.trap-column { gap: clamp(16px, 3vh, 26px); }
     #player-trap-col,
     #player-support-col,

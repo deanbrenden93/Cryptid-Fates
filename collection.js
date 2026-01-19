@@ -6,7 +6,8 @@
 window.Collection = {
     isOpen: false,
     currentSet: null,
-    mode: 'sets', // 'sets' or 'cards'
+    mode: 'sets', // 'sets', 'cards', or 'cosmetics'
+    activeTab: 'cards', // 'cards' or 'cosmetics'
     
     // Card Sets Registry
     sets: {
@@ -198,6 +199,12 @@ window.Collection = {
                     <div class="coll-spacer"></div>
                 </div>
                 
+                <!-- Tab Navigation -->
+                <div class="coll-tabs">
+                    <button class="coll-tab active" data-tab="cards">🃏 Cards</button>
+                    <button class="coll-tab" data-tab="cosmetics">🎨 Cosmetics</button>
+                </div>
+                
                 <div class="coll-stats-bar">
                     <div class="coll-stat">
                         <span class="coll-stat-value" id="coll-total-cards">0</span>
@@ -285,6 +292,21 @@ window.Collection = {
                 <div class="coll-cards-grid" id="coll-cards-grid"></div>
             </div>
             
+            <!-- COSMETICS SCREEN -->
+            <div class="coll-screen" id="coll-cosmetics-screen">
+                <div class="coll-topbar">
+                    <button class="coll-back-btn" id="coll-cosmetics-back">← Back</button>
+                    <h1 class="coll-title">Cosmetics</h1>
+                    <div class="coll-spacer"></div>
+                </div>
+                
+                <div class="coll-cosmetics-section">
+                    <h2 class="coll-cosmetics-header">⛰️ Battlefield Backgrounds</h2>
+                    <p class="coll-cosmetics-desc">Customize your battlefield with unique backgrounds. Your background appears on your side during matches!</p>
+                    <div class="coll-backgrounds-grid" id="coll-backgrounds-grid"></div>
+                </div>
+            </div>
+            
             <!-- CARD DETAIL MODAL is now created separately -->
         `;
         document.body.appendChild(overlay);
@@ -304,6 +326,21 @@ window.Collection = {
         // Navigation
         document.getElementById('coll-back-home').onclick = () => this.close();
         document.getElementById('coll-back-sets').onclick = () => this.showSetsScreen();
+        document.getElementById('coll-cosmetics-back').onclick = () => this.showSetsScreen();
+        
+        // Tab navigation
+        document.querySelectorAll('.coll-tab').forEach(tab => {
+            tab.onclick = () => {
+                document.querySelectorAll('.coll-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                this.activeTab = tab.dataset.tab;
+                if (this.activeTab === 'cosmetics') {
+                    this.showCosmeticsScreen();
+                } else {
+                    this.showSetsScreen();
+                }
+            };
+        });
         
         // Set filters
         document.getElementById('coll-set-search').oninput = (e) => {
@@ -398,13 +435,101 @@ window.Collection = {
     
     showSetsScreen() {
         this.mode = 'sets';
+        this.activeTab = 'cards';
         this.currentSet = null;
         this.filters.search = '';
         document.getElementById('coll-set-search').value = '';
         document.getElementById('coll-sets-screen').classList.add('active');
         document.getElementById('coll-cards-screen').classList.remove('active');
+        document.getElementById('coll-cosmetics-screen').classList.remove('active');
+        // Update tab active state
+        document.querySelectorAll('.coll-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === 'cards');
+        });
         this.updateGlobalStats();
         this.renderSets();
+    },
+    
+    showCosmeticsScreen() {
+        this.mode = 'cosmetics';
+        this.activeTab = 'cosmetics';
+        document.getElementById('coll-sets-screen').classList.remove('active');
+        document.getElementById('coll-cards-screen').classList.remove('active');
+        document.getElementById('coll-cosmetics-screen').classList.add('active');
+        // Update tab active state
+        document.querySelectorAll('.coll-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.tab === 'cosmetics');
+        });
+        this.renderBackgrounds();
+    },
+    
+    renderBackgrounds() {
+        const grid = document.getElementById('coll-backgrounds-grid');
+        if (!grid) return;
+        
+        const backgrounds = PlayerData.getAllBackgrounds();
+        const equippedId = PlayerData.getEquippedBackground();
+        
+        grid.innerHTML = backgrounds.map(bg => {
+            const owned = PlayerData.ownsBackground(bg.id);
+            const equipped = bg.id === equippedId;
+            const priceText = bg.price === 0 ? 'Free' : `${bg.price} ${bg.currency === 'souls' ? '💎' : '🔥'}`;
+            
+            return `
+                <div class="coll-bg-card ${owned ? 'owned' : 'locked'} ${equipped ? 'equipped' : ''}" data-bg-id="${bg.id}">
+                    <div class="coll-bg-preview" style="background-image: url('${bg.image}')">
+                        ${equipped ? '<div class="coll-bg-equipped-badge">✓ Equipped</div>' : ''}
+                    </div>
+                    <div class="coll-bg-info">
+                        <h3 class="coll-bg-name">${bg.name}</h3>
+                        <p class="coll-bg-desc">${bg.description}</p>
+                        <div class="coll-bg-actions">
+                            ${owned ? 
+                                (equipped ? 
+                                    '<span class="coll-bg-status">Currently Equipped</span>' : 
+                                    `<button class="coll-bg-equip-btn" data-bg-id="${bg.id}">Equip</button>`) :
+                                `<button class="coll-bg-buy-btn" data-bg-id="${bg.id}">${priceText}</button>`
+                            }
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Bind equip buttons
+        grid.querySelectorAll('.coll-bg-equip-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const bgId = btn.dataset.bgId;
+                if (PlayerData.equipBackground(bgId)) {
+                    this.renderBackgrounds();
+                    if (typeof showMessage === 'function') {
+                        showMessage('Background equipped!', 1500);
+                    }
+                }
+            };
+        });
+        
+        // Bind buy buttons
+        grid.querySelectorAll('.coll-bg-buy-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const bgId = btn.dataset.bgId;
+                const result = PlayerData.purchaseBackground(bgId);
+                if (result.success) {
+                    // Auto-equip after purchase
+                    PlayerData.equipBackground(bgId);
+                    this.renderBackgrounds();
+                    if (typeof showMessage === 'function') {
+                        showMessage('Background purchased and equipped!', 1500);
+                    }
+                } else {
+                    if (typeof showMessage === 'function') {
+                        showMessage(result.error || 'Purchase failed', 1500);
+                    }
+                }
+            };
+        });
     },
     
     showCardsScreen(setId) {

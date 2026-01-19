@@ -40,12 +40,65 @@ function setAnimating(value) {
 }
 let lastBattlefieldHeight = 0;
 
+// ==================== BATTLEFIELD BACKGROUNDS ====================
+/**
+ * Apply battlefield backgrounds based on player/enemy equipped backgrounds
+ * Handles split/feathered display when both players have backgrounds
+ */
+function applyBattlefieldBackgrounds(enemyBackgroundId = null) {
+    const defaultBgEl = document.getElementById('battlefield-bg-default');
+    const playerBgEl = document.getElementById('battlefield-bg-player');
+    const enemyBgEl = document.getElementById('battlefield-bg-enemy');
+    
+    if (!defaultBgEl || !playerBgEl || !enemyBgEl) return;
+    
+    // Get player's equipped background (default counts as a valid background)
+    const playerBgId = PlayerData?.getEquippedBackground?.() || 'default';
+    const playerBg = PlayerData?.getBackground?.(playerBgId);
+    
+    // Get enemy's background (from multiplayer or AI default)
+    // In multiplayer, opponent's background is synced via window.opponentBackground
+    // For AI matches, AI always has the frozen-tundra background equipped
+    const isAIMatch = !Multiplayer?.isInMatch;
+    const enemyBgId = enemyBackgroundId || window.opponentBackground || (isAIMatch ? 'frozen-tundra' : 'default');
+    const enemyBg = PlayerData?.getBackground?.(enemyBgId);
+    
+    // Reset all backgrounds
+    defaultBgEl.style.display = 'none';
+    playerBgEl.style.display = 'none';
+    enemyBgEl.style.display = 'none';
+    playerBgEl.classList.remove('solo-bg');
+    enemyBgEl.classList.remove('solo-bg');
+    
+    // Check if both have the same background
+    const sameBg = playerBgId === enemyBgId;
+    
+    if (sameBg) {
+        // Both have the same background - show it fully on player side (no split needed)
+        playerBgEl.style.backgroundImage = `url('${playerBg?.image || ''}')`;
+        playerBgEl.classList.add('solo-bg');
+        playerBgEl.style.display = 'block';
+    } else {
+        // Different backgrounds - show split/feathered
+        playerBgEl.style.backgroundImage = `url('${playerBg?.image || ''}')`;
+        enemyBgEl.style.backgroundImage = `url('${enemyBg?.image || ''}')`;
+        playerBgEl.style.display = 'block';
+        enemyBgEl.style.display = 'block';
+    }
+    
+    console.log('[Backgrounds] Applied:', { playerBgId, enemyBgId, sameBg });
+}
+window.applyBattlefieldBackgrounds = applyBattlefieldBackgrounds;
+
 // ==================== GAME INITIALIZATION ====================
 function initGame() {
     game = new Game();
     window.pendingTraps = [];
     window.processingTraps = false;
     window.animatingTraps = new Set();
+    
+    // Apply battlefield backgrounds
+    applyBattlefieldBackgrounds();
     
     // Reset EffectStack for new game
     EffectStack.clear();

@@ -27,8 +27,9 @@ window.CombatEffects = {
     // ==================== SCREEN SHAKE ====================
     
     screenShake(intensity = 1, duration = 300) {
-        const battlefield = document.getElementById('battlefield-area');
-        if (!battlefield) return;
+        // Apply shake to game-screen-wrapper so backgrounds move too
+        const wrapper = document.getElementById('game-screen-wrapper');
+        if (!wrapper) return;
         
         // If we're in a dramatic death zoom, use JS-based shake that preserves the transform
         if (this._dramaticDeathZoomActive) {
@@ -38,19 +39,20 @@ window.CombatEffects = {
         
         // Normal CSS-based shake
         const baseIntensity = 6 * intensity * this.config.screenShakeIntensity;
-        battlefield.classList.add('screen-shaking');
-        battlefield.style.setProperty('--shake-intensity', baseIntensity + 'px');
+        wrapper.classList.add('screen-shaking');
+        wrapper.style.setProperty('--shake-intensity', baseIntensity + 'px');
         
         setTimeout(() => {
-            battlefield.classList.remove('screen-shaking');
-            battlefield.style.removeProperty('--shake-intensity');
+            wrapper.classList.remove('screen-shaking');
+            wrapper.style.removeProperty('--shake-intensity');
         }, duration);
     },
     
     // JavaScript-based screen shake that preserves existing transform (for use during zoom)
     _screenShakeJS(intensity = 1, duration = 300) {
-        const battlefield = document.getElementById('battlefield-area');
-        if (!battlefield) return;
+        // Apply shake to game-screen-wrapper so backgrounds move too
+        const wrapper = document.getElementById('game-screen-wrapper');
+        if (!wrapper) return;
         
         const baseIntensity = 6 * intensity * this.config.screenShakeIntensity;
         const startTime = performance.now();
@@ -60,18 +62,18 @@ window.CombatEffects = {
         
         // Use very fast transition instead of none - this prevents interrupting the zoom
         // but still makes shake movements quick enough to feel sharp
-        const savedTransition = battlefield.style.transition;
-        battlefield.style.transition = 'transform 16ms linear';
+        const savedTransition = wrapper.style.transition;
+        wrapper.style.transition = 'transform 16ms linear';
         
         const shake = (currentTime) => {
             const elapsed = currentTime - startTime;
             if (elapsed >= duration) {
                 // Restore base transform with smooth transition back
-                battlefield.style.transition = 'transform 100ms ease-out';
-                battlefield.style.transform = baseTransform;
+                wrapper.style.transition = 'transform 100ms ease-out';
+                wrapper.style.transform = baseTransform;
                 // Restore original transition after settling
                 setTimeout(() => {
-                    battlefield.style.transition = savedTransition;
+                    wrapper.style.transition = savedTransition;
                 }, 100);
                 return;
             }
@@ -86,7 +88,7 @@ window.CombatEffects = {
             const offsetY = (Math.random() - 0.5) * 2 * currentIntensity;
             
             // Combine with base transform (zoom)
-            battlefield.style.transform = `${baseTransform} translate(${offsetX}px, ${offsetY}px)`;
+            wrapper.style.transform = `${baseTransform} translate(${offsetX}px, ${offsetY}px)`;
             
             requestAnimationFrame(shake);
         };
@@ -1057,11 +1059,13 @@ window.CombatEffects = {
         }
         
         const config = this.deathDramaConfig[rarity] || this.deathDramaConfig.common;
+        // Use game-screen-wrapper for transforms so backgrounds move too
+        const wrapper = document.getElementById('game-screen-wrapper');
         const battlefield = document.getElementById('battlefield-area');
         const spriteLayer = document.getElementById('sprite-layer');
         const gameScreen = document.getElementById('game-screen');
         
-        if (!battlefield || !spriteLayer) {
+        if (!wrapper || !battlefield || !spriteLayer) {
             // Fallback to basic death
             sprite.classList.add(owner === 'enemy' ? 'dying-right' : 'dying-left');
             const TIMING = window.TIMING || { deathAnim: 700 };
@@ -1082,11 +1086,11 @@ window.CombatEffects = {
         // ==================== IMMEDIATE: START ZOOM ON IMPACT ====================
         // Calculate focus point from ORIGINAL sprite position FIRST
         const spriteRect = sprite.getBoundingClientRect();
-        const battlefieldRect = battlefield.getBoundingClientRect();
-        const focusX = spriteRect.left + spriteRect.width/2 - battlefieldRect.left;
-        const focusY = spriteRect.top + spriteRect.height/2 - battlefieldRect.top;
-        const focusXPct = (focusX / battlefieldRect.width) * 100;
-        const focusYPct = (focusY / battlefieldRect.height) * 100;
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const focusX = spriteRect.left + spriteRect.width/2 - wrapperRect.left;
+        const focusY = spriteRect.top + spriteRect.height/2 - wrapperRect.top;
+        const focusXPct = (focusX / wrapperRect.width) * 100;
+        const focusYPct = (focusY / wrapperRect.height) * 100;
         
         // FREEZE ATTACKER IN IMPACT POSE during death zoom
         // Find the attacking sprite (it will have attack-impact-freeze or attack-lunge-enhanced class)
@@ -1094,7 +1098,7 @@ window.CombatEffects = {
         if (attackerSprite) {
             // Capture current position and freeze it there
             const attackerRect = attackerSprite.getBoundingClientRect();
-            const attackerParentRect = attackerSprite.parentElement?.getBoundingClientRect() || battlefieldRect;
+            const attackerParentRect = attackerSprite.parentElement?.getBoundingClientRect() || wrapperRect;
             
             // Add a class to hold the attacker in place during death zoom
             attackerSprite.classList.add('death-zoom-freeze');
@@ -1102,12 +1106,13 @@ window.CombatEffects = {
         }
         
         // START ZOOM IMMEDIATELY - this is the first thing that happens on impact!
-        battlefield.style.transformOrigin = `${focusXPct}% ${focusYPct}%`;
-        battlefield.style.transition = `transform ${config.zoomInDuration}ms cubic-bezier(0.2, 0, 0.3, 1)`;
-        void battlefield.offsetWidth; // Force reflow
+        // Apply to wrapper so backgrounds zoom too
+        wrapper.style.transformOrigin = `${focusXPct}% ${focusYPct}%`;
+        wrapper.style.transition = `transform ${config.zoomInDuration}ms cubic-bezier(0.2, 0, 0.3, 1)`;
+        void wrapper.offsetWidth; // Force reflow
         
         const zoomTransform = `scale(${config.zoomScale})`;
-        battlefield.style.transform = zoomTransform;
+        wrapper.style.transform = zoomTransform;
         
         // Track that we're in a zoomed state (for screenShake compatibility)
         this._dramaticDeathZoomActive = true;
@@ -1317,9 +1322,9 @@ window.CombatEffects = {
                 gameScreen.style.filter = '';
             }
             
-            // Smooth zoom out
-            battlefield.style.transition = `transform ${config.zoomOutDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-            battlefield.style.transform = 'scale(1)';
+            // Smooth zoom out - use wrapper so backgrounds zoom too
+            wrapper.style.transition = `transform ${config.zoomOutDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+            wrapper.style.transform = 'scale(1)';
         }, zoomOutStart);
         
         // ==================== CLEANUP ====================
@@ -1330,10 +1335,10 @@ window.CombatEffects = {
             this._dramaticDeathZoomActive = false;
             this._dramaticDeathBaseTransform = '';
             
-            // Reset all styles
-            battlefield.style.transition = '';
-            battlefield.style.transform = '';
-            battlefield.style.transformOrigin = '';
+            // Reset all styles on wrapper
+            wrapper.style.transition = '';
+            wrapper.style.transform = '';
+            wrapper.style.transformOrigin = '';
             
             if (gameScreen) {
                 gameScreen.style.transition = '';
@@ -3462,6 +3467,7 @@ window.CombatEffects = {
             90% { transform: translate(calc(var(--shake-intensity, 6px) * -0.05), calc(var(--shake-intensity, 6px) * -0.1)); }
         }
         
+        #game-screen-wrapper.screen-shaking,
         #battlefield-area.screen-shaking {
             animation: screenShake 0.35s ease-out;
         }

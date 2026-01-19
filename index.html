@@ -38,39 +38,46 @@
             </div>
         </div>
 
-        <div id="phase-header">
-            <span id="phase-text">Your Turn</span>
-            <div id="hint">Drag cards or tap to select</div>
-            <div id="resource-counters">
-                <div class="resource-item" id="deck-counter" title="Cards in deck">
-                    <span class="resource-icon">📜</span>
-                    <span id="deck-count">0</span>
-                </div>
-                <div class="resource-item burn" id="burn-counter" title="Cryptids burned">
-                    <span class="resource-icon">🔥</span>
-                    <span id="burn-count">0</span>
-                </div>
-                <div class="resource-item" id="discard-counter" title="Discarded spells">
-                    <span class="resource-icon">📁</span>
-                    <span id="discard-count">0</span>
-                </div>
-                <div class="resource-divider">|</div>
-                <div class="resource-item enemy" title="Enemy deck">
-                    <span class="resource-icon">📜</span>
-                    <span id="enemy-deck-count">0</span>
-                </div>
-                <div class="resource-item enemy burn" title="Enemy burned">
-                    <span class="resource-icon">🔥</span>
-                    <span id="enemy-burn-count">0</span>
-                </div>
-                <div class="resource-item enemy" title="Enemy discarded">
-                    <span class="resource-icon">📁</span>
-                    <span id="enemy-discard-count">0</span>
+        <!-- Game Screen Wrapper - contains all elements that should shake/zoom together -->
+        <div id="game-screen-wrapper">
+            <!-- Battlefield Background Layers (for split/feathered custom backgrounds) -->
+            <div class="battlefield-bg-default" id="battlefield-bg-default"></div>
+            <div class="battlefield-bg-player" id="battlefield-bg-player"></div>
+            <div class="battlefield-bg-enemy" id="battlefield-bg-enemy"></div>
+            
+            <div id="phase-header">
+                <span id="phase-text">Your Turn</span>
+                <div id="hint">Drag cards or tap to select</div>
+                <div id="resource-counters">
+                    <div class="resource-item" id="deck-counter" title="Cards in deck">
+                        <span class="resource-icon">📜</span>
+                        <span id="deck-count">0</span>
+                    </div>
+                    <div class="resource-item burn" id="burn-counter" title="Cryptids burned">
+                        <span class="resource-icon">🔥</span>
+                        <span id="burn-count">0</span>
+                    </div>
+                    <div class="resource-item" id="discard-counter" title="Discarded spells">
+                        <span class="resource-icon">📁</span>
+                        <span id="discard-count">0</span>
+                    </div>
+                    <div class="resource-divider">|</div>
+                    <div class="resource-item enemy" title="Enemy deck">
+                        <span class="resource-icon">📜</span>
+                        <span id="enemy-deck-count">0</span>
+                    </div>
+                    <div class="resource-item enemy burn" title="Enemy burned">
+                        <span class="resource-icon">🔥</span>
+                        <span id="enemy-burn-count">0</span>
+                    </div>
+                    <div class="resource-item enemy" title="Enemy discarded">
+                        <span class="resource-icon">📁</span>
+                        <span id="enemy-discard-count">0</span>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div id="battlefield-area">
+            <div id="battlefield-area">
             <div id="grid-wrapper">
                 <div class="battle-grid" id="battle-grid">
                     <div class="grid-column trap-column" id="player-trap-col">
@@ -202,6 +209,7 @@
                 <button id="end-combat-btn"></button>
             </div>
         </div>
+        </div><!-- End #game-screen-wrapper -->
 
         <button id="cancel-target">✕</button>
         <div id="pyre-burn-overlay"></div>
