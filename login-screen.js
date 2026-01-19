@@ -316,15 +316,15 @@ const LoginScreen = {
             <!-- Canvas for 3D ember tunnel effect -->
             <canvas id="login-ember-canvas"></canvas>
             
-            <!-- Logo Wrapper - centers logo then shrinks -->
-            <div class="login-logo-wrapper">
-                <div class="login-logo">
-                     <img src="sprites/new-logo.png" alt="Cryptid Fates" class="login-logo-img">
+            <!-- Main layout container - holds everything in flexbox -->
+            <div class="login-layout">
+                <!-- Logo -->
+                <div class="login-logo-area">
+                    <img src="sprites/new-logo.png" alt="Cryptid Fates" class="login-logo-img">
                 </div>
-            </div>
-            
-            <!-- Content Container - appears after logo animation -->
-            <div class="login-content">
+                
+                <!-- Content -->
+                <div class="login-content">
                 <div class="login-box">
                     <h2>Welcome, Summoner</h2>
                     <p class="login-prompt">Sign in to begin your journey</p>
@@ -378,6 +378,7 @@ const LoginScreen = {
                     </button>
                 </div>
             </div>
+            </div><!-- Close login-layout -->
         `;
         
         document.body.appendChild(overlay);
@@ -461,64 +462,34 @@ const LoginScreen = {
     
     /**
      * Apply the final animation state directly via inline styles
-     * This prevents resize from resetting animations
+     * Simple version - just ensure elements are visible
      */
     applyFinalAnimationState() {
         const overlay = document.getElementById('login-screen');
         if (!overlay) return;
         
-        const logoWrapper = overlay.querySelector('.login-logo-wrapper');
         const logoImg = overlay.querySelector('.login-logo-img');
         const content = overlay.querySelector('.login-content');
-        
-        if (logoWrapper) {
-            // Apply final position based on current viewport
-            logoWrapper.style.animation = 'none';
-            logoWrapper.style.top = this.getLogoFinalTop();
-            logoWrapper.style.transform = 'translate(-50%, 0)';
-        }
         
         if (logoImg) {
             logoImg.style.animation = 'none';
             logoImg.style.opacity = '1';
-            logoImg.style.filter = 'drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5)) blur(0px)';
-            logoImg.style.transform = 'translateZ(0) translateY(0) rotateX(0deg) scale(1)';
+            logoImg.style.transform = 'none';
         }
         
         if (content) {
             content.style.animation = 'none';
             content.style.opacity = '1';
-            content.style.transform = 'translateY(0)';
+            content.style.transform = 'none';
             content.style.pointerEvents = 'auto';
         }
     },
     
     /**
-     * Get the final top position for the logo based on current viewport
-     */
-    getLogoFinalTop() {
-        const height = window.innerHeight;
-        const isLandscape = window.innerWidth > window.innerHeight;
-        
-        if (isLandscape) {
-            if (height <= 380) {
-                return '15px';
-            } else if (height <= 500) {
-                return `clamp(20px, 5vmin, 40px)`;
-            }
-        }
-        // Portrait or regular
-        return `clamp(20px, 4vh, 60px)`;
-    },
-    
-    /**
-     * Preserve animation state on resize
+     * Preserve animation state on resize - no longer needed with flexbox
      */
     preserveAnimationState() {
-        if (this.animationCompleted || this.animationSkipped) {
-            // Re-apply final state with potentially new values for responsive layout
-            this.applyFinalAnimationState();
-        }
+        // Flexbox handles responsive layout automatically
     },
     
     /**
@@ -867,22 +838,39 @@ const loginStyles = `
     position: fixed;
     inset: 0;
     background: transparent;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
     z-index: 10000;
     opacity: 0;
     transition: opacity 1s ease;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden;
 }
 
 #login-screen.visible {
     opacity: 1;
 }
 
+/* Main layout - simple flexbox column with even spacing */
+.login-layout {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-evenly;
+    padding: clamp(20px, 4vh, 60px) clamp(16px, 4vw, 40px);
+    box-sizing: border-box;
+}
+
+/* Logo area */
+.login-logo-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
 /* Animation skipped - show final state immediately */
-#login-screen.animation-skipped .login-logo-wrapper,
 #login-screen.animation-skipped .login-logo-img,
 #login-screen.animation-skipped .login-content {
     animation: none !important;
@@ -892,12 +880,12 @@ const loginStyles = `
 #login-screen.animation-skipped .login-logo-img {
     opacity: 1 !important;
     filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5)) blur(0px) !important;
-    transform: translateZ(0) translateY(0) rotateX(0deg) scale(1) !important;
+    transform: none !important;
 }
 
 #login-screen.animation-skipped .login-content {
     opacity: 1 !important;
-    transform: translateY(0) !important;
+    transform: none !important;
     pointer-events: auto !important;
 }
 
@@ -935,122 +923,48 @@ const loginStyles = `
     50% { opacity: 1; }
 }
 
-/* ==================== LOGO WRAPPER - Centered, then slides to top ==================== */
-.login-logo-wrapper {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    /* Animate only top position - smooth slide up */
-    animation: wrapperSlideToTop 1.5s ease 3.3s forwards;
-}
-
-@keyframes wrapperSlideToTop {
-    0% {
-        top: 50%;
-        transform: translate(-50%, -50%);
-    }
-    100% {
-        top: clamp(60px, 12vmin, 100px);
-        transform: translate(-50%, 0);
-    }
-}
-
 /* ==================== LOGO ==================== */
-.login-logo {
-    text-align: center;
-    perspective: 1000px;
-    /* Heat distortion on the container */
-    filter: url(#heatDistortion);
+.login-logo-img {
+    width: clamp(320px, 70vw, 600px);
+    height: auto;
+    max-height: 30vh;
+    object-fit: contain;
+    filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.6));
+    /* Simple fade in */
+    opacity: 0;
+    animation: logoFadeIn 1.5s ease-out 0.3s forwards;
+}
+
+@keyframes logoFadeIn {
+    0% { opacity: 0; transform: scale(0.95); }
+    100% { opacity: 1; transform: scale(1); }
 }
 
 /* ==================== CONTENT CONTAINER ==================== */
 .login-content {
-    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: clamp(12px, 2.5vmin, 20px);
-    max-width: 440px;
+    gap: clamp(14px, 2.5vh, 24px);
+    max-width: 480px;
     width: 100%;
-    z-index: 10;
-    /* Top padding accounts for fixed logo (position + size) + spacing */
-    padding: clamp(320px, 55vmin, 520px) clamp(16px, 4vmin, 32px) clamp(20px, 4vmin, 40px);
-    /* Hidden initially - appears as logo moves up */
+    box-sizing: border-box;
+    /* Fade in after logo */
     opacity: 0;
-    transform: translateY(30px);
-    pointer-events: none;
-    animation: contentFadeIn 0.8s ease-out 3.8s forwards;
+    animation: contentFadeIn 0.8s ease-out 1s forwards;
 }
 
 @keyframes contentFadeIn {
-    0% {
-        opacity: 0;
-        transform: translateY(30px);
-        pointer-events: none;
-    }
-    100% {
-        opacity: 1;
-        transform: translateY(0);
-        pointer-events: auto;
-    }
+    0% { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); pointer-events: auto; }
 }
 
-/* Items stagger animation */
+/* Items */
 .login-box,
 .login-features,
 .login-bottom-btns {
     width: 100%;
     box-sizing: border-box;
-}
-
-.login-logo-img {
-    width: clamp(280px, 60vmin, 520px);
-    height: auto;
-    object-fit: contain;
-    /* Cinematic 3D reveal - LOST style */
-    opacity: 0;
-    transform-style: preserve-3d;
-    transform: 
-        translateZ(-150px) 
-        translateY(-20px)
-        rotateX(10deg) 
-        scale(0.8);
-    /* Subtle feather effect - soft fade at edges without harsh glow */
-    filter: 
-        drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5))
-        blur(12px);
-    animation: logoReveal3D 3s cubic-bezier(0.23, 1, 0.32, 1) 0.3s forwards;
-}
-
-/* 3D float-in with smooth blur */
-@keyframes logoReveal3D {
-    0% {
-        opacity: 0;
-        filter: 
-            drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5))
-            blur(12px);
-        transform: 
-            translateZ(-150px) 
-            translateY(-20px)
-            rotateX(10deg) 
-            scale(0.8);
-    }
-    100% {
-        opacity: 1;
-        filter: 
-            drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5))
-            blur(0px);
-        transform: 
-            translateZ(0) 
-            translateY(0)
-            rotateX(0deg) 
-            scale(1);
-    }
 }
 
 /* ==================== LOGIN BOX ==================== */
@@ -1062,8 +976,8 @@ const loginStyles = `
 
 .login-box h2 {
     font-family: 'Cinzel', serif;
-    margin: 0 0 8px;
-    font-size: clamp(18px, 4vmin, 26px);
+    margin: 0 0 10px;
+    font-size: 22px;
     color: #fff;
     letter-spacing: 4px;
     text-shadow: 
@@ -1074,9 +988,9 @@ const loginStyles = `
 }
 
 .login-prompt {
-    margin: 0 0 clamp(16px, 3vmin, 24px);
+    margin: 0 0 20px;
     color: #8a6a4a;
-    font-size: clamp(11px, 2.2vmin, 14px);
+    font-size: 14px;
     letter-spacing: 2px;
     font-family: 'Source Sans Pro', sans-serif;
 }
@@ -1095,20 +1009,17 @@ const loginStyles = `
     align-items: center;
     justify-content: center;
     gap: 12px;
-    padding: clamp(12px, 2.5vmin, 18px) clamp(24px, 5vmin, 36px);
+    padding: 16px 48px;
     font-family: 'Cinzel', serif;
-    font-size: clamp(12px, 2.4vmin, 16px);
+    font-size: 15px;
     font-weight: 700;
     border: none;
     cursor: pointer;
     text-transform: uppercase;
     letter-spacing: 2px;
     overflow: hidden;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    clip-path: polygon(
-        8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px),
-        calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px
-    );
+    transition: all 0.3s ease;
+    border-radius: 8px;
 }
 
 /* Button border frame */
@@ -1116,11 +1027,9 @@ const loginStyles = `
     content: '';
     position: absolute;
     inset: 0;
+    border-radius: 8px;
     padding: 2px;
-    clip-path: polygon(
-        8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px),
-        calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px
-    );
+    background: linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.05));
     -webkit-mask: 
         linear-gradient(#fff 0 0) content-box, 
         linear-gradient(#fff 0 0);
@@ -1301,9 +1210,9 @@ const loginStyles = `
     background: linear-gradient(180deg, rgba(20, 12, 8, 0.9) 0%, rgba(10, 6, 4, 0.95) 100%);
     border: 1px solid rgba(255, 120, 40, 0.35);
     color: #dd9966;
-    padding: clamp(10px, 2vmin, 14px) clamp(20px, 4vmin, 32px);
+    padding: 12px 24px;
     font-family: 'Cinzel', serif;
-    font-size: clamp(10px, 1.8vmin, 12px);
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1314,10 +1223,7 @@ const loginStyles = `
     box-shadow: 
         0 2px 8px rgba(0, 0, 0, 0.5),
         inset 0 1px 0 rgba(255, 150, 80, 0.1);
-    clip-path: polygon(
-        6px 0%, calc(100% - 6px) 0%, 100% 6px, 100% calc(100% - 6px),
-        calc(100% - 6px) 100%, 6px 100%, 0% calc(100% - 6px), 0% 6px
-    );
+    border-radius: 6px;
 }
 
 .skip-login-btn:hover {
@@ -1716,54 +1622,31 @@ const loginStyles = `
     text-shadow: 0 0 15px rgba(255, 100, 40, 0.6);
 }
 
+/* ===== SHORT SCREENS - hide features ===== */
+@media (max-height: 650px) {
+    .login-features {
+        display: none;
+    }
+}
+
 /* ===== LANDSCAPE MODE ===== */
-@media (max-height: 500px) and (orientation: landscape) {
-    #login-screen {
-        flex-direction: column;
+@media (max-height: 450px) {
+    .login-layout {
         padding: 10px 20px;
     }
     
-    /* Logo wrapper in landscape - slides to top-left area */
-    .login-logo-wrapper {
-        animation: wrapperSlideToTopLandscape 1.5s ease 3.3s forwards;
-    }
-    
-    @keyframes wrapperSlideToTopLandscape {
-        0% {
-            top: 50%;
-            transform: translate(-50%, -50%);
-        }
-        100% {
-            top: clamp(20px, 5vmin, 40px);
-            transform: translate(-50%, 0);
-        }
-    }
-    
     .login-logo-img {
+        max-height: 22vh;
         width: auto;
-        height: clamp(80px, 40vh, 180px);
-        max-width: 55vw;
     }
     
-    /* Content in landscape - accounts for smaller logo */
     .login-content {
-        max-width: 100%;
-        width: 100%;
-        padding: clamp(140px, 50vh, 220px) 20px 10px;
         gap: 10px;
-        flex-direction: column;
-        align-items: center;
-    }
-    
-    .login-box {
-        max-width: 400px;
-        width: 100%;
-        text-align: center;
     }
     
     .login-box h2 {
         font-size: 16px;
-        margin-bottom: 4px;
+        margin-bottom: 6px;
     }
     
     .login-prompt {
@@ -1772,78 +1655,43 @@ const loginStyles = `
     }
     
     .login-buttons {
-        gap: 12px;
         flex-direction: row;
-        justify-content: center;
+        gap: 12px;
     }
     
     .login-btn {
         padding: 10px 24px;
         font-size: 12px;
-        gap: 10px;
-    }
-    
-    .login-icon {
-        width: 16px;
-        height: 16px;
-    }
-    
-    .login-features {
-        display: none;
     }
     
     .login-bottom-btns {
         flex-direction: row;
-        justify-content: center;
         gap: 10px;
-        margin: 0;
     }
     
     .skip-login-btn {
-        padding: 8px 18px;
+        padding: 8px 16px;
         font-size: 9px;
     }
 }
 
-/* ===== VERY SHORT LANDSCAPE ===== */
-@media (max-height: 380px) and (orientation: landscape) {
-    #login-screen {
-        gap: 8px;
-        padding: 4px 12px;
-    }
-    
-    .login-logo-wrapper {
-        animation: wrapperSlideToTopVeryShort 1.5s ease 3.3s forwards;
-    }
-    
-    @keyframes wrapperSlideToTopVeryShort {
-        0% {
-            top: 50%;
-            transform: translate(-50%, -50%);
-        }
-        100% {
-            top: 15px;
-            transform: translate(-50%, 0);
-        }
+/* ===== VERY SHORT SCREENS ===== */
+@media (max-height: 350px) {
+    .login-layout {
+        padding: 6px 12px;
     }
     
     .login-logo-img {
-        height: clamp(60px, 38vh, 120px);
-        max-width: 35vw;
+        max-height: 18vh;
     }
     
     .login-content {
         gap: 6px;
-        padding: clamp(100px, 45vh, 150px) 10px 4px;
-    }
-    
-    .login-box {
-        max-width: 300px;
     }
     
     .login-box h2 {
-        font-size: 12px;
-        margin-bottom: 2px;
+        font-size: 13px;
+        margin-bottom: 4px;
     }
     
     .login-prompt {
@@ -1852,166 +1700,13 @@ const loginStyles = `
     }
     
     .login-btn {
-        padding: 6px 12px;
-        font-size: 9px;
-    }
-    
-    .login-icon {
-        width: 12px;
-        height: 12px;
+        padding: 8px 18px;
+        font-size: 10px;
     }
     
     .skip-login-btn {
-        padding: 4px 10px;
-        font-size: 7px;
-    }
-}
-
-/* ===== PORTRAIT MODE ===== */
-@media (orientation: portrait) {
-    /* Use vh-based sizing to fit everything in viewport */
-    .login-logo-wrapper {
-        animation: wrapperSlideToTopPortrait 1.5s ease 3.3s forwards;
-    }
-    
-    @keyframes wrapperSlideToTopPortrait {
-        0% {
-            top: 50%;
-            transform: translate(-50%, -50%);
-        }
-        100% {
-            top: clamp(20px, 4vh, 60px);
-            transform: translate(-50%, 0);
-        }
-    }
-    
-    .login-logo-img {
-        /* Logo height based on viewport */
-        width: auto;
-        height: clamp(120px, 28vh, 320px);
-        max-width: 90vw;
-    }
-    
-    .login-content {
-        /* Content starts below logo: logo_top + logo_height + gap */
-        padding-top: clamp(180px, 36vh, 420px);
-        gap: clamp(8px, 1.5vh, 16px);
-    }
-    
-    .login-box {
-        max-width: clamp(260px, 72vw, 360px);
-    }
-    
-    .login-box h2 {
-        font-size: clamp(16px, 2.5vh, 24px);
-        margin-bottom: clamp(4px, 0.8vh, 10px);
-    }
-    
-    .login-prompt {
-        font-size: clamp(11px, 1.6vh, 15px);
-        margin-bottom: clamp(8px, 1.5vh, 16px);
-    }
-    
-    .login-buttons {
-        gap: clamp(8px, 1.2vh, 14px);
-    }
-    
-    .login-btn {
-        padding: clamp(10px, 1.5vh, 16px) clamp(20px, 3vh, 32px);
-        font-size: clamp(12px, 1.8vh, 16px);
-    }
-    
-    .login-features {
-        max-width: clamp(260px, 72vw, 340px);
-        padding: clamp(8px, 1.2vh, 14px);
-        gap: clamp(4px, 0.8vh, 10px);
-    }
-    
-    .feature {
-        font-size: clamp(10px, 1.5vh, 13px);
-    }
-    
-    .login-bottom-btns {
-        gap: clamp(8px, 1.2vh, 14px);
-        margin-top: clamp(4px, 0.8vh, 10px);
-    }
-    
-    .skip-login-btn {
-        padding: clamp(6px, 1vh, 12px) clamp(12px, 2vh, 24px);
-        font-size: clamp(9px, 1.3vh, 12px);
-    }
-}
-
-/* ===== NARROW PORTRAIT ===== */
-@media (max-width: 380px) and (orientation: portrait) {
-    .login-content {
-        gap: 10px;
-    }
-    
-    .login-logo-img {
-        width: clamp(180px, 70vw, 280px);
-    }
-    
-    .login-btn {
-        padding: 10px 18px;
-        font-size: 11px;
-    }
-    
-    .login-features {
-        padding: 10px;
-        gap: 8px;
-    }
-    
-    .feature {
-        font-size: 11px;
-        gap: 8px;
-    }
-    
-    .feature-icon {
-        font-size: 14px;
-    }
-    
-    .skip-login-btn {
-        padding: 8px 14px;
-        font-size: 9px;
-    }
-}
-
-/* ===== SHORT PORTRAIT (less than 700px) ===== */
-@media (max-height: 700px) and (orientation: portrait) {
-    .login-features {
-        display: none;
-    }
-}
-
-/* ===== VERY SHORT PORTRAIT (less than 550px) ===== */
-@media (max-height: 550px) and (orientation: portrait) {
-    .login-logo-img {
-        height: clamp(80px, 22vh, 140px);
-    }
-    
-    .login-content {
-        padding-top: clamp(120px, 30vh, 180px);
-        gap: clamp(6px, 1vh, 10px);
-    }
-    
-    .login-box h2 {
-        font-size: clamp(13px, 2.2vh, 16px);
-    }
-    
-    .login-prompt {
-        font-size: clamp(10px, 1.5vh, 12px);
-        margin-bottom: clamp(6px, 1vh, 10px);
-    }
-    
-    .login-btn {
-        padding: clamp(8px, 1.2vh, 12px) clamp(16px, 2.5vh, 24px);
-        font-size: clamp(11px, 1.6vh, 13px);
-    }
-    
-    .skip-login-btn {
-        padding: clamp(5px, 0.8vh, 8px) clamp(10px, 1.5vh, 16px);
-        font-size: clamp(8px, 1.2vh, 10px);
+        padding: 5px 12px;
+        font-size: 8px;
     }
 }
 `;
