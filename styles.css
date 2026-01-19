@@ -219,7 +219,7 @@ body {
     inset: 0;
     z-index: 0;
     background-size: cover;
-    background-position: top center; /* Anchored to top center */
+    background-position: center 65%; /* 15% below center */
     background-repeat: no-repeat;
     pointer-events: none;
     /* Feather from left, fade toward center divider */
@@ -233,7 +233,7 @@ body {
     inset: 0;
     z-index: 0;
     background-size: cover;
-    background-position: top center; /* Anchored to top center */
+    background-position: center 65%; /* 15% below center */
     background-repeat: no-repeat;
     pointer-events: none;
     /* Feather from right, fade toward center divider */
@@ -253,7 +253,7 @@ body {
     position: absolute;
     inset: 0;
     z-index: 0;
-    background: url('sprites/test-battlefield-bg.jpg') top center / cover no-repeat;
+    background: url('sprites/test-battlefield-bg.jpg') center 65% / cover no-repeat;
     pointer-events: none;
 }
 
