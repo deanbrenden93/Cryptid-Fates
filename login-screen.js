@@ -1636,7 +1636,7 @@ const loginStyles = `
     }
     
     .login-logo-img {
-        max-height: 22vh;
+        max-height: 35vh;
         width: auto;
     }
     
@@ -1682,7 +1682,7 @@ const loginStyles = `
     }
     
     .login-logo-img {
-        max-height: 18vh;
+        max-height: 35vh;
     }
     
     .login-content {
