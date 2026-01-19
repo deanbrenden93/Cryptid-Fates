@@ -5,14 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Cryptid Fates</title>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Source+Sans+Pro:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=2">
-    <link rel="stylesheet" href="progression-styles.css?v=2">
+    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="progression-styles.css?v=3">
 </head>
 <body>
     <!-- Old fullscreen prompt - replaced by main menu -->
     <div id="fullscreen-prompt" class="hidden"></div>
 
     <div id="game-container" style="display: none;">
+        <!-- Battlefield Background Layers - positioned in game-container to extend behind HUD -->
+        <div class="battlefield-bg-default" id="battlefield-bg-default"></div>
+        <div class="battlefield-bg-player" id="battlefield-bg-player"></div>
+        <div class="battlefield-bg-enemy" id="battlefield-bg-enemy"></div>
+        
         <div id="hud">
             <div class="player-info player">
                 <span class="player-name">Seeker</span>
@@ -40,11 +45,6 @@
 
         <!-- Game Screen Wrapper - contains all elements that should shake/zoom together -->
         <div id="game-screen-wrapper">
-            <!-- Battlefield Background Layers (for split/feathered custom backgrounds) -->
-            <div class="battlefield-bg-default" id="battlefield-bg-default"></div>
-            <div class="battlefield-bg-player" id="battlefield-bg-player"></div>
-            <div class="battlefield-bg-enemy" id="battlefield-bg-enemy"></div>
-            
             <div id="phase-header">
                 <span id="phase-text">Your Turn</span>
                 <div id="hint">Drag cards or tap to select</div>
