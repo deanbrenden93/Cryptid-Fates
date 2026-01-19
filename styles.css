@@ -74,8 +74,9 @@
 /* Large desktop */
 @media (min-width: 1400px) and (min-height: 900px) {
     :root {
-        --tile-size: clamp(85px, 10vh, 130px);
-        --card-width: clamp(110px, 10vh, 160px);
+        /* Cap tile size on large screens to prevent overflow */
+        --tile-size: clamp(70px, min(9vh, 7vw), 100px);
+        --card-width: clamp(100px, min(9vh, 8vw), 140px);
         --card-height: calc(var(--card-width) * 1.375);
         --sprite-size: clamp(40px, 4.5vh, 60px);
     }
@@ -240,7 +241,7 @@ body {
     inset: 0;
     z-index: 0;
     background-size: cover;
-    background-position: center 70%; /* Moved up from center */
+    background-position: center 85%; /* Higher % = shows more of top of image */
     background-repeat: no-repeat;
     pointer-events: none;
     /* Feather from left, fade toward center divider */
@@ -254,7 +255,7 @@ body {
     inset: 0;
     z-index: 0;
     background-size: cover;
-    background-position: center 70%; /* Moved up from center */
+    background-position: center 85%; /* Higher % = shows more of top of image */
     background-repeat: no-repeat;
     pointer-events: none;
     /* Feather from right, fade toward center divider */
@@ -857,45 +858,47 @@ body {
     margin-right: clamp(30px, 5vw, 60px);
 }
 
-/* Tall screens - reduce margins since tiles are already large */
-@media (min-height: 800px) {
-    #player-trap-col {
-        margin-right: clamp(15px, 2vw, 30px);
-    }
-    #player-support-col {
-        margin-right: clamp(18px, 2.5vw, 35px);
-    }
-    #player-combat-col {
-        margin-right: clamp(10px, 1.5vw, 20px);
-    }
-    #enemy-combat-col {
-        margin-left: clamp(10px, 1.5vw, 20px);
-        margin-right: clamp(18px, 2.5vw, 35px);
-    }
-    #enemy-support-col {
-        margin-right: clamp(15px, 2vw, 30px);
-    }
-    .grid-divider {
-        width: clamp(30px, 4vw, 50px);
-    }
-}
-
-/* Very tall screens - minimal margins */
-@media (min-height: 1000px) {
+/* Tall screens - slightly reduced margins */
+@media (min-height: 700px) {
     #player-trap-col,
     #player-support-col,
     #enemy-support-col {
-        margin-right: clamp(10px, 1.5vw, 20px);
+        margin-right: clamp(15px, 3vw, 40px);
     }
     #player-combat-col {
-        margin-right: clamp(8px, 1vw, 15px);
+        margin-right: clamp(12px, 2vw, 30px);
     }
     #enemy-combat-col {
-        margin-left: clamp(8px, 1vw, 15px);
-        margin-right: clamp(10px, 1.5vw, 20px);
+        margin-left: clamp(12px, 2vw, 30px);
+        margin-right: clamp(15px, 3vw, 40px);
     }
     .grid-divider {
-        width: clamp(25px, 3vw, 40px);
+        width: clamp(30px, 5vw, 60px);
+    }
+    .battle-grid {
+        gap: 12px;
+    }
+}
+
+/* Very tall screens - moderate margins, rely on capped tile size */
+@media (min-height: 900px) {
+    #player-trap-col,
+    #player-support-col,
+    #enemy-support-col {
+        margin-right: clamp(10px, 2vw, 25px);
+    }
+    #player-combat-col {
+        margin-right: clamp(8px, 1.5vw, 20px);
+    }
+    #enemy-combat-col {
+        margin-left: clamp(8px, 1.5vw, 20px);
+        margin-right: clamp(10px, 2vw, 25px);
+    }
+    .grid-divider {
+        width: clamp(25px, 4vw, 50px);
+    }
+    .battle-grid {
+        gap: 10px;
     }
 }
 
