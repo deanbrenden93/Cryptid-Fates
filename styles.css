@@ -249,7 +249,7 @@ body {
     background-repeat: no-repeat;
     pointer-events: none;
     /* Shift down visually while keeping even crop behavior */
-    transform: translateY(8%);
+    transform: translatey(-8%);
     /* Feather from left, fade toward center divider */
     -webkit-mask-image: linear-gradient(to right, black 35%, transparent 65%);
     mask-image: linear-gradient(to right, black 35%, transparent 65%);
@@ -269,7 +269,7 @@ body {
     background-repeat: no-repeat;
     pointer-events: none;
     /* Shift down visually while keeping even crop behavior */
-    transform: translateY(8%);
+    transform: translatey(-8%);
     /* Feather from right, fade toward center divider */
     -webkit-mask-image: linear-gradient(to left, black 35%, transparent 65%);
     mask-image: linear-gradient(to left, black 35%, transparent 65%);
@@ -294,7 +294,7 @@ body {
     background: url('sprites/test-battlefield-bg.jpg') center center / cover no-repeat;
     pointer-events: none;
     /* Shift down visually while keeping even crop behavior */
-    transform: translateY(8%);
+    transform: translatey(-8%);
 }
 
 /* Screen shake animation on wrapper */
