@@ -9,6 +9,7 @@ let game;
 let ui = {
     selectedCard: null, attackingCryptid: null, targetingBurst: null,
     targetingEvolution: null, targetingTrap: null, targetingAura: null,
+    targetingDecayRat: null, decayRatAilmentedEnemies: null,
     draggedCard: null, dragGhost: null, showingKindling: false,
     cardTooltipTimer: null, cardTooltipVisible: false, handCollapsed: false
 };
@@ -119,6 +120,7 @@ function initGame() {
     ui = {
         selectedCard: null, attackingCryptid: null, targetingBurst: null,
         targetingEvolution: null, targetingTrap: null, targetingAura: null,
+        targetingDecayRat: null, decayRatAilmentedEnemies: null,
         draggedCard: null, dragGhost: null, showingKindling: false,
         cardTooltipTimer: null, cardTooltipVisible: false, handCollapsed: false
     };
@@ -449,6 +451,20 @@ function updatePhaseVisualEffects() {
     } else if (game.phase === 'conjure1' || game.phase === 'conjure2') {
         gameContainer.classList.add('phase-conjure');
     }
+    
+    // Update active turn indicator on player names
+    const playerName = document.querySelector('.player-info.player .player-name');
+    const enemyName = document.querySelector('.player-info.enemy .player-name');
+    
+    if (playerName && enemyName) {
+        if (game.currentTurn === 'player') {
+            playerName.classList.add('active-turn');
+            enemyName.classList.remove('active-turn');
+        } else {
+            playerName.classList.remove('active-turn');
+            enemyName.classList.add('active-turn');
+        }
+    }
 }
 
 // Survival horror style danger vignette when near death (7+ deaths)
@@ -482,6 +498,7 @@ function updateHint() {
     else if (ui.targetingBurst) hint.textContent = `Choose target for ${ui.targetingBurst.name}`;
     else if (ui.targetingAura) hint.textContent = `Choose ally to enchant with ${ui.targetingAura.name}`;
     else if (ui.targetingEvolution) hint.textContent = `Choose ${getCardDisplayName(ui.targetingEvolution.evolvesFrom)} to transform`;
+    else if (ui.targetingDecayRat) hint.textContent = `Choose an ailmented enemy to decay`;
     else if (ui.attackingCryptid) hint.textContent = "Choose your prey";
     else if (ui.selectedCard) hint.textContent = ui.selectedCard.type === 'cryptid' ? "Choose a sacred space" : ui.selectedCard.type === 'trap' ? "Choose a trap slot" : "Choose target";
     else if (game.phase === 'combat') hint.textContent = "Command your spirits to strike";
@@ -2649,6 +2666,109 @@ function executeAuraDirect(card, col, row) {
     }, 600); // Extended delay for enhanced animation
 }
 
+// Execute Decay Rat's support ability on a selected target
+function executeDecayRatAbility(targetCol, targetRow) {
+    const cryptid = ui.targetingDecayRat;
+    if (!cryptid || !cryptid.activateDecayDebuff) {
+        cancelDecayRatTargeting();
+        return;
+    }
+    
+    const owner = cryptid.owner;
+    const targetEnemy = game.enemyField[targetCol]?.[targetRow];
+    if (!targetEnemy) {
+        cancelDecayRatTargeting();
+        return;
+    }
+    
+    // Store HP before debuff to check for death
+    const hpBefore = targetEnemy.currentHp || targetEnemy.hp;
+    
+    // Multiplayer hook
+    if (game.isMultiplayer && typeof window.Multiplayer !== 'undefined' && !window.Multiplayer.processingOpponentAction) {
+        window.Multiplayer.actionActivateAbility('decayRatDebuff', cryptid.col, cryptid.row, { targetCol, targetRow });
+    }
+    
+    // Show activation message
+    showMessage(`🦠 ${cryptid.name} spreads decay!`, 1000);
+    
+    // Get sprites for animation
+    const targetSprite = document.querySelector(
+        `.cryptid-sprite[data-owner="enemy"][data-col="${targetCol}"][data-row="${targetRow}"]`
+    );
+    const ratSprite = document.querySelector(
+        `.cryptid-sprite[data-owner="${owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
+    );
+    
+    // Visual feedback on Decay Rat
+    if (ratSprite) {
+        ratSprite.classList.add('ability-activate');
+        setTimeout(() => ratSprite.classList.remove('ability-activate'), 500);
+    }
+    
+    GameEvents.emit('onActivatedAbility', { 
+        ability: 'decayRatDebuff', 
+        card: cryptid, 
+        owner, 
+        col: cryptid.col, 
+        row: cryptid.row, 
+        targetCol,
+        targetRow,
+        target: targetEnemy 
+    });
+    
+    // Clean up targeting state first
+    cancelDecayRatTargeting();
+    document.getElementById('cancel-target').classList.remove('show');
+    
+    // Play debuff animation, then execute ability
+    if (window.CombatEffects?.playDebuffEffect && targetSprite) {
+        window.CombatEffects.playDebuffEffect(targetSprite, () => {
+            // Execute the actual debuff after animation
+            const result = cryptid.activateDecayDebuff(cryptid, game, targetCol, targetRow);
+            
+            // Check if target died
+            if (targetEnemy.currentHp <= 0 && targetSprite) {
+                // Play death animation
+                const rarity = targetSprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                if (window.CombatEffects?.playDramaticDeath) {
+                    window.CombatEffects.playDramaticDeath(targetSprite, 'enemy', rarity, () => {
+                        renderAll();
+                    });
+                } else {
+                    targetSprite.classList.add('dying-right');
+                    setTimeout(() => renderAll(), 700);
+                }
+            } else {
+                setTimeout(() => renderAll(), 200);
+            }
+        });
+    } else {
+        // Fallback: basic animation
+        if (targetSprite) {
+            targetSprite.classList.add('debuff-applied');
+            setTimeout(() => targetSprite.classList.remove('debuff-applied'), 500);
+        }
+        
+        const result = cryptid.activateDecayDebuff(cryptid, game, targetCol, targetRow);
+        
+        // Check if target died
+        if (targetEnemy.currentHp <= 0 && targetSprite) {
+            const rarity = targetSprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+            if (window.CombatEffects?.playDramaticDeath) {
+                window.CombatEffects.playDramaticDeath(targetSprite, 'enemy', rarity, () => {
+                    renderAll();
+                });
+            } else {
+                targetSprite.classList.add('dying-right');
+                setTimeout(() => renderAll(), 700);
+            }
+        } else {
+            setTimeout(() => renderAll(), 400);
+        }
+    }
+}
+
 function executePyreCard(card) {
     if (!game.canPlayPyreCard('player') || isAnimating) return;
     isAnimating = true;
@@ -3521,6 +3641,7 @@ document.getElementById('cancel-target').onclick = () => {
     if (isAnimating) return;
     hideTooltip();
     ui.selectedCard = null; ui.attackingCryptid = null; ui.targetingBurst = null; ui.targetingEvolution = null; ui.targetingTrap = null;
+    cancelDecayRatTargeting();
     document.getElementById('cancel-target').classList.remove('show');
     renderAll();
 };
@@ -4271,7 +4392,12 @@ function hideTooltip() {
     if (thermalBtn) thermalBtn.style.display = 'none';
     if (rageHealBtn) rageHealBtn.style.display = 'none';
     if (bloodFrenzyBtn) bloodFrenzyBtn.style.display = 'none';
-    if (decayRatBtn) decayRatBtn.style.display = 'none';
+    if (decayRatBtn) {
+        decayRatBtn.style.display = 'none';
+        decayRatBtn.disabled = false;
+        decayRatBtn.style.opacity = '1';
+        decayRatBtn.style.cursor = 'pointer';
+    }
     ui.cardTooltipVisible = false;
 }
 
@@ -4307,10 +4433,21 @@ document.getElementById('battlefield-area').onclick = (e) => {
         }
         hideTooltip();
         ui.selectedCard = null; ui.attackingCryptid = null; ui.targetingBurst = null; ui.targetingEvolution = null; ui.targetingTrap = null; ui.targetingAura = null;
+        cancelDecayRatTargeting();
         document.getElementById('cancel-target').classList.remove('show');
         renderAll();
     }
 };
+
+// Cancel Decay Rat targeting mode and clean up highlights
+function cancelDecayRatTargeting() {
+    if (ui.targetingDecayRat) {
+        ui.targetingDecayRat = null;
+        ui.decayRatAilmentedEnemies = null;
+        // Remove highlights from all tiles
+        document.querySelectorAll('.valid-decay-target').forEach(el => el.classList.remove('valid-decay-target'));
+    }
+}
 
 function handleTileClick(owner, col, row) {
     if (isAnimating) return;
@@ -4392,6 +4529,15 @@ function handleTileClick(owner, col, row) {
     if (cryptid && owner === 'player' && ui.targetingAura) {
         const targets = game.getValidAuraTargets('player');
         if (targets.some(t => t.col === colNum && t.row === row)) { executeAura(colNum, row); return; }
+    }
+    
+    // Handle Decay Rat targeting - select any ailmented enemy
+    if (cryptid && owner === 'enemy' && ui.targetingDecayRat) {
+        const validTargets = ui.decayRatAilmentedEnemies || [];
+        if (validTargets.some(t => t.col === colNum && t.row === row)) {
+            executeDecayRatAbility(colNum, row);
+            return;
+        }
     }
     
     if (cryptid) showCryptidTooltip(cryptid, col, row, owner);
@@ -4703,71 +4849,61 @@ function showCryptidTooltip(cryptid, col, row, owner) {
     if (decayRatBtn) {
         // Check if this is Decay Rat in support position with ability available
         const isDecayRatSupport = cryptid.hasDecayRatAbility && 
-                                  cryptid.decayRatDebuffAvailable && 
                                   cryptid.col === supportCol &&
                                   owner === 'player' && 
                                   game.currentTurn === 'player';
         
-        // Check if there's a valid target (ailmented enemy across from Decay Rat)
+        // Check if there's ANY valid target (any ailmented enemy on the field)
         let hasValidTarget = false;
+        let ailmentedEnemies = [];
         if (isDecayRatSupport) {
-            const enemyCombatCol = game.getCombatCol('enemy');
-            const targetEnemy = game.enemyField[enemyCombatCol]?.[cryptid.row];
-            if (targetEnemy && game.hasStatusAilment(targetEnemy)) {
-                hasValidTarget = true;
+            // Check all enemy positions for ailmented cryptids
+            for (let col = 0; col < 2; col++) {
+                for (let row = 0; row < 3; row++) {
+                    const enemy = game.enemyField[col]?.[row];
+                    if (enemy && game.hasStatusAilment(enemy)) {
+                        hasValidTarget = true;
+                        ailmentedEnemies.push({ col, row, enemy });
+                    }
+                }
             }
         }
         
-        if (isDecayRatSupport && hasValidTarget) {
+        const abilityAvailable = cryptid.decayRatDebuffAvailable;
+        
+        if (isDecayRatSupport) {
             decayRatBtn.style.display = 'block';
-            decayRatBtn.onclick = (e) => {
-                e.stopPropagation();
-                if (cryptid.activateDecayDebuff) {
-                    const targetRow = cryptid.row;
-                    const enemyCombatCol = game.getCombatCol('enemy');
-                    const targetEnemy = game.enemyField[enemyCombatCol]?.[targetRow];
+            
+            // Gray out if no valid targets or ability already used
+            if (!hasValidTarget || !abilityAvailable) {
+                decayRatBtn.disabled = true;
+                decayRatBtn.style.opacity = '0.5';
+                decayRatBtn.style.cursor = 'not-allowed';
+                decayRatBtn.title = !abilityAvailable ? 'Already used this turn' : 'No ailmented enemies';
+                decayRatBtn.onclick = null;
+            } else {
+                decayRatBtn.disabled = false;
+                decayRatBtn.style.opacity = '1';
+                decayRatBtn.style.cursor = 'pointer';
+                decayRatBtn.title = '';
+                decayRatBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    hideTooltip();
                     
-                    // Multiplayer hook
-                    if (game.isMultiplayer && typeof window.Multiplayer !== 'undefined' && !window.Multiplayer.processingOpponentAction) {
-                        window.Multiplayer.actionActivateAbility('decayRatDebuff', cryptid.col, cryptid.row, { targetRow });
-                    }
+                    // Enter targeting mode for Decay Rat ability
+                    ui.targetingDecayRat = cryptid;
+                    ui.decayRatAilmentedEnemies = ailmentedEnemies;
                     
-                    // Show activation message
-                    showMessage(`🦠 ${cryptid.name} spreads decay!`, 1000);
-                    
-                    // Visual feedback on target
-                    const targetSprite = document.querySelector(
-                        `.cryptid-sprite[data-owner="enemy"][data-col="${enemyCombatCol}"][data-row="${targetRow}"]`
-                    );
-                    if (targetSprite) {
-                        targetSprite.classList.add('debuff-applied');
-                        setTimeout(() => targetSprite.classList.remove('debuff-applied'), 500);
-                    }
-                    
-                    // Visual feedback on Decay Rat
-                    const ratSprite = document.querySelector(
-                        `.cryptid-sprite[data-owner="${owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
-                    );
-                    if (ratSprite) {
-                        ratSprite.classList.add('ability-activate');
-                        setTimeout(() => ratSprite.classList.remove('ability-activate'), 500);
-                    }
-                    
-                    GameEvents.emit('onActivatedAbility', { 
-                        ability: 'decayRatDebuff', 
-                        card: cryptid, 
-                        owner, 
-                        col: cryptid.col, 
-                        row: cryptid.row, 
-                        targetRow,
-                        target: targetEnemy 
+                    // Highlight valid targets
+                    ailmentedEnemies.forEach(({ col, row }) => {
+                        const tile = document.querySelector(`.tile.enemy[data-col="${col}"][data-row="${row}"]`);
+                        if (tile) tile.classList.add('valid-decay-target');
                     });
                     
-                    cryptid.activateDecayDebuff(cryptid, game, targetRow);
-                    hideTooltip();
-                    setTimeout(() => renderAll(), 400);
-                }
-            };
+                    showMessage('🦠 Choose an ailmented enemy to decay', 2000);
+                    document.getElementById('cancel-target').classList.add('show');
+                };
+            }
             tooltip.classList.add('has-sacrifice');
         } else {
             decayRatBtn.style.display = 'none';
@@ -4911,6 +5047,7 @@ window.initMultiplayerGame = function() {
     ui = {
         selectedCard: null, attackingCryptid: null, targetingBurst: null,
         targetingEvolution: null, targetingTrap: null, targetingAura: null,
+        targetingDecayRat: null, decayRatAilmentedEnemies: null,
         draggedCard: null, dragGhost: null, showingKindling: false,
         cardTooltipTimer: null, cardTooltipVisible: false, handCollapsed: false
     };

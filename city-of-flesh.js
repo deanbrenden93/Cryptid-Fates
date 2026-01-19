@@ -1079,18 +1079,18 @@ CardRegistry.registerCryptid('theFlayer', {
     grantsFocus: true
 });
 
-// Decay Rat - Blood, Uncommon, Cost 3 (Replaced Mutated Rat)
+// Decay Rat - Steel, Uncommon, Cost 3 (Replaced Mutated Rat)
 CardRegistry.registerCryptid('decayRat', {
     name: "Decay Rat",
     sprite: "🐀",
     spriteScale: 1.0,
-    element: "blood",
+    element: "steel",
     cost: 3,
     hp: 4,
     atk: 3,
     rarity: "uncommon",
     combatAbility: "Pestilence: When Decay Rat deals damage to an ailmented enemy, add 1 turn to each of their ailments.",
-    supportAbility: "Once per turn, choose an ailmented enemy across from Decay Rat. It gets -1/-1 per ailment stack until end of turn.",
+    supportAbility: "Once per turn, choose an ailmented enemy. It gets -1/-1 per ailment stack until end of turn.",
     
     // COMBAT: Pestilence - extend ailment durations when dealing damage to ailmented enemies
     onCombatAttack: (attacker, target, game) => {
@@ -1167,20 +1167,16 @@ CardRegistry.registerCryptid('decayRat', {
     },
     
     // Called when player activates the decay ability
-    activateDecayDebuff: (cryptid, game, targetRow) => {
+    // targetCol and targetRow specify which enemy to target (can be any ailmented enemy)
+    activateDecayDebuff: (cryptid, game, targetCol, targetRow) => {
         if (!cryptid.decayRatDebuffAvailable) return false;
         
         const owner = cryptid.owner;
-        const decayRatRow = cryptid.row;
         
-        // Validate target is in the same row (across from Decay Rat)
-        if (targetRow !== decayRatRow) return false;
-        
-        // Find enemy cryptid across from Decay Rat
+        // Find enemy cryptid at target position
         const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        const enemyCombatCol = game.getCombatCol(enemyOwner);
         const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
-        const targetEnemy = enemyField[enemyCombatCol]?.[targetRow];
+        const targetEnemy = enemyField[targetCol]?.[targetRow];
         
         if (!targetEnemy) return false;
         
@@ -1203,7 +1199,9 @@ CardRegistry.registerCryptid('decayRat', {
         // Apply -1/-1 per ailment stack (temporary until end of turn)
         targetEnemy.decayRatAtkDebuff = (targetEnemy.decayRatAtkDebuff || 0) + ailmentStacks;
         targetEnemy.decayRatHpDebuff = (targetEnemy.decayRatHpDebuff || 0) + ailmentStacks;
-        targetEnemy.currentHp = Math.max(1, (targetEnemy.currentHp || targetEnemy.hp) - ailmentStacks);
+        
+        const hpBefore = targetEnemy.currentHp || targetEnemy.hp;
+        targetEnemy.currentHp = hpBefore - ailmentStacks;
         
         // Track that this is a temporary debuff (for end of turn cleanup)
         targetEnemy.hasDecayRatDebuff = true;
@@ -1222,6 +1220,36 @@ CardRegistry.registerCryptid('decayRat', {
                 target: targetEnemy,
                 message: `🦠 Decay: -${ailmentStacks}/-${ailmentStacks}!`
             });
+        }
+        
+        // Check if target dies from the HP reduction
+        if (targetEnemy.currentHp <= 0) {
+            GameEvents.emit('onKill', { 
+                killer: cryptid, 
+                victim: targetEnemy, 
+                killerOwner: owner,
+                victimOwner: enemyOwner,
+                source: 'decayRatAbility'
+            });
+            
+            GameEvents.emit('onDeath', { 
+                cryptid: targetEnemy, 
+                owner: enemyOwner, 
+                killer: cryptid,
+                killerOwner: owner,
+                source: 'decayRatAbility'
+            });
+            
+            // Remove from field
+            enemyField[targetCol][targetRow] = null;
+            
+            if (typeof queueAbilityAnimation !== 'undefined') {
+                queueAbilityAnimation({
+                    type: 'death',
+                    target: targetEnemy,
+                    message: `💀 ${targetEnemy.name} decayed to death!`
+                });
+            }
         }
         
         return true;

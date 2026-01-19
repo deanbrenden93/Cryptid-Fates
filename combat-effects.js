@@ -2568,6 +2568,262 @@ window.CombatEffects = {
         }
     },
     
+    // ==================== ENHANCED DEBUFF ANIMATION ====================
+    // Dark/negative counterpart to aura - makes debuffs feel impactful and sinister
+    
+    /**
+     * Play enhanced debuff effect - dark energy draining effect
+     * @param {HTMLElement} targetSprite - The cryptid sprite receiving the debuff
+     * @param {Function} onComplete - Optional callback when animation completes
+     */
+    playDebuffEffect(targetSprite, onComplete) {
+        const battlefield = document.getElementById('battlefield-area');
+        if (!battlefield || !targetSprite) {
+            if (onComplete) onComplete();
+            return;
+        }
+        
+        // Get target position
+        const spriteRect = targetSprite.getBoundingClientRect();
+        const battlefieldRect = battlefield.getBoundingClientRect();
+        const targetX = spriteRect.left + spriteRect.width / 2 - battlefieldRect.left;
+        const targetY = spriteRect.top + spriteRect.height / 2 - battlefieldRect.top;
+        
+        const debuffColor = '#8b5cf6'; // Purple
+        const debuffColorDark = '#4c1d95';
+        const debuffColorBright = '#c4b5fd';
+        
+        // ===== PHASE 1: Dark sigil appears beneath target (0ms) =====
+        const sigil = document.createElement('div');
+        sigil.className = 'debuff-sigil';
+        sigil.style.cssText = `
+            position: absolute;
+            left: ${targetX}px;
+            top: ${targetY + 25}px;
+            transform: translate(-50%, -50%) rotateX(60deg);
+            width: 100px;
+            height: 100px;
+            pointer-events: none;
+            z-index: 10;
+        `;
+        
+        sigil.innerHTML = `
+            <svg viewBox="0 0 100 100" style="width: 100%; height: 100%;">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="${debuffColor}" stroke-width="2" opacity="0.8"/>
+                <circle cx="50" cy="50" r="35" fill="none" stroke="${debuffColorDark}" stroke-width="1.5" opacity="0.9"/>
+                <circle cx="50" cy="50" r="25" fill="none" stroke="${debuffColor}" stroke-width="1" opacity="0.6"/>
+                <path d="M50 10 L50 90 M10 50 L90 50 M25 25 L75 75 M75 25 L25 75" 
+                      stroke="${debuffColorDark}" stroke-width="1.5" opacity="0.5"/>
+            </svg>
+        `;
+        battlefield.appendChild(sigil);
+        
+        requestAnimationFrame(() => {
+            sigil.classList.add('debuff-sigil-active');
+        });
+        
+        setTimeout(() => sigil.remove(), 800);
+        
+        // ===== PHASE 2: Descending dark particles (drain effect) =====
+        setTimeout(() => {
+            this._createDescendingParticles(battlefield, targetX, targetY, debuffColor, debuffColorDark);
+        }, 50);
+        
+        // ===== PHASE 3: Dark pulse wave (contracting) =====
+        setTimeout(() => {
+            this._createDebuffPulse(battlefield, targetX, targetY, debuffColor, debuffColorDark);
+            this.screenShake(0.12, 100);
+        }, 150);
+        
+        // ===== PHASE 4: Target flickers/drains + spiral particles =====
+        setTimeout(() => {
+            this._createDrainSpiral(battlefield, targetX, targetY, debuffColor, debuffColorBright);
+            
+            // Target drain flicker effect
+            if (targetSprite) {
+                targetSprite.classList.add('debuff-applying');
+                setTimeout(() => {
+                    targetSprite.classList.remove('debuff-applying');
+                }, 600);
+            }
+        }, 200);
+        
+        // ===== PHASE 5: Final dark implosion =====
+        setTimeout(() => {
+            this._createDebuffImplosion(battlefield, targetX, targetY, debuffColor, debuffColorDark);
+            if (onComplete) onComplete();
+        }, 400);
+    },
+    
+    /**
+     * Create descending dark particles (opposite of ascending sparks)
+     */
+    _createDescendingParticles(container, x, y, color, darkColor) {
+        const particleCount = 14;
+        for (let i = 0; i < particleCount; i++) {
+            setTimeout(() => {
+                const particle = document.createElement('div');
+                particle.className = 'debuff-descending-particle';
+                
+                const offsetX = (Math.random() - 0.5) * 60;
+                const startY = y - 60 - Math.random() * 40;
+                const size = 3 + Math.random() * 4;
+                const fallDistance = 80 + Math.random() * 40;
+                
+                particle.style.cssText = `
+                    position: absolute;
+                    left: ${x + offsetX}px;
+                    top: ${startY}px;
+                    width: ${size}px;
+                    height: ${size}px;
+                    background: radial-gradient(circle, ${color} 0%, ${darkColor} 70%, transparent 100%);
+                    border-radius: 50%;
+                    pointer-events: none;
+                    z-index: 1001;
+                    box-shadow: 0 0 ${size}px ${color}, 0 0 ${size * 2}px ${darkColor};
+                    --fall-distance: ${fallDistance}px;
+                    --wobble-x: ${(Math.random() - 0.5) * 20}px;
+                `;
+                container.appendChild(particle);
+                
+                requestAnimationFrame(() => {
+                    particle.classList.add('debuff-particle-falling');
+                });
+                
+                setTimeout(() => particle.remove(), 500);
+            }, i * 30);
+        }
+    },
+    
+    /**
+     * Create dark contracting pulse (opposite of expanding aura pulse)
+     */
+    _createDebuffPulse(container, x, y, color, darkColor) {
+        const pulse = document.createElement('div');
+        pulse.className = 'debuff-pulse';
+        pulse.style.cssText = `
+            position: absolute;
+            left: ${x}px;
+            top: ${y}px;
+            transform: translate(-50%, -50%);
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: radial-gradient(circle, transparent 0%, ${color}44 50%, ${darkColor}88 80%, transparent 100%);
+            pointer-events: none;
+            z-index: 9;
+        `;
+        container.appendChild(pulse);
+        
+        requestAnimationFrame(() => {
+            pulse.classList.add('debuff-pulse-active');
+        });
+        
+        setTimeout(() => pulse.remove(), 400);
+    },
+    
+    /**
+     * Create spiraling drain particles converging on target
+     */
+    _createDrainSpiral(container, x, y, color, brightColor) {
+        const particleCount = 10;
+        for (let i = 0; i < particleCount; i++) {
+            setTimeout(() => {
+                const particle = document.createElement('div');
+                particle.className = 'debuff-spiral-particle';
+                
+                const startAngle = (i / particleCount) * Math.PI * 2;
+                const startRadius = 60 + Math.random() * 20;
+                const size = 2 + Math.random() * 3;
+                
+                particle.style.cssText = `
+                    position: absolute;
+                    left: ${x + Math.cos(startAngle) * startRadius}px;
+                    top: ${y + Math.sin(startAngle) * startRadius}px;
+                    width: ${size}px;
+                    height: ${size * 2}px;
+                    background: linear-gradient(to bottom, ${brightColor}, ${color});
+                    border-radius: 50%;
+                    pointer-events: none;
+                    z-index: 1002;
+                    box-shadow: 0 0 4px ${color};
+                    --target-x: ${x}px;
+                    --target-y: ${y}px;
+                    --start-x: ${x + Math.cos(startAngle) * startRadius}px;
+                    --start-y: ${y + Math.sin(startAngle) * startRadius}px;
+                `;
+                container.appendChild(particle);
+                
+                requestAnimationFrame(() => {
+                    particle.classList.add('debuff-spiral-active');
+                });
+                
+                setTimeout(() => particle.remove(), 400);
+            }, i * 25);
+        }
+    },
+    
+    /**
+     * Create final implosion effect (opposite of burst)
+     */
+    _createDebuffImplosion(container, x, y, color, darkColor) {
+        // Central dark flash
+        const flash = document.createElement('div');
+        flash.className = 'debuff-implosion-flash';
+        flash.style.cssText = `
+            position: absolute;
+            left: ${x}px;
+            top: ${y}px;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: radial-gradient(circle, ${color} 0%, ${darkColor} 40%, transparent 70%);
+            pointer-events: none;
+            z-index: 1003;
+            box-shadow: 0 0 20px ${color}, 0 0 40px ${darkColor};
+        `;
+        container.appendChild(flash);
+        
+        requestAnimationFrame(() => {
+            flash.classList.add('debuff-implosion-active');
+        });
+        
+        setTimeout(() => flash.remove(), 300);
+        
+        // Imploding particles
+        for (let i = 0; i < 8; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'debuff-implode-particle';
+            
+            const angle = (i / 8) * Math.PI * 2;
+            const startDist = 50;
+            const size = 3 + Math.random() * 3;
+            
+            particle.style.cssText = `
+                position: absolute;
+                left: ${x + Math.cos(angle) * startDist}px;
+                top: ${y + Math.sin(angle) * startDist}px;
+                width: ${size}px;
+                height: ${size}px;
+                background: ${color};
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 1004;
+                box-shadow: 0 0 4px ${color};
+                --implode-x: ${-Math.cos(angle) * startDist}px;
+                --implode-y: ${-Math.sin(angle) * startDist}px;
+            `;
+            container.appendChild(particle);
+            
+            requestAnimationFrame(() => {
+                particle.classList.add('debuff-implode-active');
+            });
+            
+            setTimeout(() => particle.remove(), 250);
+        }
+    },
+    
     // ==================== BATTLE START BANNER ====================
     // Dramatic "BATTLE!" announcement at match start
     
@@ -2576,20 +2832,20 @@ window.CombatEffects = {
      * @param {Function} onComplete - Callback when animation completes
      */
     playBattleBanner(onComplete) {
-        const gameContainer = document.getElementById('game-container');
+        const wrapper = document.getElementById('game-screen-wrapper');
         const battlefield = document.getElementById('battlefield-area');
         
-        if (!gameContainer || !battlefield) {
+        if (!wrapper || !battlefield) {
             if (onComplete) onComplete();
             return;
         }
         
-        // Create BATTLE banner
+        // Create BATTLE banner - appended to wrapper so it's below HUD
         const banner = document.createElement('div');
         banner.className = 'turn-banner battle-banner';
         banner.innerHTML = `<span class="turn-banner-text battle-text">⚔ BATTLE! ⚔</span>`;
         banner.style.setProperty('--banner-color', '#fbbf24'); // Gold/amber color
-        gameContainer.appendChild(banner);
+        wrapper.appendChild(banner);
         
         // Animate banner sweep
         requestAnimationFrame(() => {
@@ -2634,10 +2890,10 @@ window.CombatEffects = {
      * @param {Function} onComplete - Callback when animation completes
      */
     playTurnTransition(newTurn, onComplete) {
-        const gameContainer = document.getElementById('game-container');
+        const wrapper = document.getElementById('game-screen-wrapper');
         const battlefield = document.getElementById('battlefield-area');
         
-        if (!gameContainer || !battlefield) {
+        if (!wrapper || !battlefield) {
             if (onComplete) onComplete();
             return;
         }
@@ -2651,12 +2907,12 @@ window.CombatEffects = {
         const bannerColor = isPlayerTurn ? '#4ade80' : '#f87171';
         const bannerText = isPlayerTurn ? 'YOUR TURN' : 'ENEMY TURN';
         
-        // Create banner
+        // Create banner - appended to wrapper so it's below HUD
         const banner = document.createElement('div');
         banner.className = 'turn-banner';
         banner.innerHTML = `<span class="turn-banner-text">${bannerText}</span>`;
         banner.style.setProperty('--banner-color', bannerColor);
-        gameContainer.appendChild(banner);
+        wrapper.appendChild(banner);
         
         // Animate banner sweep
         requestAnimationFrame(() => {
@@ -6255,10 +6511,205 @@ window.CombatEffects = {
             }
         }
         
+        /* ==================== ENHANCED DEBUFF ANIMATION ==================== */
+        
+        /* Dark sigil beneath target */
+        .debuff-sigil {
+            opacity: 0;
+            transform: translate(-50%, -50%) rotateX(60deg) scale(0.3);
+        }
+        
+        .debuff-sigil.debuff-sigil-active {
+            animation: debuffSigilAppear 800ms ease-out forwards;
+        }
+        
+        @keyframes debuffSigilAppear {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) rotateX(60deg) scale(0.3) rotate(0deg);
+            }
+            20% {
+                opacity: 1;
+                transform: translate(-50%, -50%) rotateX(60deg) scale(1.1) rotate(-15deg);
+            }
+            50% {
+                opacity: 0.9;
+                transform: translate(-50%, -50%) rotateX(60deg) scale(1) rotate(-45deg);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) rotateX(60deg) scale(0.5) rotate(-90deg);
+            }
+        }
+        
+        .debuff-sigil svg {
+            animation: debuffSigilGlow 250ms ease-in-out infinite;
+        }
+        
+        @keyframes debuffSigilGlow {
+            0%, 100% { filter: drop-shadow(0 0 8px #8b5cf6); }
+            50% { filter: drop-shadow(0 0 20px #c4b5fd) drop-shadow(0 0 35px #8b5cf6); }
+        }
+        
+        /* Descending particles - drain effect */
+        .debuff-descending-particle {
+            opacity: 0;
+        }
+        
+        .debuff-descending-particle.debuff-particle-falling {
+            animation: debuffParticleFall 500ms ease-in forwards;
+        }
+        
+        @keyframes debuffParticleFall {
+            0% {
+                opacity: 0;
+                transform: translateY(0) translateX(0);
+            }
+            20% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(var(--fall-distance)) translateX(var(--wobble-x));
+            }
+        }
+        
+        /* Contracting pulse */
+        .debuff-pulse {
+            opacity: 0;
+        }
+        
+        .debuff-pulse.debuff-pulse-active {
+            animation: debuffPulseContract 400ms ease-in forwards;
+        }
+        
+        @keyframes debuffPulseContract {
+            0% {
+                width: 120px;
+                height: 120px;
+                opacity: 0.8;
+            }
+            100% {
+                width: 20px;
+                height: 20px;
+                opacity: 0;
+            }
+        }
+        
+        /* Spiral drain particles */
+        .debuff-spiral-particle {
+            opacity: 0;
+        }
+        
+        .debuff-spiral-particle.debuff-spiral-active {
+            animation: debuffSpiralIn 400ms ease-in forwards;
+        }
+        
+        @keyframes debuffSpiralIn {
+            0% {
+                opacity: 0;
+                left: var(--start-x);
+                top: var(--start-y);
+            }
+            20% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+                left: var(--target-x);
+                top: var(--target-y);
+            }
+        }
+        
+        /* Implosion flash */
+        .debuff-implosion-flash {
+            opacity: 0;
+        }
+        
+        .debuff-implosion-flash.debuff-implosion-active {
+            animation: debuffImplosionFlash 300ms ease-out forwards;
+        }
+        
+        @keyframes debuffImplosionFlash {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(1.5);
+            }
+            30% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(0.8);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.1);
+            }
+        }
+        
+        /* Imploding particles */
+        .debuff-implode-particle {
+            opacity: 0;
+        }
+        
+        .debuff-implode-particle.debuff-implode-active {
+            animation: debuffImplode 250ms ease-in forwards;
+        }
+        
+        @keyframes debuffImplode {
+            0% {
+                opacity: 1;
+                transform: translate(0, 0);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(var(--implode-x), var(--implode-y));
+            }
+        }
+        
+        /* Target receiving debuff - purple drain flicker */
+        .cryptid-sprite.debuff-applying {
+            animation: debuffApplyDrain 600ms ease-out !important;
+            z-index: 100;
+        }
+        
+        @keyframes debuffApplyDrain {
+            0% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+                transform: translate(-50%, -50%) scale(1);
+            }
+            15% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) 
+                        drop-shadow(0 0 20px rgba(139, 92, 246, 0.9)) 
+                        brightness(0.7) saturate(0.5);
+                transform: translate(-50%, -50%) scale(0.95);
+            }
+            30% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) 
+                        drop-shadow(0 0 30px rgba(139, 92, 246, 1)) 
+                        brightness(0.5) saturate(0.3);
+                transform: translate(-50%, -50%) scale(0.9);
+            }
+            50% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) 
+                        drop-shadow(0 0 25px rgba(196, 181, 253, 0.8)) 
+                        brightness(0.6) saturate(0.4);
+                transform: translate(-50%, -50%) scale(0.92);
+            }
+            70% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8)) 
+                        drop-shadow(0 0 15px rgba(139, 92, 246, 0.5)) 
+                        brightness(0.8);
+                transform: translate(-50%, -50%) scale(0.97);
+            }
+            100% {
+                filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+                transform: translate(-50%, -50%) scale(1);
+            }
+        }
+        
         /* ==================== TURN TRANSITION ANIMATION ==================== */
         
         .turn-banner {
-            position: fixed;
+            position: absolute;
             left: -100%;
             top: 50%;
             transform: translateY(-50%);
@@ -6270,7 +6721,7 @@ window.CombatEffects = {
                 rgba(0,0,0,0.95) 50%, 
                 rgba(0,0,0,0.9) 80%, 
                 transparent 100%);
-            z-index: 10000;
+            z-index: 1000; /* Above battlefield content but below HUD (which is outside wrapper) */
             text-align: center;
             border-top: 2px solid var(--banner-color, #4ade80);
             border-bottom: 2px solid var(--banner-color, #4ade80);

@@ -1083,10 +1083,94 @@ window.Multiplayer = {
                 setTimeout(safeComplete, TIMING.spell);
                 break;
             
-            case 'ability':
-                showMessage('Opponent activated ' + (action.abilityName || 'ability') + '!');
+            case 'ability': {
+                const abilityName = action.abilityName || 'ability';
+                showMessage('Opponent activated ' + abilityName + '!');
+                
+                // Execute specific abilities that need to be processed on receiving side
+                if (abilityName === 'decayRatDebuff' && action.targetCol !== undefined && action.targetRow !== undefined) {
+                    // Invert columns for multiplayer (combat/support columns are mirrored)
+                    const ratCol = 1 - action.col;
+                    const tgtCol = 1 - action.targetCol;
+                    
+                    // Find the Decay Rat (opponent's cryptid, so in our view it's on enemy side)
+                    const decayRat = window.game?.enemyField[ratCol]?.[action.row];
+                    // Find our cryptid that's being targeted
+                    const targetCryptid = window.game?.playerField[tgtCol]?.[action.targetRow];
+                    
+                    if (decayRat && decayRat.activateDecayDebuff && targetCryptid) {
+                        // Get sprites
+                        const targetSprite = document.querySelector(
+                            `.cryptid-sprite[data-owner="player"][data-col="${tgtCol}"][data-row="${action.targetRow}"]`
+                        );
+                        const ratSprite = document.querySelector(
+                            `.cryptid-sprite[data-owner="enemy"][data-col="${ratCol}"][data-row="${action.row}"]`
+                        );
+                        
+                        // Visual feedback on Decay Rat
+                        if (ratSprite) {
+                            ratSprite.classList.add('ability-activate');
+                            setTimeout(() => ratSprite.classList.remove('ability-activate'), 500);
+                        }
+                        
+                        // Play debuff animation then execute
+                        if (window.CombatEffects?.playDebuffEffect && targetSprite) {
+                            window.CombatEffects.playDebuffEffect(targetSprite, () => {
+                                // Execute the ability
+                                decayRat.activateDecayDebuff(decayRat, window.game, tgtCol, action.targetRow);
+                                
+                                // Check if our cryptid died
+                                if (targetCryptid.currentHp <= 0 && targetSprite) {
+                                    const rarity = targetSprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                                    if (window.CombatEffects?.playDramaticDeath) {
+                                        window.CombatEffects.playDramaticDeath(targetSprite, 'player', rarity, () => {
+                                            if (window.renderAll) window.renderAll();
+                                        });
+                                    } else {
+                                        targetSprite.classList.add('dying-left');
+                                        setTimeout(() => {
+                                            if (window.renderAll) window.renderAll();
+                                        }, 700);
+                                    }
+                                } else {
+                                    setTimeout(() => {
+                                        if (window.renderAll) window.renderAll();
+                                    }, 200);
+                                }
+                            });
+                        } else {
+                            // Fallback without debuff animation
+                            if (targetSprite) {
+                                targetSprite.classList.add('debuff-applied');
+                                setTimeout(() => targetSprite.classList.remove('debuff-applied'), 500);
+                            }
+                            
+                            decayRat.activateDecayDebuff(decayRat, window.game, tgtCol, action.targetRow);
+                            
+                            if (targetCryptid.currentHp <= 0 && targetSprite) {
+                                const rarity = targetSprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                                if (window.CombatEffects?.playDramaticDeath) {
+                                    window.CombatEffects.playDramaticDeath(targetSprite, 'player', rarity, () => {
+                                        if (window.renderAll) window.renderAll();
+                                    });
+                                } else {
+                                    targetSprite.classList.add('dying-left');
+                                    setTimeout(() => {
+                                        if (window.renderAll) window.renderAll();
+                                    }, 700);
+                                }
+                            } else {
+                                setTimeout(() => {
+                                    if (window.renderAll) window.renderAll();
+                                }, 400);
+                            }
+                        }
+                    }
+                }
+                
                 setTimeout(safeComplete, TIMING.spell);
                 break;
+            }
             
             case 'turnStartSync':
                 // Silent sync - no animation needed
