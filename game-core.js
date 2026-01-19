@@ -5783,13 +5783,6 @@ class Game {
         const hpBefore = target.currentHp;
         target.currentHp -= damage;
         
-        // Mutated Rat support - triggers on ANY attack, not just damage
-        // Moved outside damage > 0 check so it triggers even if attack is blocked
-        if (target.mutatedRatSupport) {
-            this.applyCalamity(attacker, 3);
-            GameEvents.emit('onMutatedRatRetaliation', { target, attacker, calamity: 3 });
-        }
-        
         if (damage > 0) {
             GameEvents.emit('onDamageTaken', { target, damage, source: attacker, sourceType: 'attack', hpBefore, hpAfter: target.currentHp });
             GameEvents.emit('onHit', { attacker, target, damage, hpBefore, hpAfter: target.currentHp });

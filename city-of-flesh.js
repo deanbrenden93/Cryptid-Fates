@@ -1079,44 +1079,7 @@ CardRegistry.registerCryptid('theFlayer', {
     grantsFocus: true
 });
 
-// Mutated Rat - Steel, Uncommon, Cost 4
-CardRegistry.registerCryptid('mutatedRat', {
-    name: "Mutated Rat",
-    sprite: "🐀",
-    spriteScale: 1.0,
-    element: "steel",
-    cost: 4,
-    hp: 6,
-    atk: 2,
-    rarity: "uncommon",
-    combatAbility: "Plague: On attack, apply 3 calamity. When attacked, attacker gets 3 calamity",
-    supportAbility: "Infestation: When combatant or this card is attacked, attacker gets 3 calamity",
-    // COMBAT: Apply calamity on attack and when attacked
-    onCombatAttack: (attacker, target, game) => {
-        game.applyCalamity(target, 3);
-        return 0;
-    },
-    onTakeDamage: (defender, attacker, damage, game) => {
-        if (attacker) {
-            game.applyCalamity(attacker, 3);
-        }
-    },
-    // SUPPORT: Set up retaliation for combatant and self
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.mutatedRatSupport = cryptid;
-        }
-        // Also set up self-retaliation
-        cryptid.onTakeDamage = (defender, attacker, damage, game) => {
-            if (attacker) {
-                game.applyCalamity(attacker, 3);
-            }
-        };
-    }
-});
-
-// Decay Rat - Blood, Uncommon, Cost 3
+// Decay Rat - Blood, Uncommon, Cost 3 (Replaced Mutated Rat)
 CardRegistry.registerCryptid('decayRat', {
     name: "Decay Rat",
     sprite: "🐀",

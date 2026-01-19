@@ -721,7 +721,7 @@ window.CheatMode = {
     cardSeries: {
         'city-of-flesh': {
             cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'sewerAlligator', 'kuchisakeOnna', 
-                       'hellhound', 'mothman', 'bogeyman', 'theFlayer', 'mutatedRat', 'decayRat',
+                       'hellhound', 'mothman', 'bogeyman', 'theFlayer', 'decayRat',
                        'vampireInitiate', 'vampireLord'],
             kindling: ['hellpup', 'myling', 'vampireBat', 'gremlin', 'boggart'],
             pyres: ['pyre', 'freshKill', 'ratKing', 'nightfall'],

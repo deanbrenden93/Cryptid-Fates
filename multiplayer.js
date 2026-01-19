@@ -338,9 +338,6 @@ window.Multiplayer = {
             hasBloodPactAbility: cryptid.hasBloodPactAbility || false,
             bloodPactAvailable: cryptid.bloodPactAvailable || false,
             
-            // Mutated Rat support tracking
-            mutatedRatSupport: cryptid.mutatedRatSupport ? { col: cryptid.mutatedRatSupport.col, row: cryptid.mutatedRatSupport.row } : null,
-            
             // Other City of Flesh
             radianceActive: cryptid.radianceActive || false,
             regenActive: cryptid.regenActive || false,
