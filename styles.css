@@ -762,6 +762,7 @@ body {
     position: relative;
     min-height: 0;
     padding: 12px;
+    padding-top: calc(12px + 3vh); /* Nudge battlefield down 3% for better visual centering */
     cursor: default;
     /* Background now on #game-container */
 }
