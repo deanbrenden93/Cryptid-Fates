@@ -238,18 +238,12 @@ body {
 /* Player background (left half - player's side) */
 .battlefield-bg-player {
     position: absolute;
-    /* Extend beyond container to allow vertical shift without gaps */
-    top: -10%;
-    left: 0;
-    right: 0;
-    bottom: -10%;
+    inset: 0;
     z-index: 0;
     background-size: cover;
-    background-position: center center; /* True center - crops equally from top & bottom */
+    background-position: center center; /* True center - card grid aligns with center of safe zone */
     background-repeat: no-repeat;
     pointer-events: none;
-    /* Shift down visually while keeping even crop behavior */
-    transform: translatey(-8%);
     /* Feather from left, fade toward center divider */
     -webkit-mask-image: linear-gradient(to right, black 35%, transparent 65%);
     mask-image: linear-gradient(to right, black 35%, transparent 65%);
@@ -258,18 +252,12 @@ body {
 /* Enemy background (right half - enemy's side) */
 .battlefield-bg-enemy {
     position: absolute;
-    /* Extend beyond container to allow vertical shift without gaps */
-    top: -10%;
-    left: 0;
-    right: 0;
-    bottom: -10%;
+    inset: 0;
     z-index: 0;
     background-size: cover;
-    background-position: center center; /* True center - crops equally from top & bottom */
+    background-position: center center; /* True center - card grid aligns with center of safe zone */
     background-repeat: no-repeat;
     pointer-events: none;
-    /* Shift down visually while keeping even crop behavior */
-    transform: translatey(-8%);
     /* Feather from right, fade toward center divider */
     -webkit-mask-image: linear-gradient(to left, black 35%, transparent 65%);
     mask-image: linear-gradient(to left, black 35%, transparent 65%);
@@ -285,16 +273,10 @@ body {
 /* Default background when neither player has a custom one */
 .battlefield-bg-default {
     position: absolute;
-    /* Extend beyond container to allow vertical shift without gaps */
-    top: -10%;
-    left: 0;
-    right: 0;
-    bottom: -10%;
+    inset: 0;
     z-index: 0;
     background: url('sprites/test-battlefield-bg.jpg') center center / cover no-repeat;
     pointer-events: none;
-    /* Shift down visually while keeping even crop behavior */
-    transform: translatey(-8%);
 }
 
 /* Screen shake animation on wrapper */
