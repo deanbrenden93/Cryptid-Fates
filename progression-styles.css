@@ -5267,6 +5267,16 @@ div.menu-btn#tile-collection {
     letter-spacing: 1px;
 }
 
+.coll-bg-none-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 48px;
+    opacity: 0.6;
+    filter: grayscale(100%);
+}
+
 .coll-bg-info {
     padding: 16px;
 }

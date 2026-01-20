@@ -474,10 +474,21 @@ window.Collection = {
             const owned = PlayerData.ownsBackground(bg.id);
             const equipped = bg.id === equippedId;
             const priceText = bg.price === 0 ? 'Free' : `${bg.price} ${bg.currency === 'souls' ? '💎' : '🔥'}`;
+            const isNone = bg.id === 'none';
+            
+            // For 'none' option, show a special preview style
+            const previewStyle = isNone 
+                ? 'background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f1a 100%);'
+                : `background-image: url('${bg.image}');`;
+            
+            const previewContent = isNone 
+                ? '<div class="coll-bg-none-icon">🚫</div>' 
+                : '';
             
             return `
                 <div class="coll-bg-card ${owned ? 'owned' : 'locked'} ${equipped ? 'equipped' : ''}" data-bg-id="${bg.id}">
-                    <div class="coll-bg-preview" style="background-image: url('${bg.image}')">
+                    <div class="coll-bg-preview" style="${previewStyle}">
+                        ${previewContent}
                         ${equipped ? '<div class="coll-bg-equipped-badge">✓ Equipped</div>' : ''}
                     </div>
                     <div class="coll-bg-info">

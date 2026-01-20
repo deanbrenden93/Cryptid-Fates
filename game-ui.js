@@ -53,16 +53,18 @@ function applyBattlefieldBackgrounds(enemyBackgroundId = null) {
     
     if (!defaultBgEl || !playerBgEl || !enemyBgEl) return;
     
-    // Get player's equipped background (default counts as a valid background)
+    // Get player's equipped background ('none' means no background)
     const playerBgId = PlayerData?.getEquippedBackground?.() || 'default';
     const playerBg = PlayerData?.getBackground?.(playerBgId);
+    const playerHasBg = playerBgId !== 'none' && playerBg?.image;
     
     // Get enemy's background (from multiplayer or AI default)
     // In multiplayer, opponent's background is synced via window.opponentBackground
-    // For AI matches, AI always has the frozen-tundra background equipped
+    // For AI matches, AI has no background equipped (until art is finalized)
     const isAIMatch = !Multiplayer?.isInMatch;
-    const enemyBgId = enemyBackgroundId || window.opponentBackground || (isAIMatch ? 'frozen-tundra' : 'default');
+    const enemyBgId = enemyBackgroundId || window.opponentBackground || (isAIMatch ? 'none' : 'default');
     const enemyBg = PlayerData?.getBackground?.(enemyBgId);
+    const enemyHasBg = enemyBgId !== 'none' && enemyBg?.image;
     
     // Reset all backgrounds
     defaultBgEl.style.display = 'none';
@@ -71,18 +73,44 @@ function applyBattlefieldBackgrounds(enemyBackgroundId = null) {
     playerBgEl.classList.remove('solo-bg');
     enemyBgEl.classList.remove('solo-bg');
     
-    // Check if both have the same background
+    // Handle 'none' cases
+    if (!playerHasBg && !enemyHasBg) {
+        // Both have 'none' - show default background
+        defaultBgEl.style.display = 'block';
+        console.log('[Backgrounds] Both none - showing default');
+        return;
+    }
+    
+    if (!playerHasBg && enemyHasBg) {
+        // Player has 'none', enemy has background - show enemy's fully
+        enemyBgEl.style.backgroundImage = `url('${enemyBg.image}')`;
+        enemyBgEl.classList.add('solo-bg');
+        enemyBgEl.style.display = 'block';
+        console.log('[Backgrounds] Player none, enemy has bg:', enemyBgId);
+        return;
+    }
+    
+    if (playerHasBg && !enemyHasBg) {
+        // Player has background, enemy has 'none' - show player's fully
+        playerBgEl.style.backgroundImage = `url('${playerBg.image}')`;
+        playerBgEl.classList.add('solo-bg');
+        playerBgEl.style.display = 'block';
+        console.log('[Backgrounds] Player has bg, enemy none:', playerBgId);
+        return;
+    }
+    
+    // Both have backgrounds
     const sameBg = playerBgId === enemyBgId;
     
     if (sameBg) {
         // Both have the same background - show it fully on player side (no split needed)
-        playerBgEl.style.backgroundImage = `url('${playerBg?.image || ''}')`;
+        playerBgEl.style.backgroundImage = `url('${playerBg.image}')`;
         playerBgEl.classList.add('solo-bg');
         playerBgEl.style.display = 'block';
     } else {
         // Different backgrounds - show split/feathered
-        playerBgEl.style.backgroundImage = `url('${playerBg?.image || ''}')`;
-        enemyBgEl.style.backgroundImage = `url('${enemyBg?.image || ''}')`;
+        playerBgEl.style.backgroundImage = `url('${playerBg.image}')`;
+        enemyBgEl.style.backgroundImage = `url('${enemyBg.image}')`;
         playerBgEl.style.display = 'block';
         enemyBgEl.style.display = 'block';
     }

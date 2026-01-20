@@ -69,6 +69,14 @@ window.PlayerData = {
     
     // Available backgrounds registry
     backgroundRegistry: {
+        'none': {
+            id: 'none',
+            name: 'No Background',
+            description: 'Let your opponent\'s background take the stage, or show the void.',
+            image: null, // No image - uses transparent/none
+            price: 0,
+            currency: 'embers'
+        },
         'default': {
             id: 'default',
             name: 'Classic Battlefield',
@@ -646,7 +654,7 @@ window.PlayerData = {
      * Check if player owns a background
      */
     ownsBackground(bgId) {
-        return this.cosmetics?.backgrounds?.owned?.includes(bgId) || bgId === 'default';
+        return this.cosmetics?.backgrounds?.owned?.includes(bgId) || bgId === 'default' || bgId === 'none';
     },
     
     /**
