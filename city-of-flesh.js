@@ -1285,6 +1285,50 @@ CardRegistry.registerCryptid('decayRat', {
     }
 });
 
+// Moleman - Steel, Common, Cost 2 (Cryptid #14)
+CardRegistry.registerCryptid('moleman', {
+    name: "Moleman",
+    sprite: "🦡",
+    spriteScale: 1.0,
+    element: "steel",
+    cost: 2,
+    hp: 2,
+    atk: 3,
+    rarity: "common",
+    combatAbility: "Burrow: May only attack combatant in Moleman's row, or any enemy support. +2 damage to ailmented targets.",
+    supportAbility: "Combatant's attacks against enemy supports also deal half damage rounded down to the supports above and below the target.",
+    
+    // COMBAT: Custom targeting - Burrow restricts targets to same-row combatant OR any support
+    // This is handled via the hasBurrowTargeting flag checked in getValidAttackTargets
+    hasBurrowTargeting: true,
+    
+    // COMBAT: +2 damage to ailmented targets
+    bonusVsAilment: 2,
+    
+    // SUPPORT: Combatant's attacks vs supports splash damage to adjacent supports
+    onSupport: (cryptid, owner, game) => {
+        const combatant = game.getCombatant(cryptid);
+        if (combatant) {
+            combatant.molemanSupport = cryptid;
+            combatant.hasMolemanSplash = true;
+        }
+    },
+    
+    // Clean up support reference on death
+    onDeath: (cryptid, game) => {
+        const combatant = game.getCombatant(cryptid);
+        if (combatant && combatant.molemanSupport === cryptid) {
+            combatant.molemanSupport = null;
+            combatant.hasMolemanSplash = false;
+        }
+    },
+    
+    // When promoted to combat, clean up support ability
+    onCombat: (cryptid, owner, game) => {
+        // No special combat enter effect needed beyond targeting
+    }
+});
+
 // Vampire Initiate - Blood, Common, Cost 2 (evolves from Vampire Bat, into Vampire Lord)
 CardRegistry.registerCryptid('vampireInitiate', {
     name: "Vampire Initiate",

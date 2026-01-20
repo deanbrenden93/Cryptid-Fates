@@ -5880,6 +5880,61 @@ class Game {
             }
         }
         
+        // Moleman Support Ability - Splash damage to adjacent supports when attacking a support
+        // Deal half damage (rounded down) to supports above and below the target
+        let molemanSplashTargets = [];
+        const molemanSupport = attacker.molemanSupport;
+        if (attacker.hasMolemanSplash && molemanSupport && this.getSupport(attacker) === molemanSupport && !this.isSupportNegated(molemanSupport) && damage > 0) {
+            const supportCol = this.getSupportCol(targetOwner);
+            // Only triggers when attacking a support (not a combatant)
+            if (targetCol === supportCol) {
+                const splashDamage = Math.floor(damage / 2);
+                if (splashDamage > 0) {
+                    const enemyField = targetOwner === 'player' ? this.playerField : this.enemyField;
+                    
+                    // Check support above (row - 1)
+                    if (targetRow > 0) {
+                        const supportAbove = enemyField[supportCol][targetRow - 1];
+                        if (supportAbove) {
+                            supportAbove.currentHp -= splashDamage;
+                            molemanSplashTargets.push({ target: supportAbove, row: targetRow - 1 });
+                            GameEvents.emit('onMolemanSplash', { attacker, molemanSupport, target: supportAbove, damage: splashDamage, direction: 'above' });
+                            
+                            if (typeof queueAbilityAnimation !== 'undefined') {
+                                queueAbilityAnimation({
+                                    type: 'abilityDamage',
+                                    source: molemanSupport,
+                                    target: supportAbove,
+                                    damage: splashDamage,
+                                    message: `🦡 Moleman splash: ${splashDamage} damage!`
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Check support below (row + 1)
+                    if (targetRow < 2) {
+                        const supportBelow = enemyField[supportCol][targetRow + 1];
+                        if (supportBelow) {
+                            supportBelow.currentHp -= splashDamage;
+                            molemanSplashTargets.push({ target: supportBelow, row: targetRow + 1 });
+                            GameEvents.emit('onMolemanSplash', { attacker, molemanSupport, target: supportBelow, damage: splashDamage, direction: 'below' });
+                            
+                            if (typeof queueAbilityAnimation !== 'undefined') {
+                                queueAbilityAnimation({
+                                    type: 'abilityDamage',
+                                    source: molemanSupport,
+                                    target: supportBelow,
+                                    damage: splashDamage,
+                                    message: `🦡 Moleman splash: ${splashDamage} damage!`
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
         // Rooftop Gargoyle Support Ability - Lethal damage prevention
         // Check BEFORE death processing, AFTER damage is applied
         if (target.currentHp <= 0 && target.hasRooftopGargoyleSupport) {
@@ -6034,6 +6089,21 @@ class Game {
                 attacker.onKill(attacker, cleaveTarget, this);
             }
             GameEvents.emit('onKill', { killer: attacker, victim: cleaveTarget, killerOwner: attacker.owner, victimOwner: targetOwner, pendingAnimation: true });
+        }
+        
+        // Deferred Moleman splash death check - mark for death, don't kill yet
+        for (const splashEntry of molemanSplashTargets) {
+            const splashTarget = splashEntry.target;
+            if (splashTarget && splashTarget.currentHp <= 0 && !splashTarget._alreadyKilled && !splashTarget._pendingDeathFromAttack) {
+                splashTarget.killedBy = 'molemanSplash';
+                splashTarget.killedBySource = attacker;
+                splashTarget._pendingDeathFromAttack = true;
+                if (attacker.onKill) {
+                    GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: splashTarget, col: attacker.col, row: attacker.row });
+                    attacker.onKill(attacker, splashTarget, this);
+                }
+                GameEvents.emit('onKill', { killer: attacker, victim: splashTarget, killerOwner: attacker.owner, victimOwner: targetOwner, pendingAnimation: true });
+            }
         }
         
         if (!killed && attacker.hasLatch && !attacker.latchedTo && damage > 0) {
@@ -6518,6 +6588,34 @@ class Game {
                     }
                 }
             }
+            return targets;
+        }
+        
+        // Moleman's Burrow: Can only attack combatant in same row, or any enemy support
+        if (attacker.hasBurrowTargeting) {
+            // Target 1: Enemy combatant in the same row only
+            const sameRowCombatant = enemyField[enemyCombatCol][attacker.row];
+            if (sameRowCombatant) {
+                targets.push({ col: enemyCombatCol, row: attacker.row, cryptid: sameRowCombatant });
+            }
+            
+            // Target 2: Any enemy support (all rows) - supports are targetable if combatant is down or tapped
+            for (let r = 0; r < 3; r++) {
+                const support = enemyField[enemySupportCol][r];
+                const combatant = enemyField[enemyCombatCol][r];
+                if (support) {
+                    // Can target support if no combatant in front or combatant is tapped
+                    if (!combatant || combatant.tapped) {
+                        targets.push({ col: enemySupportCol, row: r, cryptid: support });
+                    }
+                }
+            }
+            
+            // If field is empty and enemy has kindling, can target empty slots in same row
+            if (fieldEmpty && enemyKindling.length > 0 && !sameRowCombatant) {
+                targets.push({ owner: enemyOwner, col: enemyCombatCol, row: attacker.row, cryptid: null, isEmptyTarget: true });
+            }
+            
             return targets;
         }
         
