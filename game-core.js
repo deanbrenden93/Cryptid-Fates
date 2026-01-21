@@ -4617,7 +4617,7 @@ class Game {
     }
 
     // Status Effects
-    applyBurn(cryptid) {
+    applyBurn(cryptid, turns = 3) {
         if (!cryptid) return false;
         
         // Check for ailment immunity (Boggart)
@@ -4626,8 +4626,8 @@ class Game {
         }
         
         const wasAlreadyBurning = cryptid.burnTurns > 0;
-        cryptid.burnTurns = 3;
-        GameEvents.emit('onStatusApplied', { status: 'burn', cryptid, owner: cryptid.owner, refreshed: wasAlreadyBurning });
+        cryptid.burnTurns = turns;
+        GameEvents.emit('onStatusApplied', { status: 'burn', cryptid, owner: cryptid.owner, refreshed: wasAlreadyBurning, turns });
         this.updateAllGremlinDebuffs(); // Update Gremlin ATK debuffs
         return true;
     }
@@ -5881,8 +5881,9 @@ class Game {
         }
         
         // Moleman Support Ability - Splash damage to adjacent supports when attacking a support
+        // We DON'T apply damage here - instead we return the info for sequenced processing by UI
         // Deal half damage (rounded down) to supports above and below the target
-        let molemanSplashTargets = [];
+        let molemanSplashInfo = null;
         const molemanSupport = attacker.molemanSupport;
         if (attacker.hasMolemanSplash && molemanSupport && this.getSupport(attacker) === molemanSupport && !this.isSupportNegated(molemanSupport) && damage > 0) {
             const supportCol = this.getSupportCol(targetOwner);
@@ -5891,24 +5892,25 @@ class Game {
                 const splashDamage = Math.floor(damage / 2);
                 if (splashDamage > 0) {
                     const enemyField = targetOwner === 'player' ? this.playerField : this.enemyField;
+                    molemanSplashInfo = {
+                        attacker,
+                        molemanSupport,
+                        splashDamage,
+                        targetOwner,
+                        supportCol,
+                        targets: []
+                    };
                     
                     // Check support above (row - 1)
                     if (targetRow > 0) {
                         const supportAbove = enemyField[supportCol][targetRow - 1];
                         if (supportAbove) {
-                            supportAbove.currentHp -= splashDamage;
-                            molemanSplashTargets.push({ target: supportAbove, row: targetRow - 1 });
-                            GameEvents.emit('onMolemanSplash', { attacker, molemanSupport, target: supportAbove, damage: splashDamage, direction: 'above' });
-                            
-                            if (typeof queueAbilityAnimation !== 'undefined') {
-                                queueAbilityAnimation({
-                                    type: 'abilityDamage',
-                                    source: molemanSupport,
-                                    target: supportAbove,
-                                    damage: splashDamage,
-                                    message: `🦡 Moleman splash: ${splashDamage} damage!`
-                                });
-                            }
+                            molemanSplashInfo.targets.push({ 
+                                cryptid: supportAbove, 
+                                row: targetRow - 1, 
+                                col: supportCol,
+                                direction: 'above' 
+                            });
                         }
                     }
                     
@@ -5916,20 +5918,18 @@ class Game {
                     if (targetRow < 2) {
                         const supportBelow = enemyField[supportCol][targetRow + 1];
                         if (supportBelow) {
-                            supportBelow.currentHp -= splashDamage;
-                            molemanSplashTargets.push({ target: supportBelow, row: targetRow + 1 });
-                            GameEvents.emit('onMolemanSplash', { attacker, molemanSupport, target: supportBelow, damage: splashDamage, direction: 'below' });
-                            
-                            if (typeof queueAbilityAnimation !== 'undefined') {
-                                queueAbilityAnimation({
-                                    type: 'abilityDamage',
-                                    source: molemanSupport,
-                                    target: supportBelow,
-                                    damage: splashDamage,
-                                    message: `🦡 Moleman splash: ${splashDamage} damage!`
-                                });
-                            }
+                            molemanSplashInfo.targets.push({ 
+                                cryptid: supportBelow, 
+                                row: targetRow + 1, 
+                                col: supportCol,
+                                direction: 'below' 
+                            });
                         }
+                    }
+                    
+                    // If no actual targets, clear the info
+                    if (molemanSplashInfo.targets.length === 0) {
+                        molemanSplashInfo = null;
                     }
                 }
             }
@@ -5994,11 +5994,35 @@ class Game {
         const effectiveHp = this.getEffectiveHp(target);
         let killed = false;
         let supportKilled = false;
+        let kuchisakeExplosionInfo = null;
         
         if (effectiveHp <= 0) {
             killed = true;
             target.killedBy = 'attack';
             target.killedBySource = attacker;
+            
+            // Kuchisake-Onna Explosion: If attacker has explosion ability and victim was burning
+            // Deal half of victim's base HP (rounded down) to adjacent enemies
+            if (attacker.hasKuchisakeExplosion && target.burnTurns > 0) {
+                const explosionDamage = Math.floor((target.baseHp || target.hp) / 2);
+                if (explosionDamage > 0) {
+                    // Get adjacent cryptids (same side as victim = enemies to attacker)
+                    const adjacentTargets = this.getAdjacentCryptids(target);
+                    if (adjacentTargets.length > 0) {
+                        kuchisakeExplosionInfo = {
+                            attacker,
+                            victim: target,
+                            explosionDamage,
+                            targetOwner,
+                            targets: adjacentTargets.map(adj => ({
+                                cryptid: adj,
+                                col: adj.col,
+                                row: adj.row
+                            }))
+                        };
+                    }
+                }
+            }
             
             // Calculate overkill damage for destroyer
             // Uses effective HP (with HP pooling) for accurate overflow calculation
@@ -6091,21 +6115,6 @@ class Game {
             GameEvents.emit('onKill', { killer: attacker, victim: cleaveTarget, killerOwner: attacker.owner, victimOwner: targetOwner, pendingAnimation: true });
         }
         
-        // Deferred Moleman splash death check - mark for death, don't kill yet
-        for (const splashEntry of molemanSplashTargets) {
-            const splashTarget = splashEntry.target;
-            if (splashTarget && splashTarget.currentHp <= 0 && !splashTarget._alreadyKilled && !splashTarget._pendingDeathFromAttack) {
-                splashTarget.killedBy = 'molemanSplash';
-                splashTarget.killedBySource = attacker;
-                splashTarget._pendingDeathFromAttack = true;
-                if (attacker.onKill) {
-                    GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: splashTarget, col: attacker.col, row: attacker.row });
-                    attacker.onKill(attacker, splashTarget, this);
-                }
-                GameEvents.emit('onKill', { killer: attacker, victim: splashTarget, killerOwner: attacker.owner, victimOwner: targetOwner, pendingAnimation: true });
-            }
-        }
-        
         if (!killed && attacker.hasLatch && !attacker.latchedTo && damage > 0) {
             this.applyLatch(attacker, target);
         }
@@ -6175,7 +6184,90 @@ class Game {
             attacker.multiAttackProcessed = false;
         }
         
-        return { damage, killed, protectionBlocked, target, effectiveHpBefore, hpBefore };
+        return { damage, killed, protectionBlocked, target, effectiveHpBefore, hpBefore, molemanSplashInfo, kuchisakeExplosionInfo };
+    }
+    
+    // Apply Kuchisake explosion damage to a single target (called by UI for sequenced processing)
+    applyKuchisakeExplosion(explosionInfo, targetIndex) {
+        if (!explosionInfo || !explosionInfo.targets || targetIndex >= explosionInfo.targets.length) {
+            return null;
+        }
+        
+        const targetEntry = explosionInfo.targets[targetIndex];
+        const { cryptid: explosionTarget, col, row } = targetEntry;
+        const { attacker, explosionDamage, targetOwner, victim } = explosionInfo;
+        
+        // Re-verify target still exists at position (may have been killed/moved)
+        const field = targetOwner === 'player' ? this.playerField : this.enemyField;
+        const currentCryptid = field[col]?.[row];
+        if (!currentCryptid || currentCryptid !== explosionTarget) {
+            return { skipped: true, reason: 'target_moved' };
+        }
+        
+        // Apply damage
+        const hpBefore = explosionTarget.currentHp;
+        explosionTarget.currentHp -= explosionDamage;
+        
+        GameEvents.emit('onKuchisakeExplosion', { attacker, victim, target: explosionTarget, damage: explosionDamage });
+        GameEvents.emit('onDamageTaken', { target: explosionTarget, damage: explosionDamage, source: attacker, sourceType: 'kuchisakeExplosion', hpBefore, hpAfter: explosionTarget.currentHp });
+        
+        // Check for death
+        const killed = this.getEffectiveHp(explosionTarget) <= 0;
+        if (killed) {
+            explosionTarget.killedBy = 'kuchisakeExplosion';
+            explosionTarget.killedBySource = attacker;
+        }
+        
+        return { 
+            target: explosionTarget, 
+            damage: explosionDamage, 
+            killed,
+            row,
+            col,
+            targetOwner
+        };
+    }
+    
+    // Apply Moleman splash damage to a single target (called by UI for sequenced processing)
+    applyMolemanSplash(splashInfo, targetIndex) {
+        if (!splashInfo || !splashInfo.targets || targetIndex >= splashInfo.targets.length) {
+            return null;
+        }
+        
+        const targetEntry = splashInfo.targets[targetIndex];
+        const { cryptid: splashTarget, row, col, direction } = targetEntry;
+        const { attacker, molemanSupport, splashDamage, targetOwner } = splashInfo;
+        
+        // Re-verify target still exists at position (may have been killed/moved)
+        const field = targetOwner === 'player' ? this.playerField : this.enemyField;
+        const currentCryptid = field[col]?.[row];
+        if (!currentCryptid || currentCryptid !== splashTarget) {
+            return { skipped: true, reason: 'target_moved' };
+        }
+        
+        // Apply damage
+        const hpBefore = splashTarget.currentHp;
+        splashTarget.currentHp -= splashDamage;
+        
+        GameEvents.emit('onMolemanSplash', { attacker, molemanSupport, target: splashTarget, damage: splashDamage, direction });
+        GameEvents.emit('onDamageTaken', { target: splashTarget, damage: splashDamage, source: molemanSupport, sourceType: 'molemanSplash', hpBefore, hpAfter: splashTarget.currentHp });
+        
+        // Check for death
+        const killed = this.getEffectiveHp(splashTarget) <= 0;
+        if (killed) {
+            splashTarget.killedBy = 'molemanSplash';
+            splashTarget.killedBySource = attacker;
+        }
+        
+        return { 
+            target: splashTarget, 
+            damage: splashDamage, 
+            killed,
+            row,
+            col,
+            direction,
+            targetOwner
+        };
     }
 
     killCryptid(cryptid, killerOwner = null) {
@@ -6591,7 +6683,7 @@ class Game {
             return targets;
         }
         
-        // Moleman's Burrow: Can only attack combatant in same row, or any enemy support
+        // Moleman's Burrow: Can only attack combatant in same row, or ANY enemy support (ignoring combatant status)
         if (attacker.hasBurrowTargeting) {
             // Target 1: Enemy combatant in the same row only
             const sameRowCombatant = enemyField[enemyCombatCol][attacker.row];
@@ -6599,15 +6691,12 @@ class Game {
                 targets.push({ col: enemyCombatCol, row: attacker.row, cryptid: sameRowCombatant });
             }
             
-            // Target 2: Any enemy support (all rows) - supports are targetable if combatant is down or tapped
+            // Target 2: ANY enemy support (all rows) - Burrow ignores combatant blocking entirely
             for (let r = 0; r < 3; r++) {
                 const support = enemyField[enemySupportCol][r];
-                const combatant = enemyField[enemyCombatCol][r];
                 if (support) {
-                    // Can target support if no combatant in front or combatant is tapped
-                    if (!combatant || combatant.tapped) {
-                        targets.push({ col: enemySupportCol, row: r, cryptid: support });
-                    }
+                    // Moleman can ALWAYS target supports regardless of combatant status
+                    targets.push({ col: enemySupportCol, row: r, cryptid: support });
                 }
             }
             

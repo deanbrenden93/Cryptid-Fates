@@ -3517,25 +3517,235 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
             renderAll();
             processPendingPromotions(() => {
                 checkCascadingDeaths(() => { 
-                    sendMultiplayerHook(); // AFTER all cascades complete
-                    
-                    // Emit attack complete event for tutorial and other listeners
-                    GameEvents.emit('onAttackComplete', { 
-                        attacker, 
-                        target: result.target, 
-                        killed: result.killed, 
-                        damage: result.damage,
-                        attackerOwner: attacker.owner,
-                        targetOwner 
+                    // Process Kuchisake explosion AFTER kill completes (triggered by killing burning enemy)
+                    processKuchisakeExplosion(result.kuchisakeExplosionInfo, () => {
+                        // Process Moleman splash damage AFTER explosion completes (sequenced)
+                        processMolemanSplash(result.molemanSplashInfo, () => {
+                            sendMultiplayerHook(); // AFTER all cascades complete
+                            
+                            // Emit attack complete event for tutorial and other listeners
+                            GameEvents.emit('onAttackComplete', { 
+                                attacker, 
+                                target: result.target, 
+                                killed: result.killed, 
+                                damage: result.damage,
+                                attackerOwner: attacker.owner,
+                                targetOwner 
+                            });
+                            
+                            isAnimating = false; 
+                            renderAll(); 
+                            updateButtons(); 
+                        });
                     });
-                    
-                    isAnimating = false; 
-                    renderAll(); 
-                    updateButtons(); 
                 });
             });
         }, waitTime);
     });
+}
+
+// Process Kuchisake-Onna explosion damage sequentially to adjacent enemies
+// Triggered when Kuchisake kills a burning enemy - victim explodes dealing half base HP
+function processKuchisakeExplosion(explosionInfo, onComplete) {
+    if (!explosionInfo || !explosionInfo.targets || explosionInfo.targets.length === 0) {
+        onComplete?.();
+        return;
+    }
+    
+    const victimName = explosionInfo.victim?.name || 'enemy';
+    
+    let currentIndex = 0;
+    
+    function processNextExplosion() {
+        if (currentIndex >= explosionInfo.targets.length) {
+            onComplete?.();
+            return;
+        }
+        
+        const result = game.applyKuchisakeExplosion(explosionInfo, currentIndex);
+        currentIndex++;
+        
+        if (!result || result.skipped) {
+            // Target no longer valid, move to next
+            setTimeout(processNextExplosion, 100);
+            return;
+        }
+        
+        const { target, damage, killed, row, col, targetOwner } = result;
+        const sprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${col}"][data-row="${row}"]`);
+        
+        // Calculate impact position for visual effects
+        const battlefield = document.getElementById('battlefield-area');
+        let impactX = 0, impactY = 0;
+        if (sprite && battlefield) {
+            const targetRect = sprite.getBoundingClientRect();
+            const battlefieldRect = battlefield.getBoundingClientRect();
+            impactX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+            impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+        }
+        
+        // Show explosion message
+        showMessage(`💥 ${victimName} explodes: ${damage} to ${target.name}!`, TIMING.messageDisplay);
+        
+        // Play full combat effects (damage number, particles, shake)
+        if (window.CombatEffects) {
+            const isCrit = damage >= 5;
+            
+            // Medium screen shake for explosion
+            CombatEffects.heavyImpact(Math.max(damage, 1) * 0.7);
+            
+            // Explosion-style effects (more intense, fiery colors)
+            CombatEffects.createImpactFlash(impactX, impactY, 80 + damage * 10);
+            CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
+            CombatEffects.createImpactParticles(impactX, impactY, killed ? '#ff2222' : '#ff6622', 10 + damage);
+            
+            // Show damage number popup
+            CombatEffects.showDamageNumber(target, damage, isCrit);
+        }
+        
+        // Hit recoil animation on sprite
+        if (sprite && !killed) {
+            sprite.classList.add('hit-recoil');
+            setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+        }
+        
+        // Update health bar
+        window.updateSpriteHealthBar?.(targetOwner, col, row);
+        
+        if (killed) {
+            // Play death animation, then continue
+            const rarity = target.rarity || 'common';
+            
+            setTimeout(() => {
+                if (sprite && window.CombatEffects?.playDramaticDeath) {
+                    game.killCryptid(target, explosionInfo.attacker.owner);
+                    window.CombatEffects.playDramaticDeath(sprite, targetOwner, rarity, () => {
+                        renderAll();
+                        // Check for any cascading deaths from this kill
+                        checkCascadingDeaths(() => {
+                            setTimeout(processNextExplosion, 300);
+                        });
+                    });
+                } else {
+                    if (sprite) sprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
+                    setTimeout(() => {
+                        game.killCryptid(target, explosionInfo.attacker.owner);
+                        renderAll();
+                        checkCascadingDeaths(() => {
+                            setTimeout(processNextExplosion, 300);
+                        });
+                    }, TIMING.deathAnim);
+                }
+            }, 200); // Brief pause before death
+        } else {
+            // No death, just move to next after brief delay
+            setTimeout(processNextExplosion, 400);
+        }
+    }
+    
+    // Small delay before starting explosion sequence for visual clarity
+    setTimeout(processNextExplosion, 300);
+}
+
+// Process Moleman splash damage sequentially: above target first, then below
+// Each splash plays out fully (damage + death) before the next
+function processMolemanSplash(splashInfo, onComplete) {
+    if (!splashInfo || !splashInfo.targets || splashInfo.targets.length === 0) {
+        onComplete?.();
+        return;
+    }
+    
+    let currentIndex = 0;
+    
+    function processNextSplash() {
+        if (currentIndex >= splashInfo.targets.length) {
+            onComplete?.();
+            return;
+        }
+        
+        const result = game.applyMolemanSplash(splashInfo, currentIndex);
+        currentIndex++;
+        
+        if (!result || result.skipped) {
+            // Target no longer valid, move to next
+            setTimeout(processNextSplash, 100);
+            return;
+        }
+        
+        const { target, damage, killed, row, col, direction, targetOwner } = result;
+        const sprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${col}"][data-row="${row}"]`);
+        
+        // Calculate impact position for visual effects
+        const battlefield = document.getElementById('battlefield-area');
+        let impactX = 0, impactY = 0;
+        if (sprite && battlefield) {
+            const targetRect = sprite.getBoundingClientRect();
+            const battlefieldRect = battlefield.getBoundingClientRect();
+            impactX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+            impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+        }
+        
+        // Show splash damage message
+        showMessage(`🦡 Moleman splash: ${damage} to ${target.name}!`, TIMING.messageDisplay);
+        
+        // Play full combat effects (damage number, particles, shake)
+        if (window.CombatEffects) {
+            const isCrit = damage >= 5;
+            
+            // Light screen shake for splash
+            CombatEffects.heavyImpact(Math.max(damage, 1) * 0.5);
+            
+            // Impact flash and particles
+            CombatEffects.createImpactFlash(impactX, impactY, 60 + damage * 8);
+            CombatEffects.createSparks(impactX, impactY, 6 + damage);
+            CombatEffects.createImpactParticles(impactX, impactY, killed ? '#ff2222' : '#ffaa44', 6 + damage);
+            
+            // Show damage number popup
+            CombatEffects.showDamageNumber(target, damage, isCrit);
+        }
+        
+        // Hit recoil animation on sprite
+        if (sprite && !killed) {
+            sprite.classList.add('hit-recoil');
+            setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+        }
+        
+        // Update health bar
+        window.updateSpriteHealthBar?.(targetOwner, col, row);
+        
+        if (killed) {
+            // Play death animation, then continue
+            const rarity = target.rarity || 'common';
+            
+            setTimeout(() => {
+                if (sprite && window.CombatEffects?.playDramaticDeath) {
+                    game.killCryptid(target, splashInfo.attacker.owner);
+                    window.CombatEffects.playDramaticDeath(sprite, targetOwner, rarity, () => {
+                        renderAll();
+                        // Check for any cascading deaths from this kill
+                        checkCascadingDeaths(() => {
+                            setTimeout(processNextSplash, 300);
+                        });
+                    });
+                } else {
+                    if (sprite) sprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
+                    setTimeout(() => {
+                        game.killCryptid(target, splashInfo.attacker.owner);
+                        renderAll();
+                        checkCascadingDeaths(() => {
+                            setTimeout(processNextSplash, 300);
+                        });
+                    }, TIMING.deathAnim);
+                }
+            }, 200); // Brief pause before death
+        } else {
+            // No death, just move to next after brief delay
+            setTimeout(processNextSplash, 400);
+        }
+    }
+    
+    // Small delay before starting splash sequence for visual clarity
+    setTimeout(processNextSplash, 300);
 }
 
 function animateSupportPromotion(owner, row) {
@@ -5493,6 +5703,8 @@ window.calculateTilePositions = calculateTilePositions;
 window.tilePositions = tilePositions;
 window.performAttackOnTarget = performAttackOnTarget;
 window.playAttackAnimation = playAttackAnimation;
+window.processMolemanSplash = processMolemanSplash;
+window.processKuchisakeExplosion = processKuchisakeExplosion;
 
 // Update a single sprite's health bar immediately (for instant feedback at impact)
 window.updateSpriteHealthBar = function(owner, col, row) {

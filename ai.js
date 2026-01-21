@@ -701,8 +701,24 @@ function aiCombat(onComplete) {
                     window.processPendingPromotions(() => {
                         waitForTraps(() => {
                             window.checkCascadingDeaths(() => {
-                                window.renderAll();
-                                waitForTraps(() => nextCallback(index + 1));
+                                // Process Kuchisake explosion (if AI attacker has it)
+                                if (typeof window.processKuchisakeExplosion === 'function') {
+                                    window.processKuchisakeExplosion(result.kuchisakeExplosionInfo, () => {
+                                        // Process Moleman splash (if AI attacker has it)
+                                        if (typeof window.processMolemanSplash === 'function') {
+                                            window.processMolemanSplash(result.molemanSplashInfo, () => {
+                                                window.renderAll();
+                                                waitForTraps(() => nextCallback(index + 1));
+                                            });
+                                        } else {
+                                            window.renderAll();
+                                            waitForTraps(() => nextCallback(index + 1));
+                                        }
+                                    });
+                                } else {
+                                    window.renderAll();
+                                    waitForTraps(() => nextCallback(index + 1));
+                                }
                             });
                         });
                     });
@@ -718,8 +734,16 @@ function aiCombat(onComplete) {
             waitForAbilityAnimations(() => {
                 waitForTraps(() => {
                     setTimeout(() => {
-                        window.renderAll();
-                        nextCallback(index + 1);
+                        // Process Moleman splash even on non-kills (triggers when attacking supports)
+                        if (typeof window.processMolemanSplash === 'function' && result.molemanSplashInfo) {
+                            window.processMolemanSplash(result.molemanSplashInfo, () => {
+                                window.renderAll();
+                                nextCallback(index + 1);
+                            });
+                        } else {
+                            window.renderAll();
+                            nextCallback(index + 1);
+                        }
                     }, TIMING.damageAnim + 200);
                 });
             });

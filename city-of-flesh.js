@@ -707,27 +707,37 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
     spriteScale: 1.0,
     element: "blood",
     cost: 4,
-    hp: 4,
-    atk: 4,
+    hp: 7,
+    atk: 5,
     rarity: "rare",
     mythical: true,
-    combatAbility: "Slit: Causes bleed. Extra attack if target has ailment",
-    supportAbility: "Sacrifice: May kill combatant to become 7/7 with Destroyer",
-    // COMBAT: Apply bleed on hit. If first target has status ailment, extra attack
-    attacksApplyBleed: true,
-    onCombatAttack: (attacker, target, game) => {
-        // Check if this is the first attack this turn
-        if (!attacker.attackedThisTurn && game.hasStatusAilment(target)) {
-            attacker.canAttackAgain = true;
+    combatAbility: "Slit: Attacks apply Burn 2. If Kuchisake kills a burning enemy, it explodes dealing half its base HP (rounded down) to adjacent enemies.",
+    supportAbility: "Am I Pretty?: May sacrifice combatant. If you do, Kuchisake becomes 9/7 and gains Destroyer.",
+    otherAbility: "At the end of each turn, if Kuchisake has no enemy cryptids across from her, she gains Bleed.",
+    
+    // COMBAT: Attacks apply Burn 2
+    onBeforeAttack: (attacker, target, game) => {
+        // Apply Burn 2 (burn for 2 turns)
+        game.applyBurn(target, 2);
+        
+        if (typeof queueAbilityAnimation !== 'undefined') {
+            queueAbilityAnimation({
+                type: 'debuff',
+                target: target,
+                message: `🔥 Slit: ${target.name} burns!`
+            });
         }
-        return 0;
     },
-    // SUPPORT: Player may sacrifice combatant for +3/+3 and Destroyer
-    // This is tracked via a special flag that the UI will check
+    
+    // Flag for explosion on killing burning enemies - handled by attack() in game-core.js
+    hasKuchisakeExplosion: true,
+    
+    // SUPPORT: Player may sacrifice combatant to become 9/7 with Destroyer
     onSupport: (cryptid, owner, game) => {
         cryptid.hasSacrificeAbility = true;
         cryptid.sacrificeAbilityAvailable = true;
     },
+    
     // Called when player activates the sacrifice ability
     activateSacrifice: (cryptid, game) => {
         const combatant = game.getCombatant(cryptid);
@@ -736,15 +746,13 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
         const owner = cryptid.owner;
         
         // Kill the combatant - this automatically promotes Kuchisake-Onna to combat
-        // and queues the promotion animation via pendingPromotions
         combatant.killedBy = 'sacrifice';
         combatant.killedBySource = cryptid;
         game.killCryptid(combatant, cryptid.owner);
         
-        // Buff Kuchisake-Onna to 7/7 with Destroyer
-        // (cryptid is now at combat position after killCryptid promoted her)
-        cryptid.currentAtk = 7;
-        cryptid.baseAtk = 7;
+        // Buff Kuchisake-Onna to 9/7 with Destroyer
+        cryptid.currentAtk = 9;
+        cryptid.baseAtk = 9;
         cryptid.currentHp = 7;
         cryptid.maxHp = 7;
         cryptid.hasDestroyer = true;
@@ -755,11 +763,47 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
             cryptid, 
             victim: combatant, 
             owner: cryptid.owner,
-            atkGain: 7 - (cryptid.atk || 4),
-            hpGain: 7 - (cryptid.hp || 4)
+            atkGain: 9 - (cryptid.atk || 5),
+            hpGain: 7 - (cryptid.hp || 7)
         });
         
+        if (typeof queueAbilityAnimation !== 'undefined') {
+            queueAbilityAnimation({
+                type: 'buff',
+                target: cryptid,
+                message: `👩 Am I Pretty?: Kuchisake becomes 9/7 with Destroyer!`
+            });
+        }
+        
         return true;
+    },
+    
+    // OTHER: At end of turn, if no enemy across, gain Bleed
+    onTurnEnd: (cryptid, owner, game) => {
+        // Only check on owner's turn end
+        if (game.currentTurn !== owner) return;
+        
+        // Check if in combat position
+        const combatCol = game.getCombatCol(owner);
+        if (cryptid.col !== combatCol) return;
+        
+        // Check for enemies across
+        const enemiesAcross = game.getCryptidsAcross(cryptid);
+        
+        if (enemiesAcross.length === 0) {
+            // No enemies across - Kuchisake bleeds herself
+            game.applyBleed(cryptid);
+            
+            GameEvents.emit('onKuchisakeLonely', { cryptid, owner });
+            
+            if (typeof queueAbilityAnimation !== 'undefined') {
+                queueAbilityAnimation({
+                    type: 'debuff',
+                    target: cryptid,
+                    message: `👩 Kuchisake bleeds from loneliness...`
+                });
+            }
+        }
     }
 });
 
