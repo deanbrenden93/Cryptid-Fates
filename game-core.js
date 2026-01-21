@@ -6003,22 +6003,37 @@ class Game {
             
             // Kuchisake-Onna Explosion: If attacker has explosion ability and victim was burning
             // Deal half of victim's base HP (rounded down) to adjacent enemies
+            // Order: Top (lowest row) first, then others by position
             if (attacker.hasKuchisakeExplosion && target.burnTurns > 0) {
                 const explosionDamage = Math.floor((target.baseHp || target.hp) / 2);
                 if (explosionDamage > 0) {
                     // Get adjacent cryptids (same side as victim = enemies to attacker)
                     const adjacentTargets = this.getAdjacentCryptids(target);
                     if (adjacentTargets.length > 0) {
+                        // Sort: top to bottom, combat col before support col
+                        // Row 0 = top, Row 2 = bottom
+                        const sortedTargets = adjacentTargets
+                            .map(adj => ({
+                                cryptid: adj,
+                                col: adj.col,
+                                row: adj.row
+                            }))
+                            .sort((a, b) => {
+                                // First by row (top to bottom)
+                                if (a.row !== b.row) return a.row - b.row;
+                                // Then combat before support
+                                const combatCol = this.getCombatCol(targetOwner);
+                                if (a.col === combatCol && b.col !== combatCol) return -1;
+                                if (b.col === combatCol && a.col !== combatCol) return 1;
+                                return 0;
+                            });
+                        
                         kuchisakeExplosionInfo = {
                             attacker,
                             victim: target,
                             explosionDamage,
                             targetOwner,
-                            targets: adjacentTargets.map(adj => ({
-                                cryptid: adj,
-                                col: adj.col,
-                                row: adj.row
-                            }))
+                            targets: sortedTargets
                         };
                     }
                 }
@@ -6046,8 +6061,13 @@ class Game {
                 });
             }
             
-            // Death 1: Kill the combatant (this promotes the support to combat)
-            this.killCryptid(target, attacker.owner);
+            // Death 1: Kill the combatant
+            // If Kuchisake explosion is pending, SKIP auto-promotion so support stays in support position
+            // This allows explosion to damage support before it gets promoted
+            // Order: Death → Explosion (support takes damage while in support slot) → Promotion → Destroyer
+            const shouldDeferPromotion = kuchisakeExplosionInfo && targetSupport;
+            this.killCryptid(target, attacker.owner, { skipPromotion: shouldDeferPromotion });
+            
             if (attacker.onKill) {
                 GameEvents.emit('onCardCallback', { type: 'onKill', card: attacker, owner: attacker.owner, victim: target, col: attacker.col, row: attacker.row });
                 attacker.onKill(attacker, target, this);
@@ -6066,37 +6086,50 @@ class Game {
             
             // Destroyer - overkill damage floods to (former) support
             // Note: targetSupport was captured BEFORE killCryptid, when it was still in support position
+            // IMPORTANT: If Kuchisake explosion is pending, we defer BOTH promotion AND Destroyer
+            // This ensures correct order: Death → Explosion → Promotion → Destroyer
             if (targetSupport) {
-                const supportHpBefore = targetSupport.currentHp;
-                targetSupport.currentHp -= overkillDamage;
-                GameEvents.emit('onDestroyerDamage', { 
-                    attacker, target, support: targetSupport, damage: overkillDamage,
-                    hpBefore: supportHpBefore, hpAfter: targetSupport.currentHp 
-                });
-                
-                // Calculate display damage (cap to HP if killed - Option B)
-                const displayOverkill = targetSupport.currentHp <= 0 
-                    ? Math.min(overkillDamage, supportHpBefore) 
-                    : overkillDamage;
-                
-                // Mark for pending damage animation - UI will play this AFTER promotion completes
-                // We don't queue immediately because the death/promotion animations need to happen first
-                targetSupport._pendingDestroyerDamage = {
-                    damage: displayOverkill, // Use capped damage for display
-                    actualDamage: overkillDamage, // Keep actual for screen shake intensity
-                    source: attacker,
-                    message: `💥 Destroyer: ${displayOverkill} damage pierces to ${targetSupport.name}!`
-                };
-                
-                // Mark for death - UI will animate and call killCryptid via checkAllCreaturesForDeath
-                // We do NOT call killCryptid here so the death animation can play
-                if (targetSupport.currentHp <= 0) {
-                    supportKilled = true;
-                    targetSupport.killedBy = 'destroyer';
-                    targetSupport.killedBySource = attacker;
-                    targetSupport._pendingDeathFromAttack = true; // Flag for UI to detect
-                    // Emit onKill now so game logic happens, but don't actually remove from field yet
-                    GameEvents.emit('onKill', { killer: attacker, victim: targetSupport, killerOwner: attacker.owner, victimOwner: targetOwner, pendingAnimation: true });
+                if (kuchisakeExplosionInfo) {
+                    // Defer Destroyer - don't apply damage now, let UI handle it after explosion AND promotion
+                    // Store support reference and Destroyer info for later processing
+                    kuchisakeExplosionInfo.pendingDeferredPromotion = targetSupport;
+                    kuchisakeExplosionInfo.pendingDestroyerInfo = {
+                        support: targetSupport,
+                        overkillDamage,
+                        attacker,
+                        targetOwner,
+                        targetRow
+                    };
+                } else {
+                    // No explosion - apply Destroyer damage immediately (original behavior)
+                    const supportHpBefore = targetSupport.currentHp;
+                    targetSupport.currentHp -= overkillDamage;
+                    GameEvents.emit('onDestroyerDamage', { 
+                        attacker, target, support: targetSupport, damage: overkillDamage,
+                        hpBefore: supportHpBefore, hpAfter: targetSupport.currentHp 
+                    });
+                    
+                    // Calculate display damage (cap to HP if killed - Option B)
+                    const displayOverkill = targetSupport.currentHp <= 0 
+                        ? Math.min(overkillDamage, supportHpBefore) 
+                        : overkillDamage;
+                    
+                    // Mark for pending damage animation - UI will play this AFTER promotion completes
+                    targetSupport._pendingDestroyerDamage = {
+                        damage: displayOverkill,
+                        actualDamage: overkillDamage,
+                        source: attacker,
+                        message: `💥 Destroyer: ${displayOverkill} damage pierces to ${targetSupport.name}!`
+                    };
+                    
+                    // Mark for death if killed
+                    if (targetSupport.currentHp <= 0) {
+                        supportKilled = true;
+                        targetSupport.killedBy = 'destroyer';
+                        targetSupport.killedBySource = attacker;
+                        targetSupport._pendingDeathFromAttack = true;
+                        GameEvents.emit('onKill', { killer: attacker, victim: targetSupport, killerOwner: attacker.owner, victimOwner: targetOwner, pendingAnimation: true });
+                    }
                 }
             }
         }
@@ -6188,20 +6221,34 @@ class Game {
     }
     
     // Apply Kuchisake explosion damage to a single target (called by UI for sequenced processing)
+    // Finds cryptid by REFERENCE, not position (cryptid may have been promoted)
     applyKuchisakeExplosion(explosionInfo, targetIndex) {
         if (!explosionInfo || !explosionInfo.targets || targetIndex >= explosionInfo.targets.length) {
             return null;
         }
         
         const targetEntry = explosionInfo.targets[targetIndex];
-        const { cryptid: explosionTarget, col, row } = targetEntry;
+        const { cryptid: explosionTarget } = targetEntry;
         const { attacker, explosionDamage, targetOwner, victim } = explosionInfo;
         
-        // Re-verify target still exists at position (may have been killed/moved)
+        // Find cryptid's CURRENT position (may have moved due to promotion)
         const field = targetOwner === 'player' ? this.playerField : this.enemyField;
-        const currentCryptid = field[col]?.[row];
-        if (!currentCryptid || currentCryptid !== explosionTarget) {
-            return { skipped: true, reason: 'target_moved' };
+        let currentCol = null, currentRow = null;
+        
+        for (let c = 0; c < 2; c++) {
+            for (let r = 0; r < 3; r++) {
+                if (field[c][r] === explosionTarget) {
+                    currentCol = c;
+                    currentRow = r;
+                    break;
+                }
+            }
+            if (currentCol !== null) break;
+        }
+        
+        // If cryptid no longer on field, skip
+        if (currentCol === null) {
+            return { skipped: true, reason: 'target_gone' };
         }
         
         // Apply damage
@@ -6222,8 +6269,70 @@ class Game {
             target: explosionTarget, 
             damage: explosionDamage, 
             killed,
-            row,
-            col,
+            row: currentRow,
+            col: currentCol,
+            targetOwner
+        };
+    }
+    
+    // Apply deferred Destroyer damage (called by UI after Kuchisake explosion completes)
+    applyDeferredDestroyer(destroyerInfo) {
+        if (!destroyerInfo) return null;
+        
+        const { support, overkillDamage, attacker, targetOwner, targetRow } = destroyerInfo;
+        
+        // Verify support still exists and is alive
+        if (!support || support._alreadyKilled || support.currentHp <= 0) {
+            return { skipped: true, reason: 'support_gone' };
+        }
+        
+        // Find support's current position
+        const field = targetOwner === 'player' ? this.playerField : this.enemyField;
+        let currentCol = null, currentRow = null;
+        
+        for (let c = 0; c < 2; c++) {
+            for (let r = 0; r < 3; r++) {
+                if (field[c][r] === support) {
+                    currentCol = c;
+                    currentRow = r;
+                    break;
+                }
+            }
+            if (currentCol !== null) break;
+        }
+        
+        if (currentCol === null) {
+            return { skipped: true, reason: 'support_not_found' };
+        }
+        
+        // Apply Destroyer damage
+        const supportHpBefore = support.currentHp;
+        support.currentHp -= overkillDamage;
+        
+        GameEvents.emit('onDestroyerDamage', { 
+            attacker, support, damage: overkillDamage,
+            hpBefore: supportHpBefore, hpAfter: support.currentHp 
+        });
+        
+        // Calculate display damage
+        const displayOverkill = support.currentHp <= 0 
+            ? Math.min(overkillDamage, supportHpBefore) 
+            : overkillDamage;
+        
+        // Check for death
+        const killed = this.getEffectiveHp(support) <= 0;
+        if (killed) {
+            support.killedBy = 'destroyer';
+            support.killedBySource = attacker;
+        }
+        
+        return {
+            target: support,
+            damage: displayOverkill,
+            actualDamage: overkillDamage,
+            killed,
+            row: currentRow,
+            col: currentCol,
             targetOwner
         };
     }
@@ -6270,7 +6379,7 @@ class Game {
         };
     }
 
-    killCryptid(cryptid, killerOwner = null) {
+    killCryptid(cryptid, killerOwner = null, options = {}) {
         // Guard against double-kill (can happen when abilities call killCryptid directly,
         // then post-effect death check tries to process the same death)
         if (cryptid._alreadyKilled) {
@@ -6278,6 +6387,10 @@ class Game {
             return null;
         }
         cryptid._alreadyKilled = true;
+        
+        // Options:
+        // - skipPromotion: If true, don't auto-promote support (caller handles it manually)
+        const { skipPromotion = false } = options;
         
         // Track death count BEFORE onDeath (for Wendigo 10th death check)
         const owner = cryptid.owner;
@@ -6382,6 +6495,7 @@ class Game {
         if (this.isFieldEmpty(owner)) GameEvents.emit('onFieldEmpty', { owner });
         
         // If a combatant dies, automatically promote the support and queue animation
+        // UNLESS skipPromotion is set (for deferred promotion after effects like Kuchisake explosion)
         if (col === combatCol) {
             const support = this.getFieldCryptid(owner, supportCol, row);
             if (support) {
@@ -6392,26 +6506,33 @@ class Game {
                 }
                 GameEvents.emit('onCombatantDeath', { combatant: cryptid, support, owner, row });
                 
-                // Promote the support to combat position
-                this.setFieldCryptid(owner, supportCol, row, null);
-                support.col = combatCol;
-                this.setFieldCryptid(owner, combatCol, row, support);
-                GameEvents.emit('onPromotion', { cryptid: support, owner, row, fromCol: supportCol, toCol: combatCol });
-                
-                // Trigger onCombat and onEnterCombat callbacks
-                if (support.onCombat) {
-                    GameEvents.emit('onCardCallback', { type: 'onCombat', card: support, owner, col: combatCol, row, reason: 'promotion' });
-                    support.onCombat(support, owner, this);
+                if (skipPromotion) {
+                    // Don't promote now - caller will handle it manually after other effects resolve
+                    // Store info for manual promotion later
+                    support._pendingManualPromotion = { owner, row, supportCol, combatCol };
+                    console.log('[killCryptid] Skipping auto-promotion for', support.name, '- deferred for manual trigger');
+                } else {
+                    // Normal auto-promotion
+                    this.setFieldCryptid(owner, supportCol, row, null);
+                    support.col = combatCol;
+                    this.setFieldCryptid(owner, combatCol, row, support);
+                    GameEvents.emit('onPromotion', { cryptid: support, owner, row, fromCol: supportCol, toCol: combatCol });
+                    
+                    // Trigger onCombat and onEnterCombat callbacks
+                    if (support.onCombat) {
+                        GameEvents.emit('onCardCallback', { type: 'onCombat', card: support, owner, col: combatCol, row, reason: 'promotion' });
+                        support.onCombat(support, owner, this);
+                    }
+                    if (support.onEnterCombat) {
+                        GameEvents.emit('onCardCallback', { type: 'onEnterCombat', card: support, owner, col: combatCol, row, reason: 'promotion' });
+                        support.onEnterCombat(support, owner, this);
+                    }
+                    GameEvents.emit('onEnterCombat', { cryptid: support, owner, row, source: 'promotion' });
+                    
+                    // Queue animation for UI layer
+                    if (!window.pendingPromotions) window.pendingPromotions = [];
+                    window.pendingPromotions.push({ owner, row });
                 }
-                if (support.onEnterCombat) {
-                    GameEvents.emit('onCardCallback', { type: 'onEnterCombat', card: support, owner, col: combatCol, row, reason: 'promotion' });
-                    support.onEnterCombat(support, owner, this);
-                }
-                GameEvents.emit('onEnterCombat', { cryptid: support, owner, row, source: 'promotion' });
-                
-                // Queue animation for UI layer
-                if (!window.pendingPromotions) window.pendingPromotions = [];
-                window.pendingPromotions.push({ owner, row });
             }
         } else if (col === supportCol) {
             const combatant = this.getFieldCryptid(owner, combatCol, row);
@@ -6572,6 +6693,69 @@ class Game {
             return support;
         }
         return null;
+    }
+    
+    // Manually trigger a deferred promotion (used after Kuchisake explosion completes)
+    // Returns the promoted cryptid, or null if promotion couldn't happen (support died, etc.)
+    triggerDeferredPromotion(support) {
+        if (!support || !support._pendingManualPromotion) {
+            return null;
+        }
+        
+        const { owner, row, supportCol, combatCol } = support._pendingManualPromotion;
+        delete support._pendingManualPromotion;
+        
+        // Verify support is still alive and in support position
+        if (support._alreadyKilled || support.currentHp <= 0) {
+            console.log('[triggerDeferredPromotion] Support already dead:', support.name);
+            return null;
+        }
+        
+        const currentSupport = this.getFieldCryptid(owner, supportCol, row);
+        if (currentSupport !== support) {
+            console.log('[triggerDeferredPromotion] Support no longer at expected position:', support.name);
+            return null;
+        }
+        
+        // Verify combat slot is empty
+        const combatant = this.getFieldCryptid(owner, combatCol, row);
+        if (combatant) {
+            console.log('[triggerDeferredPromotion] Combat slot not empty:', combatant.name);
+            return null;
+        }
+        
+        // Perform the promotion
+        this.setFieldCryptid(owner, supportCol, row, null);
+        support.col = combatCol;
+        this.setFieldCryptid(owner, combatCol, row, support);
+        GameEvents.emit('onPromotion', { cryptid: support, owner, row, fromCol: supportCol, toCol: combatCol });
+        
+        // Trigger onCombat and onEnterCombat callbacks
+        if (support.onCombat) {
+            GameEvents.emit('onCardCallback', { type: 'onCombat', card: support, owner, col: combatCol, row, reason: 'deferredPromotion' });
+            support.onCombat(support, owner, this);
+        }
+        if (support.onEnterCombat) {
+            GameEvents.emit('onCardCallback', { type: 'onEnterCombat', card: support, owner, col: combatCol, row, reason: 'deferredPromotion' });
+            support.onEnterCombat(support, owner, this);
+        }
+        GameEvents.emit('onEnterCombat', { cryptid: support, owner, row, source: 'deferredPromotion' });
+        
+        // Check if enemy has Gremlin across - apply ailment debuff to promoted cryptid
+        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
+        const enemyCombatCol = this.getCombatCol(enemyOwner);
+        const enemyField = enemyOwner === 'player' ? this.playerField : this.enemyField;
+        const enemyAcross = enemyField[enemyCombatCol]?.[row];
+        if (enemyAcross?.appliesAilmentAtkDebuff) {
+            this.updateGremlinDebuff(enemyAcross);
+        }
+        
+        // Queue animation for UI layer
+        if (!window.pendingPromotions) window.pendingPromotions = [];
+        window.pendingPromotions.push({ owner, row });
+        
+        console.log('[triggerDeferredPromotion] Promoted', support.name, 'to combat');
+        return support;
     }
 
     popRandomKindling(owner) {

@@ -3546,9 +3546,11 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
 
 // Process Kuchisake-Onna explosion damage sequentially to adjacent enemies
 // Triggered when Kuchisake kills a burning enemy - victim explodes dealing half base HP
+// Event order: Explosions → Deferred Promotion (if support survived) → Destroyer
 function processKuchisakeExplosion(explosionInfo, onComplete) {
     if (!explosionInfo || !explosionInfo.targets || explosionInfo.targets.length === 0) {
-        onComplete?.();
+        // No explosion targets - still need to handle deferred promotion and Destroyer
+        processDeferredPromotionAndDestroyer(explosionInfo, onComplete);
         return;
     }
     
@@ -3556,9 +3558,15 @@ function processKuchisakeExplosion(explosionInfo, onComplete) {
     
     let currentIndex = 0;
     
+    // Called after ALL explosion targets processed
+    // Order: Deferred Promotion (if support survived) → Destroyer
+    function finishExplosions() {
+        processDeferredPromotionAndDestroyer(explosionInfo, onComplete);
+    }
+    
     function processNextExplosion() {
         if (currentIndex >= explosionInfo.targets.length) {
-            onComplete?.();
+            finishExplosions();
             return;
         }
         
@@ -3645,6 +3653,132 @@ function processKuchisakeExplosion(explosionInfo, onComplete) {
     
     // Small delay before starting explosion sequence for visual clarity
     setTimeout(processNextExplosion, 300);
+}
+
+// Process deferred promotion and then Destroyer after Kuchisake explosion
+// Order: Promotion (if support survived) → Destroyer (if support still alive)
+function processDeferredPromotionAndDestroyer(explosionInfo, onComplete) {
+    if (!explosionInfo) {
+        onComplete?.();
+        return;
+    }
+    
+    const support = explosionInfo.pendingDeferredPromotion;
+    const destroyerInfo = explosionInfo.pendingDestroyerInfo;
+    
+    // Step 1: Check if support survived explosion and trigger promotion
+    if (support && !support._alreadyKilled && support.currentHp > 0) {
+        // Support survived - trigger the deferred promotion
+        const promoted = game.triggerDeferredPromotion(support);
+        
+        if (promoted) {
+            // Animate the promotion, then process Destroyer
+            setTimeout(() => {
+                processPendingPromotions(() => {
+                    // After promotion animation, apply Destroyer damage
+                    setTimeout(() => {
+                        processDeferredDestroyer(destroyerInfo, onComplete);
+                    }, 200);
+                });
+            }, 300);
+            return;
+        }
+    } else if (support) {
+        // Support died from explosion - Destroyer fizzles
+        // Show visual effect of Destroyer energy dissipating
+        if (destroyerInfo && destroyerInfo.overkillDamage > 0) {
+            showMessage(`💨 Destroyer energy dissipates - no target!`, TIMING.messageDisplay);
+            setTimeout(onComplete, 400);
+            return;
+        }
+    }
+    
+    // No deferred promotion needed, but might still have Destroyer (edge cases)
+    if (destroyerInfo) {
+        setTimeout(() => {
+            processDeferredDestroyer(destroyerInfo, onComplete);
+        }, 200);
+    } else {
+        onComplete?.();
+    }
+}
+
+// Process deferred Destroyer damage (called after promotion completes)
+function processDeferredDestroyer(destroyerInfo, onComplete) {
+    if (!destroyerInfo) {
+        onComplete?.();
+        return;
+    }
+    
+    const result = game.applyDeferredDestroyer(destroyerInfo);
+    
+    if (!result || result.skipped) {
+        onComplete?.();
+        return;
+    }
+    
+    const { target, damage, killed, row, col, targetOwner } = result;
+    const sprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${col}"][data-row="${row}"]`);
+    
+    // Calculate impact position
+    const battlefield = document.getElementById('battlefield-area');
+    let impactX = 0, impactY = 0;
+    if (sprite && battlefield) {
+        const targetRect = sprite.getBoundingClientRect();
+        const battlefieldRect = battlefield.getBoundingClientRect();
+        impactX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+        impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+    }
+    
+    // Show Destroyer message
+    showMessage(`💥 Destroyer: ${damage} damage pierces to ${target.name}!`, TIMING.messageDisplay);
+    
+    // Play Destroyer effects
+    if (window.CombatEffects) {
+        const isCrit = damage >= 5;
+        
+        CombatEffects.heavyImpact(Math.max(damage, 1));
+        CombatEffects.createImpactFlash(impactX, impactY, 100 + damage * 12);
+        CombatEffects.createSparks(impactX, impactY, 12 + damage * 2);
+        CombatEffects.createImpactParticles(impactX, impactY, killed ? '#ff0000' : '#ff4444', 12 + damage);
+        CombatEffects.showDamageNumber(target, damage, isCrit);
+    }
+    
+    // Hit recoil
+    if (sprite && !killed) {
+        sprite.classList.add('hit-recoil');
+        setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+    }
+    
+    // Update health bar
+    window.updateSpriteHealthBar?.(targetOwner, col, row);
+    
+    if (killed) {
+        const rarity = target.rarity || 'common';
+        
+        setTimeout(() => {
+            if (sprite && window.CombatEffects?.playDramaticDeath) {
+                game.killCryptid(target, destroyerInfo.attacker.owner);
+                window.CombatEffects.playDramaticDeath(sprite, targetOwner, rarity, () => {
+                    renderAll();
+                    checkCascadingDeaths(() => {
+                        onComplete?.();
+                    });
+                });
+            } else {
+                if (sprite) sprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
+                setTimeout(() => {
+                    game.killCryptid(target, destroyerInfo.attacker.owner);
+                    renderAll();
+                    checkCascadingDeaths(() => {
+                        onComplete?.();
+                    });
+                }, TIMING.deathAnim);
+            }
+        }, 200);
+    } else {
+        setTimeout(onComplete, 400);
+    }
 }
 
 // Process Moleman splash damage sequentially: above target first, then below
