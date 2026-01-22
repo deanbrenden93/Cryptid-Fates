@@ -310,7 +310,7 @@ const LoginScreen = {
             
             <!-- Background image with heat distortion -->
             <div class="login-bg">
-                <img src="sprites/loginbg.jpg" alt="" class="login-bg-img">
+                <img src="sprites/loginbg.webp" alt="" class="login-bg-img">
             </div>
             
             <!-- Canvas for 3D ember tunnel effect -->
