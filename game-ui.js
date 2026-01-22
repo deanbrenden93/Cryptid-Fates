@@ -60,9 +60,9 @@ function applyBattlefieldBackgrounds(enemyBackgroundId = null) {
     
     // Get enemy's background (from multiplayer or AI default)
     // In multiplayer, opponent's background is synced via window.opponentBackground
-    // For AI matches, AI has no background equipped (until art is finalized)
+    // For AI matches, AI uses frozen-tundra background by default
     const isAIMatch = !Multiplayer?.isInMatch;
-    const enemyBgId = enemyBackgroundId || window.opponentBackground || (isAIMatch ? 'none' : 'default');
+    const enemyBgId = enemyBackgroundId || window.opponentBackground || (isAIMatch ? 'frozen-tundra' : 'default');
     const enemyBg = PlayerData?.getBackground?.(enemyBgId);
     const enemyHasBg = enemyBgId !== 'none' && enemyBg?.image;
     

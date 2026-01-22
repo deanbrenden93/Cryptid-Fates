@@ -15,8 +15,13 @@ const GameFlow = {
     async start() {
         console.log('[GameFlow] Starting...');
         
-        // Show loading screen
-        this.showLoadingScreen();
+        // Preload all game assets with smart caching
+        if (typeof AssetPreloader !== 'undefined') {
+            await AssetPreloader.preload();
+        } else {
+            // Fallback to basic loading screen
+            this.showLoadingScreen();
+        }
         
         // Check authentication
         const isAuthenticated = await Auth.init();
@@ -30,8 +35,12 @@ const GameFlow = {
             // User chose offline mode
             await this.onOfflineMode();
         } else {
-            // Show login screen and wait
-            this.hideLoadingScreen();
+            // Hide preloader and show login screen
+            if (typeof AssetPreloader !== 'undefined') {
+                await AssetPreloader.hideLoadingScreen();
+            } else {
+                this.hideLoadingScreen();
+            }
             LoginScreen.show();
         }
     },
@@ -42,7 +51,12 @@ const GameFlow = {
     async onAuthenticated() {
         console.log('[GameFlow] User authenticated:', Auth.user?.displayName);
         
-        this.hideLoadingScreen();
+        // Hide preloader
+        if (typeof AssetPreloader !== 'undefined') {
+            await AssetPreloader.hideLoadingScreen();
+        } else {
+            this.hideLoadingScreen();
+        }
         LoginScreen.hide();
         
         // Check if this is a new user (no custom name set yet)
@@ -81,7 +95,12 @@ const GameFlow = {
             }
         }
         
-        this.hideLoadingScreen();
+        // Hide preloader
+        if (typeof AssetPreloader !== 'undefined') {
+            await AssetPreloader.hideLoadingScreen();
+        } else {
+            this.hideLoadingScreen();
+        }
         LoginScreen.hide();
         
         // Check if user has completed tutorial
