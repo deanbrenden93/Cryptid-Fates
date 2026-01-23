@@ -247,13 +247,15 @@ body {
 /* Enemy turn - no background overlay, just player name indicator */
 
 /* ==================== BATTLEFIELD BACKGROUNDS - Split/Feathered System ==================== */
+/* Backgrounds are inside game-screen-wrapper so they zoom/shake with content */
+
 /* Player background (left half - player's side) */
 .battlefield-bg-player {
     position: absolute;
     inset: 0;
     z-index: 0;
     background-size: cover;
-    background-position: center center; /* True center - card grid aligns with center of safe zone */
+    background-position: center center;
     background-repeat: no-repeat;
     pointer-events: none;
     /* Feather from left, fade toward center divider */
@@ -267,7 +269,7 @@ body {
     inset: 0;
     z-index: 0;
     background-size: cover;
-    background-position: center center; /* True center - card grid aligns with center of safe zone */
+    background-position: center center;
     background-repeat: no-repeat;
     pointer-events: none;
     /* Feather from right, fade toward center divider */
@@ -2887,6 +2889,19 @@ body {
     scrollbar-width: none;
     -ms-overflow-style: none;
     position: relative; /* For fade overlays */
+}
+
+/* Block pointer events ONLY in the extended padding area above the hand */
+/* This uses a pseudo-element so scroll wrapper itself remains interactive */
+.hand-scroll-wrapper::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 80px; /* Same as padding-top */
+    pointer-events: none;
+    z-index: 1000;
 }
 
 .hand-scroll-wrapper::-webkit-scrollbar {

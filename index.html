@@ -13,11 +13,6 @@
     <div id="fullscreen-prompt" class="hidden"></div>
 
     <div id="game-container" style="display: none;">
-        <!-- Battlefield Background Layers - positioned in game-container to extend behind HUD -->
-        <div class="battlefield-bg-default" id="battlefield-bg-default"></div>
-        <div class="battlefield-bg-player" id="battlefield-bg-player"></div>
-        <div class="battlefield-bg-enemy" id="battlefield-bg-enemy"></div>
-        
         <div id="hud">
             <div class="player-info player">
                 <span class="player-name">Seeker</span>
@@ -48,6 +43,11 @@
         
         <!-- Game Screen Wrapper - contains all elements that should shake/zoom together -->
         <div id="game-screen-wrapper">
+            <!-- Battlefield Background Layers - inside wrapper so they zoom/shake with content -->
+            <div class="battlefield-bg-default" id="battlefield-bg-default"></div>
+            <div class="battlefield-bg-player" id="battlefield-bg-player"></div>
+            <div class="battlefield-bg-enemy" id="battlefield-bg-enemy"></div>
+            
             <div id="phase-header">
                 <span id="phase-text">Your Turn</span>
                 <div id="hint">Drag cards or tap to select</div>

@@ -2170,7 +2170,9 @@ function selectCard(card) {
     const cardWrapper = document.querySelector(`#hand-container .card-wrapper[data-card-id="${card.id}"]`);
     if (cardWrapper && cardWrapper.classList.contains('tutorial-card-blocked')) return;
     
-    hideTooltip();
+    // Don't hide tooltip immediately - let it stay visible briefly so user can see card info
+    // It will auto-hide after a moment or when they take another action
+    setTimeout(() => hideTooltip(), 1500);
     document.getElementById('cancel-target').classList.remove('show');
     
     // Pyre cards now require drag or selecting then tapping battlefield (no instant play)
