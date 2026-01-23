@@ -95,10 +95,10 @@ const TutorialSteps = [
   },
   {
     id: "kindling_2",
-    text: "Click the Kindling button to see your kindling cryptids.",
+    text: "Select the Kindling sigil to see your kindling cryptids.",
     type: "action",
     highlights: ["#menu-kindling-btn"],
-    allowedElements: ["#menu-kindling-btn", "#hand-menu-panel", ".menu-action-btn", "#kindling-toggle-btn"],
+    allowedElements: ["#hand-menu-btn", "#menu-kindling-btn", "#ritual-circle-overlay", ".orbital-sigil", "#kindling-toggle-btn"],
     requiredAction: { type: "switchKindling" },
     advance: "action",
   },
@@ -240,10 +240,10 @@ const TutorialSteps = [
   },
   {
     id: "support_2",
-    text: "Click Kindling to see your kindling hand.",
+    text: "Select the Kindling sigil to view your kindling hand.",
     type: "action",
     highlights: ["#menu-kindling-btn"],
-    allowedElements: ["#menu-kindling-btn", "#hand-menu-panel", ".menu-action-btn", "#kindling-toggle-btn"],
+    allowedElements: ["#hand-menu-btn", "#menu-kindling-btn", "#ritual-circle-overlay", ".orbital-sigil", "#kindling-toggle-btn"],
     requiredAction: { type: "switchKindling" },
     advance: "action",
   },
@@ -1490,6 +1490,9 @@ const TutorialManager = {
   actionCleanup: null,
   dragHandler: null,
   
+  // Expose steps array for external access (e.g., from game-ui.js)
+  get steps() { return TutorialSteps; },
+  
   // Tutorial restrictions
   restrictAuraToCombat: false,  // When true, auras can only target combat column
   restrictSummonToSupport: false, // When true, summons can only go to support column
@@ -1859,7 +1862,9 @@ const TutorialManager = {
         if (handled) return;
         handled = true;
         btn?.removeEventListener("click", handler);
-        setTimeout(() => this.nextStep(), 300);
+        // Wait 700ms for ritual circle animation to complete before advancing
+        // (ring draws over 0.8s, sigils animate in with 0.2-0.4s delays + 0.3s animation)
+        setTimeout(() => this.nextStep(), 700);
       };
       btn?.addEventListener("click", handler);
       this.actionCleanup = () => btn?.removeEventListener("click", handler);
@@ -1868,7 +1873,7 @@ const TutorialManager = {
 
     if (action.type === "switchKindling") {
       const btn = document.getElementById("menu-kindling-btn");
-      const menuPanel = document.getElementById("hand-menu-panel");
+      const ritualOverlay = document.getElementById("ritual-circle-overlay");
       const menuBtn = document.getElementById("hand-menu-btn");
       const initialState = ui?.showingKindling || false;
       const targetState = !initialState;
@@ -1876,7 +1881,7 @@ const TutorialManager = {
       const handler = () => {
         if (handled) return;
         handled = true;
-        menuPanel?.classList.remove("open");
+        ritualOverlay?.classList.remove("open");
         menuBtn?.classList.remove("menu-open");
 
         let attempts = 0;

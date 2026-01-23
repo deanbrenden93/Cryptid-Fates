@@ -50,6 +50,12 @@ const AssetPreloader = {
         'sprites/vampire-lord-bg.png',
         'sprites/vampire-lord.png',
         
+        // Radial menu button sprites
+        'sprites/kindlingbtn.png',
+        'sprites/grimoirebtn.png',
+        'sprites/burnbtn.png',
+        'sprites/endturnbtn.png',
+        
         // Card templates folder
         'card-templates/blaze-element.png',
         'card-templates/common-gem.png',

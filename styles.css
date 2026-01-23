@@ -195,7 +195,10 @@ body {
     inset: 0;
     /* Base dark background - custom backgrounds layer on top */
     background: #0a0a10;
-    overflow: hidden;
+    /* Allow content to render outside bounds (for card hover lift) */
+    /* Hidden only on X axis to prevent horizontal scrollbars */
+    overflow-x: hidden;
+    overflow-y: visible;
     display: flex;
     flex-direction: column;
 }
@@ -2567,11 +2570,11 @@ body {
     /* Height: 22% of viewport, min 130px, max 240px - use dvh for mobile browser chrome */
     --hand-h: clamp(130px, 22dvh, 240px);
     
-    /* Hover lift space - 20% of hand height */
-    --hover-space: calc(var(--hand-h) * 0.20);
+    /* Hover lift space - 25% of hand height for generous card lift room */
+    --hover-space: calc(var(--hand-h) * 0.25);
     
-    /* Card dimensions - 80% of hand height, fits with hover space */
-    --card-h: calc(var(--hand-h) * 0.80);
+    /* Card dimensions - 75% of hand height, fits with hover space */
+    --card-h: calc(var(--hand-h) * 0.75);
     --card-w: calc(var(--card-h) / 1.4);
     --card-gap: calc(var(--card-h) * 0.06);
     
@@ -2587,13 +2590,15 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: flex-end;
-    padding: 0;
+    /* Top padding to allow cards to lift above without clipping */
+    padding: var(--hover-space) 0 0 0;
+    margin-top: calc(var(--hover-space) * -1); /* Compensate for padding */
     /* Semi-transparent gradient to darken bottom while showing background */
     background: linear-gradient(0deg, rgba(5, 5, 10, 0.85) 0%, rgba(5, 5, 10, 0.6) 60%, transparent 100%);
     position: relative;
     z-index: 80; /* Above combat effects overlay (60), below HUD (100) */
     flex-shrink: 0;
-    overflow: visible; /* Allow hand cards to extend above container */
+    overflow: visible !important; /* CRITICAL: Allow hand cards to extend above container */
 }
 
 /* Very short screens (phones in landscape) */
@@ -2691,7 +2696,10 @@ body {
     flex: 1;
     min-width: 0;
     max-width: 1000px;
-    overflow: visible;
+    overflow: visible !important; /* NEVER clip cards */
+    /* Extra top padding to ensure hover lift doesn't clip */
+    padding-top: calc(var(--hover-space) * 0.5);
+    margin-top: calc(var(--hover-space) * -0.5);
 }
 
 .hand-scroll-fade {
@@ -2818,13 +2826,24 @@ body {
     filter: grayscale(50%);
 }
 
-/* Left button */
+/* Left button - Ritual Circle trigger */
 .hand-menu-btn {
     background-image: url('sprites/battle-burger.png');
+    transition: filter 0.3s ease, transform 0.3s ease;
+}
+
+.hand-menu-btn:hover {
+    filter: drop-shadow(0 0 12px rgba(232, 169, 62, 0.6)) brightness(1.2);
 }
 
 .hand-menu-btn.menu-open {
-    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5)) brightness(1.4);
+    filter: drop-shadow(0 0 20px rgba(232, 169, 62, 0.9)) drop-shadow(0 0 40px rgba(255, 107, 53, 0.5)) brightness(1.4);
+    animation: ritualButtonPulse 2s ease-in-out infinite;
+}
+
+@keyframes ritualButtonPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
 }
 
 /* Right button */
@@ -2838,10 +2857,13 @@ body {
     align-items: flex-end;
     justify-content: flex-start;
     width: 100%;
+    /* Critical: scroll horizontally, but NEVER clip vertically */
+    overflow: visible;
     overflow-x: auto;
-    overflow-y: hidden; /* Cards lift INTO padding-top space, not above container */
-    padding-top: var(--hover-space);
-    height: 100%; /* Fill hand area exactly */
+    /* Generous top padding for hover lift - cards rise INTO this space */
+    padding-top: calc(var(--hover-space) * 1.5);
+    /* Use min-height instead of height to allow upward expansion */
+    min-height: 100%;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -2855,53 +2877,70 @@ body {
     transition: none !important;
 }
 
-/* Scroll wrapper - simple flex container, NO position relative */
+/* Scroll wrapper - contains the hand-container */
 .hand-scroll-wrapper {
     display: flex;
     width: 100%;
     overflow: visible;
-    margin-top: calc(var(--hover-space) * -1);
+    /* Allow cards to extend upward */
+    padding-top: calc(var(--hover-space) * 0.5);
+    margin-top: calc(var(--hover-space) * -0.5);
 }
 
 /* Cards area gets positioning context for fades */
 .hand-cards-area {
     position: relative;
+    overflow: visible; /* Never clip cards */
 }
 
-/* Feathered edge fades - positioned within cards area */
+/* Feathered edge fades - using CSS mask for true transparent edges */
 .hand-scroll-fade {
-    display: block; /* Override earlier display: none */
-    position: absolute;
-    top: calc(var(--info-h, 24px) + 50px); /* Below info bar + hover lift area */
-    bottom: 0;
-    width: 40px;
-    pointer-events: none;
-    z-index: 50;
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    display: none; /* Using mask approach instead */
 }
 
-.hand-scroll-fade.left {
-    left: 0;
-    background: linear-gradient(to right, 
-        rgba(10, 8, 12, 1) 0%, 
-        rgba(10, 8, 12, 0) 100%);
+/* Apply feathered mask to hand-scroll-wrapper for true transparent fade at edges */
+.hand-scroll-wrapper {
+    /* Default: no mask (fully visible) */
+    -webkit-mask-image: none;
+    mask-image: none;
 }
 
-.hand-scroll-fade.right {
-    right: 0;
-    background: linear-gradient(to left, 
-        rgba(10, 8, 12, 1) 0%, 
-        rgba(10, 8, 12, 0) 100%);
+/* When can scroll left: fade left edge */
+.hand-cards-area.can-scroll-left .hand-scroll-wrapper {
+    -webkit-mask-image: linear-gradient(to right, 
+        transparent 0%, 
+        black 60px, 
+        black 100%);
+    mask-image: linear-gradient(to right, 
+        transparent 0%, 
+        black 60px, 
+        black 100%);
 }
 
-/* Show fades when content is scrollable - classes applied to cards area */
-.hand-cards-area.can-scroll-left .hand-scroll-fade.left {
-    opacity: 1;
+/* When can scroll right: fade right edge */
+.hand-cards-area.can-scroll-right .hand-scroll-wrapper {
+    -webkit-mask-image: linear-gradient(to left, 
+        transparent 0%, 
+        black 60px, 
+        black 100%);
+    mask-image: linear-gradient(to left, 
+        transparent 0%, 
+        black 60px, 
+        black 100%);
 }
 
-.hand-cards-area.can-scroll-right .hand-scroll-fade.right {
-    opacity: 1;
+/* When can scroll both directions: fade both edges */
+.hand-cards-area.can-scroll-left.can-scroll-right .hand-scroll-wrapper {
+    -webkit-mask-image: linear-gradient(to right, 
+        transparent 0%, 
+        black 60px, 
+        black calc(100% - 60px), 
+        transparent 100%);
+    mask-image: linear-gradient(to right, 
+        transparent 0%, 
+        black 60px, 
+        black calc(100% - 60px), 
+        transparent 100%);
 }
 
 .hand-scroll-wrapper::-webkit-scrollbar {
@@ -3282,72 +3321,407 @@ body {
     }
 }
 
-/* ===== MENU PANEL ===== */
-.hand-menu-panel {
+/* ===== RITUAL CIRCLE RADIAL MENU ===== */
+.ritual-circle-overlay {
     position: fixed;
-    left: -200px;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at center, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.85) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.4s ease, visibility 0.4s ease;
+    backdrop-filter: blur(4px);
+}
+
+.ritual-circle-overlay.open {
+    opacity: 1;
+    visibility: visible;
+    z-index: 10500; /* Above tutorial elements (10000-10002) when open */
+}
+
+.ritual-circle-container {
+    position: relative;
+    width: 420px;
+    height: 420px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* === SVG Rings === */
+.ritual-ring {
+    position: absolute;
     top: 50%;
-    transform: translateY(-50%);
+    left: 50%;
+    pointer-events: none;
+}
+
+.ritual-ring.outer-ring {
+    width: 420px;
+    height: 420px;
+    transform: translate(-50%, -50%);
+}
+
+.ritual-ring.inner-ring {
+    width: 200px;
+    height: 200px;
+    transform: translate(-50%, -50%);
+}
+
+/* Ring drawing animation */
+.ritual-ring .ring-path {
+    stroke-dasharray: 900;
+    stroke-dashoffset: 900;
+    transition: stroke-dashoffset 0.8s ease-out;
+}
+
+.ritual-circle-overlay.open .ritual-ring .ring-path {
+    stroke-dashoffset: 0;
+}
+
+.ritual-ring .ring-path.inner {
+    stroke-dasharray: 760;
+    stroke-dashoffset: 760;
+    transition-delay: 0.15s;
+}
+
+.ritual-circle-overlay.open .ritual-ring .ring-path.inner {
+    stroke-dashoffset: 0;
+}
+
+/* Pulse ring animation */
+.ritual-ring .pulse-ring {
+    animation: ritualPulse 3s ease-in-out infinite;
+    transform-origin: center;
+}
+
+@keyframes ritualPulse {
+    0%, 100% { opacity: 0.2; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.08); }
+}
+
+/* Arcane runes rotating */
+.arcane-runes {
+    font-size: 10px;
+    fill: #e8a93e;
+    opacity: 0;
+    transition: opacity 0.5s ease 0.4s;
+    letter-spacing: 8px;
+}
+
+.ritual-circle-overlay.open .arcane-runes {
+    opacity: 0.6;
+    animation: runeRotate 60s linear infinite;
+}
+
+@keyframes runeRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* === Central Sigil === */
+.central-sigil {
+    position: absolute;
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232, 169, 62, 0.15) 0%, transparent 70%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+}
+
+.sigil-icon {
+    font-size: 36px;
+    color: #e8a93e;
+    text-shadow: 0 0 20px rgba(232, 169, 62, 0.8), 0 0 40px rgba(255, 107, 53, 0.5);
+    animation: sigilBreath 4s ease-in-out infinite;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: opacity 0.4s ease 0.3s, transform 0.4s ease 0.3s;
+}
+
+.ritual-circle-overlay.open .sigil-icon {
+    opacity: 1;
+    transform: scale(1);
+}
+
+@keyframes sigilBreath {
+    0%, 100% { text-shadow: 0 0 20px rgba(232, 169, 62, 0.8), 0 0 40px rgba(255, 107, 53, 0.5); }
+    50% { text-shadow: 0 0 30px rgba(232, 169, 62, 1), 0 0 60px rgba(255, 107, 53, 0.8), 0 0 80px rgba(232, 169, 62, 0.4); }
+}
+
+/* === Orbital Sigils === */
+.orbital-sigil {
+    position: absolute;
+    width: 160px;
+    height: 180px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 16px;
-    background: linear-gradient(135deg, rgba(30, 25, 20, 0.97), rgba(20, 15, 12, 0.99));
-    border: 2px solid #4a4035;
-    border-left: none;
-    border-radius: 0 16px 16px 0;
-    box-shadow: 4px 0 24px rgba(0,0,0,0.6);
-    transition: left 0.3s ease;
-    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+    z-index: 10;
+    /* Initial hidden state */
+    opacity: 0;
+    transform: scale(0) rotate(-180deg);
 }
 
-.hand-menu-panel.open {
-    left: 0 !important;
+.ritual-circle-overlay.open .orbital-sigil {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
 }
 
-.hand-menu-panel .menu-action-btn {
-    width: 140px;
-    height: 50px;
+/* Position sigils at 120° intervals around circle */
+.sigil-kindling {
+    top: -60px;
+    left: 50%;
+    transform: translateX(-50%) scale(0) rotate(-180deg);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s, opacity 0.3s ease 0.2s;
+}
+
+.ritual-circle-overlay.open .sigil-kindling {
+    transform: translateX(-50%) scale(1) rotate(0deg);
+}
+
+.sigil-burn {
+    bottom: -20px;
+    left: -30px;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s, opacity 0.3s ease 0.3s;
+}
+
+.sigil-end {
+    bottom: -20px;
+    right: -30px;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.4s, opacity 0.3s ease 0.4s;
+}
+
+/* Sigil glow background */
+.sigil-glow {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232, 169, 62, 0.2) 0%, transparent 70%);
+    transition: all 0.3s ease;
+    pointer-events: none;
+}
+
+.orbital-sigil:hover .sigil-glow {
+    background: radial-gradient(circle, rgba(232, 169, 62, 0.5) 0%, rgba(255, 107, 53, 0.2) 50%, transparent 70%);
+    transform: scale(1.3);
+}
+
+.orbital-sigil:active .sigil-glow {
+    background: radial-gradient(circle, rgba(255, 200, 100, 0.7) 0%, rgba(255, 107, 53, 0.4) 50%, transparent 70%);
+    transform: scale(1.1);
+}
+
+/* Sigil content */
+.sigil-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+    z-index: 2;
+}
+
+.sigil-symbol {
+    width: 128px;
+    height: 128px;
     background-size: contain;
     background-position: center;
     background-repeat: no-repeat;
-    background-color: transparent;
-    border: none;
-    cursor: pointer;
-    transition: transform 0.15s ease, filter 0.15s ease;
-    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5));
+    filter: drop-shadow(0 0 12px rgba(232, 169, 62, 0.6));
+    transition: transform 0.3s ease, filter 0.3s ease;
 }
 
-.hand-menu-panel .menu-action-btn:hover:not(:disabled) {
-    transform: scale(1.08);
-    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6)) brightness(1.2);
+/* Sprite images for each sigil */
+.sigil-kindling .sigil-symbol {
+    background-image: url('sprites/kindlingbtn.png');
 }
 
-.hand-menu-panel .menu-action-btn:active:not(:disabled) {
-    transform: scale(0.95);
+.sigil-kindling.active .sigil-symbol {
+    background-image: url('sprites/grimoirebtn.png');
 }
 
-.hand-menu-panel .menu-action-btn:disabled {
-    opacity: 0.4;
+.sigil-burn .sigil-symbol {
+    background-image: url('sprites/burnbtn.png');
+}
+
+.sigil-end .sigil-symbol {
+    background-image: url('sprites/endturnbtn.png');
+}
+
+.orbital-sigil:hover .sigil-symbol {
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 16px rgba(232, 169, 62, 0.9)) drop-shadow(0 0 30px rgba(255, 107, 53, 0.5));
+}
+
+.sigil-label {
+    font-family: 'Cinzel', 'Times New Roman', serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: #e8a93e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-shadow: 0 0 10px rgba(232, 169, 62, 0.5), 0 2px 4px rgba(0, 0, 0, 0.8);
+    opacity: 0.9;
+    transition: opacity 0.3s ease, color 0.3s ease;
+}
+
+.orbital-sigil:hover .sigil-label {
+    opacity: 1;
+    color: #ffd700;
+}
+
+/* Disabled state */
+.orbital-sigil:disabled {
     cursor: not-allowed;
-    filter: grayscale(50%);
 }
 
-.hand-menu-panel #menu-kindling-btn {
-    background-image: url('sprites/kindling-button.png');
+.orbital-sigil:disabled .sigil-symbol {
+    filter: grayscale(70%) brightness(0.5) drop-shadow(0 0 4px rgba(100, 100, 100, 0.3));
 }
 
-.hand-menu-panel #menu-kindling-btn.active {
-    background-image: url('sprites/grimoire-button.png');
-    filter: brightness(1.2) drop-shadow(0 0 8px rgba(232, 169, 62, 0.5));
+.orbital-sigil:disabled .sigil-label {
+    color: #666;
+    text-shadow: none;
+    opacity: 0.5;
 }
 
-.hand-menu-panel #menu-burn-btn {
-    background-image: url('sprites/burn-button.png');
+.orbital-sigil:disabled .sigil-glow {
+    background: radial-gradient(circle, rgba(60, 60, 60, 0.1) 0%, transparent 70%);
 }
 
-.hand-menu-panel #menu-end-btn {
-    background-image: url('sprites/end-button.png');
+.orbital-sigil:disabled:hover .sigil-glow {
+    transform: scale(1);
+    background: radial-gradient(circle, rgba(60, 60, 60, 0.1) 0%, transparent 70%);
+}
+
+.orbital-sigil:disabled:hover .sigil-symbol {
+    transform: scale(1);
+}
+
+/* Active state for kindling toggle */
+.sigil-kindling.active .sigil-symbol {
+    filter: drop-shadow(0 0 12px rgba(100, 200, 255, 0.8)) drop-shadow(0 0 24px rgba(100, 200, 255, 0.5));
+}
+
+.sigil-kindling.active .sigil-label {
+    color: #7dd3fc;
+}
+
+.sigil-kindling.active .sigil-glow {
+    background: radial-gradient(circle, rgba(100, 200, 255, 0.3) 0%, rgba(100, 200, 255, 0.1) 50%, transparent 70%);
+}
+
+/* === Ember Particles === */
+.ember-particles {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+}
+
+.ember {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: radial-gradient(circle, #ffcc00 0%, #ff6b35 60%, transparent 100%);
+    border-radius: 50%;
+    opacity: 0;
+    animation: emberFloat 4s ease-in-out infinite;
+}
+
+.ritual-circle-overlay.open .ember {
+    opacity: 1;
+}
+
+.ember:nth-child(1) { left: 20%; top: 30%; animation-delay: 0s; animation-duration: 3.5s; }
+.ember:nth-child(2) { left: 75%; top: 25%; animation-delay: 0.5s; animation-duration: 4s; }
+.ember:nth-child(3) { left: 15%; top: 65%; animation-delay: 1s; animation-duration: 3.8s; }
+.ember:nth-child(4) { left: 80%; top: 70%; animation-delay: 1.5s; animation-duration: 4.2s; }
+.ember:nth-child(5) { left: 45%; top: 15%; animation-delay: 0.3s; animation-duration: 3.6s; }
+.ember:nth-child(6) { left: 55%; top: 80%; animation-delay: 0.8s; animation-duration: 4.1s; }
+.ember:nth-child(7) { left: 30%; top: 50%; animation-delay: 1.2s; animation-duration: 3.9s; }
+.ember:nth-child(8) { left: 70%; top: 45%; animation-delay: 0.6s; animation-duration: 3.7s; }
+
+@keyframes emberFloat {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 0;
+    }
+    10% {
+        opacity: 0.8;
+    }
+    50% {
+        transform: translateY(-30px) scale(0.8);
+        opacity: 0.6;
+    }
+    90% {
+        opacity: 0.3;
+    }
+    100% {
+        transform: translateY(-60px) scale(0.3);
+        opacity: 0;
+    }
+}
+
+/* === Close on background click hint === */
+.ritual-circle-overlay::after {
+    content: 'Click anywhere to close';
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    color: rgba(232, 169, 62, 0.5);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 0.5s ease 0.8s;
+}
+
+.ritual-circle-overlay.open::after {
+    opacity: 1;
+}
+
+/* Hide close hint and lock menu open during tutorial steps requiring sigil click */
+.ritual-circle-overlay.tutorial-locked::after {
+    opacity: 0 !important;
+    display: none;
+}
+
+/* === Responsive adjustments === */
+@media (max-width: 480px) {
+    .ritual-circle-container {
+        width: 320px;
+        height: 320px;
+        transform: scale(0.75);
+    }
+    
+    .sigil-label {
+        font-size: 9px;
+    }
+    
+    .sigil-symbol {
+        width: 96px;
+        height: 96px;
+    }
 }
 
 #action-bar {

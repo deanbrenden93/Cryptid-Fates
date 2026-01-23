@@ -194,11 +194,82 @@
                 <button class="hand-side-btn advance-phase-btn" id="advance-phase-btn" title="Advance Phase"></button>
             </div>
             
-            <!-- Action Menu Panel (slides in from left edge of screen) -->
-            <div class="hand-menu-panel" id="hand-menu-panel">
-                <button class="menu-action-btn" id="menu-kindling-btn" title="Toggle Kindling/Grimoire"></button>
-                <button class="menu-action-btn" id="menu-burn-btn" title="Burn Card for Pyre"></button>
-                <button class="menu-action-btn" id="menu-end-btn" title="End Turn"></button>
+            <!-- Ritual Circle Radial Menu -->
+            <div class="ritual-circle-overlay" id="ritual-circle-overlay">
+                <div class="ritual-circle-container">
+                    <!-- Outer arcane ring -->
+                    <svg class="ritual-ring outer-ring" viewBox="0 0 300 300">
+                        <defs>
+                            <linearGradient id="arcane-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#e8a93e;stop-opacity:1" />
+                                <stop offset="50%" style="stop-color:#ff6b35;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#e8a93e;stop-opacity:1" />
+                            </linearGradient>
+                            <filter id="glow">
+                                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                <feMerge>
+                                    <feMergeNode in="coloredBlur"/>
+                                    <feMergeNode in="SourceGraphic"/>
+                                </feMerge>
+                            </filter>
+                        </defs>
+                        <circle class="ring-path" cx="150" cy="150" r="140" fill="none" stroke="url(#arcane-gradient)" stroke-width="2" filter="url(#glow)"/>
+                        <circle class="ring-path inner" cx="150" cy="150" r="120" fill="none" stroke="url(#arcane-gradient)" stroke-width="1" opacity="0.6"/>
+                        <!-- Arcane runes around the circle -->
+                        <text class="arcane-runes" x="150" y="150" text-anchor="middle">
+                            <textPath href="#rune-path">☽ ✧ 🜂 ✦ ☾ ⁂ ◈ ✧ 🜄 ◆ ☽ ✧</textPath>
+                        </text>
+                        <path id="rune-path" d="M 150,20 A 130,130 0 1,1 149.9,20" fill="none"/>
+                    </svg>
+                    
+                    <!-- Inner mystic circle -->
+                    <svg class="ritual-ring inner-ring" viewBox="0 0 200 200">
+                        <circle class="ring-path" cx="100" cy="100" r="60" fill="none" stroke="#e8a93e" stroke-width="1.5" opacity="0.4"/>
+                        <circle class="pulse-ring" cx="100" cy="100" r="40" fill="none" stroke="#ff6b35" stroke-width="1" opacity="0.3"/>
+                    </svg>
+                    
+                    <!-- Central sigil -->
+                    <div class="central-sigil">
+                        <span class="sigil-icon">🜂</span>
+                    </div>
+                    
+                    <!-- Orbital action sigils -->
+                    <button class="orbital-sigil sigil-kindling" id="menu-kindling-btn" title="Toggle Kindling/Grimoire" data-action="kindling">
+                        <div class="sigil-glow"></div>
+                        <div class="sigil-content">
+                            <div class="sigil-symbol"></div>
+                            <span class="sigil-label">Kindling</span>
+                        </div>
+                    </button>
+                    
+                    <button class="orbital-sigil sigil-burn" id="menu-burn-btn" title="Burn Card for Pyre" data-action="burn">
+                        <div class="sigil-glow"></div>
+                        <div class="sigil-content">
+                            <div class="sigil-symbol"></div>
+                            <span class="sigil-label">Pyre Burn</span>
+                        </div>
+                    </button>
+                    
+                    <button class="orbital-sigil sigil-end" id="menu-end-btn" title="End Turn" data-action="end">
+                        <div class="sigil-glow"></div>
+                        <div class="sigil-content">
+                            <div class="sigil-symbol"></div>
+                            <span class="sigil-label">End Turn</span>
+                        </div>
+                    </button>
+                    
+                    <!-- Floating ember particles -->
+                    <div class="ember-particles">
+                        <span class="ember"></span>
+                        <span class="ember"></span>
+                        <span class="ember"></span>
+                        <span class="ember"></span>
+                        <span class="ember"></span>
+                        <span class="ember"></span>
+                        <span class="ember"></span>
+                        <span class="ember"></span>
+                    </div>
+                </div>
             </div>
             
             <!-- Hidden elements for backwards compatibility -->

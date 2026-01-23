@@ -4108,82 +4108,153 @@ document.getElementById('kindling-toggle-btn').onclick = () => {
     renderField();
 };
 
-// Hand menu toggle
-document.getElementById('hand-menu-btn').onclick = () => {
-    const panel = document.getElementById('hand-menu-panel');
-    const btn = document.getElementById('hand-menu-btn');
+// Helper: Check if menu button is allowed in current tutorial step
+function isMenuButtonAllowedInTutorial() {
+    if (!window.TutorialManager?.isActive || window.TutorialManager?.freePlayMode) {
+        return true; // Not in guided tutorial, allow everything
+    }
     
-    // During tutorial, only allow opening (not closing) unless in free play
+    // Check if the current tutorial step allows the menu button
+    // Access steps via TutorialManager.steps getter
+    const currentStep = window.TutorialManager?.steps?.[window.TutorialManager?.currentStepIndex];
+    if (!currentStep?.allowedElements) return false;
+    
+    return currentStep.allowedElements.some(selector => 
+        selector === '#hand-menu-btn' || 
+        selector === '#ritual-circle-overlay' ||
+        selector === '#menu-kindling-btn' ||
+        selector === '.orbital-sigil'
+    );
+}
+
+// Helper: Check if current tutorial step requires clicking a sigil button (menu should stay open)
+function isTutorialStepRequiringSigil() {
+    if (!window.TutorialManager?.isActive || window.TutorialManager?.freePlayMode) {
+        return false;
+    }
+    
+    const currentStep = window.TutorialManager?.steps?.[window.TutorialManager?.currentStepIndex];
+    if (!currentStep?.allowedElements) return false;
+    
+    // Check if this step requires clicking a sigil button (kindling, burn, end)
+    return currentStep.allowedElements.some(selector => 
+        selector === '#menu-kindling-btn' ||
+        selector === '#menu-burn-btn' ||
+        selector === '#menu-end-btn' ||
+        selector === '.orbital-sigil'
+    );
+}
+
+// Ritual Circle Menu toggle
+document.getElementById('hand-menu-btn').onclick = () => {
+    const overlay = document.getElementById('ritual-circle-overlay');
+    const btn = document.getElementById('hand-menu-btn');
+    const isOpen = overlay.classList.contains('open');
+    
+    // During guided tutorial, check if opening is allowed
     if (window.TutorialManager?.isActive && !window.TutorialManager?.freePlayMode) {
-        if (!panel.classList.contains('open')) {
-            panel.classList.add('open');
+        if (isOpen) {
+            // Don't allow closing if current step requires a sigil click
+            if (isTutorialStepRequiringSigil()) {
+                return; // Can't close - must click a sigil
+            }
+            overlay.classList.remove('open');
+            overlay.classList.remove('tutorial-locked');
+            btn.classList.remove('menu-open');
+        } else if (isMenuButtonAllowedInTutorial()) {
+            // Only allow opening if this step involves the menu
+            overlay.classList.add('open');
             btn.classList.add('menu-open');
+            
+            // Lock the menu open if this step requires a sigil click
+            if (isTutorialStepRequiringSigil()) {
+                overlay.classList.add('tutorial-locked');
+            }
         }
-        // Don't toggle closed during guided tutorial
+        // If not allowed and not open, do nothing
         return;
     }
     
-    panel.classList.toggle('open');
+    // Normal toggle behavior outside tutorial
+    overlay.classList.toggle('open');
     btn.classList.toggle('menu-open');
 };
 
-// Close menu when clicking outside
-document.addEventListener('click', (e) => {
-    const panel = document.getElementById('hand-menu-panel');
-    const btn = document.getElementById('hand-menu-btn');
-    
-    // Don't auto-close during tutorial - let tutorial control the flow
-    if (window.TutorialManager?.isActive && !window.TutorialManager?.freePlayMode) {
-        return;
-    }
-    
-    if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
-        panel.classList.remove('open');
+// Close ritual circle when clicking on overlay background (not on sigils)
+document.getElementById('ritual-circle-overlay')?.addEventListener('click', (e) => {
+    // Only close if clicking directly on the overlay or container (not on buttons)
+    if (e.target.classList.contains('ritual-circle-overlay') || 
+        e.target.classList.contains('ritual-circle-container') ||
+        e.target.closest('.central-sigil')) {
+        
+        // Don't allow closing if tutorial step requires a sigil click
+        if (isTutorialStepRequiringSigil()) {
+            return; // Must click a sigil during this tutorial step
+        }
+        
+        const overlay = document.getElementById('ritual-circle-overlay');
+        const btn = document.getElementById('hand-menu-btn');
+        overlay.classList.remove('open');
+        overlay.classList.remove('tutorial-locked');
         btn.classList.remove('menu-open');
     }
 });
 
-// Prevent clicks inside menu panel from doing anything unexpected during tutorial
-document.getElementById('hand-menu-panel')?.addEventListener('click', (e) => {
-    if (window.TutorialManager?.isActive && !window.TutorialManager?.freePlayMode) {
-        // Only allow clicks on actual buttons, stop everything else
-        if (!e.target.closest('button')) {
-            e.stopPropagation();
+// Keyboard shortcut: Escape to close ritual circle
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const overlay = document.getElementById('ritual-circle-overlay');
+        const btn = document.getElementById('hand-menu-btn');
+        
+        if (overlay?.classList.contains('open')) {
+            // Don't allow Escape to close if tutorial step requires a sigil click
+            if (isTutorialStepRequiringSigil()) {
+                return; // Must click a sigil during this tutorial step
+            }
+            overlay.classList.remove('open');
+            overlay.classList.remove('tutorial-locked');
+            btn?.classList.remove('menu-open');
         }
     }
 });
 
-// Wire up menu buttons to same handlers
-document.getElementById('menu-kindling-btn').onclick = () => {
+// Helper function to close the ritual circle menu
+function closeRitualCircle() {
+    const overlay = document.getElementById('ritual-circle-overlay');
+    overlay?.classList.remove('open');
+    overlay?.classList.remove('tutorial-locked');
+    document.getElementById('hand-menu-btn')?.classList.remove('menu-open');
+}
+
+// Wire up ritual circle sigil buttons to same handlers
+document.getElementById('menu-kindling-btn').onclick = (e) => {
+    e.stopPropagation(); // Prevent overlay close from triggering
     document.getElementById('kindling-toggle-btn').click();
-    // Close menu after action (unless in tutorial guided mode)
-    if (!window.TutorialManager?.isActive || window.TutorialManager?.freePlayMode) {
-        document.getElementById('hand-menu-panel').classList.remove('open');
-        document.getElementById('hand-menu-btn').classList.remove('menu-open');
-    }
+    // Always close menu after clicking kindling (removes tutorial-locked too)
+    closeRitualCircle();
 };
 
-document.getElementById('menu-burn-btn').onclick = () => {
+document.getElementById('menu-burn-btn').onclick = (e) => {
+    e.stopPropagation(); // Prevent overlay close from triggering
     // Don't allow during guided tutorial unless it's the expected action
     if (window.TutorialManager?.isActive && !window.TutorialManager?.freePlayMode) {
         return;
     }
     document.getElementById('pyre-burn-btn').click();
-    document.getElementById('hand-menu-panel').classList.remove('open');
-    document.getElementById('hand-menu-btn').classList.remove('menu-open');
+    closeRitualCircle();
 };
 
-document.getElementById('menu-end-btn').onclick = () => {
+document.getElementById('menu-end-btn').onclick = (e) => {
+    e.stopPropagation(); // Prevent overlay close from triggering
     // Don't allow during guided tutorial unless it's the expected action
     if (window.TutorialManager?.isActive && !window.TutorialManager?.freePlayMode) {
         return;
     }
     document.getElementById('end-turn-btn').click();
-    document.getElementById('hand-menu-panel').classList.remove('open');
-    document.getElementById('hand-menu-btn').classList.remove('menu-open');
+    closeRitualCircle();
 };
 
-// Update menu kindling button state
+// Update ritual circle sigil button states
 function updateMenuButtons() {
     const menuKindlingBtn = document.getElementById('menu-kindling-btn');
     const menuBurnBtn = document.getElementById('menu-burn-btn');
@@ -4194,22 +4265,26 @@ function updateMenuButtons() {
     const isPlayer = game.currentTurn === 'player';
     const isConjure = game.phase === 'conjure1' || game.phase === 'conjure2';
     
-    // Kindling button state
+    // Kindling sigil state - toggle active class which switches the sprite via CSS
     if (menuKindlingBtn) {
+        const labelEl = menuKindlingBtn.querySelector('.sigil-label');
+        
         if (ui.showingKindling) {
             menuKindlingBtn.classList.add('active');
+            if (labelEl) labelEl.textContent = 'Grimoire';
         } else {
             menuKindlingBtn.classList.remove('active');
+            if (labelEl) labelEl.textContent = 'Kindling';
         }
         menuKindlingBtn.disabled = (game.playerKindling.length === 0 && !ui.showingKindling);
     }
     
-    // Burn button state - match main button logic
+    // Burn sigil state - match main button logic
     if (menuBurnBtn) {
         menuBurnBtn.disabled = !isPlayer || !isConjure || game.playerPyreBurnUsed || game.playerDeaths === 0;
     }
     
-    // End button state  
+    // End Turn sigil state  
     if (menuEndBtn) {
         menuEndBtn.disabled = !isPlayer;
     }
