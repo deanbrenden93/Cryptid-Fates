@@ -2891,19 +2891,6 @@ body {
     position: relative; /* For fade overlays */
 }
 
-/* Block pointer events ONLY in the extended padding area above the hand */
-/* This uses a pseudo-element so scroll wrapper itself remains interactive */
-.hand-scroll-wrapper::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 80px; /* Same as padding-top */
-    pointer-events: none;
-    z-index: 1000;
-}
-
 .hand-scroll-wrapper::-webkit-scrollbar {
     display: none;
 }
