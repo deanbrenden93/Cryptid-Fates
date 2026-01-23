@@ -1589,12 +1589,20 @@ window.Multiplayer = {
                 opponentName: this.opponentName
             };
             
-            // Use WinScreen if available
-            if (typeof WinScreen !== 'undefined' && WinScreen.show) {
-                WinScreen.show(matchData);
+            // Use Deal Slide transition to results screen
+            const showResults = () => {
+                if (typeof WinScreen !== 'undefined' && WinScreen.show) {
+                    WinScreen.show(matchData);
+                } else {
+                    // Fallback to game's endGame
+                    g.endGame(won ? 'player' : 'enemy');
+                }
+            };
+            
+            if (typeof TransitionEngine !== 'undefined') {
+                TransitionEngine.toResults(showResults);
             } else {
-                // Fallback to game's endGame
-                g.endGame(won ? 'player' : 'enemy');
+                showResults();
             }
         }
         

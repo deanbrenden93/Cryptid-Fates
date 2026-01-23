@@ -7486,26 +7486,35 @@ class Game {
             opponentName: this.isMultiplayer ? window.Multiplayer?.opponentName : 'AI'
         };
         
-        // Use new WinScreen if available, fallback to old overlay
-        if (typeof WinScreen !== 'undefined' && WinScreen.show) {
-            WinScreen.show(matchData);
-        } else {
-            // Fallback to old game-over overlay
-            const overlay = document.getElementById('game-over');
-            const text = document.getElementById('game-over-text');
-            const sub = document.getElementById('game-over-sub');
-            overlay.classList.remove('victory', 'defeat');
-            if (winner === 'player') {
-                text.textContent = 'VICTORY';
-                sub.textContent = `The ritual is complete. ${this.enemyDeaths} spirits vanquished.`;
-                overlay.classList.add('victory');
+        // Use Deal Slide transition to results screen
+        const showResults = () => {
+            if (typeof WinScreen !== 'undefined' && WinScreen.show) {
+                WinScreen.show(matchData);
             } else {
-                text.textContent = 'DEFEAT';
-                sub.textContent = `The darkness claims you. ${this.playerDeaths} spirits lost...`;
-                overlay.classList.add('defeat');
+                // Fallback to old game-over overlay
+                const overlay = document.getElementById('game-over');
+                const text = document.getElementById('game-over-text');
+                const sub = document.getElementById('game-over-sub');
+                overlay.classList.remove('victory', 'defeat');
+                if (winner === 'player') {
+                    text.textContent = 'VICTORY';
+                    sub.textContent = `The ritual is complete. ${this.enemyDeaths} spirits vanquished.`;
+                    overlay.classList.add('victory');
+                } else {
+                    text.textContent = 'DEFEAT';
+                    sub.textContent = `The darkness claims you. ${this.playerDeaths} spirits lost...`;
+                    overlay.classList.add('defeat');
+                }
+                overlay.classList.add('show');
             }
-            overlay.classList.add('show');
+        };
+        
+        if (typeof TransitionEngine !== 'undefined') {
+            TransitionEngine.toResults(showResults);
+        } else {
+            showResults();
         }
     }
 }
+
 

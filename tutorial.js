@@ -2108,16 +2108,25 @@ const TutorialManager = {
   },
   
   goToHomeScreen() {
-    if (typeof HomeScreen !== "undefined") {
-      const homeScreenEl = document.getElementById("home-screen");
-      if (!homeScreenEl) {
-        console.log("[TutorialManager] Initializing HomeScreen for first time");
-        HomeScreen.init();
-      } else {
-        HomeScreen.open();
+    const showHome = () => {
+      if (typeof HomeScreen !== "undefined") {
+        const homeScreenEl = document.getElementById("home-screen");
+        if (!homeScreenEl) {
+          console.log("[TutorialManager] Initializing HomeScreen for first time");
+          HomeScreen.init();
+        } else {
+          HomeScreen.open();
+        }
+      } else if (typeof MainMenu !== "undefined" && MainMenu.show) {
+        MainMenu.show();
       }
-    } else if (typeof MainMenu !== "undefined" && MainMenu.show) {
-      MainMenu.show();
+    };
+    
+    // Use Void Fade transition
+    if (typeof TransitionEngine !== "undefined") {
+      TransitionEngine.toMenu(showHome);
+    } else {
+      showHome();
     }
   },
 

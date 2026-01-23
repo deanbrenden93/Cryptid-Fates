@@ -270,12 +270,23 @@ const GameFlow = {
     showWelcomeScreen() {
         console.log('[GameFlow] Showing welcome screen');
         
-        // Initialize and show HomeScreen (deck select / welcome)
-        if (typeof HomeScreen !== 'undefined') {
-            HomeScreen.init();
+        // Use Void Fade transition to home screen
+        if (typeof TransitionEngine !== 'undefined') {
+            TransitionEngine.toMenu(() => {
+                // Initialize and show HomeScreen at transition midpoint
+                if (typeof HomeScreen !== 'undefined') {
+                    HomeScreen.init();
+                } else {
+                    this.showMainMenu();
+                }
+            });
         } else {
-            // Fallback - go straight to main menu
-            this.showMainMenu();
+            // Fallback without transition
+            if (typeof HomeScreen !== 'undefined') {
+                HomeScreen.init();
+            } else {
+                this.showMainMenu();
+            }
         }
     },
     

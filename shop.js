@@ -339,9 +339,17 @@ window.Shop = {
     },
     
     close() {
-        this.isOpen = false;
-        document.getElementById('shop-overlay').classList.remove('open');
-        if (typeof HomeScreen !== 'undefined') HomeScreen.open();
+        if (typeof TransitionEngine !== 'undefined') {
+            TransitionEngine.toMenu(() => {
+                this.isOpen = false;
+                document.getElementById('shop-overlay').classList.remove('open');
+                if (typeof HomeScreen !== 'undefined') HomeScreen.open();
+            });
+        } else {
+            this.isOpen = false;
+            document.getElementById('shop-overlay').classList.remove('open');
+            if (typeof HomeScreen !== 'undefined') HomeScreen.open();
+        }
     },
     
     getEmbers() {

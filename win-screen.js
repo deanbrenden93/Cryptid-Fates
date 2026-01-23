@@ -938,7 +938,6 @@ window.WinScreen = {
     
     goHome() {
         this.clearRematchTimer();
-        this.hide();
         
         // Notify server we're leaving results screen (for multiplayer)
         if (this.lastMatchData?.isMultiplayer && typeof MultiplayerClient !== 'undefined') {
@@ -947,11 +946,25 @@ window.WinScreen = {
             }
         }
         
-        // Return to home screen
-        if (typeof HomeScreen !== 'undefined' && HomeScreen.open) {
-            HomeScreen.open();
-        } else if (typeof MainMenu !== 'undefined') {
-            MainMenu.show();
+        // Use Void Fade transition back to home
+        if (typeof TransitionEngine !== 'undefined') {
+            TransitionEngine.toMenu(() => {
+                this.hide();
+                document.getElementById('game-container').style.display = 'none';
+                if (typeof HomeScreen !== 'undefined' && HomeScreen.open) {
+                    HomeScreen.open();
+                } else if (typeof MainMenu !== 'undefined') {
+                    MainMenu.show();
+                }
+            });
+        } else {
+            this.hide();
+            document.getElementById('game-container').style.display = 'none';
+            if (typeof HomeScreen !== 'undefined' && HomeScreen.open) {
+                HomeScreen.open();
+            } else if (typeof MainMenu !== 'undefined') {
+                MainMenu.show();
+            }
         }
     },
     

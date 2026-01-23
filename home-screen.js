@@ -27,6 +27,11 @@ window.HomeScreen = {
         const screen = document.createElement('div');
         screen.id = 'home-screen';
         screen.innerHTML = `
+            <!-- Background Image (preloaded for instant display) -->
+            <div class="home-bg">
+                <img src="sprites/Testbackground.png" alt="" class="home-bg-img">
+            </div>
+            
             <!-- Ember Particle Canvas -->
             <canvas id="ember-particles" class="ember-canvas"></canvas>
             
@@ -40,10 +45,10 @@ window.HomeScreen = {
                     </div>
                 </div>
                 <div class="top-right">
-                    <div class="currency-chip embers" onclick="Shop.open()">
+                    <div class="currency-chip embers" onclick="HomeScreen.openShop()">
                         <img src="sprites/embers-icon.png" class="c-icon embers-img" alt=""><span class="c-val" id="home-embers">0</span>
                     </div>
-                    <div class="currency-chip souls" onclick="Shop.open()">
+                    <div class="currency-chip souls" onclick="HomeScreen.openShop()">
                         <span class="c-icon">💜</span><span class="c-val" id="home-souls">0</span>
                     </div>
                     <div class="top-divider"></div>
@@ -603,11 +608,21 @@ window.HomeScreen = {
         // Called by Multiplayer when match is found
         this.stopQueueTimer();
         this.closeQuickPlay();
-        this.close();
         
-        // Start the game in multiplayer mode
-        if (typeof startMultiplayerGame === 'function') {
-            startMultiplayerGame(matchData);
+        // Use Deal Slide transition to multiplayer battle
+        if (typeof TransitionEngine !== 'undefined') {
+            TransitionEngine.toBattle(() => {
+                this.close();
+            }).then(() => {
+                if (typeof startMultiplayerGame === 'function') {
+                    startMultiplayerGame(matchData);
+                }
+            });
+        } else {
+            this.close();
+            if (typeof startMultiplayerGame === 'function') {
+                startMultiplayerGame(matchData);
+            }
         }
     },
 
@@ -740,10 +755,6 @@ window.HomeScreen = {
     },
     
     startGameWithDeck(deckIndex) {
-        // Close deck selection if open
-        document.getElementById('deck-selection-screen')?.classList.remove('open');
-        this.close();
-        
         // Set the selected deck for the game
         if (deckIndex !== null) {
             const validDecks = PlayerData.decks.filter(d => {
@@ -756,38 +767,88 @@ window.HomeScreen = {
             window.testMode = true;
         }
         
-        // Show turn order animation then start game
-        if (typeof MainMenu !== 'undefined') {
-            MainMenu.showTurnOrderAnimation(() => {
+        // Use Deal Slide transition to battle
+        if (typeof TransitionEngine !== 'undefined') {
+            TransitionEngine.toBattle(() => {
+                // Close screens at transition midpoint
+                document.getElementById('deck-selection-screen')?.classList.remove('open');
+                this.close();
+                
+                // Show battle screen
+                document.getElementById('game-container').style.display = 'flex';
+            }).then(() => {
+                // After transition, show turn order animation
+                if (typeof MainMenu !== 'undefined') {
+                    MainMenu.showTurnOrderAnimation(() => {
+                        if (typeof initGame === 'function') {
+                            initGame();
+                        }
+                    });
+                } else {
+                    if (typeof initGame === 'function') {
+                        initGame();
+                    }
+                }
+            });
+        } else {
+            // Fallback without transition
+            document.getElementById('deck-selection-screen')?.classList.remove('open');
+            this.close();
+            
+            if (typeof MainMenu !== 'undefined') {
+                MainMenu.showTurnOrderAnimation(() => {
+                    document.getElementById('game-container').style.display = 'flex';
+                    if (typeof initGame === 'function') {
+                        initGame();
+                    }
+                });
+            } else {
                 document.getElementById('game-container').style.display = 'flex';
                 if (typeof initGame === 'function') {
                     initGame();
                 }
-            });
-        } else {
-            document.getElementById('game-container').style.display = 'flex';
-            if (typeof initGame === 'function') {
-                initGame();
             }
         }
     },
     
     openDeckBuilder() {
-        if (typeof DeckBuilder !== 'undefined') {
+        if (typeof DeckBuilder === 'undefined') return;
+        
+        if (typeof TransitionEngine !== 'undefined') {
+            TransitionEngine.toBrowse(() => {
+                this.close();
+                DeckBuilder.open();
+            });
+        } else {
+            this.close();
             DeckBuilder.open();
         }
     },
     
     openShop() {
-        this.close();
-        if (typeof Shop !== 'undefined') {
+        if (typeof Shop === 'undefined') return;
+        
+        if (typeof TransitionEngine !== 'undefined') {
+            TransitionEngine.toBrowse(() => {
+                this.close();
+                Shop.open();
+            });
+        } else {
+            this.close();
             Shop.open();
         }
     },
     
     openCollection() {
-        this.close();
-        if (typeof Collection !== 'undefined') {
+        if (typeof Collection === 'undefined') return;
+        
+        if (typeof TransitionEngine !== 'undefined') {
+            TransitionEngine.toBrowse(() => {
+                this.close();
+                Collection.open();
+            });
+        } else {
+            this.close();
             Collection.open();
         }
     },
