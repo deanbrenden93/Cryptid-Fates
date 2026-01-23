@@ -1760,13 +1760,18 @@ function setupCardInteractions(wrapper, cardEl, card, canPlay) {
             return;
         }
         
-        // Quick tap on stationary finger = select card (if playable) or give feedback (if not)
+        // Quick tap on stationary finger
         if (!touchMoved && touchStartPos && !scrollDetected && !dragStarted && touchDuration < 350) {
-            hideTooltip(); ui.cardTooltipVisible = false;
+            // Always show tooltip on quick tap (for any card)
+            const touch = e.changedTouches[0];
+            showCardTooltip(card, { clientX: touch?.clientX || 0, clientY: touch?.clientY || 0 });
+            
             if (isCurrentlyPlayable()) {
+                // Playable: select the card (tooltip already shown above)
                 selectCard(card);
             } else if (game.currentTurn !== 'player') {
-                // During opponent's turn, show visual feedback that card was tapped
+                // During opponent's turn: just shake feedback, NO detail view
+                // (detail view / inspect is only for long-press)
                 wrapper.classList.add('card-shake');
                 setTimeout(() => wrapper.classList.remove('card-shake'), 400);
                 if (navigator.vibrate) navigator.vibrate([20, 30, 20]); // Double buzz for "no"
@@ -1782,38 +1787,56 @@ function setupCardInteractions(wrapper, cardEl, card, canPlay) {
                         if (data.owner === 'player') resetFlag();
                     });
                 }
-                // Show card details via inspect
-                const touch = e.changedTouches[0];
-                inspectCard(e, touch?.clientX || 0, touch?.clientY || 0);
-                setTimeout(endInspect, 2000);
+                // Auto-hide tooltip after a moment (no inspect/detail view for quick tap)
+                setTimeout(() => hideTooltip(), 2000);
             }
         }
         
         touchStartPos = null; dragStarted = false; scrollDetected = false;
     };
     
-    // Debounced hover state to prevent jitter when card rotates away from mouse
+    // Robust hover state management to prevent animation spasm
+    // Card must complete its lift animation before it can lower
     let hoverTimeout = null;
-    const HOVER_LEAVE_DELAY = 150; // ms delay before removing hover state
+    let hoverStartTime = 0;
+    const MIN_HOVER_DURATION = 250; // ms - card must stay lifted at least this long (matches CSS animation)
+    const HOVER_LEAVE_DELAY = 100;  // ms - additional delay after min duration
     
-    wrapper.addEventListener('mouseenter', (e) => {
+    function startHover() {
         // Cancel any pending hover removal
         if (hoverTimeout) {
             clearTimeout(hoverTimeout);
             hoverTimeout = null;
         }
-        // Add hover class immediately
+        // Only set start time if not already hovering
+        if (!wrapper.classList.contains('hover-active')) {
+            hoverStartTime = Date.now();
+        }
         wrapper.classList.add('hover-active');
+    }
+    
+    function endHover() {
+        // Calculate how long we've been hovering
+        const hoverDuration = Date.now() - hoverStartTime;
+        const remainingMinTime = Math.max(0, MIN_HOVER_DURATION - hoverDuration);
+        
+        // Wait for minimum animation time + leave delay before removing hover
+        const totalDelay = remainingMinTime + HOVER_LEAVE_DELAY;
+        
+        hoverTimeout = setTimeout(() => {
+            wrapper.classList.remove('hover-active');
+            hoverTimeout = null;
+            hoverStartTime = 0;
+        }, totalDelay);
+    }
+    
+    wrapper.addEventListener('mouseenter', (e) => {
+        startHover();
         showCardTooltip(card, e);
     }, { passive: true });
     
     wrapper.addEventListener('mouseleave', () => {
-        // Delay removing hover state to prevent jitter during card animation
-        hoverTimeout = setTimeout(() => {
-            wrapper.classList.remove('hover-active');
-            hoverTimeout = null;
-        }, HOVER_LEAVE_DELAY);
-        
+        endHover();
         if (!wrapper.classList.contains('inspecting')) hideTooltip();
     }, { passive: true });
     
@@ -1822,12 +1845,7 @@ function setupCardInteractions(wrapper, cardEl, card, canPlay) {
     wrapper.addEventListener('mouseover', (e) => {
         // Only trigger if this is the direct target (not bubbled from child)
         if (e.target === wrapper || e.target.closest('.card-wrapper') === wrapper) {
-            // Cancel any pending hover removal
-            if (hoverTimeout) {
-                clearTimeout(hoverTimeout);
-                hoverTimeout = null;
-            }
-            wrapper.classList.add('hover-active');
+            startHover();
             showCardTooltip(card, e);
         }
     }, { passive: true });
@@ -1836,11 +1854,7 @@ function setupCardInteractions(wrapper, cardEl, card, canPlay) {
         // Only trigger if actually leaving the wrapper entirely
         const relatedTarget = e.relatedTarget;
         if (!relatedTarget || !wrapper.contains(relatedTarget)) {
-            // Delay removing hover state
-            hoverTimeout = setTimeout(() => {
-                wrapper.classList.remove('hover-active');
-                hoverTimeout = null;
-            }, HOVER_LEAVE_DELAY);
+            endHover();
         }
     }, { passive: true });
 }
