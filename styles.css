@@ -21,6 +21,9 @@
 }
 
 :root {
+    /* Hand area height - used by combat overlay and other elements */
+    --hand-h: clamp(130px, 22dvh, 240px);
+    
     --bone: #e8e0d5;
     --parchment: #d4c4a8;
     --dried-blood: #6b1c1c;
@@ -54,6 +57,7 @@
 /* Landscape mobile/tablet */
 @media (max-width: 1000px) and (orientation: landscape), (max-height: 550px) {
     :root {
+        --hand-h: min(145px, 30dvh);
         --tile-size: clamp(45px, min(15vh, 9vw), 80px);
         --card-width: clamp(55px, min(9vw, 11vh), 100px);
         --card-height: calc(var(--card-width) * 1.375);
@@ -74,6 +78,7 @@
 /* Large desktop */
 @media (min-width: 1400px) and (min-height: 900px) {
     :root {
+        --hand-h: clamp(220px, 22vh, 340px);
         /* Cap tile size on large screens to prevent overflow */
         --tile-size: clamp(70px, min(9vh, 7vw), 100px);
         --card-width: clamp(100px, min(9vh, 8vw), 140px);
@@ -87,6 +92,7 @@ body {
     background: var(--night-sky);
     min-height: 100vh;
     min-height: 100dvh;
+    /* No scrollbars - game is fullscreen fixed layout */
     overflow: hidden;
     display: flex;
     justify-content: center;
@@ -195,10 +201,8 @@ body {
     inset: 0;
     /* Base dark background - custom backgrounds layer on top */
     background: #0a0a10;
-    /* Allow content to render outside bounds (for card hover lift) */
-    /* Hidden only on X axis to prevent horizontal scrollbars */
-    overflow-x: hidden;
-    overflow-y: visible;
+    /* Hidden to prevent any scrollbars - content uses transforms instead of overflow */
+    overflow: hidden;
     display: flex;
     flex-direction: column;
 }
@@ -219,10 +223,14 @@ body {
     will-change: transform;
 }
 
-/* Combat phase overlay - covers battlefield + background but not hand/HUD */
+/* Combat phase overlay - covers ONLY battlefield area, not hand */
 #combat-phase-overlay {
     position: absolute;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* Stop above the hand area - use calc with hand height variable */
+    bottom: var(--hand-h, 200px);
     pointer-events: none;
     z-index: 60; /* Above battlefield (10-20), below hand (80) and HUD (100) */
     opacity: 0;
@@ -231,9 +239,9 @@ body {
 
 #game-container.phase-combat #combat-phase-overlay {
     opacity: 1;
+    /* Subtle red tint on battlefield only - very light vignette */
     background: 
-        radial-gradient(ellipse at center, transparent 30%, rgba(80, 20, 20, 0.4) 100%),
-        linear-gradient(180deg, rgba(60, 15, 15, 0.15) 0%, rgba(40, 10, 10, 0.25) 100%);
+        radial-gradient(ellipse at center 40%, transparent 40%, rgba(80, 20, 20, 0.25) 100%);
 }
 
 /* Enemy turn - no background overlay, just player name indicator */
@@ -2570,10 +2578,10 @@ body {
     /* Height: 22% of viewport, min 130px, max 240px - use dvh for mobile browser chrome */
     --hand-h: clamp(130px, 22dvh, 240px);
     
-    /* Hover lift space - 25% of hand height for generous card lift room */
-    --hover-space: calc(var(--hand-h) * 0.25);
+    /* Hover lift space - 30% of card height to ensure room for lift + scale */
+    --hover-space: calc(var(--card-h) * 0.35);
     
-    /* Card dimensions - 75% of hand height, fits with hover space */
+    /* Card dimensions - 75% of hand height to leave room for hover */
     --card-h: calc(var(--hand-h) * 0.75);
     --card-w: calc(var(--card-h) / 1.4);
     --card-gap: calc(var(--card-h) * 0.06);
@@ -2584,21 +2592,20 @@ body {
     /* Info bar height */
     --info-h: 24px;
     
+    /* Hand area height = card height + hover space (cards sit at bottom, lift up) */
     height: var(--hand-h);
     max-height: 35dvh; /* Ensure hand never exceeds 35% of viewport */
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-end;
-    /* Top padding to allow cards to lift above without clipping */
-    padding: var(--hover-space) 0 0 0;
-    margin-top: calc(var(--hover-space) * -1); /* Compensate for padding */
+    padding: 0;
     /* Semi-transparent gradient to darken bottom while showing background */
     background: linear-gradient(0deg, rgba(5, 5, 10, 0.85) 0%, rgba(5, 5, 10, 0.6) 60%, transparent 100%);
     position: relative;
     z-index: 80; /* Above combat effects overlay (60), below HUD (100) */
     flex-shrink: 0;
-    overflow: visible !important; /* CRITICAL: Allow hand cards to extend above container */
+    overflow: visible; /* Allow hand cards to extend above container */
 }
 
 /* Very short screens (phones in landscape) */
@@ -2670,15 +2677,14 @@ body {
 /* ===== MAIN CONTENT - Buttons + Cards grouped together ===== */
 .hand-main-content {
     display: flex;
-    align-items: center; /* VERTICALLY CENTER buttons with cards */
+    align-items: flex-end; /* Align to bottom so cards can lift upward */
     justify-content: center;
     gap: calc(var(--card-gap) * 2);
     flex: 1;
     width: 100%;
     max-width: 1400px; /* Keep everything grouped on wide screens */
     padding: 0 2vw 6px 2vw;
-    overflow: visible;
-    max-height: 100%; /* Ensure content fits within hand area */
+    min-height: 0; /* Allow flex shrinking */
 }
 
 /* Mobile: Tighter gap between buttons and cards */
@@ -2695,15 +2701,9 @@ body {
     flex-direction: column;
     flex: 1;
     min-width: 0;
+    min-height: 0; /* Allow flex shrinking */
     max-width: 1000px;
-    overflow: visible !important; /* NEVER clip cards */
-    /* Extra top padding to ensure hover lift doesn't clip */
-    padding-top: calc(var(--hover-space) * 0.5);
-    margin-top: calc(var(--hover-space) * -0.5);
-}
-
-.hand-scroll-fade {
-    display: none;
+    position: relative;
 }
 
 /* Phase Timeline */
@@ -2852,21 +2852,16 @@ body {
 }
 
 /* ===== CARD CONTAINER - Elegant Hand Fan ===== */
+/* Cards container - scroll is on parent wrapper */
 #hand-container {
     display: flex;
-    align-items: flex-end;
+    align-items: flex-end; /* Cards sit at bottom, lift upward */
     justify-content: flex-start;
-    width: 100%;
-    /* Critical: scroll horizontally, but NEVER clip vertically */
-    overflow: visible;
-    overflow-x: auto;
-    /* Generous top padding for hover lift - cards rise INTO this space */
-    padding-top: calc(var(--hover-space) * 1.5);
-    /* Use min-height instead of height to allow upward expansion */
-    min-height: 100%;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    width: max-content; /* Size to fit all cards */
+    min-width: 100%;
+    height: 100%;
+    overflow: visible; /* Allow cards to extend above */
+    padding: 0 40px 8px 40px; /* Side padding prevents edge cards from being cut off */
     transition: opacity 0.3s ease;
 }
 
@@ -2877,79 +2872,77 @@ body {
     transition: none !important;
 }
 
-/* Scroll wrapper - contains the hand-container */
+/* Scroll wrapper - handles horizontal scroll while allowing vertical overflow */
 .hand-scroll-wrapper {
-    display: flex;
+    display: block;
     width: 100%;
-    overflow: visible;
-    /* Allow cards to extend upward */
-    padding-top: calc(var(--hover-space) * 0.5);
-    margin-top: calc(var(--hover-space) * -0.5);
-}
-
-/* Cards area gets positioning context for fades */
-.hand-cards-area {
-    position: relative;
-    overflow: visible; /* Never clip cards */
-}
-
-/* Feathered edge fades - using CSS mask for true transparent edges */
-.hand-scroll-fade {
-    display: none; /* Using mask approach instead */
-}
-
-/* Apply feathered mask to hand-scroll-wrapper for true transparent fade at edges */
-.hand-scroll-wrapper {
-    /* Default: no mask (fully visible) */
-    -webkit-mask-image: none;
-    mask-image: none;
-}
-
-/* When can scroll left: fade left edge */
-.hand-cards-area.can-scroll-left .hand-scroll-wrapper {
-    -webkit-mask-image: linear-gradient(to right, 
-        transparent 0%, 
-        black 60px, 
-        black 100%);
-    mask-image: linear-gradient(to right, 
-        transparent 0%, 
-        black 60px, 
-        black 100%);
-}
-
-/* When can scroll right: fade right edge */
-.hand-cards-area.can-scroll-right .hand-scroll-wrapper {
-    -webkit-mask-image: linear-gradient(to left, 
-        transparent 0%, 
-        black 60px, 
-        black 100%);
-    mask-image: linear-gradient(to left, 
-        transparent 0%, 
-        black 60px, 
-        black 100%);
-}
-
-/* When can scroll both directions: fade both edges */
-.hand-cards-area.can-scroll-left.can-scroll-right .hand-scroll-wrapper {
-    -webkit-mask-image: linear-gradient(to right, 
-        transparent 0%, 
-        black 60px, 
-        black calc(100% - 60px), 
-        transparent 100%);
-    mask-image: linear-gradient(to right, 
-        transparent 0%, 
-        black 60px, 
-        black calc(100% - 60px), 
-        transparent 100%);
+    flex: 1;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: visible;
+    /* The magic: use negative margin + padding to extend scroll area vertically */
+    /* This allows cards to visually overflow while maintaining scroll bounds */
+    margin-top: -80px;
+    padding-top: 80px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    position: relative; /* For fade overlays */
 }
 
 .hand-scroll-wrapper::-webkit-scrollbar {
     display: none;
 }
 
-#hand-container::-webkit-scrollbar {
-    display: none;
+/* Cards area positioning handled in main definition above */
+
+/* Feathered edge fades - using CSS mask for TRUE transparency */
+/* The mask is horizontal only, so vertical overflow (card hover) still works */
+.hand-scroll-fade {
+    display: none; /* Not using HTML elements for fades */
 }
+
+/* Default: no mask (fully visible) */
+.hand-scroll-wrapper {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+/* When can scroll left: fade left edge to transparent */
+.hand-cards-area.can-scroll-left .hand-scroll-wrapper {
+    -webkit-mask-image: linear-gradient(to right, 
+        transparent 0%, 
+        black 50px);
+    mask-image: linear-gradient(to right, 
+        transparent 0%, 
+        black 50px);
+}
+
+/* When can scroll right: fade right edge to transparent */
+.hand-cards-area.can-scroll-right .hand-scroll-wrapper {
+    -webkit-mask-image: linear-gradient(to left, 
+        transparent 0%, 
+        black 50px);
+    mask-image: linear-gradient(to left, 
+        transparent 0%, 
+        black 50px);
+}
+
+/* When can scroll both directions: fade both edges */
+.hand-cards-area.can-scroll-left.can-scroll-right .hand-scroll-wrapper {
+    -webkit-mask-image: linear-gradient(to right, 
+        transparent 0%, 
+        black 50px, 
+        black calc(100% - 50px), 
+        transparent 100%);
+    mask-image: linear-gradient(to right, 
+        transparent 0%, 
+        black 50px, 
+        black calc(100% - 50px), 
+        transparent 100%);
+}
+
+/* Scrollbar hiding now on .hand-scroll-wrapper above */
 
 /* Fan adapts to hand size */
 /* Large hands (8+) - tighter overlap */
@@ -3072,7 +3065,8 @@ body {
 }
 
 /* Hover: lift card out of fan elegantly */
-.card-wrapper:hover {
+/* Using .hover-active class instead of :hover to prevent jitter during animation */
+.card-wrapper.hover-active {
     --hover-lift: 15px;
     transform: 
         translateY(calc((var(--arc-lift) + var(--hover-lift)) * -1))
@@ -3085,7 +3079,7 @@ body {
 }
 
 /* Push adjacent cards apart on hover for breathing room */
-.card-wrapper:hover + .card-wrapper {
+.card-wrapper.hover-active + .card-wrapper {
     margin-left: calc(var(--card-overlap) + 15px);
 }
 
@@ -3114,7 +3108,7 @@ body {
 }
 
 /* Subtle glow on hover */
-.card-wrapper:hover::after {
+.card-wrapper.hover-active::after {
     content: '';
     position: absolute;
     inset: -8px;
@@ -3181,7 +3175,7 @@ body {
 }
 
 /* Elegant shadow on hover */
-.card-wrapper:hover .battle-card {
+.card-wrapper.hover-active .battle-card {
     box-shadow: 
         0 8px 25px rgba(0, 0, 0, 0.5),
         0 0 20px rgba(255, 180, 80, 0.15);
@@ -3241,7 +3235,7 @@ body {
         min-height: 100px;
     }
     
-    #hand-area .card-wrapper:hover {
+    #hand-area .card-wrapper.hover-active {
         transform: translateY(-10px) scale(1.04);
     }
 }
@@ -3263,7 +3257,7 @@ body {
         min-height: 95px;
     }
     
-    #hand-area .card-wrapper:hover {
+    #hand-area .card-wrapper.hover-active {
         transform: translateY(-8px) scale(1.03);
     }
 }
@@ -3792,7 +3786,7 @@ body {
     display: none;
 }
 
-.card-wrapper:hover .card,
+.card-wrapper.hover-active .card,
 .card-wrapper:active .card {
     transform: translateY(-20px) scale(1.05);
     box-shadow: 0 16px 32px rgba(0,0,0,0.5);

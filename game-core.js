@@ -1233,13 +1233,13 @@ function applyCardFanLayout() {
 }
 
 function setupFanHoverEffects() {
-    // Setup horizontal wheel scrolling for the hand container
-    const handContainer = document.getElementById('hand-container');
-    if (handContainer) {
+    // Setup horizontal wheel scrolling for the scroll wrapper
+    const scrollWrapper = document.querySelector('.hand-scroll-wrapper');
+    if (scrollWrapper) {
         // Convert vertical wheel to horizontal scroll
-        handContainer.addEventListener('wheel', (e) => {
+        scrollWrapper.addEventListener('wheel', (e) => {
             // Only handle if there's horizontal overflow
-            if (handContainer.scrollWidth > handContainer.clientWidth) {
+            if (scrollWrapper.scrollWidth > scrollWrapper.clientWidth) {
                 e.preventDefault();
                 // Use deltaY for vertical scroll wheel, deltaX for horizontal (trackpad)
                 let delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
@@ -1255,7 +1255,7 @@ function setupFanHoverEffects() {
                     delta *= 30;
                 }
                 
-                handContainer.scrollLeft += delta;
+                scrollWrapper.scrollLeft += delta;
             }
         }, { passive: false });
         
@@ -1264,28 +1264,28 @@ function setupFanHoverEffects() {
         let scrollStartX = 0;
         let scrollLeft = 0;
         
-        handContainer.addEventListener('mousedown', (e) => {
-            // Only start scroll drag if clicking on the container itself, not on cards
-            if (e.target === handContainer || e.target.classList.contains('hand-scroll-wrapper')) {
+        scrollWrapper.addEventListener('mousedown', (e) => {
+            // Only start scroll drag if clicking on the wrapper or container, not on cards
+            if (e.target === scrollWrapper || e.target.id === 'hand-container') {
                 isScrollDragging = true;
-                handContainer.style.cursor = 'grabbing';
-                scrollStartX = e.pageX - handContainer.offsetLeft;
-                scrollLeft = handContainer.scrollLeft;
+                scrollWrapper.style.cursor = 'grabbing';
+                scrollStartX = e.pageX - scrollWrapper.offsetLeft;
+                scrollLeft = scrollWrapper.scrollLeft;
             }
         });
         
         document.addEventListener('mousemove', (e) => {
             if (!isScrollDragging) return;
             e.preventDefault();
-            const x = e.pageX - handContainer.offsetLeft;
+            const x = e.pageX - scrollWrapper.offsetLeft;
             const walk = (x - scrollStartX) * 1.5; // Scroll speed multiplier
-            handContainer.scrollLeft = scrollLeft - walk;
+            scrollWrapper.scrollLeft = scrollLeft - walk;
         });
         
         document.addEventListener('mouseup', () => {
             if (isScrollDragging) {
                 isScrollDragging = false;
-                handContainer.style.cursor = '';
+                scrollWrapper.style.cursor = '';
             }
         });
     }

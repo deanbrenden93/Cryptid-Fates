@@ -370,19 +370,23 @@ function onLayoutChange() {
     if (newHeight !== lastBattlefieldHeight) {
         lastBattlefieldHeight = newHeight;
         updateSpritePositions();
+        // Force refresh support links since positions changed
+        if (typeof forceRefreshSupportLinks === 'function') {
+            forceRefreshSupportLinks();
+        }
     }
     updateHandScrollFades();
 }
 
 // Update feathered edge fades based on scroll position
 function updateHandScrollFades() {
-    const container = document.getElementById('hand-container');
+    const wrapper = document.querySelector('.hand-scroll-wrapper');
     const cardsArea = document.querySelector('.hand-cards-area');
-    if (!container || !cardsArea) return;
+    if (!wrapper || !cardsArea) return;
     
-    const scrollLeft = container.scrollLeft;
-    const scrollWidth = container.scrollWidth;
-    const clientWidth = container.clientWidth;
+    const scrollLeft = wrapper.scrollLeft;
+    const scrollWidth = wrapper.scrollWidth;
+    const clientWidth = wrapper.clientWidth;
     const maxScroll = scrollWidth - clientWidth;
     
     // Show left fade if scrolled right
@@ -400,11 +404,11 @@ function updateHandScrollFades() {
     }
 }
 
-// Listen for hand container scroll
+// Listen for scroll wrapper scroll
 document.addEventListener('DOMContentLoaded', () => {
-    const container = document.getElementById('hand-container');
-    if (container) {
-        container.addEventListener('scroll', updateHandScrollFades);
+    const wrapper = document.querySelector('.hand-scroll-wrapper');
+    if (wrapper) {
+        wrapper.addEventListener('scroll', updateHandScrollFades);
     }
 });
 
@@ -1037,6 +1041,8 @@ function renderSprites() {
         // Skip death effect sprites and dramatic death sprites (they clean themselves up)
         if (child.classList.contains('death-effect-sprite')) return;
         if (child.classList.contains('death-drama-sprite')) return;
+        // Skip support link lines - they're managed separately by renderSupportLinks()
+        if (child.classList.contains('support-link-line')) return;
         
         const owner = child.dataset.owner;
         const col = child.dataset.col;
@@ -1065,9 +1071,41 @@ function renderSprites() {
     setupStatusIconListeners();
 }
 
+// Track current support link configuration to avoid unnecessary re-renders
+let currentSupportLinkConfig = '';
+
 // Render visual links between combatants and their supports
+// Only recreates links when the actual configuration changes (preserves animations)
 function renderSupportLinks() {
     const spriteLayer = document.getElementById('sprite-layer');
+    if (!spriteLayer) return;
+    
+    // Build a configuration string representing current support-combatant pairs
+    let newConfig = '';
+    
+    for (const owner of ['player', 'enemy']) {
+        const field = owner === 'player' ? game.playerField : game.enemyField;
+        const combatCol = game.getCombatCol(owner);
+        const supportCol = game.getSupportCol(owner);
+        
+        for (let row = 0; row < 3; row++) {
+            const combatant = field[combatCol][row];
+            const support = field[supportCol][row];
+            
+            if (combatant && support) {
+                // Include IDs to detect if different creatures are in same positions
+                newConfig += `${owner}-${row}-${combatant.id}-${support.id}|`;
+            }
+        }
+    }
+    
+    // If configuration hasn't changed, don't rebuild (preserves animations)
+    if (newConfig === currentSupportLinkConfig) {
+        return;
+    }
+    
+    // Configuration changed - rebuild links
+    currentSupportLinkConfig = newConfig;
     
     // Remove existing support links
     document.querySelectorAll('.support-link-line').forEach(el => el.remove());
@@ -1124,6 +1162,12 @@ function renderSupportLinks() {
             }
         }
     }
+}
+
+// Force refresh support links (call when positions might have changed due to resize)
+function forceRefreshSupportLinks() {
+    currentSupportLinkConfig = '';
+    renderSupportLinks();
 }
 
 // Track which cards are currently in the hand to avoid unnecessary rebuilds
@@ -1748,13 +1792,28 @@ function setupCardInteractions(wrapper, cardEl, card, canPlay) {
         touchStartPos = null; dragStarted = false; scrollDetected = false;
     };
     
-    // Use addEventListener for more robust event handling during animations
-    // These are passive for better scroll performance
+    // Debounced hover state to prevent jitter when card rotates away from mouse
+    let hoverTimeout = null;
+    const HOVER_LEAVE_DELAY = 150; // ms delay before removing hover state
+    
     wrapper.addEventListener('mouseenter', (e) => {
+        // Cancel any pending hover removal
+        if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+            hoverTimeout = null;
+        }
+        // Add hover class immediately
+        wrapper.classList.add('hover-active');
         showCardTooltip(card, e);
     }, { passive: true });
     
     wrapper.addEventListener('mouseleave', () => {
+        // Delay removing hover state to prevent jitter during card animation
+        hoverTimeout = setTimeout(() => {
+            wrapper.classList.remove('hover-active');
+            hoverTimeout = null;
+        }, HOVER_LEAVE_DELAY);
+        
         if (!wrapper.classList.contains('inspecting')) hideTooltip();
     }, { passive: true });
     
@@ -1763,7 +1822,25 @@ function setupCardInteractions(wrapper, cardEl, card, canPlay) {
     wrapper.addEventListener('mouseover', (e) => {
         // Only trigger if this is the direct target (not bubbled from child)
         if (e.target === wrapper || e.target.closest('.card-wrapper') === wrapper) {
+            // Cancel any pending hover removal
+            if (hoverTimeout) {
+                clearTimeout(hoverTimeout);
+                hoverTimeout = null;
+            }
+            wrapper.classList.add('hover-active');
             showCardTooltip(card, e);
+        }
+    }, { passive: true });
+    
+    wrapper.addEventListener('mouseout', (e) => {
+        // Only trigger if actually leaving the wrapper entirely
+        const relatedTarget = e.relatedTarget;
+        if (!relatedTarget || !wrapper.contains(relatedTarget)) {
+            // Delay removing hover state
+            hoverTimeout = setTimeout(() => {
+                wrapper.classList.remove('hover-active');
+                hoverTimeout = null;
+            }, HOVER_LEAVE_DELAY);
         }
     }, { passive: true });
 }
