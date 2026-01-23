@@ -914,24 +914,25 @@ window.WinScreen = {
     
     startRematch() {
         this.clearRematchTimer();
-        this.hide();
         
         const data = this.lastMatchData;
         const isMultiplayer = data?.isMultiplayer || false;
         
-        if (isMultiplayer) {
-            // Server will send matchFound - MultiplayerClient.onMatchFound will handle it
-            // Just make sure the game container is ready
+        TransitionEngine.slide(() => {
+            this.hide();
             document.getElementById('game-container').style.display = 'flex';
-        } else {
-            // VS AI - start new game
-            if (typeof HomeScreen !== 'undefined' && HomeScreen.startGame) {
-                HomeScreen.startGame();
-            } else if (typeof initGame === 'function') {
-                document.getElementById('game-container').style.display = 'flex';
-                initGame();
+        }).then(() => {
+            if (isMultiplayer) {
+                // Server will send matchFound - MultiplayerClient.onMatchFound will handle it
+            } else {
+                // VS AI - start new game
+                if (typeof HomeScreen !== 'undefined' && HomeScreen.startGame) {
+                    HomeScreen.startGame();
+                } else if (typeof initGame === 'function') {
+                    initGame();
+                }
             }
-        }
+        });
     },
     
     // ==================== NAVIGATION ====================
@@ -946,18 +947,7 @@ window.WinScreen = {
             }
         }
         
-        // Use Void Fade transition back to home
-        if (typeof TransitionEngine !== 'undefined') {
-            TransitionEngine.toMenu(() => {
-                this.hide();
-                document.getElementById('game-container').style.display = 'none';
-                if (typeof HomeScreen !== 'undefined' && HomeScreen.open) {
-                    HomeScreen.open();
-                } else if (typeof MainMenu !== 'undefined') {
-                    MainMenu.show();
-                }
-            });
-        } else {
+        TransitionEngine.fade(() => {
             this.hide();
             document.getElementById('game-container').style.display = 'none';
             if (typeof HomeScreen !== 'undefined' && HomeScreen.open) {
@@ -965,7 +955,7 @@ window.WinScreen = {
             } else if (typeof MainMenu !== 'undefined') {
                 MainMenu.show();
             }
-        }
+        });
     },
     
     // ==================== RENDERING ====================

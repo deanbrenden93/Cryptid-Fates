@@ -867,9 +867,10 @@ window.MainMenu = {
         // VS Human Button - Open Quick Play
         document.getElementById('vs-human-btn').addEventListener('click', () => {
             if (typeof HomeScreen !== 'undefined') {
-                this.hide();
-                HomeScreen.open();
-                setTimeout(() => HomeScreen.openQuickPlay(), 100);
+                TransitionEngine.fade(() => {
+                    this.hide();
+                    HomeScreen.open();
+                }).then(() => HomeScreen.openQuickPlay());
             }
         });
         
@@ -886,10 +887,13 @@ window.MainMenu = {
         // Tutorial popup buttons
         document.getElementById('tutorial-yes-btn').addEventListener('click', () => {
             this.hideTutorialPopup();
-            this.hide();
-            if (typeof TutorialManager !== 'undefined') {
-                TutorialManager.start();
-            }
+            TransitionEngine.slide(() => {
+                this.hide();
+            }).then(() => {
+                if (typeof TutorialManager !== 'undefined') {
+                    TutorialManager.start();
+                }
+            });
         });
         
         document.getElementById('tutorial-no-btn').addEventListener('click', () => {
@@ -984,34 +988,32 @@ window.MainMenu = {
     
     startVsAI() {
         this.selectedMode = 'ai';
-        
-        // TESTING: Enable test mode for VS AI
         window.testMode = true;
         
-        this.hide();
-        this.showTurnOrderAnimation(() => {
-            this.startGame();
+        TransitionEngine.slide(() => {
+            this.hide();
+        }).then(() => {
+            this.showTurnOrderAnimation(() => {
+                this.startGame();
+            });
         });
     },
     
     startCheatBattle() {
         this.selectedMode = 'cheat';
-        
-        // Enable test mode for full card access
         window.testMode = true;
         window.cheatMode = true;
         
-        this.hide();
-        
-        // Skip turn order animation, just start
-        this.startGame();
-        
-        // Initialize cheat mode panel after game starts
-        setTimeout(() => {
-            if (typeof CheatMode !== 'undefined') {
-                CheatMode.start();
-            }
-        }, 100);
+        TransitionEngine.slide(() => {
+            this.hide();
+        }).then(() => {
+            this.startGame();
+            setTimeout(() => {
+                if (typeof CheatMode !== 'undefined') {
+                    CheatMode.start();
+                }
+            }, 100);
+        });
     },
     
     showTurnOrderAnimation(onComplete) {

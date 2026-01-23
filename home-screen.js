@@ -609,21 +609,13 @@ window.HomeScreen = {
         this.stopQueueTimer();
         this.closeQuickPlay();
         
-        // Use Deal Slide transition to multiplayer battle
-        if (typeof TransitionEngine !== 'undefined') {
-            TransitionEngine.toBattle(() => {
-                this.close();
-            }).then(() => {
-                if (typeof startMultiplayerGame === 'function') {
-                    startMultiplayerGame(matchData);
-                }
-            });
-        } else {
+        TransitionEngine.slide(() => {
             this.close();
+        }).then(() => {
             if (typeof startMultiplayerGame === 'function') {
                 startMultiplayerGame(matchData);
             }
-        }
+        });
     },
 
     toggleFullscreen() {
@@ -692,7 +684,7 @@ window.HomeScreen = {
                     <div class="deck-select-empty-text">No ready decks found</div>
                     <div class="deck-select-empty-hint">Build a deck with 55-100 cards to battle!</div>
                     <div class="deck-select-empty-buttons">
-                        <button class="deck-select-builder-btn" onclick="HomeScreen.closeDeckSelection(); HomeScreen.openDeckBuilder();">Open Deck Builder</button>
+                        <button class="deck-select-builder-btn" onclick="TransitionEngine.fade(() => { HomeScreen.closeDeckSelection(); DeckBuilder.open(); });">Open Deck Builder</button>
                         <button class="deck-select-test-btn" onclick="HomeScreen.startGameWithDeck(null);">Use Random Deck (Test)</button>
                     </div>
                 </div>
@@ -767,90 +759,44 @@ window.HomeScreen = {
             window.testMode = true;
         }
         
-        // Use Deal Slide transition to battle
-        if (typeof TransitionEngine !== 'undefined') {
-            TransitionEngine.toBattle(() => {
-                // Close screens at transition midpoint
-                document.getElementById('deck-selection-screen')?.classList.remove('open');
-                this.close();
-                
-                // Show battle screen
-                document.getElementById('game-container').style.display = 'flex';
-            }).then(() => {
-                // After transition, show turn order animation
-                if (typeof MainMenu !== 'undefined') {
-                    MainMenu.showTurnOrderAnimation(() => {
-                        if (typeof initGame === 'function') {
-                            initGame();
-                        }
-                    });
-                } else {
-                    if (typeof initGame === 'function') {
-                        initGame();
-                    }
-                }
-            });
-        } else {
-            // Fallback without transition
+        // Deal Slide transition to battle
+        TransitionEngine.slide(() => {
             document.getElementById('deck-selection-screen')?.classList.remove('open');
             this.close();
-            
+            document.getElementById('game-container').style.display = 'flex';
+        }).then(() => {
             if (typeof MainMenu !== 'undefined') {
                 MainMenu.showTurnOrderAnimation(() => {
-                    document.getElementById('game-container').style.display = 'flex';
-                    if (typeof initGame === 'function') {
-                        initGame();
-                    }
+                    if (typeof initGame === 'function') initGame();
                 });
             } else {
-                document.getElementById('game-container').style.display = 'flex';
-                if (typeof initGame === 'function') {
-                    initGame();
-                }
+                if (typeof initGame === 'function') initGame();
             }
-        }
+        });
     },
     
     openDeckBuilder() {
         if (typeof DeckBuilder === 'undefined') return;
-        
-        if (typeof TransitionEngine !== 'undefined') {
-            TransitionEngine.toBrowse(() => {
-                this.close();
-                DeckBuilder.open();
-            });
-        } else {
+        TransitionEngine.fade(() => {
             this.close();
             DeckBuilder.open();
-        }
+        });
     },
     
     openShop() {
         if (typeof Shop === 'undefined') return;
-        
-        if (typeof TransitionEngine !== 'undefined') {
-            TransitionEngine.toBrowse(() => {
-                this.close();
-                Shop.open();
-            });
-        } else {
+        TransitionEngine.fade(() => {
             this.close();
             Shop.open();
-        }
+        });
     },
     
     openCollection() {
         if (typeof Collection === 'undefined') return;
-        
-        if (typeof TransitionEngine !== 'undefined') {
-            TransitionEngine.toBrowse(() => {
-                this.close();
-                Collection.open();
-            });
-        } else {
+        TransitionEngine.fade(() => {
             this.close();
             Collection.open();
-        }
+        });
     },
     
     openSettings() {

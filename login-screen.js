@@ -35,13 +35,16 @@ const GameFlow = {
             // User chose offline mode
             await this.onOfflineMode();
         } else {
-            // Hide preloader and show login screen
-            if (typeof AssetPreloader !== 'undefined') {
-                await AssetPreloader.hideLoadingScreen();
-            } else {
-                this.hideLoadingScreen();
-            }
-            LoginScreen.show();
+            // Transition from loading to login screen
+            await TransitionEngine.fade(() => {
+                if (typeof AssetPreloader !== 'undefined') {
+                    const screen = document.getElementById('asset-loading-screen');
+                    if (screen) screen.remove();
+                } else {
+                    this.hideLoadingScreen();
+                }
+                LoginScreen.show();
+            });
         }
     },
     
@@ -251,8 +254,12 @@ const GameFlow = {
      */
     showTutorial() {
         return new Promise((resolve) => {
-            // Start the actual tutorial battle
-            TutorialManager.start();
+            // Slide transition into tutorial battle
+            TransitionEngine.slide(() => {
+                // Start at hidden point
+            }).then(() => {
+                TutorialManager.start();
+            });
             
             // Listen for tutorial completion
             const checkComplete = setInterval(() => {
@@ -270,24 +277,13 @@ const GameFlow = {
     showWelcomeScreen() {
         console.log('[GameFlow] Showing welcome screen');
         
-        // Use Void Fade transition to home screen
-        if (typeof TransitionEngine !== 'undefined') {
-            TransitionEngine.toMenu(() => {
-                // Initialize and show HomeScreen at transition midpoint
-                if (typeof HomeScreen !== 'undefined') {
-                    HomeScreen.init();
-                } else {
-                    this.showMainMenu();
-                }
-            });
-        } else {
-            // Fallback without transition
+        TransitionEngine.fade(() => {
             if (typeof HomeScreen !== 'undefined') {
                 HomeScreen.init();
             } else {
                 this.showMainMenu();
             }
-        }
+        });
     },
     
     /**
@@ -730,18 +726,18 @@ const LoginScreen = {
      */
     async startTutorial() {
         console.log('[LoginScreen] Starting tutorial bypass...');
-        this.hide();
         
-        // Hide other screens
-        ['main-menu', 'home-screen', 'loading-screen', 'fullscreen-prompt'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.style.display = 'none';
-                el.classList.add('hidden');
-            }
+        await TransitionEngine.slide(() => {
+            this.hide();
+            ['main-menu', 'home-screen', 'loading-screen', 'fullscreen-prompt'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.style.display = 'none';
+                    el.classList.add('hidden');
+                }
+            });
         });
         
-        // Start tutorial
         if (typeof TutorialManager !== 'undefined') {
             await TutorialManager.start();
         } else {

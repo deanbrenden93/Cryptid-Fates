@@ -1589,21 +1589,14 @@ window.Multiplayer = {
                 opponentName: this.opponentName
             };
             
-            // Use Deal Slide transition to results screen
-            const showResults = () => {
+            // Deal Slide transition to results screen
+            TransitionEngine.slide(() => {
                 if (typeof WinScreen !== 'undefined' && WinScreen.show) {
                     WinScreen.show(matchData);
                 } else {
-                    // Fallback to game's endGame
                     g.endGame(won ? 'player' : 'enemy');
                 }
-            };
-            
-            if (typeof TransitionEngine !== 'undefined') {
-                TransitionEngine.toResults(showResults);
-            } else {
-                showResults();
-            }
+            });
         }
         
         // Award embers and XP

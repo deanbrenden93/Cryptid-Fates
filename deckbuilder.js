@@ -313,17 +313,11 @@ window.DeckBuilder = {
     },
     
     close() {
-        if (typeof TransitionEngine !== 'undefined') {
-            TransitionEngine.toMenu(() => {
-                this.isOpen = false;
-                document.getElementById('deckbuilder-overlay').classList.remove('open');
-                if (typeof HomeScreen !== 'undefined') HomeScreen.open();
-            });
-        } else {
+        TransitionEngine.fade(() => {
             this.isOpen = false;
             document.getElementById('deckbuilder-overlay').classList.remove('open');
             if (typeof HomeScreen !== 'undefined') HomeScreen.open();
-        }
+        });
     },
     
     showSelectScreen() {

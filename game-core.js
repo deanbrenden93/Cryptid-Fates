@@ -7486,8 +7486,8 @@ class Game {
             opponentName: this.isMultiplayer ? window.Multiplayer?.opponentName : 'AI'
         };
         
-        // Use Deal Slide transition to results screen
-        const showResults = () => {
+        // Deal Slide transition to results screen
+        TransitionEngine.slide(() => {
             if (typeof WinScreen !== 'undefined' && WinScreen.show) {
                 WinScreen.show(matchData);
             } else {
@@ -7507,13 +7507,7 @@ class Game {
                 }
                 overlay.classList.add('show');
             }
-        };
-        
-        if (typeof TransitionEngine !== 'undefined') {
-            TransitionEngine.toResults(showResults);
-        } else {
-            showResults();
-        }
+        });
     }
 }
 

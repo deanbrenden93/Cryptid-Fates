@@ -339,17 +339,11 @@ window.Shop = {
     },
     
     close() {
-        if (typeof TransitionEngine !== 'undefined') {
-            TransitionEngine.toMenu(() => {
-                this.isOpen = false;
-                document.getElementById('shop-overlay').classList.remove('open');
-                if (typeof HomeScreen !== 'undefined') HomeScreen.open();
-            });
-        } else {
+        TransitionEngine.fade(() => {
             this.isOpen = false;
             document.getElementById('shop-overlay').classList.remove('open');
             if (typeof HomeScreen !== 'undefined') HomeScreen.open();
-        }
+        });
     },
     
     getEmbers() {

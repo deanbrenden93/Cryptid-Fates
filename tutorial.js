@@ -2108,7 +2108,7 @@ const TutorialManager = {
   },
   
   goToHomeScreen() {
-    const showHome = () => {
+    TransitionEngine.fade(() => {
       if (typeof HomeScreen !== "undefined") {
         const homeScreenEl = document.getElementById("home-screen");
         if (!homeScreenEl) {
@@ -2120,14 +2120,7 @@ const TutorialManager = {
       } else if (typeof MainMenu !== "undefined" && MainMenu.show) {
         MainMenu.show();
       }
-    };
-    
-    // Use Void Fade transition
-    if (typeof TransitionEngine !== "undefined") {
-      TransitionEngine.toMenu(showHome);
-    } else {
-      showHome();
-    }
+    });
   },
 
   cleanupBattleScreen() {
@@ -2867,33 +2860,25 @@ const TutorialRewards = {
     // Grant rewards
     this.grantRewards();
     
-    // Animate out
+    // Use TransitionEngine to go to home screen
     setTimeout(() => {
-      this.screenElement.style.transition = "opacity 0.8s ease";
-      this.screenElement.style.opacity = "0";
-      
-      // Initialize home screen beneath
-      setTimeout(() => {
+      TransitionEngine.fade(() => {
+        // Remove rewards screen
+        this.screenElement.remove();
+        document.getElementById("tutorial-rewards-styles")?.remove();
+        
+        // Initialize and show home screen
         if (typeof HomeScreen !== "undefined") {
           const homeScreenEl = document.getElementById("home-screen");
           if (!homeScreenEl) {
             HomeScreen.init();
+          } else {
+            HomeScreen.open();
           }
-          document.getElementById("home-screen")?.classList.add("open");
-        }
-      }, 400);
-      
-      // Remove rewards screen and complete
-      setTimeout(() => {
-        this.screenElement.remove();
-        document.getElementById("tutorial-rewards-styles")?.remove();
-        
-        // Update home screen display
-        if (typeof HomeScreen !== "undefined" && HomeScreen.updateDisplay) {
-          HomeScreen.updateDisplay();
+          HomeScreen.updateDisplay?.();
           HomeScreen.isOpen = true;
         }
-      }, 800);
+      });
     }, 300);
   },
   
