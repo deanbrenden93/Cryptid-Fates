@@ -1490,6 +1490,202 @@ CardRegistry.registerCryptid('vampireInitiate', {
     }
 });
 
+// Redcap - Blood, Uncommon, Cost 3 (Cryptid #15, evolves from Boggart)
+CardRegistry.registerCryptid('redcap', {
+    name: "Redcap",
+    sprite: "🧢",
+    spriteScale: 1.0,
+    element: "blood",
+    cost: 3,
+    hp: 2,
+    atk: 5,
+    rarity: "uncommon",
+    evolvesFrom: 'boggart',
+    combatAbility: "Lifesteal. Bloodlust: +1 ATK for each ailmented cryptid on enemy's side of the field.",
+    supportAbility: "When combatant kills an enemy, grant combatant and Redcap +1 ATK. If the enemy was ailmented, also grant both +1 HP.",
+    otherAbility: "If Redcap does not kill an enemy cryptid by the end of your turn, it has 1HP.",
+    
+    // COMBAT: Lifesteal
+    hasLifesteal: true,
+    
+    // COMBAT: Bloodlust - +1 ATK per ailmented enemy on field (calculated dynamically)
+    getBloodlustBonus: function(game, owner) {
+        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
+        const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
+        
+        let ailmentedCount = 0;
+        for (let col = 0; col < 2; col++) {
+            for (let row = 0; row < 3; row++) {
+                const enemy = enemyField[col]?.[row];
+                if (enemy && game.hasStatusAilment(enemy)) {
+                    ailmentedCount++;
+                }
+            }
+        }
+        return ailmentedCount;
+    },
+    
+    // Bonus damage based on ailmented enemies
+    onCombatAttack: (attacker, target, game) => {
+        const template = CardRegistry.getCryptid('redcap');
+        const bonus = template.getBloodlustBonus(game, attacker.owner);
+        
+        if (bonus > 0) {
+            if (typeof queueAbilityAnimation !== 'undefined') {
+                queueAbilityAnimation({
+                    type: 'buff',
+                    target: attacker,
+                    message: `🧢 Bloodlust: +${bonus} ATK!`
+                });
+            }
+        }
+        
+        return bonus;
+    },
+    
+    // SUPPORT: When combatant kills, grant buffs
+    onSupport: (cryptid, owner, game) => {
+        const combatant = game.getCombatant(cryptid);
+        if (combatant) {
+            combatant.redcapSupport = cryptid;
+        }
+    },
+    
+    // Set up kill listener for support buff
+    onSummon: (cryptid, owner, game) => {
+        // Track if Redcap got a kill this turn (for OTHER ability)
+        cryptid.gotKillThisTurn = false;
+        
+        // Listen for kills
+        cryptid._unsubscribeRedcapKill = GameEvents.on('onKill', (data) => {
+            // Check if Redcap made the kill (for OTHER ability tracking)
+            if (data.killer === cryptid) {
+                cryptid.gotKillThisTurn = true;
+            }
+            
+            // Check if we're in support position and our combatant made the kill
+            const supportCol = game.getSupportCol(owner);
+            if (cryptid.col !== supportCol) return;
+            
+            const combatant = game.getCombatant(cryptid);
+            if (!combatant) return;
+            
+            if (data.killer === combatant) {
+                console.log('[Redcap Support] Combatant killed enemy - granting buffs');
+                
+                // Grant +1 ATK to both
+                combatant.currentAtk = (combatant.currentAtk || combatant.atk) + 1;
+                combatant.baseAtk = (combatant.baseAtk || combatant.atk) + 1;
+                
+                cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + 1;
+                cryptid.baseAtk = (cryptid.baseAtk || cryptid.atk) + 1;
+                
+                // Check if enemy was ailmented
+                const victimWasAilmented = data.victim && (
+                    data.victim.burnTurns > 0 ||
+                    data.victim.paralyzed ||
+                    data.victim.bleedTurns > 0 ||
+                    data.victim.calamityCounters > 0 ||
+                    data.victim.curseTokens > 0
+                );
+                
+                if (victimWasAilmented) {
+                    // Also grant +1 HP to both
+                    combatant.currentHp = (combatant.currentHp || combatant.hp) + 1;
+                    combatant.maxHp = (combatant.maxHp || combatant.hp) + 1;
+                    
+                    cryptid.currentHp = (cryptid.currentHp || cryptid.hp) + 1;
+                    cryptid.maxHp = (cryptid.maxHp || cryptid.hp) + 1;
+                    
+                    if (typeof queueAbilityAnimation !== 'undefined') {
+                        queueAbilityAnimation({
+                            type: 'buff',
+                            target: cryptid,
+                            message: `🧢 Redcap: +1/+1 to both!`
+                        });
+                    }
+                } else {
+                    if (typeof queueAbilityAnimation !== 'undefined') {
+                        queueAbilityAnimation({
+                            type: 'buff',
+                            target: cryptid,
+                            message: `🧢 Redcap: +1 ATK to both!`
+                        });
+                    }
+                }
+                
+                GameEvents.emit('onRedcapSupportBuff', { 
+                    redcap: cryptid, 
+                    combatant, 
+                    victim: data.victim,
+                    ailmented: victimWasAilmented,
+                    owner 
+                });
+                
+                // Force render to show updated stats
+                if (typeof renderSprites === 'function') {
+                    renderSprites();
+                }
+            }
+        });
+    },
+    
+    // Reset kill tracking at turn start
+    onTurnStart: (cryptid, owner, game) => {
+        if (game.currentTurn === owner) {
+            cryptid.gotKillThisTurn = false;
+        }
+    },
+    
+    // OTHER: If Redcap didn't kill by end of turn, set HP to 1
+    onTurnEnd: (cryptid, owner, game) => {
+        // Only trigger on owner's turn end
+        if (game.currentTurn !== owner) return;
+        
+        // Check if in combat position
+        const combatCol = game.getCombatCol(owner);
+        if (cryptid.col !== combatCol) return;
+        
+        // If Redcap didn't get a kill this turn, set HP to 1
+        if (!cryptid.gotKillThisTurn) {
+            const hpBefore = cryptid.currentHp || cryptid.hp;
+            
+            if (hpBefore > 1) {
+                cryptid.currentHp = 1;
+                
+                GameEvents.emit('onRedcapHunger', { cryptid, hpLost: hpBefore - 1, owner });
+                
+                if (typeof queueAbilityAnimation !== 'undefined') {
+                    queueAbilityAnimation({
+                        type: 'debuff',
+                        target: cryptid,
+                        message: `🧢 Redcap's hunger: HP reduced to 1!`
+                    });
+                }
+                
+                // Force render
+                if (typeof renderSprites === 'function') {
+                    renderSprites();
+                }
+            }
+        }
+    },
+    
+    // Clean up listener on death
+    onDeath: (cryptid, game) => {
+        if (cryptid._unsubscribeRedcapKill) {
+            cryptid._unsubscribeRedcapKill();
+            cryptid._unsubscribeRedcapKill = null;
+        }
+        
+        // Clear support reference from combatant if we were supporting
+        const combatant = game.getCombatant(cryptid);
+        if (combatant && combatant.redcapSupport === cryptid) {
+            combatant.redcapSupport = null;
+        }
+    }
+});
+
 // Vampire Lord - Blood, Rare, Cost 4 (evolves from Vampire Initiate)
 CardRegistry.registerCryptid('vampireLord', {
     name: "Vampire Lord",
