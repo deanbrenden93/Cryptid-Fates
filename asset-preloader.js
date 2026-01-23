@@ -205,7 +205,7 @@ const AssetPreloader = {
         screen.id = 'asset-loading-screen';
         screen.innerHTML = `
             <div class="preloader-content">
-                <div class="preloader-flame">🜂</div>
+                <img class="preloader-flame" src="sprites/embers-icon.png" alt="">
                 <h1 class="preloader-title">CRYPTID FATES</h1>
                 <div class="preloader-bar-container">
                     <div class="preloader-bar">
@@ -337,12 +337,11 @@ const preloaderStyles = `
 }
 
 .preloader-flame {
-    font-size: 64px;
-    color: #ff6030;
-    text-shadow: 
-        0 0 20px rgba(255, 80, 20, 0.8),
-        0 0 40px rgba(255, 60, 10, 0.6),
-        0 0 60px rgba(255, 40, 0, 0.4);
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 12px rgba(255, 80, 20, 0.8))
+            drop-shadow(0 0 24px rgba(255, 60, 10, 0.5));
     animation: flameFloat 2s ease-in-out infinite;
 }
 
