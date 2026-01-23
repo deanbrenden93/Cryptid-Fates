@@ -888,8 +888,20 @@ window.MainMenu = {
         document.getElementById('tutorial-yes-btn').addEventListener('click', () => {
             this.hideTutorialPopup();
             TransitionEngine.slide(() => {
-                this.hide();
+                // Hide origin
+                this.hide(true);
+                // Show destination while covered
+                const gameContainer = document.getElementById('game-container');
+                if (gameContainer) {
+                    gameContainer.classList.remove('hidden');
+                    gameContainer.style.cssText = 'display: flex !important; visibility: visible !important; opacity: 1 !important;';
+                }
+                // Apply battlefield backgrounds while covered
+                if (typeof applyBattlefieldBackgrounds === 'function') {
+                    applyBattlefieldBackgrounds();
+                }
             }).then(() => {
+                // Initialize tutorial logic (screens already swapped)
                 if (typeof TutorialManager !== 'undefined') {
                     TutorialManager.start();
                 }
@@ -947,8 +959,12 @@ window.MainMenu = {
         }
     },
     
-    hide() {
+    hide(instant = false) {
         const menu = document.getElementById('main-menu');
+        if (instant) {
+            menu.style.transition = 'none';
+            menu.style.display = 'none';
+        }
         menu.classList.add('hidden');
     },
     
@@ -990,11 +1006,41 @@ window.MainMenu = {
         this.selectedMode = 'ai';
         window.testMode = true;
         
+        // Ensure turn order overlay exists
+        if (!document.getElementById('turn-order-overlay')) {
+            this.createTurnOrderOverlay();
+        }
+        const turnOrderOverlay = document.getElementById('turn-order-overlay');
+        
         TransitionEngine.slide(() => {
-            this.hide();
+            this.hide(true);
+            // At hidden point: show turn order overlay (NOT the game container yet)
+            if (turnOrderOverlay) {
+                turnOrderOverlay.classList.add('active');
+            }
         }).then(() => {
+            // After transition reveals coin flip, start the animation
+            // Pass a callback that will show the battle screen and fade out the overlay
             this.showTurnOrderAnimation(() => {
-                this.startGame();
+                // Show game container and apply backgrounds BEHIND the overlay
+                const gameContainer = document.getElementById('game-container');
+                if (gameContainer) gameContainer.style.display = 'flex';
+                if (typeof applyBattlefieldBackgrounds === 'function') {
+                    applyBattlefieldBackgrounds();
+                }
+                
+                // Give the DOM a moment to render the battle screen
+                setTimeout(() => {
+                    // Fade out the overlay to reveal battle screen
+                    if (turnOrderOverlay) {
+                        turnOrderOverlay.classList.remove('active');
+                    }
+                    
+                    // After fade out, init the game
+                    setTimeout(() => {
+                        if (typeof window.initGame === 'function') window.initGame();
+                    }, 400);
+                }, 50);
             });
         });
     },
@@ -1005,9 +1051,15 @@ window.MainMenu = {
         window.cheatMode = true;
         
         TransitionEngine.slide(() => {
-            this.hide();
+            this.hide(true);
+            // Show game container and apply backgrounds while covered
+            const gameContainer = document.getElementById('game-container');
+            if (gameContainer) gameContainer.style.display = 'flex';
+            if (typeof applyBattlefieldBackgrounds === 'function') {
+                applyBattlefieldBackgrounds();
+            }
         }).then(() => {
-            this.startGame();
+            if (typeof window.initGame === 'function') window.initGame();
             setTimeout(() => {
                 if (typeof CheatMode !== 'undefined') {
                     CheatMode.start();
@@ -1041,8 +1093,10 @@ window.MainMenu = {
         const playerGoesFirst = Math.random() < 0.5;
         window.playerGoesFirst = playerGoesFirst;
         
-        // Show overlay
-        overlay.classList.add('active');
+        // Ensure overlay is active (may already be if called via transition)
+        if (!overlay.classList.contains('active')) {
+            overlay.classList.add('active');
+        }
         
         // Animation sequence
         const timeline = [
@@ -1076,11 +1130,10 @@ window.MainMenu = {
                 result.classList.add('show');
             }},
             
-            // Fade out and start game
+            // Animation complete - call callback (caller handles overlay fade out)
             { delay: 4200, action: () => {
-                overlay.classList.remove('active');
+                // Reset UI state for next time (but don't remove 'active' - caller does that)
                 setTimeout(() => {
-                    // Reset for next time
                     contestants.forEach(c => {
                         c.classList.remove('reveal', 'winner', 'loser');
                     });
@@ -1088,9 +1141,9 @@ window.MainMenu = {
                     fateCoin.classList.remove('stopped');
                     fateCoin.style.transform = '';
                     result.classList.remove('show');
-                    
-                    onComplete?.();
-                }, 500);
+                }, 600); // Reset after overlay has faded out
+                
+                onComplete?.();
             }}
         ];
         

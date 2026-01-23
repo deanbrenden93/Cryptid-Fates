@@ -190,6 +190,9 @@ window.CheatMode = {
                         <button class="cheat-btn" onclick="CheatMode.summonToField()">Summon</button>
                         <button class="cheat-btn" onclick="CheatMode.clearSlot()">Clear Slot</button>
                     </div>
+                    <div class="cheat-row">
+                        <button class="cheat-btn" onclick="CheatMode.summonToAllSlots()" style="flex:1; background: linear-gradient(135deg, #6a4a3f, #5a3a2f);">Summon to All Slots</button>
+                    </div>
                 </div>
                 
                 <!-- Field Manipulation -->
@@ -1196,6 +1199,101 @@ window.CheatMode = {
             field[col][row] = null;
         }
         
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    summonToAllSlots() {
+        if (!window.game) return;
+        
+        const cryptidSelect = document.getElementById('cheat-summon-cryptid');
+        const ownerSelect = document.getElementById('cheat-summon-owner');
+        
+        if (!cryptidSelect.value) {
+            alert('Select a cryptid first');
+            return;
+        }
+        
+        const [key, type] = cryptidSelect.value.split('|');
+        const owner = ownerSelect.value;
+        
+        // Get card data
+        let cardData = type === 'kindling' 
+            ? CardRegistry.getKindling(key) 
+            : CardRegistry.getCryptid(key);
+        
+        if (!cardData) {
+            console.warn('Card not found:', key);
+            return;
+        }
+        
+        const field = owner === 'player' ? window.game.playerField : window.game.enemyField;
+        const supportCol = window.game.getSupportCol(owner);
+        const combatCol = window.game.getCombatCol(owner);
+        
+        let summonCount = 0;
+        
+        // Summon to all slots (2 columns × 3 rows = 6 slots)
+        for (let col = 0; col < 2; col++) {
+            if (!field[col]) field[col] = [];
+            
+            for (let row = 0; row < 3; row++) {
+                // Create unique cryptid instance for each slot
+                const cryptid = {
+                    ...cardData,
+                    id: Math.random().toString(36).substr(2, 9),
+                    currentHp: cardData.hp,
+                    currentAtk: cardData.atk,
+                    maxHp: cardData.hp,
+                    tapped: false,
+                    canAttack: false, // Just summoned
+                    summonedThisTurn: true,
+                    attackedThisTurn: false,
+                    owner: owner,
+                    col: col,
+                    row: row
+                };
+                
+                // If slot occupied, log replacement
+                const colName = owner === 'player' 
+                    ? (col === 0 ? 'Support' : 'Combat')
+                    : (col === 0 ? 'Combat' : 'Support');
+                if (field[col][row]) {
+                    console.log(`Replacing ${field[col][row].name} at ${owner} ${colName} row ${row}`);
+                }
+                
+                field[col][row] = cryptid;
+                summonCount++;
+                
+                // Call appropriate callbacks
+                if (cryptid.onSummon) {
+                    cryptid.onSummon(cryptid, owner, window.game);
+                }
+                
+                if (col === supportCol && cryptid.onSupport) {
+                    cryptid.onSupport(cryptid, owner, window.game);
+                }
+                
+                if (col === combatCol) {
+                    if (cryptid.onCombat) {
+                        cryptid.onCombat(cryptid, owner, window.game);
+                    }
+                    if (cryptid.onEnterCombat) {
+                        cryptid.onEnterCombat(cryptid, owner, window.game);
+                    }
+                }
+            }
+        }
+        
+        // After all summoned, apply support abilities to combat cryptids
+        for (let row = 0; row < 3; row++) {
+            const supportCryptid = window.game.getFieldCryptid(owner, supportCol, row);
+            const combatCryptid = window.game.getFieldCryptid(owner, combatCol, row);
+            if (supportCryptid?.onSupport && combatCryptid && !window.game.isSupportNegated?.(supportCryptid)) {
+                supportCryptid.onSupport(supportCryptid, owner, window.game);
+            }
+        }
+        
+        console.log(`Summoned ${cardData.name} to all ${summonCount} slots on ${owner} field`);
         if (typeof renderAll === 'function') renderAll();
     },
     

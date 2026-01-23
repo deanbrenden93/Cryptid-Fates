@@ -921,6 +921,10 @@ window.WinScreen = {
         TransitionEngine.slide(() => {
             this.hide();
             document.getElementById('game-container').style.display = 'flex';
+            // Apply backgrounds while covered
+            if (typeof applyBattlefieldBackgrounds === 'function') {
+                applyBattlefieldBackgrounds();
+            }
         }).then(() => {
             if (isMultiplayer) {
                 // Server will send matchFound - MultiplayerClient.onMatchFound will handle it

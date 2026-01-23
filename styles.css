@@ -207,20 +207,21 @@ body {
     flex-direction: column;
     position: relative;
     overflow: visible;
+    /* z-index: 10 ensures battlefield content is above backgrounds (0) but below
+       combat effects overlay (60), hand (80), and HUD (100) */
+    z-index: 10;
     /* Transform origin for zoom effects - will be set dynamically */
     transform-origin: center center;
     /* Smooth transitions for zoom effects */
     will-change: transform;
-    /* Ensure wrapper content is above game-container overlays but below HUD */
-    z-index: 10;
 }
 
-/* Combat phase overlay - sits above background but below battlefield content */
+/* Combat phase overlay - covers battlefield + background but not hand/HUD */
 #combat-phase-overlay {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    z-index: 1; /* Above backgrounds (0), below sprite-layer (20) */
+    z-index: 60; /* Above battlefield (10-20), below hand (80) and HUD (100) */
     opacity: 0;
     transition: opacity 0.4s ease;
 }
@@ -306,7 +307,7 @@ body {
 }
 
 /* ==================== PHASE VISUAL EFFECTS ==================== */
-/* Phase overlays now handled by #combat-phase-overlay element inside game-screen-wrapper */
+/* Phase overlays handled by #combat-phase-overlay in game-container (covers battlefield + background) */
 
 /* ==================== DANGER VIGNETTE - Survival Horror Style ==================== */
 
@@ -2590,7 +2591,7 @@ body {
     /* Semi-transparent gradient to darken bottom while showing background */
     background: linear-gradient(0deg, rgba(5, 5, 10, 0.85) 0%, rgba(5, 5, 10, 0.6) 60%, transparent 100%);
     position: relative;
-    z-index: 50;
+    z-index: 80; /* Above combat effects overlay (60), below HUD (100) */
     flex-shrink: 0;
     overflow: visible; /* Allow hand cards to extend above container */
 }

@@ -711,14 +711,14 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
     atk: 5,
     rarity: "rare",
     mythical: true,
-    combatAbility: "Slit: Attacks apply Burn 2. If Kuchisake kills a burning enemy, it explodes dealing half its base HP (rounded down) to adjacent enemies.",
+    combatAbility: "Slit: When targeting an enemy, applies Burn before attacking. If Kuchisake kills a burning enemy, it explodes dealing half its base HP (rounded down) to adjacent enemies.",
     supportAbility: "Am I Pretty?: May sacrifice combatant. If you do, Kuchisake becomes 9/7 and gains Destroyer.",
     otherAbility: "At the end of each turn, if Kuchisake has no enemy cryptids across from her, she gains Bleed.",
     
-    // COMBAT: Attacks apply Burn 2
+    // COMBAT: Applies Burn when targeting (before attack)
     onBeforeAttack: (attacker, target, game) => {
-        // Apply Burn 2 (burn for 2 turns)
-        game.applyBurn(target, 2);
+        // Apply Burn (3 stacks - standard burn)
+        game.applyBurn(target);
         
         if (typeof queueAbilityAnimation !== 'undefined') {
             queueAbilityAnimation({

@@ -1571,16 +1571,20 @@ const TutorialManager = {
   async initGame() {
     console.log("[TutorialManager] Initializing game...");
 
+    // Hide all other screens instantly (no CSS transitions)
     ["main-menu", "home-screen", "login-screen", "loading-screen", "fullscreen-prompt"].forEach((id) => {
       const el = document.getElementById(id);
       if (el) {
+        el.style.transition = "none";
         el.style.display = "none";
         el.classList.add("hidden");
       }
     });
 
+    // Show game container instantly
     const gameContainer = document.getElementById("game-container");
     if (gameContainer) {
+      gameContainer.style.transition = "none";
       gameContainer.classList.remove("hidden");
       gameContainer.style.cssText = "display: flex !important; visibility: visible !important; opacity: 1 !important;";
     }

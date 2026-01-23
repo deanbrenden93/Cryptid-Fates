@@ -611,6 +611,11 @@ window.HomeScreen = {
         
         TransitionEngine.slide(() => {
             this.close();
+            document.getElementById('game-container').style.display = 'flex';
+            // Apply backgrounds while covered (including opponent's background)
+            if (typeof applyBattlefieldBackgrounds === 'function') {
+                applyBattlefieldBackgrounds();
+            }
         }).then(() => {
             if (typeof startMultiplayerGame === 'function') {
                 startMultiplayerGame(matchData);
@@ -759,17 +764,49 @@ window.HomeScreen = {
             window.testMode = true;
         }
         
-        // Deal Slide transition to battle
+        // Ensure turn order overlay exists
+        if (typeof MainMenu !== 'undefined' && !document.getElementById('turn-order-overlay')) {
+            MainMenu.createTurnOrderOverlay();
+        }
+        const turnOrderOverlay = document.getElementById('turn-order-overlay');
+        
+        // Deal Slide transition to coin flip screen (NOT battle screen yet)
         TransitionEngine.slide(() => {
             document.getElementById('deck-selection-screen')?.classList.remove('open');
             this.close();
-            document.getElementById('game-container').style.display = 'flex';
+            // At hidden point: show turn order overlay (NOT the game container yet)
+            if (turnOrderOverlay) {
+                turnOrderOverlay.classList.add('active');
+            }
         }).then(() => {
+            // After transition reveals coin flip, start the animation
             if (typeof MainMenu !== 'undefined') {
                 MainMenu.showTurnOrderAnimation(() => {
-                    if (typeof initGame === 'function') initGame();
+                    // Show game container and apply backgrounds BEHIND the overlay
+                    document.getElementById('game-container').style.display = 'flex';
+                    if (typeof applyBattlefieldBackgrounds === 'function') {
+                        applyBattlefieldBackgrounds();
+                    }
+                    
+                    // Give the DOM a moment to render the battle screen
+                    setTimeout(() => {
+                        // Fade out the overlay to reveal battle screen
+                        if (turnOrderOverlay) {
+                            turnOrderOverlay.classList.remove('active');
+                        }
+                        
+                        // After fade out, init the game
+                        setTimeout(() => {
+                            if (typeof initGame === 'function') initGame();
+                        }, 400);
+                    }, 50);
                 });
             } else {
+                // Fallback: no MainMenu, just show battle screen
+                document.getElementById('game-container').style.display = 'flex';
+                if (typeof applyBattlefieldBackgrounds === 'function') {
+                    applyBattlefieldBackgrounds();
+                }
                 if (typeof initGame === 'function') initGame();
             }
         });

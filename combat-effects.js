@@ -1172,23 +1172,32 @@ window.CombatEffects = {
             deathClone.removeAttribute(attr);
         });
         
-        spriteLayer.appendChild(deathClone);
+        // Append death clone to game-container so it appears above the effects overlay
+        // Position it absolutely using the sprite's screen coordinates
+        const gameContainer = document.getElementById('game-container');
+        const containerRect = gameContainer.getBoundingClientRect();
+        deathClone.style.left = (spriteRect.left + spriteRect.width/2 - containerRect.left) + 'px';
+        deathClone.style.top = (spriteRect.top + spriteRect.height/2 - containerRect.top) + 'px';
+        deathClone.style.zIndex = '70'; // Above overlay (60), below hand (80) and HUD (100)
+        gameContainer.appendChild(deathClone);
         
         // Hide original sprite
         sprite.style.opacity = '0';
         sprite.style.pointerEvents = 'none';
         
-        // Create overlay for effects
+        // Create screen-wide overlay for effects that should cover battlefield + background
+        // Appended to game-container with z-index above battlefield (20) but below HUD (100) and hand (80)
+        // Note: gameContainer already obtained above when positioning death clone
         const overlay = document.createElement('div');
         overlay.className = 'death-drama-overlay';
         overlay.style.cssText = `
             position: absolute;
             inset: 0;
             pointer-events: none;
-            z-index: 1400;
+            z-index: 60;
             overflow: hidden;
         `;
-        battlefield.appendChild(overlay);
+        gameContainer.appendChild(overlay);
         
         // Calculate timeline
         const TIMING = window.TIMING || { deathAnim: 700 };
@@ -1236,10 +1245,16 @@ window.CombatEffects = {
             overlay.appendChild(vignette);
         }
         
-        // Desaturation (rare+)
-        if (config.desaturate && gameScreen) {
-            gameScreen.style.transition = `filter ${config.zoomInDuration}ms ease-out`;
-            gameScreen.style.filter = 'saturate(0.4) contrast(1.1)';
+        // Desaturation (rare+) - apply directly to the death clone, NOT to overlays
+        // This prevents other cryptids (like support) from being affected
+        // Eases in over the zoom duration, no need to revert since it's dying
+        if (config.desaturate) {
+            deathClone.style.filter = 'saturate(1)';
+            deathClone.style.transition = `filter ${config.zoomInDuration}ms ease-in`;
+            // Trigger the transition after a frame
+            requestAnimationFrame(() => {
+                deathClone.style.filter = 'saturate(0.4)';
+            });
         }
         
         // IMPACT HIT ANIMATION on sprite - knockback recoil
@@ -1316,11 +1331,7 @@ window.CombatEffects = {
             // Update base transform for any ongoing shakes
             this._dramaticDeathBaseTransform = 'scale(1)';
             
-            // Restore saturation
-            if (config.desaturate && gameScreen) {
-                gameScreen.style.transition = `filter ${config.zoomOutDuration}ms ease-out`;
-                gameScreen.style.filter = '';
-            }
+            // Desaturation overlay fades out automatically with the main overlay removal
             
             // Smooth zoom out - use wrapper so backgrounds zoom too
             wrapper.style.transition = `transform ${config.zoomOutDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
@@ -1340,10 +1351,7 @@ window.CombatEffects = {
             wrapper.style.transform = '';
             wrapper.style.transformOrigin = '';
             
-            if (gameScreen) {
-                gameScreen.style.transition = '';
-                gameScreen.style.filter = '';
-            }
+            // No game screen filter cleanup needed - we use overlay-based desaturation now
             
             // Remove overlay and clone
             overlay.remove();
@@ -2832,31 +2840,32 @@ window.CombatEffects = {
      * @param {Function} onComplete - Callback when animation completes
      */
     playBattleBanner(onComplete) {
-        const wrapper = document.getElementById('game-screen-wrapper');
+        const gameContainer = document.getElementById('game-container');
         const battlefield = document.getElementById('battlefield-area');
         
-        if (!wrapper || !battlefield) {
+        if (!gameContainer || !battlefield) {
             if (onComplete) onComplete();
             return;
         }
         
-        // Create BATTLE banner - appended to wrapper so it's below HUD
+        // Create BATTLE banner - appended to game-container to cover battlefield + background but not hand/HUD
         const banner = document.createElement('div');
         banner.className = 'turn-banner battle-banner';
         banner.innerHTML = `<span class="turn-banner-text battle-text">⚔ BATTLE! ⚔</span>`;
         banner.style.setProperty('--banner-color', '#fbbf24'); // Gold/amber color
-        wrapper.appendChild(banner);
+        gameContainer.appendChild(banner);
         
         // Animate banner sweep
         requestAnimationFrame(() => {
             banner.classList.add('turn-banner-active');
         });
         
-        // Battlefield flash effect
+        // Battlefield flash effect - also covers battlefield + background
         setTimeout(() => {
             const flash = document.createElement('div');
             flash.className = 'battle-start-flash';
-            battlefield.appendChild(flash);
+            flash.style.zIndex = '60'; // Same layer as banner
+            gameContainer.appendChild(flash);
             setTimeout(() => flash.remove(), 500);
         }, 150);
         
@@ -2907,23 +2916,25 @@ window.CombatEffects = {
         const bannerColor = isPlayerTurn ? '#4ade80' : '#f87171';
         const bannerText = isPlayerTurn ? 'YOUR TURN' : 'ENEMY TURN';
         
-        // Create banner - appended to wrapper so it's below HUD
+        // Create banner - appended to game-container to cover battlefield + background but not hand/HUD
+        const gameContainer = document.getElementById('game-container');
         const banner = document.createElement('div');
         banner.className = 'turn-banner';
         banner.innerHTML = `<span class="turn-banner-text">${bannerText}</span>`;
         banner.style.setProperty('--banner-color', bannerColor);
-        wrapper.appendChild(banner);
+        gameContainer.appendChild(banner);
         
         // Animate banner sweep
         requestAnimationFrame(() => {
             banner.classList.add('turn-banner-active');
         });
         
-        // Battlefield pulse wave
+        // Battlefield pulse wave - covers battlefield + background
         setTimeout(() => {
             const pulse = document.createElement('div');
             pulse.className = `turn-pulse ${isPlayerTurn ? 'turn-pulse-player' : 'turn-pulse-enemy'}`;
-            battlefield.appendChild(pulse);
+            pulse.style.zIndex = '60'; // Same layer as banner
+            gameContainer.appendChild(pulse);
             setTimeout(() => pulse.remove(), 600);
         }, 200);
         
@@ -6721,7 +6732,7 @@ window.CombatEffects = {
                 rgba(0,0,0,0.95) 50%, 
                 rgba(0,0,0,0.9) 80%, 
                 transparent 100%);
-            z-index: 1000; /* Above battlefield content but below HUD (which is outside wrapper) */
+            z-index: 60; /* Above battlefield (20), below hand (80) and HUD (100) */
             text-align: center;
             border-top: 2px solid var(--banner-color, #4ade80);
             border-bottom: 2px solid var(--banner-color, #4ade80);
@@ -6785,7 +6796,7 @@ window.CombatEffects = {
             background: radial-gradient(ellipse at center, rgba(251, 191, 36, 0.4) 0%, transparent 70%);
             animation: battleFlash 0.5s ease-out forwards;
             pointer-events: none;
-            z-index: 100;
+            z-index: 60; /* Above battlefield (20), below hand (80) and HUD (100) */
         }
         
         @keyframes battleFlash {

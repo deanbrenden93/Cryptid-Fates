@@ -256,7 +256,24 @@ const GameFlow = {
         return new Promise((resolve) => {
             // Slide transition into tutorial battle
             TransitionEngine.slide(() => {
-                // Start at hidden point
+                // Hide other screens and show game container while covered
+                ['main-menu', 'home-screen', 'login-screen', 'loading-screen', 'fullscreen-prompt'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.style.transition = 'none';
+                        el.style.display = 'none';
+                        el.classList.add('hidden');
+                    }
+                });
+                const gameContainer = document.getElementById('game-container');
+                if (gameContainer) {
+                    gameContainer.classList.remove('hidden');
+                    gameContainer.style.cssText = 'display: flex !important; visibility: visible !important; opacity: 1 !important;';
+                }
+                // Apply battlefield backgrounds while covered
+                if (typeof applyBattlefieldBackgrounds === 'function') {
+                    applyBattlefieldBackgrounds();
+                }
             }).then(() => {
                 TutorialManager.start();
             });
@@ -728,16 +745,31 @@ const LoginScreen = {
         console.log('[LoginScreen] Starting tutorial bypass...');
         
         await TransitionEngine.slide(() => {
-            this.hide();
+            // Hide origin screens INSTANTLY (no CSS transition - we're covered)
+            this.hide(true);
             ['main-menu', 'home-screen', 'loading-screen', 'fullscreen-prompt'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
+                    el.style.transition = 'none';
                     el.style.display = 'none';
                     el.classList.add('hidden');
                 }
             });
+            
+            // Show destination (game container) while still covered
+            const gameContainer = document.getElementById('game-container');
+            if (gameContainer) {
+                gameContainer.classList.remove('hidden');
+                gameContainer.style.cssText = 'display: flex !important; visibility: visible !important; opacity: 1 !important;';
+            }
+            
+            // Apply battlefield backgrounds while covered
+            if (typeof applyBattlefieldBackgrounds === 'function') {
+                applyBattlefieldBackgrounds();
+            }
         });
         
+        // Now initialize tutorial logic (screens already swapped)
         if (typeof TutorialManager !== 'undefined') {
             await TutorialManager.start();
         } else {
@@ -775,8 +807,9 @@ const LoginScreen = {
     
     /**
      * Hide the login screen
+     * @param {boolean} instant - If true, skip CSS transition (for use with TransitionEngine)
      */
-    hide() {
+    hide(instant = false) {
         const overlay = document.getElementById('login-screen');
         if (!overlay) return;
         
@@ -789,14 +822,24 @@ const LoginScreen = {
             this.resizeHandler = null;
         }
         
-        overlay.classList.remove('visible');
-        
-        setTimeout(() => {
+        if (instant) {
+            // Instant hide - no CSS transition (TransitionEngine handles the visual)
+            overlay.style.transition = 'none';
+            overlay.style.display = 'none';
             overlay.remove();
             this.isVisible = false;
             this.animationCompleted = false;
             this.animationSkipped = false;
-        }, 300);
+        } else {
+            // Normal hide with CSS transition
+            overlay.classList.remove('visible');
+            setTimeout(() => {
+                overlay.remove();
+                this.isVisible = false;
+                this.animationCompleted = false;
+                this.animationSkipped = false;
+            }, 300);
+        }
     },
     
     /**
