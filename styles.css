@@ -1079,6 +1079,12 @@ body {
 
 .tile:hover .tile-base { filter: brightness(1.15); }
 
+/* Valid targets need higher z-index to be clickable above hand area padding */
+.tile.valid-target {
+    z-index: 85 !important;
+    pointer-events: auto !important;
+}
+
 .tile.valid-target .tile-base {
     border-color: rgba(100, 180, 130, 0.8) !important;
     box-shadow: 0 4px 0 rgba(15, 25, 18, 0.9), 0 0 25px rgba(100, 180, 130, 0.5), inset 0 0 20px rgba(100, 180, 130, 0.3);
@@ -1088,6 +1094,12 @@ body {
 @keyframes tileGlow {
     0%, 100% { filter: brightness(1); }
     50% { filter: brightness(1.25); }
+}
+
+/* Attack targets need higher z-index to be clickable above hand area padding */
+.tile.attack-target {
+    z-index: 85 !important;
+    pointer-events: auto !important;
 }
 
 .tile.attack-target .tile-base {
@@ -1156,6 +1168,12 @@ body {
     pointer-events: none;
 }
 
+/* Tiles with attackers need higher z-index to be clickable above hand area padding */
+.tile.can-attack {
+    z-index: 85 !important;
+    pointer-events: auto !important;
+}
+
 .tile.can-attack .tile-base {
     border-color: rgba(180, 200, 160, 0.6) !important;
     box-shadow: 0 4px 0 rgba(30, 40, 25, 0.9), 0 0 15px rgba(180, 200, 160, 0.3);
@@ -1167,6 +1185,7 @@ body {
 .cryptid-sprite.can-attack-cryptid {
     cursor: pointer;
     pointer-events: auto;
+    z-index: 85 !important; /* Above hand area padding (80), below dragged cards (200) */
 }
 
 .cryptid-sprite.can-attack-cryptid::before {
@@ -2865,6 +2884,8 @@ body {
     overflow: visible; /* Allow cards to extend above */
     padding: 0 40px 8px 40px; /* Side padding prevents edge cards from being cut off */
     transition: opacity 0.3s ease;
+    /* Re-enable pointer events on actual cards (wrapper has pointer-events: none) */
+    pointer-events: auto;
 }
 
 /* Hide hand instantly during starting draw animation (no transition) */
@@ -2889,6 +2910,9 @@ body {
     scrollbar-width: none;
     -ms-overflow-style: none;
     position: relative; /* For fade overlays */
+    /* CRITICAL: Pass clicks through to battlefield below */
+    /* Scrolling still works because #hand-container has pointer-events: auto */
+    pointer-events: none;
 }
 
 .hand-scroll-wrapper::-webkit-scrollbar {
