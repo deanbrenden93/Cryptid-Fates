@@ -2872,16 +2872,15 @@ body {
     transition: none !important;
 }
 
-/* Scroll wrapper - handles horizontal scroll while allowing vertical overflow */
+/* Scroll wrapper - handles horizontal scroll only */
 .hand-scroll-wrapper {
     display: block;
     width: 100%;
     flex: 1;
     min-height: 0;
     overflow-x: auto;
-    overflow-y: visible;
-    /* The magic: use negative margin + padding to extend scroll area vertically */
-    /* This allows cards to visually overflow while maintaining scroll bounds */
+    overflow-y: hidden; /* MUST be hidden to prevent vertical scroll on mobile */
+    /* Negative margin + padding extends the clipping box upward for card hover */
     margin-top: -80px;
     padding-top: 80px;
     -webkit-overflow-scrolling: touch;
