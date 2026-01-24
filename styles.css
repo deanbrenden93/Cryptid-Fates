@@ -2598,8 +2598,8 @@ body {
     /* Info bar height */
     --info-h: 24px;
     
-    /* Hand area height - enough for cards + lift space */
-    --hand-h: 140px;
+    /* Hand area height - includes card height + lift space (30px) for centered cards */
+    --hand-h: 165px;
     
     position: relative;
     z-index: 80;
@@ -2614,12 +2614,12 @@ body {
     overflow: visible;
 }
 
-/* Responsive sizing */
+/* Responsive sizing - all heights include ~25-30px lift space for centered cards */
 @media (max-height: 400px) {
     #hand-area {
         --card-w: 70px;
         --card-h: 98px;
-        --hand-h: 120px;
+        --hand-h: 140px;
         --btn-size: 60px;
     }
 }
@@ -2628,7 +2628,7 @@ body {
     #hand-area {
         --card-w: 75px;
         --card-h: 105px;
-        --hand-h: 130px;
+        --hand-h: 150px;
         --btn-size: 65px;
     }
 }
@@ -2637,7 +2637,7 @@ body {
     #hand-area {
         --card-w: 90px;
         --card-h: 126px;
-        --hand-h: 160px;
+        --hand-h: 185px;
         --btn-size: 80px;
         --info-h: 28px;
     }
@@ -2647,7 +2647,7 @@ body {
     #hand-area {
         --card-w: 100px;
         --card-h: 140px;
-        --hand-h: 180px;
+        --hand-h: 205px;
         --btn-size: 90px;
     }
 }
@@ -2657,7 +2657,7 @@ body {
     #hand-area {
         --card-w: 120px;
         --card-h: 168px;
-        --hand-h: 220px;
+        --hand-h: 250px;
         --btn-size: 100px;
     }
 }
@@ -2703,6 +2703,7 @@ body {
     max-width: 900px;
     position: relative;
     overflow: visible;
+    /* Position context for the left fade overlay */
 }
 
 /* Phase Timeline */
@@ -2857,19 +2858,36 @@ body {
     width: 100%;
     flex: 1;
     overflow-x: auto;
-    overflow-y: visible; /* Allow cards to lift above */
+    overflow-y: clip; /* Use clip instead of visible - visible gets converted to auto when overflow-x is auto */
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     -ms-overflow-style: none;
     /* Padding is set dynamically by JS to center cards */
     padding-bottom: 12px;
+    padding-top: 40px; /* Extra space at top for card lift (25px) + scale (~12px) + buffer */
+    
+    /* True feather fade at edges using mask - makes content itself transparent */
+    -webkit-mask-image: linear-gradient(
+        to right,
+        transparent 0%,
+        black 8%,
+        black 92%,
+        transparent 100%
+    );
+    mask-image: linear-gradient(
+        to right,
+        transparent 0%,
+        black 8%,
+        black 92%,
+        transparent 100%
+    );
 }
 
 .hand-scroll-wrapper::-webkit-scrollbar {
     display: none;
 }
 
-/* Hide fade elements - not needed with new system */
+/* Edge fade elements no longer needed - using mask-image on scroll wrapper */
 .hand-scroll-fade {
     display: none;
 }
@@ -2879,8 +2897,7 @@ body {
     display: flex;
     align-items: flex-end;
     gap: var(--card-gap);
-    height: calc(var(--card-h) + 30px); /* Card height + lift space */
-    padding-top: 30px; /* Space for lift */
+    min-height: var(--card-h); /* At least card height */
     transition: opacity 0.3s ease;
 }
 
@@ -2899,10 +2916,28 @@ body {
     position: relative;
     pointer-events: auto;
     /* Smooth transitions for JS-applied transforms */
-    will-change: transform, box-shadow, filter;
-    /* Border for visual feedback */
+    will-change: transform, filter;
     border-radius: 8px;
-    border: 2px solid rgba(180, 130, 50, 0.4);
+    /* z-index transition for hover effect */
+    transition: z-index 0s;
+}
+
+/* Hover: bring card forward with higher z-index */
+.card-wrapper:hover {
+    z-index: 100 !important;
+}
+
+/* Mobile: scale down cards to prevent bottom cutoff when focused/hovered */
+@media (max-width: 600px), (max-height: 500px) {
+    .card-wrapper {
+        /* Scale down by ~10% on mobile to ensure full card visibility */
+        --mobile-scale: 0.9;
+    }
+    
+    .hand-scroll-wrapper {
+        /* Lift space for mobile (scaled cards lift less) */
+        padding-top: 30px;
+    }
 }
 
 /* Shake animation for blocked interactions */
@@ -2942,6 +2977,8 @@ body {
     cursor: grab;
     border-radius: 8px;
     overflow: hidden;
+    /* Elegant shadow on the card PNG itself for overlap depth */
+    filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.45));
 }
 
 /* Hide ability boxes in hand cards */

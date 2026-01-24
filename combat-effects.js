@@ -3075,25 +3075,27 @@ window.CombatEffects = {
             return;
         }
         
-        const handContainer = document.getElementById('hand-container');
         const gameContainer = document.getElementById('game-container');
         
-        if (!handContainer || !gameContainer) {
+        // Use the scroll wrapper's visible viewport as target, not the scrollable hand container
+        const scrollWrapper = document.querySelector('.hand-scroll-wrapper');
+        
+        if (!scrollWrapper || !gameContainer) {
             if (onComplete) onComplete();
             return;
         }
         
         // Get positions
         const containerRect = gameContainer.getBoundingClientRect();
-        const handRect = handContainer.getBoundingClientRect();
+        const wrapperRect = scrollWrapper.getBoundingClientRect();
         
         // Deck position (top right of game container)
         const deckX = containerRect.width - 80;
         const deckY = 60;
         
-        // Hand position (center of hand container)
-        const handX = handRect.left - containerRect.left + handRect.width / 2;
-        const handY = handRect.top - containerRect.top + handRect.height / 2;
+        // Hand position (center of visible viewport, not scrollable container)
+        const handX = wrapperRect.left - containerRect.left + wrapperRect.width / 2;
+        const handY = wrapperRect.top - containerRect.top + wrapperRect.height / 2;
         
         // Create flying cards with stagger
         const cardDelay = 120; // Stagger between cards
@@ -3197,10 +3199,13 @@ window.CombatEffects = {
         handContainer.offsetHeight;
         
         const containerRect = gameContainer.getBoundingClientRect();
-        const handRect = handContainer.getBoundingClientRect();
+        
+        // Use the scroll wrapper's visible viewport as target, not the scrollable hand container
+        const scrollWrapper = document.querySelector('.hand-scroll-wrapper');
+        const wrapperRect = scrollWrapper ? scrollWrapper.getBoundingClientRect() : handContainer.getBoundingClientRect();
         
         // Validate rects - if invalid, skip animation
-        if (containerRect.width === 0 || handRect.width === 0) {
+        if (containerRect.width === 0 || wrapperRect.width === 0) {
             console.warn('[CombatEffects] Invalid container rects, skipping starting hand animation');
             if (typeof window.setAnimating === 'function') {
                 window.setAnimating(false);
@@ -3213,10 +3218,10 @@ window.CombatEffects = {
         const deckX = containerRect.width - 80;
         const deckY = 60;
         
-        // Calculate fan positions across the hand
-        const handCenterX = handRect.left - containerRect.left + handRect.width / 2;
-        const handY = handRect.top - containerRect.top + 20;
-        const cardSpacing = Math.min(90, handRect.width / (cardCount + 1));
+        // Calculate fan positions across the VISIBLE viewport center, not the scrollable container
+        const handCenterX = wrapperRect.left - containerRect.left + wrapperRect.width / 2;
+        const handY = wrapperRect.top - containerRect.top + 20;
+        const cardSpacing = Math.min(90, wrapperRect.width / (cardCount + 1));
         const startOffset = -((cardCount - 1) * cardSpacing) / 2;
         
         // Staggered draw

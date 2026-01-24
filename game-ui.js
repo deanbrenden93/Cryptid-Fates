@@ -419,6 +419,12 @@ function updateCardPositions() {
     const cardWidth = getCardWidth() + 8; // card + gap
     const centerOffset = Math.max(0, (containerWidth / 2) - (cardWidth / 2));
     
+    // Get mobile scale modifier from CSS (defaults to 1 on desktop)
+    const firstCard = container.querySelector('.card-wrapper');
+    const mobileScaleMod = firstCard 
+        ? parseFloat(getComputedStyle(firstCard).getPropertyValue('--mobile-scale')) || 1
+        : 1;
+    
     const cards = container.querySelectorAll('.card-wrapper');
     cards.forEach((card, i) => {
         // Calculate card's center position relative to scroll
@@ -428,25 +434,33 @@ function updateCardPositions() {
         
         // Calculate effects based on distance from center
         const lift = Math.max(0, 25 - distance * 0.12);
-        const scale = Math.max(0.9, 1.08 - distance * 0.001);
-        const shadow = Math.max(0, 25 - distance * 0.1);
+        const baseScale = Math.max(0.9, 1.08 - distance * 0.001);
+        const scale = baseScale * mobileScaleMod; // Apply mobile scale modifier
         const brightness = Math.max(0.6, 1 - distance * 0.003);
-        const zIndex = Math.round((1.2 - distance * 0.001) * 10);
+        
+        // Z-index: use precise distance-based calculation to avoid ties/stutter
+        // Higher z-index for cards closer to center, with enough granularity to prevent fighting
+        const zIndex = Math.max(1, 50 - Math.floor(distance / 3));
         
         // Check if card is unplayable - apply additional dimming
         const battleCard = card.querySelector('.battle-card');
         const isUnplayable = battleCard?.classList.contains('unplayable');
         const finalBrightness = isUnplayable ? brightness * 0.6 : brightness;
         
+        // Apply transform and filter - shadow is handled by CSS drop-shadow on .battle-card
         card.style.transform = `translateY(${-lift}px) scale(${scale})`;
-        card.style.boxShadow = `0 ${shadow}px ${shadow * 1.5}px rgba(0,0,0,0.5)`;
         card.style.filter = `brightness(${finalBrightness})`;
         card.style.zIndex = zIndex;
     });
 }
 
 // Start the animation loop for hand cards
-function startHandAnimation() {
+function startHandAnimation(forceRestart = false) {
+    // Force restart if requested (e.g., when entering a new battle)
+    if (forceRestart && handAnimationRunning) {
+        handAnimationRunning = false;
+    }
+    
     if (handAnimationRunning) return;
     handAnimationRunning = true;
     
@@ -1499,6 +1513,8 @@ function renderHand(force = false) {
         if (typeof updateHandPadding === 'function') {
             updateHandPadding();
         }
+        // Ensure card positions are updated for hover effects
+        updateCardPositions();
     });
     
     updateKindlingButton();
@@ -1643,6 +1659,8 @@ function renderHandAnimated() {
         if (typeof updateHandPadding === 'function') {
             updateHandPadding();
         }
+        // Ensure card positions are updated for hover effects
+        updateCardPositions();
     });
     
     updateKindlingButton();
@@ -5619,9 +5637,9 @@ function setupGameEventListeners() {
     
     // Setup new hand area controls
     setupAdvancePhaseButton();
-    // Start hand animation loop if not already running
+    // Force restart hand animation loop when entering battle
     if (typeof startHandAnimation === 'function') {
-        startHandAnimation();
+        startHandAnimation(true);
     }
     
     // Clear ALL previous game event listeners to avoid duplicates
