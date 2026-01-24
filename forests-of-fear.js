@@ -424,12 +424,12 @@ CardRegistry.registerKindling('deerWoman', {
         else game.enemyPyre++;
         GameEvents.emit('onOfferingPyre', { cryptid, owner, source: 'Deer Woman attacked' });
         
-        // Play pyre gain animation
+        // Play pyre gain animation (skipBurningEffect prevents sprite from fading)
         const deerSprite = document.querySelector(
             `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
         );
         if (window.CombatEffects?.playPyreBurn) {
-            window.CombatEffects.playPyreBurn(deerSprite, 1);
+            window.CombatEffects.playPyreBurn(deerSprite, 1, { skipBurningEffect: true });
         }
         
         // Queue offering animation
@@ -450,12 +450,12 @@ CardRegistry.registerKindling('deerWoman', {
             else game.enemyPyre++;
             GameEvents.emit('onOfferingPyre', { cryptid: support, owner, source: 'Combatant attacked' });
             
-            // Play pyre gain animation
+            // Play pyre gain animation (skipBurningEffect prevents sprite from fading)
             const deerSprite = document.querySelector(
                 `.cryptid-sprite[data-owner="${support.owner}"][data-col="${support.col}"][data-row="${support.row}"]`
             );
             if (window.CombatEffects?.playPyreBurn) {
-                window.CombatEffects.playPyreBurn(deerSprite, 1);
+                window.CombatEffects.playPyreBurn(deerSprite, 1, { skipBurningEffect: true });
             }
             
             // Queue offering animation
@@ -1196,12 +1196,12 @@ CardRegistry.registerCryptid('jerseyDevil', {
                 else game.enemyPyre++;
                 GameEvents.emit('onPyreSteal', { source: attacker, owner, stolenFrom: enemyOwner });
                 
-                // Play pyre gain animation
+                // Play pyre gain animation (skipBurningEffect prevents sprite from fading)
                 const cryptidSprite = document.querySelector(
                     `.cryptid-sprite[data-owner="${attacker.owner}"][data-col="${attacker.col}"][data-row="${attacker.row}"]`
                 );
                 if (window.CombatEffects?.playPyreBurn) {
-                    window.CombatEffects.playPyreBurn(cryptidSprite, 1);
+                    window.CombatEffects.playPyreBurn(cryptidSprite, 1, { skipBurningEffect: true });
                 }
                 
                 // Queue pyre steal animation
@@ -1296,12 +1296,12 @@ CardRegistry.registerCryptid('babaYaga', {
         if (owner === 'player') game.playerPyre++;
         else game.enemyPyre++;
         
-        // Play pyre gain animation
+        // Play pyre gain animation (skipBurningEffect prevents sprite from fading)
         const babaSprite = document.querySelector(
             `.cryptid-sprite[data-owner="${support.owner}"][data-col="${support.col}"][data-row="${support.row}"]`
         );
         if (window.CombatEffects?.playPyreBurn) {
-            window.CombatEffects.playPyreBurn(babaSprite, 1);
+            window.CombatEffects.playPyreBurn(babaSprite, 1, { skipBurningEffect: true });
         }
         
         // Heal combatant 1 HP

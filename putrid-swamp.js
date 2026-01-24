@@ -90,13 +90,13 @@ CardRegistry.registerKindling('swampRat', {
             GameEvents.emit('onPyreStolen', { from: 'enemy', to: 'player', amount: 1, source: attacker });
         }
         
-        // Play pyre gain animation if pyre was stolen
+        // Play pyre gain animation if pyre was stolen (skipBurningEffect prevents sprite from fading)
         if (stolenPyre) {
             const ratSprite = document.querySelector(
                 `.cryptid-sprite[data-owner="${attacker.owner}"][data-col="${attacker.col}"][data-row="${attacker.row}"]`
             );
             if (window.CombatEffects?.playPyreBurn) {
-                window.CombatEffects.playPyreBurn(ratSprite, 1);
+                window.CombatEffects.playPyreBurn(ratSprite, 1, { skipBurningEffect: true });
             }
         }
         
@@ -121,12 +121,12 @@ CardRegistry.registerKindling('swampRat', {
             if (owner === 'player') game.playerPyre++;
             else game.enemyPyre++;
             
-            // Play pyre gain animation
+            // Play pyre gain animation (skipBurningEffect prevents sprite from fading)
             const ratSprite = document.querySelector(
                 `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
             );
             if (window.CombatEffects?.playPyreBurn) {
-                window.CombatEffects.playPyreBurn(ratSprite, 1);
+                window.CombatEffects.playPyreBurn(ratSprite, 1, { skipBurningEffect: true });
             }
             
             GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'Swamp Rat support', sourceCryptid: cryptid });
@@ -583,12 +583,12 @@ CardRegistry.registerCryptid('plagueRat', {
                 if (owner === 'player') game.playerPyre += pyreGain;
                 else game.enemyPyre += pyreGain;
                 
-                // Play pyre gain animation
+                // Play pyre gain animation (skipBurningEffect prevents sprite from fading)
                 const ratSprite = document.querySelector(
                     `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
                 );
                 if (window.CombatEffects?.playPyreBurn) {
-                    window.CombatEffects.playPyreBurn(ratSprite, pyreGain);
+                    window.CombatEffects.playPyreBurn(ratSprite, pyreGain, { skipBurningEffect: true });
                 }
                 
                 GameEvents.emit('onPyreGained', { owner, amount: pyreGain, source: 'Plague Rat support', sourceCryptid: cryptid });
