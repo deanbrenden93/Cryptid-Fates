@@ -375,42 +375,111 @@ function onLayoutChange() {
             forceRefreshSupportLinks();
         }
     }
-    updateHandScrollFades();
+    // Update hand padding for new viewport size
+    if (typeof updateHandPadding === 'function') {
+        updateHandPadding();
+    }
 }
 
-// Update feathered edge fades based on scroll position
-function updateHandScrollFades() {
+// ==================== SCROLL-CENTERED CARD SYSTEM ====================
+// Cards lift/scale/brighten based on distance from center of viewport
+
+let handAnimationRunning = false;
+
+// Get card width from CSS variable or default
+function getCardWidth() {
+    const handArea = document.getElementById('hand-area');
+    if (!handArea) return 88;
+    const style = getComputedStyle(handArea);
+    const cardW = style.getPropertyValue('--card-w');
+    return parseInt(cardW) || 88;
+}
+
+// Update dynamic padding to allow centering single cards
+function updateHandPadding() {
     const wrapper = document.querySelector('.hand-scroll-wrapper');
-    const cardsArea = document.querySelector('.hand-cards-area');
-    if (!wrapper || !cardsArea) return;
+    if (!wrapper) return;
     
-    const scrollLeft = wrapper.scrollLeft;
-    const scrollWidth = wrapper.scrollWidth;
-    const clientWidth = wrapper.clientWidth;
-    const maxScroll = scrollWidth - clientWidth;
+    const containerWidth = wrapper.clientWidth;
+    const cardWidth = getCardWidth() + 8; // card + gap
+    const centerOffset = Math.max(0, (containerWidth / 2) - (cardWidth / 2));
     
-    // Show left fade if scrolled right
-    if (scrollLeft > 5) {
-        cardsArea.classList.add('can-scroll-left');
-    } else {
-        cardsArea.classList.remove('can-scroll-left');
-    }
-    
-    // Show right fade if can scroll more right
-    if (maxScroll > 5 && scrollLeft < maxScroll - 5) {
-        cardsArea.classList.add('can-scroll-right');
-    } else {
-        cardsArea.classList.remove('can-scroll-right');
-    }
+    wrapper.style.paddingLeft = `${centerOffset}px`;
+    wrapper.style.paddingRight = `${centerOffset}px`;
 }
 
-// Listen for scroll wrapper scroll
+// Update card positions based on scroll - runs every frame
+function updateCardPositions() {
+    const wrapper = document.querySelector('.hand-scroll-wrapper');
+    const container = document.getElementById('hand-container');
+    if (!wrapper || !container) return;
+    
+    const scrollPos = wrapper.scrollLeft;
+    const containerWidth = wrapper.clientWidth;
+    const cardWidth = getCardWidth() + 8; // card + gap
+    const centerOffset = Math.max(0, (containerWidth / 2) - (cardWidth / 2));
+    
+    const cards = container.querySelectorAll('.card-wrapper');
+    cards.forEach((card, i) => {
+        // Calculate card's center position relative to scroll
+        const cardCenter = centerOffset + (i * cardWidth) + (cardWidth / 2);
+        const viewCenter = scrollPos + (containerWidth / 2);
+        const distance = Math.abs(cardCenter - viewCenter);
+        
+        // Calculate effects based on distance from center
+        const lift = Math.max(0, 25 - distance * 0.12);
+        const scale = Math.max(0.9, 1.08 - distance * 0.001);
+        const shadow = Math.max(0, 25 - distance * 0.1);
+        const brightness = Math.max(0.6, 1 - distance * 0.003);
+        const zIndex = Math.round((1.2 - distance * 0.001) * 10);
+        
+        // Check if card is unplayable - apply additional dimming
+        const battleCard = card.querySelector('.battle-card');
+        const isUnplayable = battleCard?.classList.contains('unplayable');
+        const finalBrightness = isUnplayable ? brightness * 0.6 : brightness;
+        
+        card.style.transform = `translateY(${-lift}px) scale(${scale})`;
+        card.style.boxShadow = `0 ${shadow}px ${shadow * 1.5}px rgba(0,0,0,0.5)`;
+        card.style.filter = `brightness(${finalBrightness})`;
+        card.style.zIndex = zIndex;
+    });
+}
+
+// Start the animation loop for hand cards
+function startHandAnimation() {
+    if (handAnimationRunning) return;
+    handAnimationRunning = true;
+    
+    function animateHand() {
+        if (!handAnimationRunning) return;
+        updateCardPositions();
+        requestAnimationFrame(animateHand);
+    }
+    requestAnimationFrame(animateHand);
+}
+
+// Stop the animation loop (e.g., when leaving battle screen)
+function stopHandAnimation() {
+    handAnimationRunning = false;
+}
+
+// Initialize hand system
 document.addEventListener('DOMContentLoaded', () => {
     const wrapper = document.querySelector('.hand-scroll-wrapper');
     if (wrapper) {
-        wrapper.addEventListener('scroll', updateHandScrollFades);
+        // Update padding on resize
+        window.addEventListener('resize', updateHandPadding);
+        updateHandPadding();
+        
+        // Start the animation loop
+        startHandAnimation();
     }
 });
+
+// Expose functions for external use
+window.updateHandPadding = updateHandPadding;
+window.startHandAnimation = startHandAnimation;
+window.stopHandAnimation = stopHandAnimation;
 
 // ==================== RENDERING ====================
 function renderAll() {
@@ -1318,9 +1387,6 @@ function renderHand(force = false) {
         wrapper.className = 'card-wrapper';
         wrapper.dataset.cardId = card.id;
         wrapper.dataset.cardIndex = index;
-        wrapper.dataset.cardTotal = totalCards;
-        wrapper.style.setProperty('--card-index', index);
-        wrapper.style.setProperty('--card-total', totalCards);
         
         const cardEl = document.createElement('div');
         const rarityClass = card.rarity || 'common';
@@ -1426,17 +1492,13 @@ function renderHand(force = false) {
     });
     
     requestAnimationFrame(() => {
-        // Add or remove centered class based on whether scrolling is needed
-        if (container.scrollWidth <= container.clientWidth) {
-            container.classList.add('centered');
-        } else {
-            container.classList.remove('centered');
-        }
         onLayoutChange();
         scaleAllAbilityText();
-        applyCardFanLayout();
-        ensureFanHoverEffects();
         detectCardNameOverflow(container);
+        // Update hand centering padding
+        if (typeof updateHandPadding === 'function') {
+            updateHandPadding();
+        }
     });
     
     updateKindlingButton();
@@ -1453,8 +1515,6 @@ function renderHandAnimated() {
     // Clear the container
     container.innerHTML = '';
     
-    container.classList.remove('centered');
-    
     const cards = ui.showingKindling ? game.playerKindling : game.playerHand;
     const isKindling = ui.showingKindling;
     
@@ -1470,9 +1530,6 @@ function renderHandAnimated() {
         wrapper.className = 'card-wrapper';
         wrapper.dataset.cardId = card.id;
         wrapper.dataset.cardIndex = index;
-        wrapper.dataset.cardTotal = totalCards;
-        wrapper.style.setProperty('--card-index', index);
-        wrapper.style.setProperty('--card-total', totalCards);
         
         const rarityClass = card.rarity || 'common';
         const cardEl = document.createElement('div');
@@ -1579,17 +1636,13 @@ function renderHandAnimated() {
     });
     
     requestAnimationFrame(() => {
-        // Add or remove centered class based on whether scrolling is needed
-        if (container.scrollWidth <= container.clientWidth) {
-            container.classList.add('centered');
-        } else {
-            container.classList.remove('centered');
-        }
         onLayoutChange();
         scaleAllAbilityText();
-        applyCardFanLayout();
-        ensureFanHoverEffects();
         detectCardNameOverflow(container);
+        // Update hand centering padding
+        if (typeof updateHandPadding === 'function') {
+            updateHandPadding();
+        }
     });
     
     updateKindlingButton();
@@ -1795,67 +1848,13 @@ function setupCardInteractions(wrapper, cardEl, card, canPlay) {
         touchStartPos = null; dragStarted = false; scrollDetected = false;
     };
     
-    // Robust hover state management to prevent animation spasm
-    // Card must complete its lift animation before it can lower
-    let hoverTimeout = null;
-    let hoverStartTime = 0;
-    const MIN_HOVER_DURATION = 250; // ms - card must stay lifted at least this long (matches CSS animation)
-    const HOVER_LEAVE_DELAY = 100;  // ms - additional delay after min duration
-    
-    function startHover() {
-        // Cancel any pending hover removal
-        if (hoverTimeout) {
-            clearTimeout(hoverTimeout);
-            hoverTimeout = null;
-        }
-        // Only set start time if not already hovering
-        if (!wrapper.classList.contains('hover-active')) {
-            hoverStartTime = Date.now();
-        }
-        wrapper.classList.add('hover-active');
-    }
-    
-    function endHover() {
-        // Calculate how long we've been hovering
-        const hoverDuration = Date.now() - hoverStartTime;
-        const remainingMinTime = Math.max(0, MIN_HOVER_DURATION - hoverDuration);
-        
-        // Wait for minimum animation time + leave delay before removing hover
-        const totalDelay = remainingMinTime + HOVER_LEAVE_DELAY;
-        
-        hoverTimeout = setTimeout(() => {
-            wrapper.classList.remove('hover-active');
-            hoverTimeout = null;
-            hoverStartTime = 0;
-        }, totalDelay);
-    }
-    
+    // Simple hover for tooltips (card positioning handled by scroll-based system)
     wrapper.addEventListener('mouseenter', (e) => {
-        startHover();
         showCardTooltip(card, e);
     }, { passive: true });
     
     wrapper.addEventListener('mouseleave', () => {
-        endHover();
         if (!wrapper.classList.contains('inspecting')) hideTooltip();
-    }, { passive: true });
-    
-    // FALLBACK: Also use mouseover/mouseout for better reliability
-    // These bubble, so they can help if mouseenter/mouseleave get stuck
-    wrapper.addEventListener('mouseover', (e) => {
-        // Only trigger if this is the direct target (not bubbled from child)
-        if (e.target === wrapper || e.target.closest('.card-wrapper') === wrapper) {
-            startHover();
-            showCardTooltip(card, e);
-        }
-    }, { passive: true });
-    
-    wrapper.addEventListener('mouseout', (e) => {
-        // Only trigger if actually leaving the wrapper entirely
-        const relatedTarget = e.relatedTarget;
-        if (!relatedTarget || !wrapper.contains(relatedTarget)) {
-            endHover();
-        }
     }, { passive: true });
 }
 
@@ -5532,8 +5531,10 @@ window.addEventListener('resize', debounce(() => {
     calculateTilePositions();
     updateSpritePositions();
     lastBattlefieldHeight = document.getElementById('battlefield-area').offsetHeight;
-    // Re-apply card fan layout for responsive scaling
-    applyCardFanLayout();
+    // Update hand centering padding for new viewport
+    if (typeof updateHandPadding === 'function') {
+        updateHandPadding();
+    }
 }, 50));
 
 // Also handle orientation change explicitly
@@ -5543,7 +5544,9 @@ window.addEventListener('orientationchange', () => {
         calculateTilePositions();
         updateSpritePositions();
         lastBattlefieldHeight = document.getElementById('battlefield-area').offsetHeight;
-        applyCardFanLayout();
+        if (typeof updateHandPadding === 'function') {
+            updateHandPadding();
+        }
         renderAll();
     }, 150);
 });
@@ -5555,7 +5558,9 @@ if (screen.orientation) {
             calculateTilePositions();
             updateSpritePositions();
             lastBattlefieldHeight = document.getElementById('battlefield-area').offsetHeight;
-            applyCardFanLayout();
+            if (typeof updateHandPadding === 'function') {
+                updateHandPadding();
+            }
             renderAll();
         }, 150);
     });
@@ -5614,7 +5619,10 @@ function setupGameEventListeners() {
     
     // Setup new hand area controls
     setupAdvancePhaseButton();
-    ensureFanHoverEffects();
+    // Start hand animation loop if not already running
+    if (typeof startHandAnimation === 'function') {
+        startHandAnimation();
+    }
     
     // Clear ALL previous game event listeners to avoid duplicates
     // This is important when starting a new game after a previous one
