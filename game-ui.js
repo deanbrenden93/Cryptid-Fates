@@ -3417,6 +3417,19 @@ function playAttackAnimation(attackerSprite, owner, onComplete, onImpact, damage
 window.playAttackAnimation = playAttackAnimation;
 
 function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
+    // Safety reset: Clear any stale death zoom state that might prevent death animations
+    if (window.CombatEffects?._dramaticDeathZoomActive) {
+        console.log('[performAttackOnTarget] Clearing stale _dramaticDeathZoomActive flag');
+        window.CombatEffects._dramaticDeathZoomActive = false;
+        window.CombatEffects._dramaticDeathBaseTransform = '';
+        const wrapper = document.getElementById('game-screen-wrapper');
+        if (wrapper) {
+            wrapper.style.transition = '';
+            wrapper.style.transform = '';
+            wrapper.style.transformOrigin = '';
+        }
+    }
+    
     // Capture target info BEFORE attack for multiplayer death tracking
     const targetBeforeAttack = game.getFieldCryptid(targetOwner, targetCol, targetRow);
     const targetKey = targetBeforeAttack?.key || null;
@@ -3960,6 +3973,19 @@ function processMultiTargetDamage(options) {
         onComplete
     } = options;
     
+    // Safety reset: Clear any stale death zoom state before processing
+    if (window.CombatEffects?._dramaticDeathZoomActive) {
+        console.log('[processMultiTargetDamage] Clearing stale _dramaticDeathZoomActive flag');
+        window.CombatEffects._dramaticDeathZoomActive = false;
+        window.CombatEffects._dramaticDeathBaseTransform = '';
+        const wrapper = document.getElementById('game-screen-wrapper');
+        if (wrapper) {
+            wrapper.style.transition = '';
+            wrapper.style.transform = '';
+            wrapper.style.transformOrigin = '';
+        }
+    }
+    
     // Helper to finalize chain and process deferred traps
     function finalizeChain(callback) {
         window.deferTrapProcessing = false;
@@ -4128,6 +4154,18 @@ function processMultiTargetDeaths(deathsToProcess, source, sourceOwner, killedBy
         
         const sprite = document.querySelector(`.cryptid-sprite[data-owner="${death.owner}"][data-col="${death.col}"][data-row="${death.row}"]`);
         
+        // Ensure sprite has correct position before death animation
+        // This fixes issues where sprites might have lost their position
+        if (sprite && window.tilePositions) {
+            const posKey = `${death.owner}-${death.col}-${death.row}`;
+            const pos = window.tilePositions[posKey];
+            if (pos && (!sprite.style.left || sprite.style.left === '0px' || !sprite.style.top || sprite.style.top === '0px')) {
+                console.log('[MultiTargetDeath] Fixing sprite position for', death.cryptid.name, 'at', posKey);
+                sprite.style.left = pos.x + 'px';
+                sprite.style.top = pos.y + 'px';
+            }
+        }
+        
         showMessage(`💀 ${death.cryptid.name} falls!`, TIMING.messageDisplay);
         
         // Clear any previous death flag so animation plays
@@ -4216,6 +4254,10 @@ function processMultiTargetPromotions(deathsToProcess, onComplete) {
         
         // Trigger the promotion
         game.promoteSupport(owner, row);
+        
+        // Manually queue the promotion animation since promoteSupport doesn't do it
+        if (!window.pendingPromotions) window.pendingPromotions = [];
+        window.pendingPromotions.push({ owner, row });
         
         // Animate the promotion (skip Harbinger check to prevent infinite loop)
         processPendingPromotions(() => {

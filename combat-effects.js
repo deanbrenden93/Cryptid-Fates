@@ -1085,8 +1085,32 @@ window.CombatEffects = {
         
         // ==================== IMMEDIATE: START ZOOM ON IMPACT ====================
         // Calculate focus point from ORIGINAL sprite position FIRST
-        const spriteRect = sprite.getBoundingClientRect();
+        let spriteRect = sprite.getBoundingClientRect();
         const wrapperRect = wrapper.getBoundingClientRect();
+        
+        // FALLBACK: If sprite rect is at 0,0 or very small, use tilePositions
+        // This can happen if the sprite lost its positioning during multi-target damage
+        if ((spriteRect.left < 10 && spriteRect.top < 10) || spriteRect.width < 5) {
+            console.log('[DramaticDeath] Sprite at invalid position, using tilePositions fallback');
+            const spriteOwner = sprite.dataset.owner;
+            const spriteCol = sprite.dataset.col;
+            const spriteRow = sprite.dataset.row;
+            const posKey = `${spriteOwner}-${spriteCol}-${spriteRow}`;
+            const tilePos = window.tilePositions?.[posKey];
+            
+            if (tilePos) {
+                // Construct a virtual rect based on tilePositions
+                const battlefieldRect = battlefield.getBoundingClientRect();
+                spriteRect = {
+                    left: battlefieldRect.left + tilePos.x - 50,
+                    top: battlefieldRect.top + tilePos.y - 50,
+                    width: 100,
+                    height: 100
+                };
+                console.log('[DramaticDeath] Using tilePos fallback:', posKey, tilePos);
+            }
+        }
+        
         const focusX = spriteRect.left + spriteRect.width/2 - wrapperRect.left;
         const focusY = spriteRect.top + spriteRect.height/2 - wrapperRect.top;
         const focusXPct = (focusX / wrapperRect.width) * 100;
