@@ -509,7 +509,17 @@ window.HomeScreen = {
     },
     
     closeQuickPlay() {
-        document.getElementById('quickplay-modal').classList.remove('open');
+        const modal = document.getElementById('quickplay-modal');
+        if (!modal) return;
+        
+        // Add closing class for exit animation
+        modal.classList.add('closing');
+        
+        // Wait for animation then hide
+        setTimeout(() => {
+            modal.classList.remove('open', 'closing');
+        }, 250);
+        
         this.stopQueueTimer();
         
         // Cancel matchmaking if in progress
@@ -740,8 +750,17 @@ window.HomeScreen = {
     },
     
     closeDeckSelection() {
-        document.getElementById('deck-selection-screen')?.classList.remove('open');
-        this.open();
+        const screen = document.getElementById('deck-selection-screen');
+        if (!screen) return;
+        
+        // Add closing class for exit animation
+        screen.classList.add('closing');
+        
+        // Wait for animation then hide and open home
+        setTimeout(() => {
+            screen.classList.remove('open', 'closing');
+            this.open();
+        }, 300);
     },
     
     startGame() {

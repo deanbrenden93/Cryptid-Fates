@@ -1553,7 +1553,6 @@ div.menu-btn#tile-collection {
     display: none;
     flex-direction: column;
     opacity: 0;
-    transition: opacity 0.3s ease;
 }
 
 /* Grunge overlay texture */
@@ -1578,7 +1577,84 @@ div.menu-btn#tile-collection {
 
 #deck-selection-screen.open {
     display: flex;
-    opacity: 1;
+    animation: deckScreenIn 0.4s ease forwards;
+}
+
+#deck-selection-screen.closing {
+    display: flex;
+    animation: deckScreenOut 0.3s ease forwards;
+}
+
+@keyframes deckScreenIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes deckScreenOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+/* Deck selection content animation */
+#deck-selection-screen.open .deck-select-content {
+    animation: deckContentIn 0.45s cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
+}
+
+#deck-selection-screen.closing .deck-select-content {
+    animation: deckContentOut 0.25s ease forwards;
+}
+
+@keyframes deckContentIn {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes deckContentOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+}
+
+/* Staggered deck item animations */
+#deck-selection-screen.open .deck-select-deck {
+    opacity: 0;
+    animation: deckItemIn 0.35s ease forwards;
+}
+
+#deck-selection-screen.open .deck-select-deck:nth-child(1) { animation-delay: 0.1s; }
+#deck-selection-screen.open .deck-select-deck:nth-child(2) { animation-delay: 0.15s; }
+#deck-selection-screen.open .deck-select-deck:nth-child(3) { animation-delay: 0.2s; }
+#deck-selection-screen.open .deck-select-deck:nth-child(4) { animation-delay: 0.25s; }
+#deck-selection-screen.open .deck-select-deck:nth-child(5) { animation-delay: 0.3s; }
+
+@keyframes deckItemIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
 }
 
 .deck-select-content {
@@ -8236,6 +8312,26 @@ div.menu-btn#tile-collection {
     inset: 0;
     background: rgba(0, 0, 0, 0.9);
     backdrop-filter: blur(4px);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.qp-modal.open .qp-backdrop {
+    animation: qpBackdropIn 0.3s ease forwards;
+}
+
+.qp-modal.closing .qp-backdrop {
+    animation: qpBackdropOut 0.25s ease forwards;
+}
+
+@keyframes qpBackdropIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes qpBackdropOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
 }
 
 .qp-content {
@@ -8253,6 +8349,38 @@ div.menu-btn#tile-collection {
         0 0 40px rgba(80, 60, 120, 0.2),
         inset 0 1px 0 rgba(255, 255, 255, 0.08);
     overflow: hidden;
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+}
+
+.qp-modal.open .qp-content {
+    animation: qpContentIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.qp-modal.closing .qp-content {
+    animation: qpContentOut 0.25s ease forwards;
+}
+
+@keyframes qpContentIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes qpContentOut {
+    from {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+    }
 }
 
 .qp-content::before {

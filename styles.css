@@ -3178,9 +3178,10 @@ body {
     transform: scale(1) rotate(0deg);
 }
 
-/* Position sigils at 120° intervals around circle */
+/* Position sigils centered on the outer ring at 120° intervals */
 .sigil-kindling {
-    top: -60px;
+    /* Top center - on the ring */
+    top: -50px;
     left: 50%;
     transform: translateX(-50%) scale(0) rotate(-180deg);
     transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s, opacity 0.3s ease 0.2s;
@@ -3191,14 +3192,16 @@ body {
 }
 
 .sigil-burn {
-    bottom: -20px;
-    left: -30px;
+    /* Bottom left - 240° on the ring */
+    bottom: 10px;
+    left: -10px;
     transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s, opacity 0.3s ease 0.3s;
 }
 
 .sigil-end {
-    bottom: -20px;
-    right: -30px;
+    /* Bottom right - 300° on the ring */
+    bottom: 10px;
+    right: -10px;
     transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.4s, opacity 0.3s ease 0.4s;
 }
 
@@ -3265,21 +3268,9 @@ body {
     filter: drop-shadow(0 0 16px rgba(232, 169, 62, 0.9)) drop-shadow(0 0 30px rgba(255, 107, 53, 0.5));
 }
 
+/* Hide text labels - buttons are self-explanatory */
 .sigil-label {
-    font-family: 'Cinzel', 'Times New Roman', serif;
-    font-size: 11px;
-    font-weight: 600;
-    color: #e8a93e;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    text-shadow: 0 0 10px rgba(232, 169, 62, 0.5), 0 2px 4px rgba(0, 0, 0, 0.8);
-    opacity: 0.9;
-    transition: opacity 0.3s ease, color 0.3s ease;
-}
-
-.orbital-sigil:hover .sigil-label {
-    opacity: 1;
-    color: #ffd700;
+    display: none;
 }
 
 /* Disabled state */
@@ -3291,11 +3282,6 @@ body {
     filter: grayscale(70%) brightness(0.5) drop-shadow(0 0 4px rgba(100, 100, 100, 0.3));
 }
 
-.orbital-sigil:disabled .sigil-label {
-    color: #666;
-    text-shadow: none;
-    opacity: 0.5;
-}
 
 .orbital-sigil:disabled .sigil-glow {
     background: radial-gradient(circle, rgba(60, 60, 60, 0.1) 0%, transparent 70%);
@@ -3315,9 +3301,6 @@ body {
     filter: drop-shadow(0 0 12px rgba(100, 200, 255, 0.8)) drop-shadow(0 0 24px rgba(100, 200, 255, 0.5));
 }
 
-.sigil-kindling.active .sigil-label {
-    color: #7dd3fc;
-}
 
 .sigil-kindling.active .sigil-glow {
     background: radial-gradient(circle, rgba(100, 200, 255, 0.3) 0%, rgba(100, 200, 255, 0.1) 50%, transparent 70%);
@@ -3403,20 +3386,156 @@ body {
 }
 
 /* === Responsive adjustments === */
-@media (max-width: 480px) {
+/* Short screens (landscape mobile) - shrink the rings but keep buttons/text readable */
+@media (max-height: 600px) {
     .ritual-circle-container {
         width: 320px;
         height: 320px;
-        transform: scale(0.75);
     }
     
-    .sigil-label {
-        font-size: 9px;
+    .ritual-ring.outer-ring {
+        width: 320px;
+        height: 320px;
+    }
+    
+    .ritual-ring.inner-ring {
+        width: 150px;
+        height: 150px;
+    }
+    
+    .central-sigil {
+        width: 55px;
+        height: 55px;
+    }
+    
+    .sigil-icon {
+        font-size: 26px;
+    }
+    
+    /* Reposition sigils for smaller ring */
+    .sigil-kindling {
+        top: -55px;
+    }
+    
+    .sigil-burn {
+        bottom: 0px;
+        left: -20px;
+    }
+    
+    .sigil-end {
+        bottom: 0px;
+        right: -20px;
+    }
+    
+    .ritual-circle-overlay::after {
+        bottom: 50px;
+        font-size: 10px;
+    }
+}
+
+/* Very short screens (landscape phones) */
+@media (max-height: 500px) {
+    .ritual-circle-container {
+        width: 280px;
+        height: 280px;
+    }
+    
+    .ritual-ring.outer-ring {
+        width: 280px;
+        height: 280px;
+    }
+    
+    .ritual-ring.inner-ring {
+        width: 130px;
+        height: 130px;
+    }
+    
+    .central-sigil {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .sigil-icon {
+        font-size: 24px;
+    }
+    
+    /* Adjust sigil positions */
+    .sigil-kindling {
+        top: -60px;
+    }
+    
+    .sigil-burn {
+        bottom: -10px;
+        left: -30px;
+    }
+    
+    .sigil-end {
+        bottom: -10px;
+        right: -30px;
+    }
+    
+    .orbital-sigil {
+        width: 140px;
+        height: 160px;
     }
     
     .sigil-symbol {
-        width: 96px;
-        height: 96px;
+        width: 90px;
+        height: 90px;
+    }
+    
+    .ritual-circle-overlay::after {
+        bottom: 30px;
+    }
+}
+
+/* Extremely short screens */
+@media (max-height: 420px) {
+    .ritual-circle-container {
+        width: 240px;
+        height: 240px;
+    }
+    
+    .ritual-ring.outer-ring {
+        width: 240px;
+        height: 240px;
+    }
+    
+    .ritual-ring.inner-ring {
+        width: 110px;
+        height: 110px;
+    }
+    
+    .sigil-kindling {
+        top: -65px;
+    }
+    
+    .sigil-burn {
+        bottom: -20px;
+        left: -40px;
+    }
+    
+    .sigil-end {
+        bottom: -20px;
+        right: -40px;
+    }
+    
+    .ritual-circle-overlay::after {
+        bottom: 15px;
+        font-size: 9px;
+    }
+}
+
+/* Narrow screens */
+@media (max-width: 480px) {
+    .ritual-circle-container {
+        width: min(320px, 85vw);
+        height: min(320px, 85vw);
+    }
+    
+    .ritual-ring.outer-ring {
+        width: min(320px, 85vw);
+        height: min(320px, 85vw);
     }
 }
 
