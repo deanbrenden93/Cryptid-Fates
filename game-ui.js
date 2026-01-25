@@ -3435,9 +3435,53 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
     }
     
     // Helper to send multiplayer hook after everything completes
+    // ENHANCED: Now sends full attack data including damage, explosion info, destroyer info
     function sendMultiplayerHook() {
         if (game.isMultiplayer && attacker.owner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onAttack(attacker, targetOwner, targetCol, targetRow, targetKey, targetDied, supportDied);
+            // Build enhanced attack data for full sync
+            const attackData = {
+                damage: result.damage || 0,
+                targetDied: targetDied,
+                supportDied: supportDied,
+                protectionBlocked: result.protectionBlocked || false
+            };
+            
+            // Include Kuchisake explosion info if present
+            if (result.kuchisakeExplosionInfo && result.kuchisakeExplosionInfo.targets?.length > 0) {
+                attackData.explosionInfo = {
+                    victimName: result.kuchisakeExplosionInfo.victim?.name || 'enemy',
+                    damage: result.kuchisakeExplosionInfo.explosionDamage,
+                    targets: result.kuchisakeExplosionInfo.targets.map(t => ({
+                        col: t.col,
+                        row: t.row,
+                        died: t.cryptid?.currentHp <= 0
+                    }))
+                };
+                // Include destroyer info if deferred
+                if (result.kuchisakeExplosionInfo.pendingDestroyerInfo) {
+                    const di = result.kuchisakeExplosionInfo.pendingDestroyerInfo;
+                    attackData.destroyerInfo = {
+                        row: di.targetRow,
+                        damage: di.overkillDamage,
+                        supportDied: di.support?.currentHp <= 0
+                    };
+                }
+            }
+            
+            // Include standalone destroyer info (when no explosion)
+            if (!attackData.destroyerInfo && targetDied && attacker.hasDestroyer) {
+                const supportCol = game.getSupportCol(targetOwner);
+                const support = game.getFieldCryptid(targetOwner, supportCol, targetRow);
+                if (support && support._pendingDestroyerDamage) {
+                    attackData.destroyerInfo = {
+                        row: targetRow,
+                        damage: support._pendingDestroyerDamage.damage || support._pendingDestroyerDamage.actualDamage,
+                        supportDied: support.currentHp <= 0
+                    };
+                }
+            }
+            
+            window.multiplayerHook.onAttack(attacker, targetOwner, targetCol, targetRow, targetKey, attackData);
         }
     }
     
@@ -5203,6 +5247,18 @@ function showCryptidTooltip(cryptid, col, row, owner) {
                         // After death animation, process pending promotions with animation
                         renderAll();
                         processPendingPromotions(() => {
+                            // MULTIPLAYER: Broadcast sacrifice ability activation
+                            if (game.isMultiplayer && window.Multiplayer?.actionActivateAbility) {
+                                window.Multiplayer.actionActivateAbility('sacrifice', cryptid.col, cryptid.row, {
+                                    cardKey: cryptid.key,
+                                    cardName: cryptid.name,
+                                    combatantRow: combatantRow,
+                                    combatantKey: combatant?.key,
+                                    newAtk: cryptid.currentAtk,
+                                    newHp: cryptid.currentHp,
+                                    hasDestroyer: cryptid.hasDestroyer
+                                });
+                            }
                             isAnimating = false;
                             renderAll();
                             updateButtons();
@@ -5214,6 +5270,18 @@ function showCryptidTooltip(cryptid, col, row, owner) {
                     setTimeout(() => {
                         renderAll();
                         processPendingPromotions(() => {
+                            // MULTIPLAYER: Broadcast sacrifice ability activation
+                            if (game.isMultiplayer && window.Multiplayer?.actionActivateAbility) {
+                                window.Multiplayer.actionActivateAbility('sacrifice', cryptid.col, cryptid.row, {
+                                    cardKey: cryptid.key,
+                                    cardName: cryptid.name,
+                                    combatantRow: combatantRow,
+                                    combatantKey: combatant?.key,
+                                    newAtk: cryptid.currentAtk,
+                                    newHp: cryptid.currentHp,
+                                    hasDestroyer: cryptid.hasDestroyer
+                                });
+                            }
                             isAnimating = false;
                             renderAll();
                             updateButtons();

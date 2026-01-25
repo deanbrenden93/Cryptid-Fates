@@ -8779,18 +8779,42 @@ div.menu-btn#tile-collection {
    MULTIPLAYER UI - Integrated into HUD
    ============================================================ */
 
-/* HUD center element for multiplayer */
+/* HUD center element for multiplayer - absolutely positioned */
 .mp-hud-center {
     display: none;
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
     align-items: center;
     justify-content: center;
     gap: 8px;
-    flex: 0 0 auto;
-    padding: 0 10px;
+    padding: 6px 12px;
+    background: rgba(20, 18, 25, 0.85);
+    border: 1px solid rgba(100, 100, 120, 0.3);
+    border-radius: 8px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    pointer-events: auto;
+    z-index: 100;
 }
 
 .mp-hud-center.visible {
     display: flex;
+}
+
+/* Hide phase header in multiplayer (info is shown in mp-hud-center) */
+body.multiplayer-active #phase-header #phase-text {
+    display: none;
+}
+
+body.multiplayer-active #phase-header #hint {
+    display: none;
+}
+
+/* Keep resource counters but reposition slightly */
+body.multiplayer-active #phase-header {
+    padding-top: 2px;
 }
 
 /* Adjust player-info to not take full width when mp-hud-center is present */
@@ -9051,8 +9075,9 @@ body.multiplayer-active #event-log {
 /* Mobile scaling */
 @media (max-width: 500px) {
     .mp-hud-center {
+        top: 8px;
         gap: 4px;
-        padding: 0 5px;
+        padding: 4px 8px;
     }
     
     .mp-timer-compact {
@@ -9070,6 +9095,10 @@ body.multiplayer-active #event-log {
     .mp-menu-btn {
         padding: 2px 6px;
         font-size: 12px;
+    }
+    
+    body.multiplayer-active #phase-header {
+        padding-top: 0;
     }
 }
 
