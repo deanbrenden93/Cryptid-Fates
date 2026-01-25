@@ -2215,6 +2215,7 @@ function selectCard(card) {
 
 function summonToSlot(col, row) {
     if (isAnimating) return;
+    window.Multiplayer?.startActionCapture?.();
     const card = ui.selectedCard || ui.draggedCard;
     if (!card || card.type !== 'cryptid') return;
     
@@ -2320,6 +2321,7 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
     const card = ui.selectedCard || ui.draggedCard || ui.targetingEvolution;
     if (!card?.evolvesFrom || isAnimating) return;
     isAnimating = true;
+    window.Multiplayer?.startActionCapture?.();
     
     const baseCryptid = game.getFieldCryptid(targetOwner, targetCol, targetRow);
     if (!baseCryptid || baseCryptid.key !== card.evolvesFrom) { isAnimating = false; return; }
@@ -2339,6 +2341,12 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
     
     // Update game state (this changes the cryptid data but NOT the DOM yet)
     game.evolveCryptid(baseCryptid, card);
+    
+    // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animations
+    // This allows opponent to see evolution animation in parallel with us
+    if (game.isMultiplayer && targetOwner === 'player' && typeof window.multiplayerHook !== 'undefined') {
+        window.multiplayerHook.onEvolve(card, targetCol, targetRow);
+    }
     
     ui.selectedCard = null;
     ui.targetingEvolution = null;
@@ -2369,10 +2377,6 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
                     },
                     // onComplete callback
                     () => {
-                        // Multiplayer hook - AFTER evolution animation completes
-                        if (game.isMultiplayer && targetOwner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-                            window.multiplayerHook.onEvolve(card, targetCol, targetRow);
-                        }
                         isAnimating = false; 
                         renderAll(); 
                         updateButtons();
@@ -2383,9 +2387,6 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
                 sprite.classList.add('evolving');
                 renderAll(); // Update sprite immediately for fallback
                 setTimeout(() => { 
-                    if (game.isMultiplayer && targetOwner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-                        window.multiplayerHook.onEvolve(card, targetCol, targetRow);
-                    }
                     isAnimating = false; 
                     renderAll(); 
                     updateButtons(); 
@@ -2398,37 +2399,66 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
 function executeBurst(targetOwner, targetCol, targetRow) {
     if (!ui.targetingBurst || isAnimating) return;
     isAnimating = true;
+    window.Multiplayer?.startActionCapture?.();
     const card = ui.targetingBurst;
     const targetCryptid = game.getFieldCryptid(targetOwner, targetCol, targetRow);
     const isTileTarget = card.targetType === 'tile' || card.targetType === 'enemyTile' || card.targetType === 'allyTile';
     
-    // Track HP before effect for damage calculation
-    const hpBefore = targetCryptid?.currentHp || 0;
-    let targetDied = false;
-    
-    // Helper to send multiplayer hook with effect data
-    function sendMultiplayerHook() {
+    if (targetCryptid || isTileTarget) {
+        // Track HP before effect for damage calculation
+        const hpBefore = targetCryptid?.currentHp || 0;
+        
+        // === EXECUTE ALL GAME LOGIC IMMEDIATELY ===
+        // This ensures opponent receives state update as fast as possible
+        
+        // Spend pyre
+        const oldPyre = game.playerPyre;
+        game.playerPyre -= card.cost;
+        GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'spell', card });
+        
+        // Execute spell effect
+        if (targetCryptid) GameEvents.emit('onTargeted', { target: targetCryptid, targetOwner, source: card, sourceType: 'spell' });
+        card.effect(game, 'player', targetCryptid);
+        GameEvents.emit('onSpellCast', { card, caster: 'player', target: targetCryptid, targetOwner });
+        GameEvents.emit('onBurstPlayed', { card, target: targetCryptid, owner: 'player', targetOwner, targetCol, targetRow });
+        
+        // Track spell casts
+        game.matchStats.spellsCast++;
+        
+        // Remove from hand
+        const idx = game.playerHand.findIndex(c => c.id === card.id);
+        if (idx > -1) {
+            game.playerHand.splice(idx, 1);
+            game.playerDiscardPile.push(card);
+        }
+        
+        // Process deaths synchronously  
+        game.processAllDeaths?.();
+        
+        // Calculate effect results for multiplayer
+        const hpAfter = targetCryptid?.currentHp || 0;
+        const damage = hpBefore > hpAfter ? hpBefore - hpAfter : 0;
+        const healing = hpAfter > hpBefore ? hpAfter - hpBefore : 0;
+        const targetDied = targetCryptid && game.getEffectiveHp(targetCryptid) <= 0;
+        
+        // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animations
         if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-            const hpAfter = targetCryptid?.currentHp || 0;
-            const damage = hpBefore > hpAfter ? hpBefore - hpAfter : 0;
-            const healing = hpAfter > hpBefore ? hpAfter - hpBefore : 0;
-            
             window.multiplayerHook.onBurst(card, targetOwner, targetCol, targetRow, {
                 damage: damage,
                 healing: healing,
-                targetDied: targetDied || (targetCryptid && game.getEffectiveHp(targetCryptid) <= 0)
+                targetDied: targetDied
             });
         }
-    }
-    
-    if (targetCryptid || isTileTarget) {
-        // 1. Animate card removal from hand immediately
+        
+        // === NOW PLAY LOCAL ANIMATIONS ===
+        
+        // 1. Animate card removal
         animateCardRemoval(card.id, 'playing');
         
         // 2. Show spell name message
         showMessage(`✧ ${card.name} ✧`, TIMING.messageDisplay);
         
-        // 3. Get target position for projectile
+        // 3. Play spell projectile animation
         const battlefield = document.getElementById('battlefield-area');
         const targetSprite = targetCryptid ? document.querySelector(
             `.cryptid-sprite[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`
@@ -2437,18 +2467,16 @@ function executeBurst(targetOwner, targetCol, targetRow) {
             `.tile[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`
         );
         
-        // Calculate target position for spell projectile
-        let targetX = 0, targetY = 0;
         if (battlefield) {
             const battlefieldRect = battlefield.getBoundingClientRect();
             const targetElement = targetSprite || targetTile;
+            let targetX = 0, targetY = 0;
             if (targetElement) {
                 const targetRect = targetElement.getBoundingClientRect();
                 targetX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
                 targetY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
             }
             
-            // Get start position from hand area
             const handArea = document.getElementById('hand-area');
             let startX = battlefieldRect.width / 2;
             let startY = battlefieldRect.height - 20;
@@ -2458,14 +2486,12 @@ function executeBurst(targetOwner, targetCol, targetRow) {
                 startY = handRect.top - battlefieldRect.top;
             }
             
-            // Play spell projectile animation if available
             if (window.CombatEffects?.playSpellProjectile && targetX && targetY) {
-                const element = card.element || 'void';
-                window.CombatEffects.playSpellProjectile(startX, startY, targetX, targetY, element, 'burst');
+                window.CombatEffects.playSpellProjectile(startX, startY, targetX, targetY, card.element || 'void', 'burst');
             }
         }
         
-        // 4. Play visual effect on target (after projectile lands)
+        // 4. Play visual effect on target
         setTimeout(() => {
             if (targetSprite) {
                 targetSprite.classList.add('spell-target');
@@ -2477,44 +2503,22 @@ function executeBurst(targetOwner, targetCol, targetRow) {
             }
         }, 250);
         
-        // 4. Remove card from array and add to discard pile
-        setTimeout(() => {
-            const idx = game.playerHand.findIndex(c => c.id === card.id);
-            if (idx > -1) {
-                game.playerHand.splice(idx, 1);
-                game.playerDiscardPile.push(card);
-            }
-            ui.selectedCard = null; ui.targetingBurst = null;
-            document.getElementById('cancel-target').classList.remove('show');
-        }, 300);
+        // 5. Clear state
+        ui.selectedCard = null; 
+        ui.targetingBurst = null;
+        document.getElementById('cancel-target').classList.remove('show');
         
-        // 5. Execute effect after visual delay
+        // 6. Handle death animations and finish
         setTimeout(() => {
-            const oldPyre = game.playerPyre;
-            game.playerPyre -= card.cost;
-            GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'spell', card });
-            if (targetCryptid) GameEvents.emit('onTargeted', { target: targetCryptid, targetOwner, source: card, sourceType: 'spell' });
-            card.effect(game, 'player', targetCryptid);
-            GameEvents.emit('onSpellCast', { card, caster: 'player', target: targetCryptid, targetOwner });
-            
-            // Emit burst played event for tutorial and other listeners
-            GameEvents.emit('onBurstPlayed', { card, target: targetCryptid, owner: 'player', targetOwner, targetCol, targetRow });
-            
-            // Track spell casts for win screen
-            game.matchStats.spellsCast++;
-            
-            // 6. Check for deaths after effect resolves
-            setTimeout(() => {
-                if (targetCryptid) {
-                    const effectiveHpAfter = game.getEffectiveHp(targetCryptid);
-                    // Only handle death if cryptid is still in field (not already killed by the effect itself)
-                    const stillInField = game.getFieldCryptid(targetOwner, targetCol, targetRow) === targetCryptid;
-                    if (effectiveHpAfter <= 0 && stillInField) handleDeathAndPromotion(targetOwner, targetCol, targetRow, targetCryptid, 'player', sendMultiplayerHook);
-                    else checkAllCreaturesForDeath(() => { sendMultiplayerHook(); isAnimating = false; renderAll(); updateButtons(); });
-                } else { 
-                    checkAllCreaturesForDeath(() => { sendMultiplayerHook(); isAnimating = false; renderAll(); updateButtons(); });
-                }
-            }, 300);
+            if (targetDied && targetSprite) {
+                handleDeathAndPromotion(targetOwner, targetCol, targetRow, targetCryptid, 'player', () => {
+                    isAnimating = false; renderAll(); updateButtons();
+                });
+            } else {
+                checkAllCreaturesForDeath(() => { 
+                    isAnimating = false; renderAll(); updateButtons(); 
+                });
+            }
         }, TIMING.spellEffect);
     } else { isAnimating = false; }
 }
@@ -2522,31 +2526,57 @@ function executeBurst(targetOwner, targetCol, targetRow) {
 function executeBurstDirect(card, targetOwner, targetCol, targetRow) {
     if (isAnimating) return;
     isAnimating = true;
+    window.Multiplayer?.startActionCapture?.();
     
     const targetCryptid = game.getFieldCryptid(targetOwner, targetCol, targetRow);
     const isTileTarget = card.targetType === 'tile' || card.targetType === 'enemyTile' || card.targetType === 'allyTile';
     
-    // Track HP before effect for damage calculation
-    const hpBefore = targetCryptid?.currentHp || 0;
-    let targetDied = false;
-    
-    // Helper to send multiplayer hook with effect data
-    function sendMultiplayerHook() {
+    if (targetCryptid || isTileTarget) {
+        // Track HP before effect
+        const hpBefore = targetCryptid?.currentHp || 0;
+        
+        // === EXECUTE ALL GAME LOGIC IMMEDIATELY ===
+        
+        // Spend pyre
+        const oldPyre = game.playerPyre;
+        game.playerPyre -= card.cost;
+        GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'burst', card });
+        
+        // Execute spell effect
+        card.effect(game, 'player', targetCryptid);
+        GameEvents.emit('onBurstPlayed', { card, target: targetCryptid, owner: 'player', targetOwner, targetCol, targetRow });
+        
+        // Track spell casts
+        game.matchStats.spellsCast++;
+        
+        // Remove from hand
+        const idx = game.playerHand.findIndex(c => c.id === card.id);
+        if (idx > -1) {
+            game.playerHand.splice(idx, 1);
+            game.playerDiscardPile.push(card);
+        }
+        
+        // Process deaths synchronously
+        game.processAllDeaths?.();
+        
+        // Calculate effect results
+        const hpAfter = targetCryptid?.currentHp || 0;
+        const damage = hpBefore > hpAfter ? hpBefore - hpAfter : 0;
+        const healing = hpAfter > hpBefore ? hpAfter - hpBefore : 0;
+        const targetDied = targetCryptid && game.getEffectiveHp(targetCryptid) <= 0;
+        
+        // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animations
         if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-            const hpAfter = targetCryptid?.currentHp || 0;
-            const damage = hpBefore > hpAfter ? hpBefore - hpAfter : 0;
-            const healing = hpAfter > hpBefore ? hpAfter - hpBefore : 0;
-            
             window.multiplayerHook.onBurst(card, targetOwner, targetCol, targetRow, {
                 damage: damage,
                 healing: healing,
-                targetDied: targetDied || (targetCryptid && game.getEffectiveHp(targetCryptid) <= 0)
+                targetDied: targetDied
             });
         }
-    }
-    
-    if (targetCryptid || isTileTarget) {
-        // 1. Animate card removal (drag ghost already hidden by drag end)
+        
+        // === NOW PLAY LOCAL ANIMATIONS ===
+        
+        // 1. Animate card removal
         animateCardRemoval(card.id, 'playing');
         
         // 2. Show spell name message
@@ -2562,63 +2592,23 @@ function executeBurstDirect(card, targetOwner, targetCol, targetRow) {
             setTimeout(() => targetSprite.classList.remove('spell-target'), TIMING.spellEffect);
         }
         
-        // 4. Remove from array after animation and add to discard
+        // 4. Handle death animations and finish
         setTimeout(() => {
-            const idx = game.playerHand.findIndex(c => c.id === card.id);
-            if (idx > -1) {
-                game.playerHand.splice(idx, 1);
-                game.playerDiscardPile.push(card);
+            if (targetDied && targetSprite) {
+                handleDeathAndPromotion(targetOwner, targetCol, targetRow, targetCryptid, 'player', () => {
+                    isAnimating = false; renderAll(); updateButtons();
+                });
+            } else {
+                checkAllCreaturesForDeath(() => { 
+                    isAnimating = false; renderAll(); updateButtons(); 
+                });
             }
-        }, 300);
-        
-        // 5. Execute effect after visual delay
-        setTimeout(() => {
-            const oldPyre = game.playerPyre;
-            game.playerPyre -= card.cost;
-            GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'burst', card });
-            card.effect(game, 'player', targetCryptid);
-            
-            // Emit burst played event for tutorial and other listeners
-            GameEvents.emit('onBurstPlayed', { card, target: targetCryptid, owner: 'player', targetOwner, targetCol, targetRow });
-            
-            // Track spell casts for win screen
-            game.matchStats.spellsCast++;
-            
-            // Process any queued ability animations, then check for deaths
-            function waitForAbilityAnimations(callback) {
-                function check() {
-                    if (window.processingAbilityAnimations || (window.abilityAnimationQueue && window.abilityAnimationQueue.length > 0)) {
-                        setTimeout(check, 100);
-                    } else {
-                        callback();
-                    }
-                }
-                // Kick off animation processing
-                if (typeof processAbilityAnimationQueue === 'function') {
-                    processAbilityAnimationQueue();
-                }
-                check();
-            }
-            
-            // 6. Wait for ability animations, then check for deaths after effect resolves
-            waitForAbilityAnimations(() => {
-                setTimeout(() => {
-                    if (targetCryptid) {
-                        const effectiveHpAfter = game.getEffectiveHp(targetCryptid);
-                        // Only handle death if cryptid is still in field (not already killed by the effect itself)
-                        const stillInField = game.getFieldCryptid(targetOwner, targetCol, targetRow) === targetCryptid;
-                        if (effectiveHpAfter <= 0 && stillInField) handleDeathAndPromotion(targetOwner, targetCol, targetRow, targetCryptid, 'player', sendMultiplayerHook);
-                        else checkAllCreaturesForDeath(() => { sendMultiplayerHook(); isAnimating = false; renderAll(); updateButtons(); });
-                    } else { 
-                        checkAllCreaturesForDeath(() => { sendMultiplayerHook(); isAnimating = false; renderAll(); updateButtons(); });
-                    }
-                }, 300);
-            });
         }, TIMING.spellEffect);
     } else { isAnimating = false; }
 }
 
 function executeTrapPlacement(row) {
+    window.Multiplayer?.startActionCapture?.();
     const card = ui.targetingTrap;
     const effectiveCost = game.getModifiedCost(card, 'player');
     if (!card || isAnimating || game.playerPyre < effectiveCost) return;
@@ -2627,82 +2617,77 @@ function executeTrapPlacement(row) {
     if (success) {
         isAnimating = true;
         
-        // Mark this trap as newly spawned for animation
-        window.newlySpawnedTrap = { owner: 'player', row };
-        
-        // Animate card removal
-        animateCardRemoval(card.id, 'playing');
-        
+        // Execute game logic IMMEDIATELY
         const oldPyre = game.playerPyre;
         game.playerPyre -= effectiveCost;
         GameEvents.emit('onPyreSpent', { owner: 'player', amount: effectiveCost, oldValue: oldPyre, newValue: game.playerPyre, source: 'trap', card });
+        
+        // Remove from hand
+        const idx = game.playerHand.findIndex(c => c.id === card.id);
+        if (idx > -1) game.playerHand.splice(idx, 1);
+        game.playerDiscardPile.push(card);
+        
+        // MULTIPLAYER: Send hook IMMEDIATELY after game logic
+        if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
+            window.multiplayerHook.onTrap(card, row);
+        }
+        
+        // NOW play animations
+        window.newlySpawnedTrap = { owner: 'player', row };
+        animateCardRemoval(card.id, 'playing');
         
         ui.targetingTrap = null; ui.selectedCard = null;
         document.getElementById('cancel-target').classList.remove('show');
         showMessage(`Trap set!`, 800);
         
-        // Remove from array and render after animation
+        // Finish animation
         setTimeout(() => {
-            const idx = game.playerHand.findIndex(c => c.id === card.id);
-            if (idx > -1) game.playerHand.splice(idx, 1);
-            
-            // Add to discard pile
-            game.playerDiscardPile.push(card);
-            
-            // Multiplayer hook - AFTER pyre spent and card removed
-            if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-                window.multiplayerHook.onTrap(card, row);
-            }
-            
             isAnimating = false;
             renderAll(); updateButtons();
-            
-            // Clear spawn marker after render
             setTimeout(() => { window.newlySpawnedTrap = null; }, 500);
         }, 400);
     }
 }
 
 function executeTrapPlacementDirect(card, row) {
+    window.Multiplayer?.startActionCapture?.();
     const effectiveCost = game.getModifiedCost(card, 'player');
     if (!card || isAnimating || game.playerPyre < effectiveCost) return;
     const success = game.setTrap('player', row, card);
     if (success) {
         isAnimating = true;
         
-        // Mark this trap as newly spawned for animation
-        window.newlySpawnedTrap = { owner: 'player', row };
-        
-        // Animate card removal (drag ghost hidden by drag end)
-        animateCardRemoval(card.id, 'playing');
-        
+        // Execute game logic IMMEDIATELY
         const oldPyre = game.playerPyre;
         game.playerPyre -= effectiveCost;
         GameEvents.emit('onPyreSpent', { owner: 'player', amount: effectiveCost, oldValue: oldPyre, newValue: game.playerPyre, source: 'trap', card });
+        
+        // Remove from hand
+        const idx = game.playerHand.findIndex(c => c.id === card.id);
+        if (idx > -1) game.playerHand.splice(idx, 1);
+        game.playerDiscardPile.push(card);
+        
+        // MULTIPLAYER: Send hook IMMEDIATELY after game logic
+        if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
+            window.multiplayerHook.onTrap(card, row);
+        }
+        
+        // NOW play animations
+        window.newlySpawnedTrap = { owner: 'player', row };
+        animateCardRemoval(card.id, 'playing');
         showMessage(`Trap set!`, 800);
         
+        // Finish animation
         setTimeout(() => {
-            const idx = game.playerHand.findIndex(c => c.id === card.id);
-            if (idx > -1) game.playerHand.splice(idx, 1);
-            
-            // Add to discard pile
-            game.playerDiscardPile.push(card);
-            
-            // Multiplayer hook - AFTER pyre spent and card removed
-            if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-                window.multiplayerHook.onTrap(card, row);
-            }
-            
             isAnimating = false;
             renderAll(); updateButtons();
-            
-            // Clear spawn marker after render
             setTimeout(() => { window.newlySpawnedTrap = null; }, 500);
         }, 400);
     }
 }
 
 function executeAura(col, row) {
+    window.Multiplayer?.startActionCapture?.();
     const card = ui.targetingAura;
     if (!card || isAnimating || game.playerPyre < card.cost) return;
     const targetCryptid = game.getFieldCryptid('player', col, row);
@@ -2747,7 +2732,18 @@ function executeAura(col, row) {
         setTimeout(() => targetSprite.classList.remove('aura-target'), TIMING.spellEffect);
     }
     
-    // 5. Remove from array, add to discard, and clear state
+    // 5. Apply aura and spend pyre IMMEDIATELY (game logic before animations)
+    const oldPyre = game.playerPyre;
+    game.playerPyre -= card.cost;
+    GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'aura', card });
+    game.applyAura(targetCryptid, card);
+    
+    // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animation delays
+    if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
+        window.multiplayerHook.onAura(card, col, row);
+    }
+    
+    // 6. Remove from array, add to discard, and clear state (visual cleanup)
     setTimeout(() => {
         const idx = game.playerHand.findIndex(c => c.id === card.id);
         if (idx > -1) {
@@ -2758,26 +2754,16 @@ function executeAura(col, row) {
         document.getElementById('cancel-target').classList.remove('show');
     }, 300);
     
-    // 6. Apply aura after visual delay (longer for enhanced animation)
-    setTimeout(() => {
-        const oldPyre = game.playerPyre;
-        game.playerPyre -= card.cost;
-        GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'aura', card });
-        game.applyAura(targetCryptid, card);
-        
-        setTimeout(() => { 
-            // Multiplayer hook - AFTER aura applied
-            if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-                window.multiplayerHook.onAura(card, col, row);
-            }
-            isAnimating = false; 
-            renderAll(); 
-            updateButtons(); 
-        }, 400);
-    }, 600); // Extended delay for enhanced animation
+    // 7. Finish animation after visual delay
+    setTimeout(() => { 
+        isAnimating = false; 
+        renderAll(); 
+        updateButtons(); 
+    }, 1000); // Extended delay for enhanced animation
 }
 
 function executeAuraDirect(card, col, row) {
+    window.Multiplayer?.startActionCapture?.();
     if (!card || isAnimating || game.playerPyre < card.cost) return;
     const targetCryptid = game.getFieldCryptid('player', col, row);
     if (!targetCryptid) return;
@@ -2821,7 +2807,18 @@ function executeAuraDirect(card, col, row) {
         setTimeout(() => targetSprite.classList.remove('aura-target'), TIMING.spellEffect);
     }
     
-    // 5. Remove from array after animation and add to discard
+    // 5. Apply aura and spend pyre IMMEDIATELY (game logic before animations)
+    const oldPyre = game.playerPyre;
+    game.playerPyre -= card.cost;
+    GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'aura', card });
+    game.applyAura(targetCryptid, card);
+    
+    // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animation delays
+    if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
+        window.multiplayerHook.onAura(card, col, row);
+    }
+    
+    // 6. Remove from array after animation and add to discard (visual cleanup)
     setTimeout(() => {
         const idx = game.playerHand.findIndex(c => c.id === card.id);
         if (idx > -1) {
@@ -2830,23 +2827,12 @@ function executeAuraDirect(card, col, row) {
         }
     }, 300);
     
-    // 6. Apply aura after visual delay (longer for enhanced animation)
-    setTimeout(() => {
-        const oldPyre = game.playerPyre;
-        game.playerPyre -= card.cost;
-        GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'aura', card });
-        game.applyAura(targetCryptid, card);
-        
-        setTimeout(() => { 
-            // Multiplayer hook - AFTER aura applied
-            if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-                window.multiplayerHook.onAura(card, col, row);
-            }
-            isAnimating = false; 
-            renderAll(); 
-            updateButtons(); 
-        }, 400);
-    }, 600); // Extended delay for enhanced animation
+    // 7. Finish animation after visual delay
+    setTimeout(() => { 
+        isAnimating = false; 
+        renderAll(); 
+        updateButtons(); 
+    }, 1000); // Extended delay for enhanced animation
 }
 
 // Execute Decay Rat's support ability on a selected target
@@ -2955,6 +2941,7 @@ function executeDecayRatAbility(targetCol, targetRow) {
 function executePyreCard(card) {
     if (!game.canPlayPyreCard('player') || isAnimating) return;
     isAnimating = true;
+    window.Multiplayer?.startActionCapture?.();
     
     // Get card element for visual effect
     const cardWrapper = document.querySelector(`.card-wrapper[data-card-id="${card.id}"]`);
@@ -3024,6 +3011,7 @@ function executePyreCard(card) {
 function executePyreCardWithAnimation(card, dropX, dropY) {
     if (!game.canPlayPyreCard('player')) return;
     isAnimating = true;
+    window.Multiplayer?.startActionCapture?.();
     
     // Get card element before cleanup
     const cardWrapper = document.querySelector(`.card-wrapper[data-card-id="${card.id}"]`);
@@ -3448,6 +3436,9 @@ function playAttackAnimation(attackerSprite, owner, onComplete, onImpact, damage
 window.playAttackAnimation = playAttackAnimation;
 
 function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
+    // Start capturing animation events for multiplayer playback
+    window.Multiplayer?.startActionCapture?.();
+    
     // Safety reset: Clear any stale death zoom state that might prevent death animations
     // Reset counter to 0 for fresh start (handles cases where cleanup never ran)
     if ((window.CombatEffects?._dramaticDeathZoomCount || 0) > 0) {
@@ -4658,8 +4649,18 @@ document.getElementById('pyre-burn-btn').onclick = () => {
     const deaths = game.playerDeaths;
     if (game.playerPyreBurnUsed || deaths === 0) return;
     isAnimating = true;
+    window.Multiplayer?.startActionCapture?.();
     hideTooltip();
     
+    // Execute game logic IMMEDIATELY before animations
+    game.pyreBurn('player'); 
+    
+    // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animation delays
+    if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
+        window.multiplayerHook.onPyreBurn(deaths);
+    }
+    
+    // Now play local animations
     const overlay = document.getElementById('pyre-burn-overlay');
     const text = document.getElementById('pyre-burn-text');
     const container = document.getElementById('game-container');
@@ -4668,19 +4669,13 @@ document.getElementById('pyre-burn-btn').onclick = () => {
     text.classList.add('active');
     container.classList.add('shaking');
     
+    // Play machine gun ember effect for multiple pyre gains (after brief delay for visual timing)
     setTimeout(() => { 
-        game.pyreBurn('player'); 
-        
-        // Multiplayer hook - AFTER pyre burn applied
-        if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onPyreBurn(deaths);
-        }
-        
-        // Play machine gun ember effect for multiple pyre gains
         if (deaths > 0 && window.CombatEffects?.playPyreBurn) {
             window.CombatEffects.playPyreBurn(null, deaths);
         }
     }, 300);
+    
     setTimeout(() => { 
         overlay.classList.remove('active'); 
         text.classList.remove('active'); 
@@ -4938,6 +4933,7 @@ document.getElementById('end-turn-btn').onclick = () => {
     }
     
     isAnimating = true;
+    window.Multiplayer?.startActionCapture?.();
     hideTooltip();
     ui.selectedCard = null; ui.attackingCryptid = null; ui.targetingBurst = null; ui.targetingEvolution = null; ui.showingKindling = false;
     document.getElementById('cancel-target').classList.remove('show');
@@ -5700,6 +5696,7 @@ function showCryptidTooltip(cryptid, col, row, owner) {
         sacrificeBtn.onclick = (e) => {
             e.stopPropagation();
             if (cryptid.activateSacrifice) {
+                window.Multiplayer?.startActionCapture?.();
                 const combatant = game.getCombatant(cryptid);
                 const combatCol = game.getCombatCol(owner);
                 const combatantRow = cryptid.row;
@@ -5710,36 +5707,36 @@ function showCryptidTooltip(cryptid, col, row, owner) {
                 );
                 const rarity = combatant?.rarity || 'common';
                 
+                // === EXECUTE GAME LOGIC IMMEDIATELY ===
                 GameEvents.emit('onActivatedAbility', { ability: 'sacrifice', card: cryptid, owner, col: cryptid.col, row: cryptid.row, target: combatant });
+                cryptid.activateSacrifice(cryptid, game);
+                
+                // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animations
+                if (game.isMultiplayer && window.Multiplayer?.actionActivateAbility) {
+                    window.Multiplayer.actionActivateAbility('sacrifice', cryptid.col, cryptid.row, {
+                        cardKey: cryptid.key,
+                        cardName: cryptid.name,
+                        combatantRow: combatantRow,
+                        combatantKey: combatant?.key,
+                        newAtk: cryptid.currentAtk,
+                        newHp: cryptid.currentHp,
+                        hasDestroyer: cryptid.hasDestroyer
+                    });
+                }
+                
+                // === NOW PLAY ANIMATIONS ===
                 hideTooltip();
                 isAnimating = true;
                 
-                // Pre-mark the promotion in activePromotions BEFORE activating sacrifice
-                // This prevents renderSprites from showing the support at combat position prematurely
+                // Pre-mark the promotion for animation system
                 if (!window.activePromotions) window.activePromotions = new Set();
                 window.activePromotions.add(`${owner}-${combatantRow}`);
                 
                 // Play death animation for the sacrificed combatant
                 if (combatantSprite && window.CombatEffects?.playDramaticDeath) {
-                    // Activate sacrifice after a small delay (so animation starts first)
-                    setTimeout(() => cryptid.activateSacrifice(cryptid, game), 100);
-                    
                     window.CombatEffects.playDramaticDeath(combatantSprite, owner, rarity, () => {
-                        // After death animation, process pending promotions with animation
                         renderAll();
                         processPendingPromotions(() => {
-                            // MULTIPLAYER: Broadcast sacrifice ability activation
-                            if (game.isMultiplayer && window.Multiplayer?.actionActivateAbility) {
-                                window.Multiplayer.actionActivateAbility('sacrifice', cryptid.col, cryptid.row, {
-                                    cardKey: cryptid.key,
-                                    cardName: cryptid.name,
-                                    combatantRow: combatantRow,
-                                    combatantKey: combatant?.key,
-                                    newAtk: cryptid.currentAtk,
-                                    newHp: cryptid.currentHp,
-                                    hasDestroyer: cryptid.hasDestroyer
-                                });
-                            }
                             isAnimating = false;
                             renderAll();
                             updateButtons();
@@ -5747,22 +5744,9 @@ function showCryptidTooltip(cryptid, col, row, owner) {
                     });
                 } else {
                     // Fallback - no animation available
-                    cryptid.activateSacrifice(cryptid, game);
                     setTimeout(() => {
                         renderAll();
                         processPendingPromotions(() => {
-                            // MULTIPLAYER: Broadcast sacrifice ability activation
-                            if (game.isMultiplayer && window.Multiplayer?.actionActivateAbility) {
-                                window.Multiplayer.actionActivateAbility('sacrifice', cryptid.col, cryptid.row, {
-                                    cardKey: cryptid.key,
-                                    cardName: cryptid.name,
-                                    combatantRow: combatantRow,
-                                    combatantKey: combatant?.key,
-                                    newAtk: cryptid.currentAtk,
-                                    newHp: cryptid.currentHp,
-                                    hasDestroyer: cryptid.hasDestroyer
-                                });
-                            }
                             isAnimating = false;
                             renderAll();
                             updateButtons();

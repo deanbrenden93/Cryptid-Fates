@@ -761,22 +761,51 @@ window.Multiplayer = {
 
     // ==================== ACTION SENDING ====================
     
+    /**
+     * Send a game action with optional animation manifest
+     * If AnimationCapture has recorded events, they're automatically included
+     */
     sendGameAction(actionType, details = {}) {
         if (!this.isInMatch || !this.isMyTurn) {
             console.warn('[MP] Cannot send - not in match or not our turn');
             return;
         }
         
+        // Get captured animation events if any
+        const animationEvents = window.AnimationCapture?.stopCapture?.() || null;
+        
         const msg = {
             type: 'action',
             matchId: this.matchId,
             playerId: this.playerId,
-            action: { type: actionType, ...details },
+            action: { 
+                type: actionType, 
+                ...details,
+                // Include animation manifest if events were captured
+                animationEvents: animationEvents
+            },
             state: this.serializeGameState()
         };
         
-        console.log('[MP] Sending:', actionType);
+        console.log('[MP] Sending:', actionType, animationEvents ? `(${animationEvents.length} events)` : '(no manifest)');
         this.send(msg);
+    },
+    
+    /**
+     * Start capturing animation events before an action
+     * Call this at the START of action execution
+     */
+    startActionCapture() {
+        if (window.game?.isMultiplayer && this.isMyTurn) {
+            window.AnimationCapture?.startCapture?.();
+        }
+    },
+    
+    /**
+     * Cancel capture without sending (for error cases)
+     */
+    cancelActionCapture() {
+        window.AnimationCapture?.cancelCapture?.();
     },
 
     // ==================== ACTION RECEIVING ====================
@@ -798,65 +827,897 @@ window.Multiplayer = {
         
         this.isPlayingAnimation = true;
         const { action, state } = this.animationQueue.shift();
+        const self = this;
         
-        // For attacks that killed something, we need to animate BEFORE state change
-        // so the death animation shows the correct cryptid
-        const shouldAnimateBeforeState = action.type === 'attack' && (action.targetDied || action.supportDied);
+        // Check if we have an animation manifest (new system)
+        const hasManifest = action.animationEvents && action.animationEvents.length > 0;
         
-        if (shouldAnimateBeforeState) {
-            // Play animation FIRST on current DOM state
-            this.playAnimation(action, () => {
-                // THEN apply state after animation shows the death
+        // Completion handler - called after animations finish
+        const onAnimationComplete = () => {
+            requestAnimationFrame(() => {
+                if (typeof renderAll === 'function') renderAll();
+                requestAnimationFrame(() => {
+                    if (typeof updateButtons === 'function') updateButtons();
+                });
+                
+                if (action.type === 'endPhase') {
+                    self.handleOpponentEndTurn();
+                }
+                
+                self.isPlayingAnimation = false;
+                self.processingOpponentAction = self.animationQueue.length > 0;
+                setTimeout(() => self.processAnimationQueue(), 50);
+            });
+        };
+        
+        // Determine if we should animate before applying state
+        // This is needed when sprites will be removed/changed by state application
+        const hasDeaths = action.targetDied || action.supportDied || 
+                         action.animationEvents?.some(e => e.type === 'onDeath' || e.type === 'onKill');
+        const shouldAnimateBeforeState = hasDeaths;
+        
+        if (hasManifest) {
+            // NEW SYSTEM: Use animation manifest playback
+            console.log('[MP] Playing animation manifest:', action.animationEvents.length, 'events');
+            
+            if (shouldAnimateBeforeState) {
+                // Play manifest FIRST, then apply state
+                this.playAnimationManifest(action.animationEvents, () => {
+                    if (state) {
+                        this.applyReceivedState(state);
+                    }
+                    onAnimationComplete();
+                });
+            } else {
+                // Apply state first, then play manifest
                 if (state) {
                     this.applyReceivedState(state);
                 }
                 
                 requestAnimationFrame(() => {
                     if (typeof renderAll === 'function') renderAll();
-                    requestAnimationFrame(() => {
-                        if (typeof updateButtons === 'function') updateButtons();
-                    });
                     
-                    this.isPlayingAnimation = false;
-                    this.processingOpponentAction = this.animationQueue.length > 0;
-                    setTimeout(() => this.processAnimationQueue(), 50);
+                    setTimeout(() => {
+                        this.playAnimationManifest(action.animationEvents, onAnimationComplete);
+                    }, 50);
                 });
-            });
-        } else {
-            // For non-death actions, apply state first (original behavior)
-            if (state) {
-                this.applyReceivedState(state);
             }
+        } else {
+            // LEGACY: Use old playAnimation for backwards compatibility
+            console.log('[MP] Using legacy animation for:', action.type);
             
-            // Force render with requestAnimationFrame for reliable browser repaint
-            requestAnimationFrame(() => {
-                if (typeof renderAll === 'function') renderAll();
+            if (shouldAnimateBeforeState) {
+                // Play animation FIRST on current DOM state
+                this.playAnimation(action, () => {
+                    if (state) {
+                        this.applyReceivedState(state);
+                    }
+                    onAnimationComplete();
+                });
+            } else {
+                // For non-death actions, apply state first
+                if (state) {
+                    this.applyReceivedState(state);
+                }
                 
-                // Small delay to ensure DOM is fully updated before animation
-                setTimeout(() => {
-                    // THEN: Play animation on the now-stable DOM
-                    this.playAnimation(action, () => {
-                        // After animation, update buttons
-                        requestAnimationFrame(() => {
-                            if (typeof updateButtons === 'function') updateButtons();
-                        });
-                        
-                        if (action.type === 'endPhase') {
-                            this.handleOpponentEndTurn();
-                        }
-                        
-                        // Mark animation complete and process next in queue
-                        this.isPlayingAnimation = false;
-                        this.processingOpponentAction = this.animationQueue.length > 0;
-                        
-                        // Process next queued action
-                        setTimeout(() => this.processAnimationQueue(), 50);
-                    });
-                }, 50); // 50ms delay for DOM to settle
-            });
+                requestAnimationFrame(() => {
+                    if (typeof renderAll === 'function') renderAll();
+                    
+                    setTimeout(() => {
+                        this.playAnimation(action, onAnimationComplete);
+                    }, 50);
+                });
+            }
         }
     },
     
+    // ==================== ANIMATION MANIFEST PLAYBACK ====================
+    // Plays back captured GameEvents on the opponent's screen
+    // This is the core of visual synchronization - both players see the same "movie"
+    
+    /**
+     * Play through a manifest of captured events
+     * @param {Array} events - Array of captured events from AnimationCapture
+     * @param {Function} onComplete - Called when all events have played
+     */
+    playAnimationManifest(events, onComplete) {
+        const self = this;
+        
+        if (!events || events.length === 0) {
+            console.log('[MP Playback] No events to play');
+            onComplete?.();
+            return;
+        }
+        
+        console.log('[MP Playback] Playing', events.length, 'events');
+        
+        let currentIndex = 0;
+        let batchStartTime = 0;
+        const BATCH_WINDOW = 50; // Events within 50ms are batched together
+        
+        const playNext = () => {
+            if (currentIndex >= events.length) {
+                console.log('[MP Playback] Complete');
+                onComplete?.();
+                return;
+            }
+            
+            // Batch events that happened nearly simultaneously
+            const batch = [events[currentIndex]];
+            batchStartTime = events[currentIndex].timestamp || 0;
+            currentIndex++;
+            
+            while (currentIndex < events.length) {
+                const nextEvent = events[currentIndex];
+                const timeDiff = (nextEvent.timestamp || 0) - batchStartTime;
+                if (timeDiff <= BATCH_WINDOW) {
+                    batch.push(nextEvent);
+                    currentIndex++;
+                } else {
+                    break;
+                }
+            }
+            
+            // Play all events in this batch simultaneously
+            let maxDuration = 0;
+            for (const event of batch) {
+                const duration = self.playEventAnimation(event);
+                maxDuration = Math.max(maxDuration, duration);
+            }
+            
+            // Wait for batch to complete, then play next
+            setTimeout(playNext, maxDuration + 50);
+        };
+        
+        // Start playback
+        playNext();
+    },
+    
+    /**
+     * Play animation for a single event
+     * Returns the duration of the animation in ms
+     */
+    playEventAnimation(event) {
+        const self = this;
+        const type = event.type;
+        const data = event.data || {};
+        const g = window.game;
+        
+        // Helper to flip perspective (their player = our enemy, their enemy = our player)
+        const flipOwner = (owner) => owner === 'player' ? 'enemy' : 'player';
+        const flipCol = (col) => col !== undefined ? 1 - col : undefined;
+        
+        // Helper to find sprite by position
+        const findSprite = (owner, col, row) => {
+            const flippedOwner = flipOwner(owner);
+            const flippedCol = flipCol(col);
+            return document.querySelector(
+                `.cryptid-sprite[data-owner="${flippedOwner}"][data-col="${flippedCol}"][data-row="${row}"]`
+            );
+        };
+        
+        // Helper to find cryptid by position
+        const findCryptid = (owner, col, row) => {
+            const flippedOwner = flipOwner(owner);
+            const flippedCol = flipCol(col);
+            const field = flippedOwner === 'player' ? g?.playerField : g?.enemyField;
+            return field?.[flippedCol]?.[row];
+        };
+        
+        // Default duration for unknown events
+        let duration = 100;
+        
+        switch (type) {
+            // === DAMAGE & COMBAT ===
+            
+            case 'onDamageTaken': {
+                const target = data.target;
+                if (!target) break;
+                
+                const sprite = findSprite(target.owner, target.col, target.row);
+                const cryptid = findCryptid(target.owner, target.col, target.row);
+                const damage = data.damage || 0;
+                
+                if (sprite && window.CombatEffects) {
+                    // Show damage number
+                    if (cryptid && damage > 0) {
+                        window.CombatEffects.showDamageNumber(cryptid, damage, damage >= 5);
+                    }
+                    
+                    // Impact effects
+                    const battlefield = document.getElementById('battlefield-area');
+                    if (battlefield) {
+                        const rect = sprite.getBoundingClientRect();
+                        const bfRect = battlefield.getBoundingClientRect();
+                        const x = rect.left + rect.width/2 - bfRect.left;
+                        const y = rect.top + rect.height/2 - bfRect.top;
+                        
+                        window.CombatEffects.createImpactFlash?.(x, y, 60 + damage * 8);
+                        window.CombatEffects.createSparks?.(x, y, 6 + damage);
+                        window.CombatEffects.heavyImpact?.(Math.min(damage, 5));
+                    }
+                    
+                    // Hit recoil
+                    sprite.classList.add('hit-recoil');
+                    setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'onHit': {
+                // Impact moment - damage number shown by onDamageTaken
+                duration = 50; // Part of damage sequence
+                break;
+            }
+            
+            case 'onCleaveDamage':
+            case 'onKuchisakeExplosion':
+            case 'onMolemanSplash':
+            case 'onMultiAttackDamage':
+            case 'onSnipeDamage': {
+                const target = data.target || data.cleaveTarget || data.splashTarget || data.explosionTarget;
+                if (!target) break;
+                
+                const sprite = findSprite(target.owner, target.col, target.row);
+                const cryptid = findCryptid(target.owner, target.col, target.row);
+                const damage = data.damage || data.splashDamage || data.explosionDamage || 0;
+                
+                if (sprite && window.CombatEffects && cryptid && damage > 0) {
+                    window.CombatEffects.showDamageNumber(cryptid, damage, false);
+                    
+                    sprite.classList.add('hit-recoil');
+                    setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+                }
+                
+                // Show message for special damage types
+                if (type === 'onKuchisakeExplosion') {
+                    showMessage(`💥 Explosion: ${damage} damage!`, 500);
+                } else if (type === 'onMolemanSplash') {
+                    showMessage(`🌊 Splash: ${damage} damage!`, 500);
+                }
+                
+                duration = 350;
+                break;
+            }
+            
+            case 'onDestroyerDamage': {
+                const target = data.target;
+                const damage = data.damage || 0;
+                
+                if (target) {
+                    const sprite = findSprite(target.owner, target.col, target.row);
+                    const cryptid = findCryptid(target.owner, target.col, target.row);
+                    
+                    showMessage(`💥 Destroyer: ${damage} piercing damage!`, 600);
+                    
+                    if (sprite && cryptid && window.CombatEffects) {
+                        window.CombatEffects.showDamageNumber(cryptid, damage, true);
+                        window.CombatEffects.heavyImpact?.(damage);
+                        
+                        sprite.classList.add('destroyer-hit');
+                        setTimeout(() => sprite.classList.remove('destroyer-hit'), 400);
+                    }
+                }
+                duration = 500;
+                break;
+            }
+            
+            case 'onDestroyerResidue': {
+                const targetRow = data.targetRow;
+                const damage = data.overkillDamage || 0;
+                
+                // Create the danger zone visual
+                if (window.CombatEffects?.createDestroyerResidue) {
+                    const flippedOwner = flipOwner(data.targetOwner || 'enemy');
+                    const combatCol = g?.getCombatCol(flippedOwner);
+                    window.CombatEffects.createDestroyerResidue(flippedOwner, combatCol, targetRow, damage);
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'onBleedDamage':
+            case 'onToxicDamage': {
+                const target = data.target;
+                const damage = data.bonusDamage || 1;
+                
+                if (target) {
+                    const sprite = findSprite(target.owner, target.col, target.row);
+                    const cryptid = findCryptid(target.owner, target.col, target.row);
+                    
+                    const emoji = type === 'onBleedDamage' ? '🩸' : '☠';
+                    showMessage(`${emoji} +${damage} bonus damage!`, 400);
+                    
+                    if (sprite && cryptid && window.CombatEffects) {
+                        window.CombatEffects.showDamageNumber(cryptid, damage, false);
+                    }
+                }
+                duration = 250;
+                break;
+            }
+            
+            // === HEALING ===
+            
+            case 'onHeal': {
+                const cryptid = data.cryptid;
+                const amount = data.amount || 0;
+                
+                if (cryptid && amount > 0) {
+                    const sprite = findSprite(cryptid.owner, cryptid.col, cryptid.row);
+                    const cryptidObj = findCryptid(cryptid.owner, cryptid.col, cryptid.row);
+                    
+                    if (sprite && cryptidObj && window.CombatEffects?.showHealNumber) {
+                        window.CombatEffects.showHealNumber(cryptidObj, amount);
+                    }
+                    
+                    if (sprite) {
+                        sprite.classList.add('healing');
+                        setTimeout(() => sprite.classList.remove('healing'), 400);
+                    }
+                }
+                duration = 350;
+                break;
+            }
+            
+            case 'onLifesteal': {
+                const attacker = data.attacker;
+                const amount = data.healAmount || data.amount || 0;
+                
+                showMessage(`🧛 Lifesteal: +${amount} HP!`, 500);
+                
+                if (attacker && amount > 0) {
+                    const sprite = findSprite(attacker.owner, attacker.col, attacker.row);
+                    const cryptidObj = findCryptid(attacker.owner, attacker.col, attacker.row);
+                    
+                    if (sprite && cryptidObj && window.CombatEffects?.showHealNumber) {
+                        window.CombatEffects.showHealNumber(cryptidObj, amount);
+                    }
+                }
+                duration = 400;
+                break;
+            }
+            
+            // === DEATH ===
+            
+            case 'onDeath':
+            case 'onKill': {
+                const victim = data.cryptid || data.victim;
+                if (!victim) break;
+                
+                // Skip if marked as pending (will be handled elsewhere)
+                if (data.pendingAnimation) break;
+                
+                const sprite = findSprite(victim.owner, victim.col, victim.row);
+                
+                if (sprite && window.CombatEffects?.playDramaticDeath) {
+                    const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                    const flippedOwner = flipOwner(victim.owner);
+                    window.CombatEffects.playDramaticDeath(sprite, flippedOwner, rarity);
+                    duration = 900;
+                } else if (sprite) {
+                    const dir = flipOwner(victim.owner) === 'player' ? 'left' : 'right';
+                    sprite.classList.add(`dying-${dir}`);
+                    duration = 800;
+                }
+                break;
+            }
+            
+            case 'onGargoyleSave': {
+                const gargoyle = data.gargoyle || data.card;
+                const saved = data.saved || data.combatant;
+                
+                if (gargoyle) {
+                    showMessage(`🗿 ${gargoyle.name || 'Gargoyle'} sacrificed itself!`, 600);
+                    
+                    const sprite = findSprite(gargoyle.owner, gargoyle.col, gargoyle.row);
+                    if (sprite && window.CombatEffects?.playDramaticDeath) {
+                        const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                        window.CombatEffects.playDramaticDeath(sprite, flipOwner(gargoyle.owner), rarity);
+                    }
+                }
+                duration = 800;
+                break;
+            }
+            
+            case 'onCalamityDeath': {
+                const cryptid = data.cryptid;
+                
+                if (cryptid) {
+                    showMessage(`💀 ${cryptid.name || 'Cryptid'} succumbs to Calamity!`, 700);
+                    
+                    const sprite = findSprite(cryptid.owner, cryptid.col, cryptid.row);
+                    if (sprite && window.CombatEffects?.playDramaticDeath) {
+                        const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                        window.CombatEffects.playDramaticDeath(sprite, flipOwner(cryptid.owner), rarity);
+                    }
+                }
+                duration = 900;
+                break;
+            }
+            
+            // === STATUS EFFECTS ===
+            
+            case 'onStatusApplied': {
+                const cryptid = data.cryptid;
+                const status = data.status;
+                
+                if (!cryptid || !status) break;
+                
+                const sprite = findSprite(cryptid.owner, cryptid.col, cryptid.row);
+                
+                const statusEmojis = {
+                    burn: '🔥', paralyze: '⚡', bleed: '🩸', 
+                    calamity: '💀', curse: '☠', protection: '🛡'
+                };
+                const emoji = statusEmojis[status] || '✨';
+                const msg = data.refreshed ? `${emoji} ${status} refreshed!` : `${emoji} ${status} applied!`;
+                showMessage(msg, 500);
+                
+                if (sprite) {
+                    sprite.classList.add(`${status}-applied`);
+                    setTimeout(() => sprite.classList.remove(`${status}-applied`), 600);
+                    
+                    if (window.CombatEffects?.playDebuffEffect && status !== 'protection') {
+                        window.CombatEffects.playDebuffEffect(sprite);
+                    }
+                }
+                duration = 400;
+                break;
+            }
+            
+            case 'onStatusWearOff': {
+                const cryptid = data.cryptid;
+                const status = data.status;
+                
+                if (cryptid && status) {
+                    showMessage(`✨ ${status} wore off!`, 400);
+                }
+                duration = 200;
+                break;
+            }
+            
+            case 'onBurnDamage': {
+                const cryptid = data.cryptid;
+                const damage = data.damage || 1;
+                
+                if (cryptid) {
+                    const sprite = findSprite(cryptid.owner, cryptid.col, cryptid.row);
+                    const cryptidObj = findCryptid(cryptid.owner, cryptid.col, cryptid.row);
+                    
+                    showMessage(`🔥 Burn: ${damage} damage!`, 500);
+                    
+                    if (sprite) {
+                        sprite.classList.add('burning-tick');
+                        setTimeout(() => sprite.classList.remove('burning-tick'), 500);
+                    }
+                    
+                    if (cryptidObj && window.CombatEffects) {
+                        window.CombatEffects.showDamageNumber(cryptidObj, damage, false);
+                    }
+                }
+                duration = 450;
+                break;
+            }
+            
+            case 'onCalamityTick': {
+                const cryptid = data.cryptid;
+                const remaining = data.countersRemaining || 0;
+                
+                if (cryptid) {
+                    showMessage(`💀 Calamity: ${remaining} turns remaining!`, 500);
+                    
+                    const sprite = findSprite(cryptid.owner, cryptid.col, cryptid.row);
+                    if (sprite) {
+                        sprite.classList.add('calamity-tick');
+                        setTimeout(() => sprite.classList.remove('calamity-tick'), 500);
+                    }
+                }
+                duration = 400;
+                break;
+            }
+            
+            case 'onCleanse': {
+                const cryptid = data.cryptid;
+                const count = data.count || 1;
+                
+                if (cryptid) {
+                    showMessage(`✨ Cleansed ${count} status effect(s)!`, 500);
+                    
+                    const sprite = findSprite(cryptid.owner, cryptid.col, cryptid.row);
+                    if (sprite) {
+                        sprite.classList.add('cleansed');
+                        setTimeout(() => sprite.classList.remove('cleansed'), 600);
+                    }
+                }
+                duration = 400;
+                break;
+            }
+            
+            case 'onAilmentBlocked': {
+                const cryptid = data.cryptid;
+                const ailment = data.ailment;
+                const source = data.source;
+                
+                if (cryptid && ailment) {
+                    showMessage(`🦋 ${source || 'Immunity'} blocked ${ailment}!`, 500);
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'onProtectionBlock': {
+                const target = data.target;
+                
+                if (target) {
+                    showMessage(`🛡 Protection absorbed the hit!`, 500);
+                    
+                    const sprite = findSprite(target.owner, target.col, target.row);
+                    if (sprite) {
+                        sprite.classList.add('protection-block');
+                        setTimeout(() => sprite.classList.remove('protection-block'), 600);
+                    }
+                }
+                duration = 400;
+                break;
+            }
+            
+            // === TRAPS ===
+            
+            case 'onTrapTriggered': {
+                const trap = data.trap;
+                const owner = data.owner;
+                const row = data.row;
+                
+                if (trap) {
+                    showMessage(`⚡ ${trap.name || 'Trap'} triggered!`, 700);
+                    
+                    const flippedOwner = flipOwner(owner);
+                    const trapSprite = document.querySelector(`.trap-sprite[data-owner="${flippedOwner}"][data-row="${row}"]`);
+                    
+                    if (trapSprite) {
+                        trapSprite.classList.add('trap-triggering');
+                        setTimeout(() => trapSprite.classList.remove('trap-triggering'), 800);
+                    }
+                    
+                    // Flash the battlefield
+                    const battlefield = document.getElementById('battlefield-area');
+                    if (battlefield) {
+                        battlefield.classList.add('trap-flash');
+                        setTimeout(() => battlefield.classList.remove('trap-flash'), 400);
+                    }
+                }
+                duration = 700;
+                break;
+            }
+            
+            case 'onTrapSet': {
+                showMessage(`Opponent set a trap!`, 500);
+                duration = 300;
+                break;
+            }
+            
+            case 'onTerrify': {
+                const attacker = data.attacker;
+                
+                if (attacker) {
+                    showMessage(`😱 Terrify! ${attacker.name || 'Attacker'}'s ATK reduced to 0!`, 700);
+                    
+                    const sprite = findSprite(attacker.owner, attacker.col, attacker.row);
+                    if (sprite) {
+                        sprite.classList.add('terrified');
+                        setTimeout(() => sprite.classList.remove('terrified'), 600);
+                    }
+                }
+                duration = 600;
+                break;
+            }
+            
+            // === SUMMONING & FIELD ===
+            
+            case 'onSummon': {
+                const cryptid = data.cryptid;
+                const owner = data.owner;
+                const col = data.col;
+                const row = data.row;
+                
+                // Only show animation for opponent's summons (we see our own already)
+                if (owner !== 'player') break;
+                
+                const sprite = findSprite(owner, col, row);
+                
+                if (sprite && window.CombatEffects?.playSummonAnimation) {
+                    const element = sprite.className.match(/element-(\w+)/)?.[1] || 'steel';
+                    const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                    window.CombatEffects.playSummonAnimation(sprite, element, rarity);
+                    duration = 850;
+                } else if (sprite) {
+                    sprite.classList.add('summoning');
+                    setTimeout(() => sprite.classList.remove('summoning'), 850);
+                    duration = 850;
+                }
+                break;
+            }
+            
+            case 'onEnterCombat': {
+                const cryptid = data.cryptid;
+                const source = data.source;
+                
+                // Only animate if it's a promotion or special entry
+                if (source === 'promotion') {
+                    showMessage(`⬆ ${cryptid?.name || 'Support'} promoted to combat!`, 500);
+                }
+                duration = 200;
+                break;
+            }
+            
+            case 'onPromotion': {
+                const cryptid = data.cryptid;
+                
+                if (cryptid) {
+                    // The render will handle the visual slide
+                    showMessage(`⬆ ${cryptid.name || 'Support'} promoted!`, 400);
+                }
+                duration = 350;
+                break;
+            }
+            
+            case 'onEvolution': {
+                const evolved = data.evolved;
+                const owner = data.owner;
+                const col = data.col;
+                const row = data.row;
+                
+                if (owner !== 'player') break;
+                
+                const sprite = findSprite(owner, col, row);
+                
+                if (sprite && window.CombatEffects?.playEvolutionAnimation) {
+                    const element = sprite.className.match(/element-(\w+)/)?.[1] || 'steel';
+                    const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'uncommon';
+                    window.CombatEffects.playEvolutionAnimation(sprite, element, rarity);
+                    duration = 1000;
+                } else if (sprite) {
+                    sprite.classList.add('evolving');
+                    setTimeout(() => sprite.classList.remove('evolving'), 1000);
+                    duration = 1000;
+                }
+                
+                showMessage(`✨ Evolved into ${evolved?.name || 'new form'}!`, 600);
+                break;
+            }
+            
+            // === AURAS & BUFFS ===
+            
+            case 'onAuraApplied': {
+                const cryptid = data.cryptid;
+                const aura = data.aura;
+                
+                if (cryptid && aura) {
+                    showMessage(`✨ ${aura.name || 'Aura'} applied to ${cryptid.name}!`, 500);
+                    
+                    const sprite = findSprite(cryptid.owner, cryptid.col, cryptid.row);
+                    if (sprite) {
+                        sprite.classList.add('aura-target');
+                        setTimeout(() => sprite.classList.remove('aura-target'), 800);
+                    }
+                }
+                duration = 500;
+                break;
+            }
+            
+            case 'onLatch': {
+                const attacker = data.attacker;
+                const target = data.target;
+                
+                if (attacker && target) {
+                    showMessage(`🔗 ${attacker.name || 'Cryptid'} latched onto ${target.name}!`, 600);
+                }
+                duration = 400;
+                break;
+            }
+            
+            case 'onGremlinAtkDebuff':
+            case 'onGremlinHalfDamage':
+            case 'onGremlinDamageReduction':
+            case 'onStoneBastionHalfDamage':
+            case 'onDamageReduced': {
+                const reduced = data.reducedDamage ?? data.damage;
+                const original = data.originalDamage ?? reduced;
+                
+                if (reduced !== undefined && reduced < original) {
+                    showMessage(`🛡 Damage reduced: ${original} → ${reduced}`, 400);
+                }
+                duration = 250;
+                break;
+            }
+            
+            // === PYRE ===
+            
+            case 'onPyreGained': {
+                const owner = data.owner;
+                const amount = data.amount || 0;
+                const source = data.source;
+                
+                if (owner === 'player' && amount > 0) {
+                    // Opponent gained pyre
+                    const sourceText = source ? ` from ${source}` : '';
+                    showMessage(`🔥 Opponent +${amount} Pyre${sourceText}`, 400);
+                }
+                duration = 200;
+                break;
+            }
+            
+            case 'onPyreSpent': {
+                // Usually silent - the card play message covers this
+                duration = 50;
+                break;
+            }
+            
+            // === CARD ABILITIES ===
+            
+            case 'onCardCallback': {
+                const cbType = data.type;
+                const card = data.card;
+                const owner = data.owner;
+                
+                // Only show ability activations for opponent's cards
+                if (owner !== 'player') break;
+                
+                // Different messages based on callback type
+                if (cbType === 'onKill') {
+                    showMessage(`⚔ ${card?.name || 'Cryptid'}'s kill trigger!`, 400);
+                } else if (cbType === 'onDeath') {
+                    showMessage(`💀 ${card?.name || 'Cryptid'}'s death trigger!`, 400);
+                } else if (cbType === 'onCombat' || cbType === 'onEnterCombat') {
+                    showMessage(`⚔ ${card?.name || 'Cryptid'} enters combat!`, 400);
+                }
+                // Other callback types are usually implicit
+                duration = 300;
+                break;
+            }
+            
+            case 'onActivatedAbility': {
+                const ability = data.ability;
+                const card = data.card;
+                
+                if (card && ability) {
+                    const abilityNames = {
+                        sacrifice: 'Am I Pretty?',
+                        bloodPact: 'Blood Pact',
+                        thermalSwap: 'Thermal Swap',
+                        rageHeal: 'Rage Heal'
+                    };
+                    showMessage(`✨ ${card.name} used ${abilityNames[ability] || ability}!`, 600);
+                }
+                duration = 400;
+                break;
+            }
+            
+            case 'onMylingBurn': {
+                showMessage(`🔥 Myling triggered burn!`, 400);
+                duration = 300;
+                break;
+            }
+            
+            case 'onPackGrowth':
+            case 'onPackLeaderBuff': {
+                showMessage(`🐺 Pack synergy activated!`, 400);
+                duration = 250;
+                break;
+            }
+            
+            case 'onDeathWatchDraw': {
+                showMessage(`👁 Death Watch: Card drawn!`, 400);
+                duration = 300;
+                break;
+            }
+            
+            case 'onSkinwalkerInherit': {
+                const source = data.source;
+                showMessage(`🔄 Skinwalker inherited abilities from ${source?.name || 'fallen'}!`, 500);
+                duration = 400;
+                break;
+            }
+            
+            case 'onInsatiableHunger': {
+                const attacker = data.attacker;
+                showMessage(`🍖 Insatiable Hunger: ATK → ${attacker?.newAtk || attacker?.currentAtk}!`, 500);
+                duration = 350;
+                break;
+            }
+            
+            // === ATTACK EVENTS ===
+            
+            case 'onAttackDeclared': {
+                const attacker = data.attacker;
+                const target = data.target;
+                
+                // This marks the start of an attack - main animation handles visuals
+                // Just log for debugging
+                console.log('[MP Playback] Attack declared:', attacker?.name, '->', target?.name);
+                duration = 50;
+                break;
+            }
+            
+            case 'onAttackNegated': {
+                showMessage(`❌ Attack negated!`, 500);
+                duration = 400;
+                break;
+            }
+            
+            case 'onAttackComplete': {
+                // Attack finished - usually implicit
+                duration = 50;
+                break;
+            }
+            
+            // === SPELLS ===
+            
+            case 'onSpellCast':
+            case 'onBurstPlayed': {
+                const card = data.card;
+                
+                if (card) {
+                    showMessage(`✧ ${card.name} ✧`, 600);
+                }
+                duration = 200;
+                break;
+            }
+            
+            case 'onPyreCardPlayed': {
+                const card = data.card;
+                const pyreGained = data.pyreGained || 0;
+                
+                if (card) {
+                    showMessage(`🔥 ${card.name}: +${pyreGained} Pyre`, 500);
+                }
+                duration = 300;
+                break;
+            }
+            
+            // === MISC ===
+            
+            case 'onCardDrawn': {
+                const owner = data.owner;
+                
+                if (owner === 'player') {
+                    // Opponent drew a card
+                    showMessage(`📜 Opponent drew a card`, 300);
+                }
+                duration = 150;
+                break;
+            }
+            
+            case 'onSnipeReveal': {
+                const cryptid = data.cryptid;
+                
+                if (cryptid) {
+                    showMessage(`👁 Snipe revealed ${cryptid.name}!`, 500);
+                }
+                duration = 350;
+                break;
+            }
+            
+            case 'onHuntSteal': {
+                const amount = data.stolenPyre || 0;
+                
+                showMessage(`🏹 Hunt Trap stole ${amount} Pyre!`, 600);
+                duration = 450;
+                break;
+            }
+            
+            default: {
+                // Unknown event - log it for debugging
+                console.log('[MP Playback] Unknown event type:', type, data);
+                duration = 50;
+            }
+        }
+        
+        return duration;
+    },
+    
+    // Legacy playAnimation kept for backwards compatibility with old messages
     playAnimation(action, onComplete) {
         // Capture 'this' for use in nested functions
         const self = this;

@@ -66,6 +66,264 @@ const GameEvents = {
 
 window.GameEvents = GameEvents;
 
+// ==================== ANIMATION CAPTURE SYSTEM ====================
+// Records game events during multiplayer actions for playback on opponent's screen
+// This ensures both players see identical animations without re-executing game logic
+
+const AnimationCapture = {
+    isCapturing: false,
+    capturedEvents: [],
+    captureDepth: 0, // Prevent nested captures from interfering
+    
+    // Events that have visual representation and should be captured
+    // Organized by category for maintainability - add new events here as cards are added
+    VISUAL_EVENTS: [
+        // === DAMAGE & COMBAT ===
+        'onDamageTaken',        // Damage numbers, hit effects
+        'onHit',                // Impact effects
+        'onCleaveDamage',       // Cleave hit secondary target
+        'onKuchisakeExplosion', // Explosion chain damage
+        'onDestroyerDamage',    // Destroyer overkill damage
+        'onDestroyerResidue',   // Destroyer danger zone visual
+        'onMolemanSplash',      // Moleman splash damage
+        'onMultiAttackDamage',  // Multi-attack hits
+        'onSnipeDamage',        // Snipe ability damage
+        'onBleedDamage',        // Bleed tick (bonus damage on attack)
+        'onToxicDamage',        // Toxic bonus damage
+        'onBonusVsBurning',     // Bonus damage vs burning
+        
+        // === HEALING ===
+        'onHeal',               // Heal numbers, heal effects
+        'onLifesteal',          // Lifesteal heal from damage
+        
+        // === DEATH & KILLS ===
+        'onKill',               // Kill event (for kill triggers)
+        'onDeath',              // Death animation
+        'onGargoyleSave',       // Gargoyle sacrifice to save
+        'onCombatantDeath',     // Combatant died (support may trigger)
+        'onCalamityDeath',      // Death from calamity countdown
+        
+        // === STATUS EFFECTS ===
+        'onStatusApplied',      // Burn, paralyze, bleed, calamity, curse, protection
+        'onStatusWearOff',      // Status effect expired
+        'onBurnDamage',         // Burn tick damage at turn start
+        'onCalamityTick',       // Calamity countdown tick
+        'onCleanse',            // Cleanse effect removed statuses
+        'onCurseCleanse',       // Curse tokens removed
+        'onAilmentBlocked',     // Mothman immunity blocked ailment
+        'onProtectionBlock',    // Protection absorbed hit
+        'onProtectionRemoved',  // Protection charge consumed
+        'onToxicApplied',       // Toxic applied to tile
+        'onToxicFade',          // Toxic faded from tile
+        
+        // === TRAPS ===
+        'onTrapTriggered',      // Trap activation animation
+        'onTrapSet',            // Trap placed (opponent sees face-down)
+        'onTrapDestroyed',      // Trap destroyed
+        'onTrapProtected',      // Trap blocked by protection
+        'onTerrify',            // Terrify trap special effect
+        'onHuntSteal',          // Hunt trap pyre steal
+        
+        // === SUMMONING & FIELD ===
+        'onSummon',             // Cryptid summoned animation
+        'onEnterCombat',        // Entered combat position (triggers abilities)
+        'onPromotion',          // Support promoted to combat
+        'onEvolution',          // Evolution animation
+        
+        // === AURAS & BUFFS ===
+        'onAuraApplied',        // Aura cast on target
+        'onAuraRemoved',        // Aura expired/removed
+        'onLatch',              // Latch attached to target
+        'onGremlinAtkDebuff',   // Gremlin debuffed enemy
+        'onGremlinHalfDamage',  // Gremlin reduced damage
+        'onGremlinDamageReduction', // Gremlin damage reduction
+        'onStoneBastionHalfDamage', // Stone Bastion halved damage
+        'onDamageReduced',      // Generic damage reduction
+        
+        // === PYRE ===
+        'onPyreGained',         // Pyre counter increased
+        'onPyreSpent',          // Pyre counter decreased
+        
+        // === CARD ABILITIES ===
+        'onCardCallback',       // Card ability triggered (onSummon, onCombat, onKill, etc.)
+        'onActivatedAbility',   // Manually activated ability (sacrifice, blood pact, etc.)
+        'onMylingBurn',         // Myling's burn-on-damage trigger
+        'onPackGrowth',         // Hellhound pack growth
+        'onPackLeaderBuff',     // Hellhound buffing combatant
+        'onDeathWatchDraw',     // Death Watch card draw
+        'onSkinwalkerInherit',  // Skinwalker copying abilities
+        'onInsatiableHunger',   // Wendigo attack boost
+        
+        // === ATTACK EVENTS ===
+        'onAttackDeclared',     // Attack started (for attack animation)
+        'onAttackNegated',      // Attack was blocked/negated
+        'onAttackComplete',     // Attack finished
+        
+        // === SPELLS ===
+        'onSpellCast',          // Spell was cast
+        'onBurstPlayed',        // Burst spell played
+        'onPyreCardPlayed',     // Pyre card played
+        'onTargeted',           // Something was targeted
+        
+        // === MISC ===
+        'onCardDrawn',          // Card drawn (opponent sees deck shrink)
+        'onSnipeReveal',        // Snipe revealed enemy card
+    ],
+    
+    // Start capturing events for an action
+    startCapture() {
+        this.captureDepth++;
+        if (this.captureDepth === 1) {
+            this.isCapturing = true;
+            this.capturedEvents = [];
+            console.log('[AnimCapture] Started capturing');
+        }
+    },
+    
+    // Stop capturing and return the event list
+    stopCapture() {
+        this.captureDepth--;
+        if (this.captureDepth <= 0) {
+            this.captureDepth = 0;
+            this.isCapturing = false;
+            const events = this.capturedEvents;
+            this.capturedEvents = [];
+            console.log('[AnimCapture] Stopped. Captured', events.length, 'events');
+            return events;
+        }
+        return null; // Inner capture, don't return yet
+    },
+    
+    // Cancel capture without returning events (for error cases)
+    cancelCapture() {
+        this.captureDepth = 0;
+        this.isCapturing = false;
+        this.capturedEvents = [];
+        console.log('[AnimCapture] Cancelled');
+    },
+    
+    // Record an event (called by listeners)
+    recordEvent(eventType, data) {
+        if (!this.isCapturing) return;
+        
+        // Serialize the event data (remove circular refs, extract needed info)
+        const serialized = this.serializeEventData(eventType, data);
+        
+        this.capturedEvents.push({
+            type: eventType,
+            data: serialized,
+            timestamp: performance.now()
+        });
+    },
+    
+    // Serialize event data for network transmission
+    // Extracts only what's needed for animation, handles circular references
+    serializeEventData(eventType, data) {
+        const result = {};
+        
+        // Helper to serialize a cryptid reference
+        const serializeCryptid = (cryptid) => {
+            if (!cryptid) return null;
+            return {
+                key: cryptid.key,
+                name: cryptid.name,
+                owner: cryptid.owner,
+                col: cryptid.col,
+                row: cryptid.row,
+                currentHp: cryptid.currentHp,
+                currentAtk: cryptid.currentAtk,
+                maxHp: cryptid.maxHp,
+                element: cryptid.element,
+                rarity: cryptid.rarity
+            };
+        };
+        
+        // Helper to serialize a card reference
+        const serializeCard = (card) => {
+            if (!card) return null;
+            return {
+                key: card.key,
+                name: card.name,
+                type: card.type,
+                element: card.element,
+                rarity: card.rarity
+            };
+        };
+        
+        // Helper to serialize a trap reference
+        const serializeTrap = (trap) => {
+            if (!trap) return null;
+            return {
+                key: trap.key,
+                name: trap.name,
+                owner: trap.owner,
+                row: trap.row
+            };
+        };
+        
+        // Copy simple values, serialize complex ones
+        for (const [key, value] of Object.entries(data)) {
+            if (value === null || value === undefined) {
+                result[key] = null;
+            } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                result[key] = value;
+            } else if (key === 'cryptid' || key === 'target' || key === 'attacker' || key === 'killer' || 
+                       key === 'victim' || key === 'source' || key === 'combatant' || key === 'support' ||
+                       key === 'gremlin' || key === 'myling' || key === 'watcher' || key === 'molemanSupport' ||
+                       key === 'cleaveTarget' || key === 'splashTarget' || key === 'explosionTarget' ||
+                       key === 'swapTarget' || key === 'otherTarget' || key === 'baseCryptid' || key === 'evolved') {
+                result[key] = serializeCryptid(value);
+            } else if (key === 'card' || key === 'aura' || key === 'auraCard' || key === 'pyreCard') {
+                result[key] = serializeCard(value);
+            } else if (key === 'trap') {
+                result[key] = serializeTrap(value);
+            } else if (key === 'sourceType' || key === 'status' || key === 'ailment' || key === 'ability' ||
+                       key === 'type' || key === 'reason' || key === 'direction') {
+                result[key] = value; // String enums
+            } else if (Array.isArray(value)) {
+                // For arrays (like targets), serialize each element
+                result[key] = value.map(item => {
+                    if (item && typeof item === 'object' && item.key) {
+                        return serializeCryptid(item);
+                    }
+                    return item;
+                });
+            } else if (typeof value === 'object') {
+                // For nested objects, try to extract useful info
+                // Skip functions and complex nested objects
+                const nested = {};
+                for (const [k, v] of Object.entries(value)) {
+                    if (typeof v !== 'function' && typeof v !== 'object') {
+                        nested[k] = v;
+                    }
+                }
+                if (Object.keys(nested).length > 0) {
+                    result[key] = nested;
+                }
+            }
+        }
+        
+        return result;
+    },
+    
+    // Set up listeners for all visual events
+    // Call this once during game initialization
+    setupListeners() {
+        for (const eventType of this.VISUAL_EVENTS) {
+            GameEvents.on(eventType, (data) => {
+                this.recordEvent(eventType, data);
+            });
+        }
+        console.log('[AnimCapture] Registered listeners for', this.VISUAL_EVENTS.length, 'event types');
+    }
+};
+
+window.AnimationCapture = AnimationCapture;
+
+// Initialize listeners when game loads
+// Defer to ensure GameEvents is fully ready
+setTimeout(() => AnimationCapture.setupListeners(), 0);
+
 // ==================== EFFECT STACK SYSTEM ====================
 // Unified queue for all game effects with proper resolution order
 // Inspired by MTG's stack but adapted for Cryptid Fates' mechanics
