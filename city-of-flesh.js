@@ -918,72 +918,250 @@ CardRegistry.registerCryptid('mothman', {
     element: "steel",
     cost: 5,
     hp: 9,
-    atk: 3,
+    atk: 6,
     rarity: "ultimate",
     mythical: true,
-    combatAbility: "Flight: Can attack any cryptid. On enter, 3 calamity to all enemy combatants",
-    supportAbility: "Omen: Combatant attacks grant 3 calamity before damage",
-    otherAbility: "Harbinger: +1 ATK whenever any cryptid dies by calamity",
-    canTargetAny: true,
-    // COMBAT: On entering combat, apply 3 calamity to all enemy combatants
+    combatAbility: "Flight. Harbinger: On enter, deal 1 damage to each enemy per ailment stack they have.",
+    supportAbility: "Extinction of the Rotted: On enter, cleanse all your combatants and grant +1/+1 per stack cleansed. While here, your combatants are immune to ailments.",
+    otherAbility: "When any ailmented enemy dies, Mothman gains +1/+1 permanently.",
+    canTargetAny: true, // Flight
+    
+    // Helper: Calculate total ailment stacks on a cryptid
+    // Each ailment type contributes its turn count/stack count (not just 1 if present)
+    // e.g., paralyzed + 2 burn = 3 stacks; paralyzed + 3 bleed + 1 burn = 5 stacks
+    getAilmentStacks: (target) => {
+        if (!target) return 0;
+        let stacks = 0;
+        if (target.paralyzed) stacks += 1;
+        if (target.burnTurns > 0) stacks += target.burnTurns;
+        if (target.bleedTurns > 0) stacks += target.bleedTurns;
+        if (target.calamityCounters > 0) stacks += target.calamityCounters;
+        if (target.curseTokens > 0) stacks += target.curseTokens;
+        return stacks;
+    },
+    
+    // COMBAT: Harbinger - On entering combat, deal 1 damage per ailment stack to each enemy
+    // Order: top combatant, top support, middle combatant, middle support, bottom combatant, bottom support
+    // Damage shown simultaneously, then deaths one at a time, then promotions one at a time
+    // NOTE: This sets up pendingHarbingerEffect for the UI to process with animations
     onEnterCombat: (cryptid, owner, game) => {
         const enemyOwner = owner === 'player' ? 'enemy' : 'player';
         const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
         const enemyCombatCol = game.getCombatCol(enemyOwner);
+        const enemySupportCol = game.getSupportCol(enemyOwner);
         
-        // Apply 3 calamity to ALL enemy combatants
-        for (let r = 0; r < 3; r++) {
-            const enemy = enemyField[enemyCombatCol][r];
-            if (enemy) {
-                game.applyCalamity(enemy, 3);
+        const template = CardRegistry.getCryptid('mothman');
+        const targets = [];
+        
+        // Calculate damage for each target in order (top to bottom, combat then support)
+        for (let row = 0; row < 3; row++) {
+            // Combat column first
+            const combatant = enemyField[enemyCombatCol]?.[row];
+            if (combatant) {
+                const stacks = template.getAilmentStacks(combatant);
+                if (stacks > 0) {
+                    targets.push({ 
+                        cryptid: combatant, 
+                        damage: stacks, 
+                        col: enemyCombatCol, 
+                        row, 
+                        owner: enemyOwner,
+                        isCombatant: true
+                    });
+                }
+            }
+            
+            // Support column second
+            const support = enemyField[enemySupportCol]?.[row];
+            if (support) {
+                const stacks = template.getAilmentStacks(support);
+                if (stacks > 0) {
+                    targets.push({ 
+                        cryptid: support, 
+                        damage: stacks, 
+                        col: enemySupportCol, 
+                        row, 
+                        owner: enemyOwner,
+                        isCombatant: false
+                    });
+                }
             }
         }
+        
+        // If there are targets, set up the pending effect for the UI to process
+        if (targets.length > 0) {
+            window.pendingHarbingerEffect = {
+                mothman: cryptid,
+                mothmanOwner: owner,
+                targets: targets,
+                enemyOwner: enemyOwner,
+                enemyCombatCol: enemyCombatCol,
+                enemySupportCol: enemySupportCol
+            };
+            console.log('[Mothman] Harbinger effect queued for', targets.length, 'targets');
+        }
     },
-    // Set up calamity death listener on summon (regardless of position)
-    onSummon: (cryptid, owner, game) => {
-        console.log('[Mothman] Setting up Harbinger listener for', cryptid.name, 'owned by', owner);
-        // Use the unsubscribe function returned by GameEvents.on() for clean cleanup
-        cryptid._unsubscribeCalamityDeath = GameEvents.on('onDeath', (data) => {
-            console.log('[Mothman] onDeath event received:', data.cryptid?.name, 'killedBy:', data.cryptid?.killedBy);
-            // Check if the dead cryptid died from calamity
-            if (data.cryptid?.killedBy === 'calamity') {
-                console.log('[Mothman] Harbinger triggers! +1 ATK');
-                // Mothman gains +1 ATK permanently
-                cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + 1;
-                cryptid.baseAtk = (cryptid.baseAtk || cryptid.atk) + 1;
+    
+    // SUPPORT: Extinction of the Rotted
+    // On entering support: cleanse all your combatants, grant +1/+1 per stack cleansed
+    // While in support: your combatants are immune to ailments
+    onSupport: (cryptid, owner, game) => {
+        cryptid.grantsMothmanImmunity = true;
+        
+        const field = owner === 'player' ? game.playerField : game.enemyField;
+        const combatCol = game.getCombatCol(owner);
+        const template = CardRegistry.getCryptid('mothman');
+        
+        let totalStacksCleansed = 0;
+        
+        // Cleanse all friendly combatants and grant buffs
+        for (let row = 0; row < 3; row++) {
+            const combatant = field[combatCol]?.[row];
+            if (combatant) {
+                const stacks = template.getAilmentStacks(combatant);
                 
-                // Show visual feedback
-                if (typeof queueAbilityAnimation !== 'undefined') {
-                    queueAbilityAnimation({
-                        type: 'buff',
-                        target: cryptid,
-                        message: `🦋 Mothman Harbinger: +1 ATK!`
+                if (stacks > 0) {
+                    // Cleanse all ailments
+                    combatant.paralyzed = false;
+                    combatant.burnTurns = 0;
+                    combatant.bleedTurns = 0;
+                    combatant.calamityCounters = 0;
+                    combatant.curseTokens = 0;
+                    
+                    // Grant +1/+1 per stack
+                    combatant.currentAtk = (combatant.currentAtk || combatant.atk) + stacks;
+                    combatant.baseAtk = (combatant.baseAtk || combatant.atk) + stacks;
+                    combatant.currentHp = (combatant.currentHp || combatant.hp) + stacks;
+                    combatant.maxHp = (combatant.maxHp || combatant.hp) + stacks;
+                    
+                    totalStacksCleansed += stacks;
+                    
+                    GameEvents.emit('onExtinctionCleanse', { 
+                        mothman: cryptid, 
+                        target: combatant, 
+                        stacksCleansed: stacks,
+                        owner 
                     });
                 }
                 
-                // Force render to show updated stats
-                if (typeof renderSprites === 'function') {
-                    renderSprites();
-                }
-                
-                GameEvents.emit('onBuffApplied', { 
-                    cryptid, 
-                    owner: cryptid.owner, 
-                    atkBonus: 1,
-                    source: 'Mothman Harbinger'
+                // Mark combatant as having Mothman immunity
+                combatant.hasMothmanAilmentImmunity = true;
+            }
+        }
+        
+        if (totalStacksCleansed > 0) {
+            if (typeof queueAbilityAnimation !== 'undefined') {
+                queueAbilityAnimation({
+                    type: 'buff',
+                    target: cryptid,
+                    message: `🦋 Extinction: Cleansed ${totalStacksCleansed} stacks!`
                 });
+            }
+        }
+    },
+    
+    // When Mothman leaves support (death or promotion), remove immunity from combatants
+    onLeavingSupport: (cryptid, owner, game) => {
+        const field = owner === 'player' ? game.playerField : game.enemyField;
+        const combatCol = game.getCombatCol(owner);
+        
+        for (let row = 0; row < 3; row++) {
+            const combatant = field[combatCol]?.[row];
+            if (combatant) {
+                combatant.hasMothmanAilmentImmunity = false;
+            }
+        }
+    },
+    
+    // Set up death listener for Other ability on summon
+    onSummon: (cryptid, owner, game) => {
+        console.log('[Mothman] Setting up ailmented enemy death listener for', cryptid.name, 'owned by', owner);
+        const template = CardRegistry.getCryptid('mothman');
+        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
+        
+        // Listen for any enemy death where the enemy had ailments
+        cryptid._unsubscribeAilmentedDeath = GameEvents.on('onDeath', (data) => {
+            // Check if the dead cryptid belonged to the enemy and had ailments
+            if (data.owner === enemyOwner) {
+                const deadCryptid = data.cryptid;
+                const hadAilments = template.getAilmentStacks(deadCryptid) > 0 ||
+                    deadCryptid.killedBy === 'burn' ||
+                    deadCryptid.killedBy === 'calamity' ||
+                    deadCryptid.killedBy === 'bleed' ||
+                    deadCryptid.killedBy === 'harbinger';
+                
+                if (hadAilments) {
+                    console.log('[Mothman] Ailmented enemy died! +1/+1');
+                    
+                    // Mothman gains +1/+1 permanently
+                    cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + 1;
+                    cryptid.baseAtk = (cryptid.baseAtk || cryptid.atk) + 1;
+                    cryptid.currentHp = (cryptid.currentHp || cryptid.hp) + 1;
+                    cryptid.maxHp = (cryptid.maxHp || cryptid.hp) + 1;
+                    
+                    // Show visual feedback
+                    if (typeof queueAbilityAnimation !== 'undefined') {
+                        queueAbilityAnimation({
+                            type: 'buff',
+                            target: cryptid,
+                            message: `🦋 Mothman: +1/+1 from ailmented death!`
+                        });
+                    }
+                    
+                    // Force render to show updated stats
+                    if (typeof renderSprites === 'function') {
+                        renderSprites();
+                    }
+                    
+                    GameEvents.emit('onBuffApplied', { 
+                        cryptid, 
+                        owner: cryptid.owner, 
+                        atkBonus: 1,
+                        hpBonus: 1,
+                        source: 'Mothman Ailmented Death'
+                    });
+                }
             }
         });
     },
-    // SUPPORT: Combatant's attacks grant 3 calamity before damage
-    onCombatantBeforeAttack: (support, combatant, target, game) => {
-        game.applyCalamity(target, 3);
-    },
+    
     // Clean up listener on death
     onDeath: (cryptid, game) => {
-        if (cryptid._unsubscribeCalamityDeath) {
-            cryptid._unsubscribeCalamityDeath();
-            cryptid._unsubscribeCalamityDeath = null;
+        if (cryptid._unsubscribeAilmentedDeath) {
+            cryptid._unsubscribeAilmentedDeath();
+            cryptid._unsubscribeAilmentedDeath = null;
+        }
+        
+        // Also clean up immunity if we were in support
+        if (cryptid.grantsMothmanImmunity) {
+            const owner = cryptid.owner;
+            const field = owner === 'player' ? game.playerField : game.enemyField;
+            const combatCol = game.getCombatCol(owner);
+            
+            for (let row = 0; row < 3; row++) {
+                const combatant = field[combatCol]?.[row];
+                if (combatant) {
+                    combatant.hasMothmanAilmentImmunity = false;
+                }
+            }
+        }
+    },
+    
+    // When promoted to combat, clean up support mechanics
+    onCombat: (cryptid, owner, game) => {
+        // Remove immunity from combatants when Mothman leaves support
+        if (cryptid.grantsMothmanImmunity) {
+            cryptid.grantsMothmanImmunity = false;
+            
+            const field = owner === 'player' ? game.playerField : game.enemyField;
+            const combatCol = game.getCombatCol(owner);
+            
+            for (let row = 0; row < 3; row++) {
+                const combatant = field[combatCol]?.[row];
+                if (combatant) {
+                    combatant.hasMothmanAilmentImmunity = false;
+                }
+            }
         }
     }
 });
@@ -1396,12 +1574,12 @@ CardRegistry.registerCryptid('vampireInitiate', {
         if (attacker.owner === 'player') game.playerPyre++;
         else game.enemyPyre++;
         
-        // Play pyre gain animation from attacker sprite
+        // Play pyre gain animation from attacker sprite (skipBurningEffect prevents sprite from fading)
         const vampSprite = document.querySelector(
             `.cryptid-sprite[data-owner="${attacker.owner}"][data-col="${attacker.col}"][data-row="${attacker.row}"]`
         );
         if (window.CombatEffects?.playPyreBurn) {
-            window.CombatEffects.playPyreBurn(vampSprite, 1);
+            window.CombatEffects.playPyreBurn(vampSprite, 1, { skipBurningEffect: true });
         }
         
         GameEvents.emit('onPyreGained', { owner: attacker.owner, amount: 1, source: 'Vampire Initiate', sourceCryptid: attacker });
@@ -1442,12 +1620,12 @@ CardRegistry.registerCryptid('vampireInitiate', {
         if (owner === 'player') game.playerPyre += 1;
         else game.enemyPyre += 1;
         
-        // Play pyre gain animation from Vampire Initiate sprite
+        // Play pyre gain animation from Vampire Initiate sprite (skipBurningEffect prevents sprite from fading)
         const vampSprite = document.querySelector(
             `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
         );
         if (window.CombatEffects?.playPyreBurn) {
-            window.CombatEffects.playPyreBurn(vampSprite, 1);
+            window.CombatEffects.playPyreBurn(vampSprite, 1, { skipBurningEffect: true });
         }
         
         GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'Blood Pact', sourceCryptid: cryptid });
@@ -1501,7 +1679,7 @@ CardRegistry.registerCryptid('redcap', {
     atk: 5,
     rarity: "uncommon",
     evolvesFrom: 'boggart',
-    combatAbility: "Lifesteal. Bloodlust: +1 ATK for each ailmented cryptid on enemy's side of the field.",
+    combatAbility: "Lifesteal. Bloodlust: On attack, +1 damage for each ailmented cryptid on enemy's field.",
     supportAbility: "When combatant kills an enemy, grant combatant and Redcap +1 ATK. If the enemy was ailmented, also grant both +1 HP.",
     otherAbility: "If Redcap does not kill an enemy cryptid by the end of your turn, it has 1HP.",
     
@@ -1716,12 +1894,12 @@ CardRegistry.registerCryptid('vampireLord', {
                 if (owner === 'player') game.playerPyre += pyreGain;
                 else game.enemyPyre += pyreGain;
                 
-                // Play pyre gain animation
+                // Play pyre gain animation (skipBurningEffect prevents sprite from fading)
                 const vampSprite = document.querySelector(
                     `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
                 );
                 if (window.CombatEffects?.playPyreBurn) {
-                    window.CombatEffects.playPyreBurn(vampSprite, pyreGain);
+                    window.CombatEffects.playPyreBurn(vampSprite, pyreGain, { skipBurningEffect: true });
                 }
                 
                 // Visual feedback

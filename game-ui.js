@@ -334,7 +334,8 @@ function calculateTilePositions() {
     // GUARD: Don't recalculate during dramatic death zoom - getBoundingClientRect returns
     // zoomed coordinates, but sprite left/top are in parent coordinate space (pre-transform).
     // This mismatch causes sprites to shift dramatically during zoom animations.
-    if (window.CombatEffects?._dramaticDeathZoomActive) {
+    // Use counter (not boolean) to support overlapping death animations
+    if ((window.CombatEffects?._dramaticDeathZoomCount || 0) > 0) {
         return;
     }
     
@@ -915,7 +916,7 @@ function renderSprites() {
                             const statusDiv = sprite.querySelector('.status-icons');
                             
                             if (atkValue) atkValue.textContent = Math.max(0, displayAtk);
-                            if (hpValue) hpValue.textContent = displayHp;
+                            if (hpValue) hpValue.textContent = Math.max(0, displayHp);
                             
                             // Update HP fill bar
                             const hpFill = sprite.querySelector('.hp-fill');
@@ -1000,7 +1001,7 @@ function renderSprites() {
                                     </div>
                                     <div class="stat-badge hp-badge">
                                         <span class="stat-icon">♥</span>
-                                        <span class="stat-value">${displayHp}</span>
+                                        <span class="stat-value">${Math.max(0, displayHp)}</span>
                                     </div>
                                     ${evoPipsHtml}
                                 </div>
@@ -2258,7 +2259,6 @@ function summonToSlot(col, row) {
             setTimeout(() => {
                 console.log('[SummonKindling] Animation complete, showingKindling before cleanup:', ui.showingKindling);
                 container.classList.remove('transitioning');
-                isAnimating = false;
                 
                 // Force clear tracking again to ensure clean state
                 currentHandCardIds = [];
@@ -2268,6 +2268,17 @@ function summonToSlot(col, row) {
                 updateButtons();
                 if (typeof updateMenuButtons === 'function') updateMenuButtons();
                 console.log('[SummonKindling] After final render, showingKindling:', ui.showingKindling);
+                
+                // Check for pending Harbinger effect (Mothman entering combat)
+                if (window.pendingHarbingerEffect) {
+                    processHarbingerEffect(() => {
+                        isAnimating = false;
+                        renderAll();
+                        updateButtons();
+                    });
+                } else {
+                    isAnimating = false;
+                }
             }, 400);
         }
     } else {
@@ -2287,9 +2298,19 @@ function summonToSlot(col, row) {
             setTimeout(() => {
                 const idx = game.playerHand.findIndex(c => c.id === card.id);
                 if (idx > -1) game.playerHand.splice(idx, 1);
-                isAnimating = false;
                 renderAll();
                 updateButtons();
+                
+                // Check for pending Harbinger effect (Mothman entering combat)
+                if (window.pendingHarbingerEffect) {
+                    processHarbingerEffect(() => {
+                        isAnimating = false;
+                        renderAll();
+                        updateButtons();
+                    });
+                } else {
+                    isAnimating = false;
+                }
             }, 400);
         }
     }
@@ -3173,12 +3194,18 @@ function checkCascadingDeaths(onComplete) {
                 const impactX = rect.left + rect.width/2 - bRect.left;
                 const impactY = rect.top + rect.height/2 - bRect.top;
                 
-                // Visual effects (use actualDamage for intensity, damage for display)
-                const impactIntensity = pendingDamage.actualDamage || pendingDamage.damage;
+                // Cap displayed damage at target's EFFECTIVE HP before damage (no overkill display)
+                // For combatants with supports, effective HP includes support's HP (HP pooling)
+                const damage = pendingDamage.damage;
+                const effectiveHpBefore = (game.getEffectiveHp?.(cryptid) || cryptid.currentHp || 0) + damage;
+                const displayDamage = Math.min(damage, Math.max(0, effectiveHpBefore));
+                
+                // Visual effects (use actualDamage for intensity, displayDamage for number)
+                const impactIntensity = pendingDamage.actualDamage || damage;
                 CombatEffects.createImpactFlash(impactX, impactY, 70);
                 CombatEffects.createSparks(impactX, impactY, 12);
                 CombatEffects.heavyImpact(impactIntensity);
-                CombatEffects.showDamageNumber(cryptid, pendingDamage.damage, pendingDamage.damage >= 5);
+                CombatEffects.showDamageNumber(cryptid, displayDamage, displayDamage >= 5);
                 
                 // Hit recoil on sprite
                 sprite.classList.add('hit-recoil');
@@ -3397,6 +3424,20 @@ function playAttackAnimation(attackerSprite, owner, onComplete, onImpact, damage
 window.playAttackAnimation = playAttackAnimation;
 
 function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
+    // Safety reset: Clear any stale death zoom state that might prevent death animations
+    // Reset counter to 0 for fresh start (handles cases where cleanup never ran)
+    if ((window.CombatEffects?._dramaticDeathZoomCount || 0) > 0) {
+        console.log('[performAttackOnTarget] Clearing stale death zoom counter:', window.CombatEffects._dramaticDeathZoomCount);
+        window.CombatEffects._dramaticDeathZoomCount = 0;
+        window.CombatEffects._dramaticDeathBaseTransform = '';
+        const wrapper = document.getElementById('game-screen-wrapper');
+        if (wrapper) {
+            wrapper.style.transition = '';
+            wrapper.style.transform = '';
+            wrapper.style.transformOrigin = '';
+        }
+    }
+    
     // Capture target info BEFORE attack for multiplayer death tracking
     const targetBeforeAttack = game.getFieldCryptid(targetOwner, targetCol, targetRow);
     const targetKey = targetBeforeAttack?.key || null;
@@ -3580,6 +3621,14 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
     // IF KILLED: Start dramatic death IMMEDIATELY at moment of impact!
     // This MUST happen before health bar updates or any other visual changes
     if (result.killed && targetSprite) {
+        // FIX: If sprite has leftover dramaticDeathStarted flag from a previous attack
+        // (can happen with rapid cheat mode attacks), clear it so death animation can play
+        if (targetSprite.dataset.dramaticDeathStarted) {
+            console.log('[performAttackOnTarget] Clearing stale dramaticDeathStarted flag from previous death');
+            delete targetSprite.dataset.dramaticDeathStarted;
+            targetSprite.style.opacity = '';
+        }
+        
         if (window.CombatEffects?.playDramaticDeath) {
             usingDramaticDeath = true;
             console.log('[performAttackOnTarget] Starting dramatic death zoom at impact moment');
@@ -3708,6 +3757,10 @@ function processKuchisakeExplosion(explosionInfo, onComplete) {
         return;
     }
     
+    // Defer trap processing until explosion chain is complete
+    // This prevents Blood Covenant from killing Kuchisake mid-explosion
+    window.deferTrapProcessing = true;
+    
     const victimName = explosionInfo.victim?.name || 'enemy';
     
     let currentIndex = 0;
@@ -3751,7 +3804,11 @@ function processKuchisakeExplosion(explosionInfo, onComplete) {
         
         // Play full combat effects (damage number, particles, shake)
         if (window.CombatEffects) {
-            const isCrit = damage >= 5;
+            // Cap displayed damage at target's EFFECTIVE HP before damage (no overkill display)
+            // For combatants with supports, effective HP includes support's HP (HP pooling)
+            const effectiveHpBefore = (game.getEffectiveHp?.(target) || target.currentHp || 0) + damage;
+            const displayDamage = Math.min(damage, Math.max(0, effectiveHpBefore));
+            const isCrit = displayDamage >= 5;
             
             // Medium screen shake for explosion
             CombatEffects.heavyImpact(Math.max(damage, 1) * 0.7);
@@ -3761,8 +3818,8 @@ function processKuchisakeExplosion(explosionInfo, onComplete) {
             CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
             CombatEffects.createImpactParticles(impactX, impactY, killed ? '#ff2222' : '#ff6622', 10 + damage);
             
-            // Show damage number popup
-            CombatEffects.showDamageNumber(target, damage, isCrit);
+            // Show damage number popup (capped to HP absorbed)
+            CombatEffects.showDamageNumber(target, displayDamage, isCrit);
         }
         
         // Hit recoil animation on sprite
@@ -3812,8 +3869,17 @@ function processKuchisakeExplosion(explosionInfo, onComplete) {
 // Process deferred promotion and then Destroyer after Kuchisake explosion
 // Order: Promotion (if support survived) → Destroyer (if support still alive)
 function processDeferredPromotionAndDestroyer(explosionInfo, onComplete) {
+    // Helper to finalize explosion chain and process deferred traps
+    function finalizeExplosionChain(callback) {
+        window.deferTrapProcessing = false;
+        if (game?.startTrapProcessing) {
+            game.startTrapProcessing();
+        }
+        callback?.();
+    }
+    
     if (!explosionInfo) {
-        onComplete?.();
+        finalizeExplosionChain(onComplete);
         return;
     }
     
@@ -3831,7 +3897,7 @@ function processDeferredPromotionAndDestroyer(explosionInfo, onComplete) {
                 processPendingPromotions(() => {
                     // After promotion animation, apply Destroyer damage
                     setTimeout(() => {
-                        processDeferredDestroyer(destroyerInfo, onComplete);
+                        processDeferredDestroyer(destroyerInfo, () => finalizeExplosionChain(onComplete));
                     }, 200);
                 });
             }, 300);
@@ -3842,7 +3908,7 @@ function processDeferredPromotionAndDestroyer(explosionInfo, onComplete) {
         // Show visual effect of Destroyer energy dissipating
         if (destroyerInfo && destroyerInfo.overkillDamage > 0) {
             showMessage(`💨 Destroyer energy dissipates - no target!`, TIMING.messageDisplay);
-            setTimeout(onComplete, 400);
+            setTimeout(() => finalizeExplosionChain(onComplete), 400);
             return;
         }
     }
@@ -3850,10 +3916,10 @@ function processDeferredPromotionAndDestroyer(explosionInfo, onComplete) {
     // No deferred promotion needed, but might still have Destroyer (edge cases)
     if (destroyerInfo) {
         setTimeout(() => {
-            processDeferredDestroyer(destroyerInfo, onComplete);
+            processDeferredDestroyer(destroyerInfo, () => finalizeExplosionChain(onComplete));
         }, 200);
     } else {
-        onComplete?.();
+        finalizeExplosionChain(onComplete);
     }
 }
 
@@ -3884,18 +3950,23 @@ function processDeferredDestroyer(destroyerInfo, onComplete) {
         impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
     }
     
-    // Show Destroyer message
-    showMessage(`💥 Destroyer: ${damage} damage pierces to ${target.name}!`, TIMING.messageDisplay);
+    // Cap displayed damage at target's EFFECTIVE HP before damage (no overkill display)
+    // For combatants with supports, effective HP includes support's HP (HP pooling)
+    const effectiveHpBefore = (game.getEffectiveHp?.(target) || target.currentHp || 0) + damage;
+    const displayDamage = Math.min(damage, Math.max(0, effectiveHpBefore));
+    
+    // Show Destroyer message (use actual damage dealt, not overkill)
+    showMessage(`💥 Destroyer: ${displayDamage} damage pierces to ${target.name}!`, TIMING.messageDisplay);
     
     // Play Destroyer effects
     if (window.CombatEffects) {
-        const isCrit = damage >= 5;
+        const isCrit = displayDamage >= 5;
         
         CombatEffects.heavyImpact(Math.max(damage, 1));
         CombatEffects.createImpactFlash(impactX, impactY, 100 + damage * 12);
         CombatEffects.createSparks(impactX, impactY, 12 + damage * 2);
         CombatEffects.createImpactParticles(impactX, impactY, killed ? '#ff0000' : '#ff4444', 12 + damage);
-        CombatEffects.showDamageNumber(target, damage, isCrit);
+        CombatEffects.showDamageNumber(target, displayDamage, isCrit);
     }
     
     // Hit recoil
@@ -3935,35 +4006,113 @@ function processDeferredDestroyer(destroyerInfo, onComplete) {
     }
 }
 
-// Process Moleman splash damage sequentially: above target first, then below
-// Each splash plays out fully (damage + death) before the next
-function processMolemanSplash(splashInfo, onComplete) {
-    if (!splashInfo || !splashInfo.targets || splashInfo.targets.length === 0) {
-        onComplete?.();
+// ==================== UNIVERSAL MULTI-TARGET DAMAGE SYSTEM ====================
+// Single source of truth for all multi-target damage processing
+// Ensures consistent ordering: damage (simultaneous) → deaths (sequential) → promotions (sequential)
+//
+// Options:
+//   source: Cryptid causing the damage (for killedBySource tracking)
+//   sourceOwner: Owner of the source ('player' or 'enemy')
+//   targets: Array of { cryptid, damage, col, row, owner }
+//   message: Message to show at start (optional)
+//   visualTheme: 'generic' | 'moth' | 'explosion' | 'earth' | 'fire' (optional, default: 'generic')
+//   particleColor: Custom particle color (optional)
+//   killedBy: What to mark deaths as (e.g., 'harbinger', 'explosion', 'splash')
+//   damageEvent: Event name to emit for each damage (optional)
+//   onComplete: Callback when all processing is done
+
+function processMultiTargetDamage(options) {
+    const {
+        source,
+        sourceOwner,
+        targets = [],
+        message,
+        visualTheme = 'generic',
+        particleColor,
+        killedBy = 'ability',
+        damageEvent,
+        onComplete
+    } = options;
+    
+    // Safety reset: Clear any stale death zoom state before processing
+    // Reset counter to 0 for fresh start (handles cases where cleanup never ran)
+    if ((window.CombatEffects?._dramaticDeathZoomCount || 0) > 0) {
+        console.log('[processMultiTargetDamage] Clearing stale death zoom counter:', window.CombatEffects._dramaticDeathZoomCount);
+        window.CombatEffects._dramaticDeathZoomCount = 0;
+        window.CombatEffects._dramaticDeathBaseTransform = '';
+        const wrapper = document.getElementById('game-screen-wrapper');
+        if (wrapper) {
+            wrapper.style.transition = '';
+            wrapper.style.transform = '';
+            wrapper.style.transformOrigin = '';
+        }
+    }
+    
+    // CRITICAL: Capture tile positions NOW, BEFORE any damage/death animations start
+    // This ensures we have valid positions even if calculateTilePositions is blocked later
+    calculateTilePositions();
+    const capturedPositions = { ...window.tilePositions };
+    console.log('[processMultiTargetDamage] Captured tile positions:', Object.keys(capturedPositions).length, 'tiles');
+    
+    // Helper to finalize chain and process deferred traps
+    function finalizeChain(callback) {
+        window.deferTrapProcessing = false;
+        if (game?.startTrapProcessing) {
+            game.startTrapProcessing();
+        }
+        callback?.();
+    }
+    
+    if (!targets || targets.length === 0) {
+        finalizeChain(onComplete);
         return;
     }
     
-    let currentIndex = 0;
+    console.log(`[MultiTargetDamage] Processing ${targets.length} targets, theme: ${visualTheme}, killedBy: ${killedBy}`);
     
-    function processNextSplash() {
-        if (currentIndex >= splashInfo.targets.length) {
-            onComplete?.();
-            return;
-        }
+    // Defer trap processing until the entire damage chain is complete
+    window.deferTrapProcessing = true;
+    
+    // Sort targets in correct order: top to bottom, combat then support
+    // Order: top combatant (row 0), top support (row 0), middle combatant (row 1), etc.
+    const sortedTargets = [...targets].sort((a, b) => {
+        // First sort by row (ascending: 0, 1, 2)
+        if (a.row !== b.row) return a.row - b.row;
+        // Then by column type: combatant before support
+        // Combat column depends on owner
+        const aCombatCol = game.getCombatCol(a.owner);
+        const bCombatCol = game.getCombatCol(b.owner);
+        const aIsCombatant = a.col === aCombatCol;
+        const bIsCombatant = b.col === bCombatCol;
+        if (aIsCombatant && !bIsCombatant) return -1;
+        if (!aIsCombatant && bIsCombatant) return 1;
+        return 0;
+    });
+    
+    // Show initial message if provided
+    if (message) {
+        showMessage(message, TIMING.messageDisplay);
+    }
+    
+    // Get visual effect settings based on theme
+    const themeSettings = getMultiDamageTheme(visualTheme, particleColor);
+    
+    // PHASE 1: Apply damage to all targets simultaneously with visual effects
+    const deathsToProcess = [];
+    
+    sortedTargets.forEach(targetInfo => {
+        const { cryptid, damage, col, row, owner: targetOwner } = targetInfo;
         
-        const result = game.applyMolemanSplash(splashInfo, currentIndex);
-        currentIndex++;
+        // Skip if already dead
+        if (cryptid._alreadyKilled) return;
         
-        if (!result || result.skipped) {
-            // Target no longer valid, move to next
-            setTimeout(processNextSplash, 100);
-            return;
-        }
+        // Apply damage
+        cryptid.currentHp = (cryptid.currentHp || cryptid.hp) - damage;
         
-        const { target, damage, killed, row, col, direction, targetOwner } = result;
+        // Find sprite for visual effects
         const sprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${col}"][data-row="${row}"]`);
         
-        // Calculate impact position for visual effects
+        // Calculate impact position
         const battlefield = document.getElementById('battlefield-area');
         let impactX = 0, impactY = 0;
         if (sprite && battlefield) {
@@ -3973,27 +4122,23 @@ function processMolemanSplash(splashInfo, onComplete) {
             impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
         }
         
-        // Show splash damage message
-        showMessage(`🦡 Moleman splash: ${damage} to ${target.name}!`, TIMING.messageDisplay);
-        
-        // Play full combat effects (damage number, particles, shake)
+        // Show damage visual effects
         if (window.CombatEffects) {
-            const isCrit = damage >= 5;
+            // Cap displayed damage at target's EFFECTIVE HP before damage (no overkill display)
+            // For combatants with supports, effective HP includes support's HP (HP pooling)
+            // Since damage was already applied, reconstruct effective HP before: getEffectiveHp + damage
+            const effectiveHpBefore = (game.getEffectiveHp?.(cryptid) || cryptid.currentHp || 0) + damage;
+            const displayDamage = Math.min(damage, Math.max(0, effectiveHpBefore));
+            const isCrit = displayDamage >= 5;
             
-            // Light screen shake for splash
-            CombatEffects.heavyImpact(Math.max(damage, 1) * 0.5);
-            
-            // Impact flash and particles
-            CombatEffects.createImpactFlash(impactX, impactY, 60 + damage * 8);
-            CombatEffects.createSparks(impactX, impactY, 6 + damage);
-            CombatEffects.createImpactParticles(impactX, impactY, killed ? '#ff2222' : '#ffaa44', 6 + damage);
-            
-            // Show damage number popup
-            CombatEffects.showDamageNumber(target, damage, isCrit);
+            CombatEffects.createImpactFlash(impactX, impactY, themeSettings.flashSize + damage * themeSettings.flashScale);
+            CombatEffects.createSparks(impactX, impactY, themeSettings.sparks + damage);
+            CombatEffects.createImpactParticles(impactX, impactY, themeSettings.color, themeSettings.particles + damage);
+            CombatEffects.showDamageNumber(cryptid, displayDamage, isCrit);
         }
         
-        // Hit recoil animation on sprite
-        if (sprite && !killed) {
+        // Hit recoil animation
+        if (sprite) {
             sprite.classList.add('hit-recoil');
             setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
         }
@@ -4001,39 +4146,280 @@ function processMolemanSplash(splashInfo, onComplete) {
         // Update health bar
         window.updateSpriteHealthBar?.(targetOwner, col, row);
         
-        if (killed) {
-            // Play death animation, then continue
-            const rarity = target.rarity || 'common';
-            
-            setTimeout(() => {
-                if (sprite && window.CombatEffects?.playDramaticDeath) {
-                    game.killCryptid(target, splashInfo.attacker.owner);
-                    window.CombatEffects.playDramaticDeath(sprite, targetOwner, rarity, () => {
-                        renderAll();
-                        // Check for any cascading deaths from this kill
-                        checkCascadingDeaths(() => {
-                            setTimeout(processNextSplash, 300);
-                        });
-                    });
-                } else {
-                    if (sprite) sprite.classList.add(targetOwner === 'enemy' ? 'dying-right' : 'dying-left');
-                    setTimeout(() => {
-                        game.killCryptid(target, splashInfo.attacker.owner);
-                        renderAll();
-                        checkCascadingDeaths(() => {
-                            setTimeout(processNextSplash, 300);
-                        });
-                    }, TIMING.deathAnim);
-                }
-            }, 200); // Brief pause before death
+        // Track if this cryptid died
+        if ((cryptid.currentHp || 0) <= 0) {
+            const combatCol = game.getCombatCol(targetOwner);
+            // Store captured position for death animation
+            const posKey = `${targetOwner}-${col}-${row}`;
+            deathsToProcess.push({ 
+                cryptid, 
+                col, 
+                row, 
+                owner: targetOwner,
+                isCombatant: col === combatCol,
+                rarity: cryptid.rarity || 'common',
+                capturedPosition: capturedPositions[posKey] // Pre-captured position for death focus
+            });
+        }
+        
+        // Emit damage event if specified
+        if (damageEvent) {
+            GameEvents.emit(damageEvent, { source, target: cryptid, damage, owner: targetOwner });
+        }
+    });
+    
+    // Screen shake based on number of targets hit
+    if (window.CombatEffects && sortedTargets.length > 0) {
+        CombatEffects.heavyImpact(Math.min(sortedTargets.length * themeSettings.shakeMultiplier, 3));
+    }
+    
+    // PHASE 2: Process deaths one at a time (after damage numbers show)
+    setTimeout(() => {
+        processMultiTargetDeaths(deathsToProcess, source, sourceOwner, killedBy, () => {
+            // PHASE 3: Process promotions
+            processMultiTargetPromotions(deathsToProcess, () => {
+                finalizeChain(onComplete);
+            });
+        });
+    }, 500); // Wait for damage numbers to display
+}
+
+// Get visual theme settings for multi-target damage
+function getMultiDamageTheme(theme, customColor) {
+    const themes = {
+        generic: { color: '#ffaa44', flashSize: 50, flashScale: 8, sparks: 6, particles: 8, shakeMultiplier: 0.5 },
+        moth: { color: '#8844aa', flashSize: 50, flashScale: 8, sparks: 6, particles: 8, shakeMultiplier: 0.5 },
+        explosion: { color: '#ff6622', flashSize: 80, flashScale: 10, sparks: 10, particles: 10, shakeMultiplier: 0.7 },
+        earth: { color: '#886644', flashSize: 60, flashScale: 8, sparks: 8, particles: 10, shakeMultiplier: 0.6 },
+        fire: { color: '#ff4422', flashSize: 70, flashScale: 10, sparks: 8, particles: 10, shakeMultiplier: 0.6 },
+        ice: { color: '#44aaff', flashSize: 50, flashScale: 8, sparks: 6, particles: 8, shakeMultiplier: 0.4 },
+        lightning: { color: '#ffff44', flashSize: 90, flashScale: 12, sparks: 12, particles: 6, shakeMultiplier: 0.8 },
+        poison: { color: '#44ff44', flashSize: 40, flashScale: 6, sparks: 4, particles: 10, shakeMultiplier: 0.3 }
+    };
+    
+    const settings = themes[theme] || themes.generic;
+    if (customColor) settings.color = customColor;
+    return settings;
+}
+
+// Process deaths sequentially in correct order
+function processMultiTargetDeaths(deathsToProcess, source, sourceOwner, killedBy, onComplete) {
+    if (!deathsToProcess || deathsToProcess.length === 0) {
+        onComplete?.();
+        return;
+    }
+    
+    // Deaths are already sorted from the main function
+    let currentIndex = 0;
+    
+    function processNextDeath() {
+        if (currentIndex >= deathsToProcess.length) {
+            // All deaths processed
+            setTimeout(onComplete, 300);
+            return;
+        }
+        
+        const death = deathsToProcess[currentIndex];
+        currentIndex++;
+        
+        // Check if still needs death (might have been killed by cascading effect)
+        if (death.cryptid._alreadyKilled || (death.cryptid.currentHp || 0) > 0) {
+            setTimeout(processNextDeath, 100);
+            return;
+        }
+        
+        const sprite = document.querySelector(`.cryptid-sprite[data-owner="${death.owner}"][data-col="${death.col}"][data-row="${death.row}"]`);
+        
+        // Use captured position (pre-computed before any animations) to ensure correct death focus
+        // This is critical because calculateTilePositions may be blocked during death zoom
+        const capturedPos = death.capturedPosition;
+        if (sprite && capturedPos) {
+            // Always set position from captured data - this is the RELIABLE source
+            sprite.style.left = capturedPos.x + 'px';
+            sprite.style.top = capturedPos.y + 'px';
+            console.log('[MultiTargetDeath] Using captured position for', death.cryptid.name, capturedPos);
+        } else if (sprite && window.tilePositions) {
+            // Fallback to current tilePositions if no captured position
+            const posKey = `${death.owner}-${death.col}-${death.row}`;
+            const pos = window.tilePositions[posKey];
+            if (pos && (!sprite.style.left || sprite.style.left === '0px' || !sprite.style.top || sprite.style.top === '0px')) {
+                console.log('[MultiTargetDeath] Fallback: fixing sprite position for', death.cryptid.name, 'at', posKey);
+                sprite.style.left = pos.x + 'px';
+                sprite.style.top = pos.y + 'px';
+            }
+        }
+        
+        showMessage(`💀 ${death.cryptid.name} falls!`, TIMING.messageDisplay);
+        
+        // Clear any previous death flag so animation plays
+        if (sprite?.dataset.dramaticDeathStarted) {
+            delete sprite.dataset.dramaticDeathStarted;
+        }
+        
+        // Mark as killed by the specified source
+        death.cryptid.killedBy = killedBy;
+        death.cryptid.killedBySource = source;
+        
+        if (sprite && window.CombatEffects?.playDramaticDeath) {
+            game.killCryptid(death.cryptid, sourceOwner, { skipPromotion: true });
+            window.CombatEffects.playDramaticDeath(sprite, death.owner, death.rarity, () => {
+                renderAll();
+                setTimeout(processNextDeath, 200);
+            });
         } else {
-            // No death, just move to next after brief delay
-            setTimeout(processNextSplash, 400);
+            if (sprite) sprite.classList.add(death.owner === 'enemy' ? 'dying-right' : 'dying-left');
+            setTimeout(() => {
+                game.killCryptid(death.cryptid, sourceOwner, { skipPromotion: true });
+                renderAll();
+                setTimeout(processNextDeath, 200);
+            }, TIMING.deathAnim);
         }
     }
     
-    // Small delay before starting splash sequence for visual clarity
-    setTimeout(processNextSplash, 300);
+    processNextDeath();
+}
+
+// Process promotions sequentially after multi-target deaths
+function processMultiTargetPromotions(deathsToProcess, onComplete) {
+    if (!deathsToProcess || deathsToProcess.length === 0) {
+        renderAll();
+        onComplete?.();
+        return;
+    }
+    
+    // Find all unique owner/row combinations that might need promotions
+    // Only combatant deaths can trigger promotions
+    const promotionCandidates = [];
+    const seen = new Set();
+    
+    deathsToProcess.forEach(death => {
+        if (death.isCombatant) {
+            const key = `${death.owner}-${death.row}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                promotionCandidates.push({ owner: death.owner, row: death.row });
+            }
+        }
+    });
+    
+    // Sort by row (top to bottom)
+    promotionCandidates.sort((a, b) => a.row - b.row);
+    
+    if (promotionCandidates.length === 0) {
+        renderAll();
+        onComplete?.();
+        return;
+    }
+    
+    let currentIndex = 0;
+    
+    function processNextPromotion() {
+        if (currentIndex >= promotionCandidates.length) {
+            onComplete?.();
+            return;
+        }
+        
+        const { owner, row } = promotionCandidates[currentIndex];
+        currentIndex++;
+        
+        const combatCol = game.getCombatCol(owner);
+        const supportCol = game.getSupportCol(owner);
+        const field = owner === 'player' ? game.playerField : game.enemyField;
+        
+        const combatant = field[combatCol]?.[row];
+        const support = field[supportCol]?.[row];
+        
+        // Check if promotion is needed (combat empty, support exists)
+        if (combatant || !support || support._alreadyKilled) {
+            setTimeout(processNextPromotion, 100);
+            return;
+        }
+        
+        // Trigger the promotion
+        game.promoteSupport(owner, row);
+        
+        // Manually queue the promotion animation since promoteSupport doesn't do it
+        if (!window.pendingPromotions) window.pendingPromotions = [];
+        window.pendingPromotions.push({ owner, row });
+        
+        // Animate the promotion (skip Harbinger check to prevent infinite loop)
+        processPendingPromotions(() => {
+            setTimeout(processNextPromotion, 200);
+        }, true); // skipHarbingerCheck = true
+    }
+    
+    // Start processing promotions
+    setTimeout(processNextPromotion, 300);
+}
+
+// Make universal function available globally
+window.processMultiTargetDamage = processMultiTargetDamage;
+
+// ==================== END UNIVERSAL MULTI-TARGET DAMAGE SYSTEM ====================
+
+// Process Mothman's Harbinger effect using universal multi-target damage system
+function processHarbingerEffect(onComplete) {
+    const harbinger = window.pendingHarbingerEffect;
+    if (!harbinger || !harbinger.targets || harbinger.targets.length === 0) {
+        window.pendingHarbingerEffect = null;
+        onComplete?.();
+        return;
+    }
+    
+    const { mothman, mothmanOwner, targets } = harbinger;
+    window.pendingHarbingerEffect = null; // Clear pending effect
+    
+    // Use universal multi-target damage system
+    processMultiTargetDamage({
+        source: mothman,
+        sourceOwner: mothmanOwner,
+        targets: targets,
+        message: `🦋 Harbinger: Mothman deals damage based on ailment stacks!`,
+        visualTheme: 'moth',
+        killedBy: 'harbinger',
+        damageEvent: 'onHarbingerDamage',
+        onComplete: onComplete
+    });
+}
+
+// Global function to check and process pending Harbinger effect
+window.processHarbingerEffect = processHarbingerEffect;
+
+// Process Moleman splash damage using universal multi-target damage system
+// Splash hits targets above and below the primary target simultaneously
+function processMolemanSplash(splashInfo, onComplete) {
+    if (!splashInfo || !splashInfo.targets || splashInfo.targets.length === 0) {
+        onComplete?.();
+        return;
+    }
+    
+    const { attacker, molemanSupport, splashDamage, targetOwner } = splashInfo;
+    
+    // Build targets array for universal system
+    const targets = splashInfo.targets.map(targetEntry => ({
+        cryptid: targetEntry.cryptid,
+        damage: splashDamage,
+        col: targetEntry.col,
+        row: targetEntry.row,
+        owner: targetOwner
+    })).filter(t => t.cryptid && !t.cryptid._alreadyKilled);
+    
+    if (targets.length === 0) {
+        onComplete?.();
+        return;
+    }
+    
+    // Use universal multi-target damage system
+    processMultiTargetDamage({
+        source: attacker,
+        sourceOwner: attacker.owner,
+        targets: targets,
+        message: `🦡 Moleman splash: ${splashDamage} damage!`,
+        visualTheme: 'earth',
+        killedBy: 'molemanSplash',
+        damageEvent: 'onMolemanSplash',
+        onComplete: onComplete
+    });
 }
 
 function animateSupportPromotion(owner, row) {
@@ -4118,9 +4504,17 @@ function animateSupportPromotion(owner, row) {
 }
 
 // Process any pending promotions that happened during ability effects
-function processPendingPromotions(onComplete) {
+function processPendingPromotions(onComplete, skipHarbingerCheck = false) {
     if (!window.pendingPromotions || window.pendingPromotions.length === 0) {
-        if (onComplete) onComplete();
+        // Check for Harbinger effect even when no promotions (Mothman may have triggered)
+        // Skip this check if called from within Harbinger processing to prevent infinite loop
+        if (!skipHarbingerCheck && window.pendingHarbingerEffect) {
+            processHarbingerEffect(() => {
+                if (onComplete) onComplete();
+            });
+        } else {
+            if (onComplete) onComplete();
+        }
         return;
     }
     
@@ -4130,7 +4524,15 @@ function processPendingPromotions(onComplete) {
     let index = 0;
     function processNext() {
         if (index >= promotions.length) {
-            if (onComplete) onComplete();
+            // After all promotions, check for Harbinger effect (Mothman may have promoted)
+            // Skip this check if called from within Harbinger processing to prevent infinite loop
+            if (!skipHarbingerCheck && window.pendingHarbingerEffect) {
+                processHarbingerEffect(() => {
+                    if (onComplete) onComplete();
+                });
+            } else {
+                if (onComplete) onComplete();
+            }
             return;
         }
         
@@ -5185,7 +5587,7 @@ function showCryptidTooltip(cryptid, col, row, owner) {
     document.getElementById('tooltip-name').textContent = cryptid.name;
     const elementName = cryptid.element ? cryptid.element.charAt(0).toUpperCase() + cryptid.element.slice(1) : '';
     const elementDisplay = elementName ? ` | ${getElementIcon(cryptid.element)} ${elementName}` : '';
-    document.getElementById('tooltip-desc').textContent = `HP: ${displayHp}/${displayMaxHp} | ATK: ${displayAtk}${elementDisplay}`;
+    document.getElementById('tooltip-desc').textContent = `HP: ${Math.max(0, displayHp)}/${displayMaxHp} | ATK: ${Math.max(0, displayAtk)}${elementDisplay}`;
     document.getElementById('tooltip-combat').textContent = `⚔ ${cryptid.combatAbility || 'None'}`;
     
     // Use dynamic getSupportAbility if available (for cards with spendable abilities like Rooftop Gargoyle)
@@ -6133,7 +6535,7 @@ window.updateSpriteHealthBar = function(owner, col, row) {
     const hpFill = sprite.querySelector('.hp-fill');
     
     if (atkValue) atkValue.textContent = Math.max(0, displayAtk);
-    if (hpValue) hpValue.textContent = displayHp;
+    if (hpValue) hpValue.textContent = Math.max(0, displayHp);
     if (hpFill) {
         hpFill.style.height = `${hpPercent}%`;
         hpFill.className = 'hp-fill' + (hpPercent <= 25 ? ' hp-low' : hpPercent <= 50 ? ' hp-medium' : '');

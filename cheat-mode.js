@@ -193,6 +193,9 @@ window.CheatMode = {
                     <div class="cheat-row">
                         <button class="cheat-btn" onclick="CheatMode.summonToAllSlots()" style="flex:1; background: linear-gradient(135deg, #6a4a3f, #5a3a2f);">Summon to All Slots</button>
                     </div>
+                    <div class="cheat-row">
+                        <button class="cheat-btn" onclick="CheatMode.clearAllSlots()" style="flex:1; background: linear-gradient(135deg, #8b4513, #5a3a2f);">🗑️ Clear All Slots</button>
+                    </div>
                 </div>
                 
                 <!-- Field Manipulation -->
@@ -226,6 +229,19 @@ window.CheatMode = {
                         </div>
                         <div class="cheat-row">
                             <button class="cheat-btn-small" onclick="CheatMode.clearAllStatuses()">Clear All Status</button>
+                        </div>
+                    </div>
+                    <!-- Apply Ailment to All on Selected Side -->
+                    <div id="cheat-mass-ailment-section" style="display:none; margin-top: 8px; padding-top: 8px; border-top: 1px solid #333;">
+                        <div style="font-size: 10px; color: #888; margin-bottom: 4px;">Apply to ALL on selected side:</div>
+                        <div class="cheat-row" style="flex-wrap: wrap;">
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatusToAll('burn')" title="Burn All">🔥 All</button>
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatusToAll('bleed')" title="Bleed All">🩸 All</button>
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatusToAll('paralyze')" title="Paralyze All">⚡ All</button>
+                            <button class="cheat-btn-small" onclick="CheatMode.applyStatusToAll('calamity')" title="Calamity All">💀 All</button>
+                        </div>
+                        <div class="cheat-row">
+                            <button class="cheat-btn-small" onclick="CheatMode.clearAllStatusesOnSide()" style="flex:1;">Clear All on Side</button>
                         </div>
                     </div>
                 </div>
@@ -675,6 +691,7 @@ window.CheatMode = {
             document.getElementById('cheat-cryptid-controls').style.display = 'flex';
             document.getElementById('cheat-cryptid-actions').style.display = 'flex';
             document.getElementById('cheat-status-section').style.display = 'block';
+            document.getElementById('cheat-mass-ailment-section').style.display = 'block';
             
             // Highlight selected
             document.querySelectorAll('.cryptid-sprite').forEach(s => s.classList.remove('cheat-selected'));
@@ -725,7 +742,7 @@ window.CheatMode = {
         'city-of-flesh': {
             cryptids: ['rooftopGargoyle', 'libraryGargoyle', 'sewerAlligator', 'kuchisakeOnna', 
                        'hellhound', 'mothman', 'bogeyman', 'theFlayer', 'decayRat',
-                       'vampireInitiate', 'vampireLord', 'moleman'],
+                       'vampireInitiate', 'vampireLord', 'moleman', 'redcap'],
             kindling: ['hellpup', 'myling', 'vampireBat', 'gremlin', 'boggart'],
             pyres: ['pyre', 'freshKill', 'ratKing', 'nightfall'],
             traps: ['crossroads', 'bloodCovenant', 'turnToStone'],
@@ -1023,6 +1040,16 @@ window.CheatMode = {
             cryptid.tapped = true;
             cryptid.canAttack = false;
         }
+        
+        // Clear animation state to prevent issues with rapid cheat attacks
+        // This ensures sprites are properly visible and promotions don't get stuck
+        if (window.activePromotions) {
+            window.activePromotions.clear();
+        }
+        if (window.pendingPromotions) {
+            window.pendingPromotions = [];
+        }
+        
         this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
         if (typeof renderAll === 'function') renderAll();
     },
@@ -1034,6 +1061,15 @@ window.CheatMode = {
         cryptid.tapped = false;
         cryptid.canAttack = true;
         cryptid.attackedThisTurn = false;
+        
+        // Clear animation state to prevent issues with rapid cheat attacks
+        if (window.activePromotions) {
+            window.activePromotions.clear();
+        }
+        if (window.pendingPromotions) {
+            window.pendingPromotions = [];
+        }
+        
         this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
         if (typeof renderAll === 'function') renderAll();
     },
@@ -1178,6 +1214,13 @@ window.CheatMode = {
         
         console.log(`Summoned ${cryptid.name} to ${owner} ${colName} row ${row}`);
         if (typeof renderAll === 'function') renderAll();
+        
+        // Check for pending Harbinger effect (Mothman entering combat)
+        if (window.pendingHarbingerEffect && typeof window.processHarbingerEffect === 'function') {
+            window.processHarbingerEffect(() => {
+                if (typeof renderAll === 'function') renderAll();
+            });
+        }
     },
     
     clearSlot() {
@@ -1199,6 +1242,30 @@ window.CheatMode = {
             field[col][row] = null;
         }
         
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    clearAllSlots() {
+        if (!window.game) return;
+        
+        let clearedCount = 0;
+        
+        // Clear all slots for both players
+        for (const owner of ['player', 'enemy']) {
+            const field = owner === 'player' ? window.game.playerField : window.game.enemyField;
+            
+            for (let col = 0; col < 2; col++) {
+                for (let row = 0; row < 3; row++) {
+                    if (field[col] && field[col][row]) {
+                        console.log(`Cleared ${field[col][row].name} from ${owner} col ${col} row ${row}`);
+                        field[col][row] = null;
+                        clearedCount++;
+                    }
+                }
+            }
+        }
+        
+        console.log(`Cleared ${clearedCount} cryptids from all slots`);
         if (typeof renderAll === 'function') renderAll();
     },
     
@@ -1359,6 +1426,91 @@ window.CheatMode = {
         cryptid.canAttack = true;
         
         console.log(`Cleared all statuses from ${cryptid.name}`);
+        this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    // Apply ailment to ALL cryptids on the selected cryptid's side
+    applyStatusToAll(status) {
+        if (!this.selectedCryptid || !window.game) return;
+        const { owner } = this.selectedCryptid;
+        const field = owner === 'player' ? window.game.playerField : window.game.enemyField;
+        
+        let affectedCount = 0;
+        
+        // Iterate all slots: columns 0-1, rows 0-2
+        for (let col = 0; col < 2; col++) {
+            for (let row = 0; row < 3; row++) {
+                const cryptid = field[col]?.[row];
+                if (cryptid) {
+                    switch (status) {
+                        case 'burn':
+                            cryptid.burnTurns = (cryptid.burnTurns || 0) + 3;
+                            affectedCount++;
+                            break;
+                        case 'bleed':
+                            cryptid.bleedTurns = (cryptid.bleedTurns || 0) + 3;
+                            affectedCount++;
+                            break;
+                        case 'paralyze':
+                            if (!cryptid.paralyzed) {
+                                cryptid.paralyzed = true;
+                                cryptid.paralyzeTurns = 1;
+                                cryptid.tapped = true;
+                                cryptid.canAttack = false;
+                                affectedCount++;
+                            }
+                            break;
+                        case 'calamity':
+                            if (!cryptid.calamityCounters || cryptid.calamityCounters === 0) {
+                                cryptid.calamityCounters = 3;
+                                cryptid.hadCalamity = true;
+                                affectedCount++;
+                            }
+                            break;
+                    }
+                }
+            }
+        }
+        
+        console.log(`Applied ${status} to ${affectedCount} cryptids on ${owner} side`);
+        
+        // Refresh the selected cryptid's display
+        this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    // Clear all ailments from ALL cryptids on the selected cryptid's side
+    clearAllStatusesOnSide() {
+        if (!this.selectedCryptid || !window.game) return;
+        const { owner } = this.selectedCryptid;
+        const field = owner === 'player' ? window.game.playerField : window.game.enemyField;
+        
+        let clearedCount = 0;
+        
+        // Iterate all slots: columns 0-1, rows 0-2
+        for (let col = 0; col < 2; col++) {
+            for (let row = 0; row < 3; row++) {
+                const cryptid = field[col]?.[row];
+                if (cryptid) {
+                    cryptid.burnTurns = 0;
+                    cryptid.bleedTurns = 0;
+                    cryptid.paralyzed = false;
+                    cryptid.paralyzeTurns = 0;
+                    cryptid.calamityCounters = 0;
+                    cryptid.curseTokens = 0;
+                    cryptid.protectionCharges = 0;
+                    cryptid.hasFocus = false;
+                    cryptid.hasFlight = false;
+                    cryptid.isHidden = false;
+                    clearedCount++;
+                }
+            }
+        }
+        
+        console.log(`Cleared statuses from ${clearedCount} cryptids on ${owner} side`);
+        
+        // Refresh the selected cryptid's display
         this.selectCryptid(this.selectedCryptid.owner, this.selectedCryptid.col, this.selectedCryptid.row);
         if (typeof renderAll === 'function') renderAll();
     },

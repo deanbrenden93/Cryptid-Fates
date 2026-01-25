@@ -3621,6 +3621,7 @@ const TIMING = {
 // ==================== TRAP QUEUE ====================
 window.pendingTraps = [];
 window.processingTraps = false;
+window.deferTrapProcessing = false; // Set to true during multi-target damage chains
 window.animatingTraps = new Set();
 
 async function processTrapQueue() {
@@ -4382,14 +4383,35 @@ class Game {
             return;
         }
         
-        console.log(`[Trap Queue] Queueing ${trap.name}, processingTraps=${window.processingTraps}`);
+        console.log(`[Trap Queue] Queueing ${trap.name}, processingTraps=${window.processingTraps}, deferTrapProcessing=${window.deferTrapProcessing}`);
         window.pendingTraps.push({ owner, row, trap, eventData });
+        
+        // If trap processing is deferred (during multi-target damage chains), just queue it
+        // The caller will call startTrapProcessing() when the chain is complete
+        if (window.deferTrapProcessing) {
+            console.log(`[Trap Queue] Trap deferred - will process after current chain completes`);
+            return;
+        }
+        
         if (!window.processingTraps) {
             window.processingTraps = true;
             console.log(`[Trap Queue] Starting trap queue processing`);
             setTimeout(() => processTrapQueue(), 50);
         } else {
             console.log(`[Trap Queue] Already processing, trap will be picked up on next iteration`);
+        }
+    }
+    
+    // Call this to start processing any deferred traps
+    startTrapProcessing() {
+        if (window.deferTrapProcessing) {
+            console.log('[Trap Queue] Cannot start - still deferring');
+            return;
+        }
+        if (window.pendingTraps && window.pendingTraps.length > 0 && !window.processingTraps) {
+            window.processingTraps = true;
+            console.log(`[Trap Queue] Starting deferred trap processing (${window.pendingTraps.length} traps queued)`);
+            setTimeout(() => processTrapQueue(), 50);
         }
     }
     
@@ -4625,6 +4647,13 @@ class Game {
             return cryptid.onAilmentAttempt(cryptid, 'burn', this);
         }
         
+        // Check for Mothman support immunity (combatants protected while Mothman is support)
+        if (cryptid.hasMothmanAilmentImmunity) {
+            console.log(`[Mothman Immunity] ${cryptid.name} is immune to burn`);
+            GameEvents.emit('onAilmentBlocked', { cryptid, ailment: 'burn', source: 'Mothman' });
+            return false;
+        }
+        
         const wasAlreadyBurning = cryptid.burnTurns > 0;
         cryptid.burnTurns = turns;
         GameEvents.emit('onStatusApplied', { status: 'burn', cryptid, owner: cryptid.owner, refreshed: wasAlreadyBurning, turns });
@@ -4664,6 +4693,13 @@ class Game {
             return cryptid.onAilmentAttempt(cryptid, 'calamity', this);
         }
         
+        // Check for Mothman support immunity (combatants protected while Mothman is support)
+        if (cryptid.hasMothmanAilmentImmunity) {
+            console.log(`[Mothman Immunity] ${cryptid.name} is immune to calamity`);
+            GameEvents.emit('onAilmentBlocked', { cryptid, ailment: 'calamity', source: 'Mothman' });
+            return false;
+        }
+        
         cryptid.calamityCounters = count;
         cryptid.hadCalamity = true;
         GameEvents.emit('onStatusApplied', { status: 'calamity', cryptid, owner: cryptid.owner, count });
@@ -4678,6 +4714,13 @@ class Game {
         // Check for ailment immunity (Boggart)
         if (cryptid.ailmentImmune && cryptid.onAilmentAttempt) {
             return cryptid.onAilmentAttempt(cryptid, 'paralyze', this);
+        }
+        
+        // Check for Mothman support immunity (combatants protected while Mothman is support)
+        if (cryptid.hasMothmanAilmentImmunity) {
+            console.log(`[Mothman Immunity] ${cryptid.name} is immune to paralyze`);
+            GameEvents.emit('onAilmentBlocked', { cryptid, ailment: 'paralyze', source: 'Mothman' });
+            return false;
         }
         
         cryptid.paralyzed = true;
@@ -4699,6 +4742,13 @@ class Game {
             return cryptid.onAilmentAttempt(cryptid, 'bleed', this);
         }
         
+        // Check for Mothman support immunity (combatants protected while Mothman is support)
+        if (cryptid.hasMothmanAilmentImmunity) {
+            console.log(`[Mothman Immunity] ${cryptid.name} is immune to bleed`);
+            GameEvents.emit('onAilmentBlocked', { cryptid, ailment: 'bleed', source: 'Mothman' });
+            return false;
+        }
+        
         const wasAlreadyBleeding = cryptid.bleedTurns > 0;
         cryptid.bleedTurns = 3;
         GameEvents.emit('onStatusApplied', { status: 'bleed', cryptid, owner: cryptid.owner, refreshed: wasAlreadyBleeding });
@@ -4709,6 +4759,14 @@ class Game {
     // Curse - each token reduces ATK by 1 (min 0), cleanses 1 per turn
     applyCurse(cryptid, tokens = 1) {
         if (!cryptid || cryptid.curseImmune) return false;
+        
+        // Check for Mothman support immunity (combatants protected while Mothman is support)
+        if (cryptid.hasMothmanAilmentImmunity) {
+            console.log(`[Mothman Immunity] ${cryptid.name} is immune to curse`);
+            GameEvents.emit('onAilmentBlocked', { cryptid, ailment: 'curse', source: 'Mothman' });
+            return false;
+        }
+        
         cryptid.curseTokens = (cryptid.curseTokens || 0) + tokens;
         GameEvents.emit('onStatusApplied', { status: 'curse', cryptid, owner: cryptid.owner, tokens, totalTokens: cryptid.curseTokens });
         this.updateAllGremlinDebuffs(); // Update Gremlin ATK debuffs

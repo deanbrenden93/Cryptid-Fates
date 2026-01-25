@@ -200,6 +200,15 @@ function aiPlayCards(onComplete) {
                 const idx = game.enemyHand.findIndex(c => c.id === card.id);
                 if (idx > -1) game.enemyHand.splice(idx, 1);
                 window.renderAll();
+                
+                // Check for pending Harbinger effect (Mothman entering combat)
+                if (window.pendingHarbingerEffect && typeof window.processHarbingerEffect === 'function') {
+                    window.processHarbingerEffect(() => {
+                        window.renderAll();
+                        setTimeout(() => processNextAction(index + 1), 200);
+                    });
+                    return; // processHarbingerEffect will call processNextAction when done
+                }
             }
             setTimeout(() => processNextAction(index + 1), TIMING.summonAnim + 200);
             

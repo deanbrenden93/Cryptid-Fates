@@ -32,7 +32,8 @@ window.CombatEffects = {
         if (!wrapper) return;
         
         // If we're in a dramatic death zoom, use JS-based shake that preserves the transform
-        if (this._dramaticDeathZoomActive) {
+        // Use counter (not boolean) to support overlapping death animations
+        if ((this._dramaticDeathZoomCount || 0) > 0) {
             this._screenShakeJS(intensity, duration);
             return;
         }
@@ -1085,8 +1086,32 @@ window.CombatEffects = {
         
         // ==================== IMMEDIATE: START ZOOM ON IMPACT ====================
         // Calculate focus point from ORIGINAL sprite position FIRST
-        const spriteRect = sprite.getBoundingClientRect();
+        let spriteRect = sprite.getBoundingClientRect();
         const wrapperRect = wrapper.getBoundingClientRect();
+        
+        // FALLBACK: If sprite rect is at 0,0 or very small, use tilePositions
+        // This can happen if the sprite lost its positioning during multi-target damage
+        if ((spriteRect.left < 10 && spriteRect.top < 10) || spriteRect.width < 5) {
+            console.log('[DramaticDeath] Sprite at invalid position, using tilePositions fallback');
+            const spriteOwner = sprite.dataset.owner;
+            const spriteCol = sprite.dataset.col;
+            const spriteRow = sprite.dataset.row;
+            const posKey = `${spriteOwner}-${spriteCol}-${spriteRow}`;
+            const tilePos = window.tilePositions?.[posKey];
+            
+            if (tilePos) {
+                // Construct a virtual rect based on tilePositions
+                const battlefieldRect = battlefield.getBoundingClientRect();
+                spriteRect = {
+                    left: battlefieldRect.left + tilePos.x - 50,
+                    top: battlefieldRect.top + tilePos.y - 50,
+                    width: 100,
+                    height: 100
+                };
+                console.log('[DramaticDeath] Using tilePos fallback:', posKey, tilePos);
+            }
+        }
+        
         const focusX = spriteRect.left + spriteRect.width/2 - wrapperRect.left;
         const focusY = spriteRect.top + spriteRect.height/2 - wrapperRect.top;
         const focusXPct = (focusX / wrapperRect.width) * 100;
@@ -1115,7 +1140,8 @@ window.CombatEffects = {
         wrapper.style.transform = zoomTransform;
         
         // Track that we're in a zoomed state (for screenShake compatibility)
-        this._dramaticDeathZoomActive = true;
+        // Use counter (not boolean) to support overlapping death animations
+        this._dramaticDeathZoomCount = (this._dramaticDeathZoomCount || 0) + 1;
         this._dramaticDeathBaseTransform = zoomTransform;
         
         // IMPACT SHAKE - happens shortly after impact
@@ -1342,9 +1368,11 @@ window.CombatEffects = {
         setTimeout(() => {
             console.log('[DramaticDeath] Cleanup');
             
-            // Clear zoom tracking
-            this._dramaticDeathZoomActive = false;
-            this._dramaticDeathBaseTransform = '';
+            // Decrement zoom counter (supports overlapping animations)
+            this._dramaticDeathZoomCount = Math.max(0, (this._dramaticDeathZoomCount || 1) - 1);
+            if (this._dramaticDeathZoomCount === 0) {
+                this._dramaticDeathBaseTransform = '';
+            }
             
             // Reset all styles on wrapper
             wrapper.style.transition = '';
