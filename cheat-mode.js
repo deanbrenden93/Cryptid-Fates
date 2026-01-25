@@ -193,6 +193,9 @@ window.CheatMode = {
                     <div class="cheat-row">
                         <button class="cheat-btn" onclick="CheatMode.summonToAllSlots()" style="flex:1; background: linear-gradient(135deg, #6a4a3f, #5a3a2f);">Summon to All Slots</button>
                     </div>
+                    <div class="cheat-row">
+                        <button class="cheat-btn" onclick="CheatMode.clearAllSlots()" style="flex:1; background: linear-gradient(135deg, #8b4513, #5a3a2f);">🗑️ Clear All Slots</button>
+                    </div>
                 </div>
                 
                 <!-- Field Manipulation -->
@@ -1239,6 +1242,30 @@ window.CheatMode = {
             field[col][row] = null;
         }
         
+        if (typeof renderAll === 'function') renderAll();
+    },
+    
+    clearAllSlots() {
+        if (!window.game) return;
+        
+        let clearedCount = 0;
+        
+        // Clear all slots for both players
+        for (const owner of ['player', 'enemy']) {
+            const field = owner === 'player' ? window.game.playerField : window.game.enemyField;
+            
+            for (let col = 0; col < 2; col++) {
+                for (let row = 0; row < 3; row++) {
+                    if (field[col] && field[col][row]) {
+                        console.log(`Cleared ${field[col][row].name} from ${owner} col ${col} row ${row}`);
+                        field[col][row] = null;
+                        clearedCount++;
+                    }
+                }
+            }
+        }
+        
+        console.log(`Cleared ${clearedCount} cryptids from all slots`);
         if (typeof renderAll === 'function') renderAll();
     },
     

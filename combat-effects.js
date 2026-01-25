@@ -32,7 +32,8 @@ window.CombatEffects = {
         if (!wrapper) return;
         
         // If we're in a dramatic death zoom, use JS-based shake that preserves the transform
-        if (this._dramaticDeathZoomActive) {
+        // Use counter (not boolean) to support overlapping death animations
+        if ((this._dramaticDeathZoomCount || 0) > 0) {
             this._screenShakeJS(intensity, duration);
             return;
         }
@@ -1139,7 +1140,8 @@ window.CombatEffects = {
         wrapper.style.transform = zoomTransform;
         
         // Track that we're in a zoomed state (for screenShake compatibility)
-        this._dramaticDeathZoomActive = true;
+        // Use counter (not boolean) to support overlapping death animations
+        this._dramaticDeathZoomCount = (this._dramaticDeathZoomCount || 0) + 1;
         this._dramaticDeathBaseTransform = zoomTransform;
         
         // IMPACT SHAKE - happens shortly after impact
@@ -1366,9 +1368,11 @@ window.CombatEffects = {
         setTimeout(() => {
             console.log('[DramaticDeath] Cleanup');
             
-            // Clear zoom tracking
-            this._dramaticDeathZoomActive = false;
-            this._dramaticDeathBaseTransform = '';
+            // Decrement zoom counter (supports overlapping animations)
+            this._dramaticDeathZoomCount = Math.max(0, (this._dramaticDeathZoomCount || 1) - 1);
+            if (this._dramaticDeathZoomCount === 0) {
+                this._dramaticDeathBaseTransform = '';
+            }
             
             // Reset all styles on wrapper
             wrapper.style.transition = '';

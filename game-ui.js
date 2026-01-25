@@ -334,7 +334,8 @@ function calculateTilePositions() {
     // GUARD: Don't recalculate during dramatic death zoom - getBoundingClientRect returns
     // zoomed coordinates, but sprite left/top are in parent coordinate space (pre-transform).
     // This mismatch causes sprites to shift dramatically during zoom animations.
-    if (window.CombatEffects?._dramaticDeathZoomActive) {
+    // Use counter (not boolean) to support overlapping death animations
+    if ((window.CombatEffects?._dramaticDeathZoomCount || 0) > 0) {
         return;
     }
     
@@ -915,7 +916,7 @@ function renderSprites() {
                             const statusDiv = sprite.querySelector('.status-icons');
                             
                             if (atkValue) atkValue.textContent = Math.max(0, displayAtk);
-                            if (hpValue) hpValue.textContent = displayHp;
+                            if (hpValue) hpValue.textContent = Math.max(0, displayHp);
                             
                             // Update HP fill bar
                             const hpFill = sprite.querySelector('.hp-fill');
@@ -1000,7 +1001,7 @@ function renderSprites() {
                                     </div>
                                     <div class="stat-badge hp-badge">
                                         <span class="stat-icon">♥</span>
-                                        <span class="stat-value">${displayHp}</span>
+                                        <span class="stat-value">${Math.max(0, displayHp)}</span>
                                     </div>
                                     ${evoPipsHtml}
                                 </div>
@@ -3193,12 +3194,18 @@ function checkCascadingDeaths(onComplete) {
                 const impactX = rect.left + rect.width/2 - bRect.left;
                 const impactY = rect.top + rect.height/2 - bRect.top;
                 
-                // Visual effects (use actualDamage for intensity, damage for display)
-                const impactIntensity = pendingDamage.actualDamage || pendingDamage.damage;
+                // Cap displayed damage at target's EFFECTIVE HP before damage (no overkill display)
+                // For combatants with supports, effective HP includes support's HP (HP pooling)
+                const damage = pendingDamage.damage;
+                const effectiveHpBefore = (game.getEffectiveHp?.(cryptid) || cryptid.currentHp || 0) + damage;
+                const displayDamage = Math.min(damage, Math.max(0, effectiveHpBefore));
+                
+                // Visual effects (use actualDamage for intensity, displayDamage for number)
+                const impactIntensity = pendingDamage.actualDamage || damage;
                 CombatEffects.createImpactFlash(impactX, impactY, 70);
                 CombatEffects.createSparks(impactX, impactY, 12);
                 CombatEffects.heavyImpact(impactIntensity);
-                CombatEffects.showDamageNumber(cryptid, pendingDamage.damage, pendingDamage.damage >= 5);
+                CombatEffects.showDamageNumber(cryptid, displayDamage, displayDamage >= 5);
                 
                 // Hit recoil on sprite
                 sprite.classList.add('hit-recoil');
@@ -3418,9 +3425,10 @@ window.playAttackAnimation = playAttackAnimation;
 
 function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
     // Safety reset: Clear any stale death zoom state that might prevent death animations
-    if (window.CombatEffects?._dramaticDeathZoomActive) {
-        console.log('[performAttackOnTarget] Clearing stale _dramaticDeathZoomActive flag');
-        window.CombatEffects._dramaticDeathZoomActive = false;
+    // Reset counter to 0 for fresh start (handles cases where cleanup never ran)
+    if ((window.CombatEffects?._dramaticDeathZoomCount || 0) > 0) {
+        console.log('[performAttackOnTarget] Clearing stale death zoom counter:', window.CombatEffects._dramaticDeathZoomCount);
+        window.CombatEffects._dramaticDeathZoomCount = 0;
         window.CombatEffects._dramaticDeathBaseTransform = '';
         const wrapper = document.getElementById('game-screen-wrapper');
         if (wrapper) {
@@ -3752,7 +3760,11 @@ function processKuchisakeExplosion(explosionInfo, onComplete) {
         
         // Play full combat effects (damage number, particles, shake)
         if (window.CombatEffects) {
-            const isCrit = damage >= 5;
+            // Cap displayed damage at target's EFFECTIVE HP before damage (no overkill display)
+            // For combatants with supports, effective HP includes support's HP (HP pooling)
+            const effectiveHpBefore = (game.getEffectiveHp?.(target) || target.currentHp || 0) + damage;
+            const displayDamage = Math.min(damage, Math.max(0, effectiveHpBefore));
+            const isCrit = displayDamage >= 5;
             
             // Medium screen shake for explosion
             CombatEffects.heavyImpact(Math.max(damage, 1) * 0.7);
@@ -3762,8 +3774,8 @@ function processKuchisakeExplosion(explosionInfo, onComplete) {
             CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
             CombatEffects.createImpactParticles(impactX, impactY, killed ? '#ff2222' : '#ff6622', 10 + damage);
             
-            // Show damage number popup
-            CombatEffects.showDamageNumber(target, damage, isCrit);
+            // Show damage number popup (capped to HP absorbed)
+            CombatEffects.showDamageNumber(target, displayDamage, isCrit);
         }
         
         // Hit recoil animation on sprite
@@ -3894,18 +3906,23 @@ function processDeferredDestroyer(destroyerInfo, onComplete) {
         impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
     }
     
-    // Show Destroyer message
-    showMessage(`💥 Destroyer: ${damage} damage pierces to ${target.name}!`, TIMING.messageDisplay);
+    // Cap displayed damage at target's EFFECTIVE HP before damage (no overkill display)
+    // For combatants with supports, effective HP includes support's HP (HP pooling)
+    const effectiveHpBefore = (game.getEffectiveHp?.(target) || target.currentHp || 0) + damage;
+    const displayDamage = Math.min(damage, Math.max(0, effectiveHpBefore));
+    
+    // Show Destroyer message (use actual damage dealt, not overkill)
+    showMessage(`💥 Destroyer: ${displayDamage} damage pierces to ${target.name}!`, TIMING.messageDisplay);
     
     // Play Destroyer effects
     if (window.CombatEffects) {
-        const isCrit = damage >= 5;
+        const isCrit = displayDamage >= 5;
         
         CombatEffects.heavyImpact(Math.max(damage, 1));
         CombatEffects.createImpactFlash(impactX, impactY, 100 + damage * 12);
         CombatEffects.createSparks(impactX, impactY, 12 + damage * 2);
         CombatEffects.createImpactParticles(impactX, impactY, killed ? '#ff0000' : '#ff4444', 12 + damage);
-        CombatEffects.showDamageNumber(target, damage, isCrit);
+        CombatEffects.showDamageNumber(target, displayDamage, isCrit);
     }
     
     // Hit recoil
@@ -3974,9 +3991,10 @@ function processMultiTargetDamage(options) {
     } = options;
     
     // Safety reset: Clear any stale death zoom state before processing
-    if (window.CombatEffects?._dramaticDeathZoomActive) {
-        console.log('[processMultiTargetDamage] Clearing stale _dramaticDeathZoomActive flag');
-        window.CombatEffects._dramaticDeathZoomActive = false;
+    // Reset counter to 0 for fresh start (handles cases where cleanup never ran)
+    if ((window.CombatEffects?._dramaticDeathZoomCount || 0) > 0) {
+        console.log('[processMultiTargetDamage] Clearing stale death zoom counter:', window.CombatEffects._dramaticDeathZoomCount);
+        window.CombatEffects._dramaticDeathZoomCount = 0;
         window.CombatEffects._dramaticDeathBaseTransform = '';
         const wrapper = document.getElementById('game-screen-wrapper');
         if (wrapper) {
@@ -3985,6 +4003,12 @@ function processMultiTargetDamage(options) {
             wrapper.style.transformOrigin = '';
         }
     }
+    
+    // CRITICAL: Capture tile positions NOW, BEFORE any damage/death animations start
+    // This ensures we have valid positions even if calculateTilePositions is blocked later
+    calculateTilePositions();
+    const capturedPositions = { ...window.tilePositions };
+    console.log('[processMultiTargetDamage] Captured tile positions:', Object.keys(capturedPositions).length, 'tiles');
     
     // Helper to finalize chain and process deferred traps
     function finalizeChain(callback) {
@@ -4056,12 +4080,17 @@ function processMultiTargetDamage(options) {
         
         // Show damage visual effects
         if (window.CombatEffects) {
-            const isCrit = damage >= 5;
+            // Cap displayed damage at target's EFFECTIVE HP before damage (no overkill display)
+            // For combatants with supports, effective HP includes support's HP (HP pooling)
+            // Since damage was already applied, reconstruct effective HP before: getEffectiveHp + damage
+            const effectiveHpBefore = (game.getEffectiveHp?.(cryptid) || cryptid.currentHp || 0) + damage;
+            const displayDamage = Math.min(damage, Math.max(0, effectiveHpBefore));
+            const isCrit = displayDamage >= 5;
             
             CombatEffects.createImpactFlash(impactX, impactY, themeSettings.flashSize + damage * themeSettings.flashScale);
             CombatEffects.createSparks(impactX, impactY, themeSettings.sparks + damage);
             CombatEffects.createImpactParticles(impactX, impactY, themeSettings.color, themeSettings.particles + damage);
-            CombatEffects.showDamageNumber(cryptid, damage, isCrit);
+            CombatEffects.showDamageNumber(cryptid, displayDamage, isCrit);
         }
         
         // Hit recoil animation
@@ -4076,13 +4105,16 @@ function processMultiTargetDamage(options) {
         // Track if this cryptid died
         if ((cryptid.currentHp || 0) <= 0) {
             const combatCol = game.getCombatCol(targetOwner);
+            // Store captured position for death animation
+            const posKey = `${targetOwner}-${col}-${row}`;
             deathsToProcess.push({ 
                 cryptid, 
                 col, 
                 row, 
                 owner: targetOwner,
                 isCombatant: col === combatCol,
-                rarity: cryptid.rarity || 'common'
+                rarity: cryptid.rarity || 'common',
+                capturedPosition: capturedPositions[posKey] // Pre-captured position for death focus
             });
         }
         
@@ -4154,13 +4186,20 @@ function processMultiTargetDeaths(deathsToProcess, source, sourceOwner, killedBy
         
         const sprite = document.querySelector(`.cryptid-sprite[data-owner="${death.owner}"][data-col="${death.col}"][data-row="${death.row}"]`);
         
-        // Ensure sprite has correct position before death animation
-        // This fixes issues where sprites might have lost their position
-        if (sprite && window.tilePositions) {
+        // Use captured position (pre-computed before any animations) to ensure correct death focus
+        // This is critical because calculateTilePositions may be blocked during death zoom
+        const capturedPos = death.capturedPosition;
+        if (sprite && capturedPos) {
+            // Always set position from captured data - this is the RELIABLE source
+            sprite.style.left = capturedPos.x + 'px';
+            sprite.style.top = capturedPos.y + 'px';
+            console.log('[MultiTargetDeath] Using captured position for', death.cryptid.name, capturedPos);
+        } else if (sprite && window.tilePositions) {
+            // Fallback to current tilePositions if no captured position
             const posKey = `${death.owner}-${death.col}-${death.row}`;
             const pos = window.tilePositions[posKey];
             if (pos && (!sprite.style.left || sprite.style.left === '0px' || !sprite.style.top || sprite.style.top === '0px')) {
-                console.log('[MultiTargetDeath] Fixing sprite position for', death.cryptid.name, 'at', posKey);
+                console.log('[MultiTargetDeath] Fallback: fixing sprite position for', death.cryptid.name, 'at', posKey);
                 sprite.style.left = pos.x + 'px';
                 sprite.style.top = pos.y + 'px';
             }
@@ -5504,7 +5543,7 @@ function showCryptidTooltip(cryptid, col, row, owner) {
     document.getElementById('tooltip-name').textContent = cryptid.name;
     const elementName = cryptid.element ? cryptid.element.charAt(0).toUpperCase() + cryptid.element.slice(1) : '';
     const elementDisplay = elementName ? ` | ${getElementIcon(cryptid.element)} ${elementName}` : '';
-    document.getElementById('tooltip-desc').textContent = `HP: ${displayHp}/${displayMaxHp} | ATK: ${displayAtk}${elementDisplay}`;
+    document.getElementById('tooltip-desc').textContent = `HP: ${Math.max(0, displayHp)}/${displayMaxHp} | ATK: ${Math.max(0, displayAtk)}${elementDisplay}`;
     document.getElementById('tooltip-combat').textContent = `⚔ ${cryptid.combatAbility || 'None'}`;
     
     // Use dynamic getSupportAbility if available (for cards with spendable abilities like Rooftop Gargoyle)
@@ -6428,7 +6467,7 @@ window.updateSpriteHealthBar = function(owner, col, row) {
     const hpFill = sprite.querySelector('.hp-fill');
     
     if (atkValue) atkValue.textContent = Math.max(0, displayAtk);
-    if (hpValue) hpValue.textContent = displayHp;
+    if (hpValue) hpValue.textContent = Math.max(0, displayHp);
     if (hpFill) {
         hpFill.style.height = `${hpPercent}%`;
         hpFill.className = 'hp-fill' + (hpPercent <= 25 ? ' hp-low' : hpPercent <= 50 ? ' hp-medium' : '');
