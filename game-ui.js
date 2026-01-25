@@ -2402,10 +2402,22 @@ function executeBurst(targetOwner, targetCol, targetRow) {
     const targetCryptid = game.getFieldCryptid(targetOwner, targetCol, targetRow);
     const isTileTarget = card.targetType === 'tile' || card.targetType === 'enemyTile' || card.targetType === 'allyTile';
     
-    // Helper to send multiplayer hook after everything completes
+    // Track HP before effect for damage calculation
+    const hpBefore = targetCryptid?.currentHp || 0;
+    let targetDied = false;
+    
+    // Helper to send multiplayer hook with effect data
     function sendMultiplayerHook() {
         if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onBurst(card, targetOwner, targetCol, targetRow);
+            const hpAfter = targetCryptid?.currentHp || 0;
+            const damage = hpBefore > hpAfter ? hpBefore - hpAfter : 0;
+            const healing = hpAfter > hpBefore ? hpAfter - hpBefore : 0;
+            
+            window.multiplayerHook.onBurst(card, targetOwner, targetCol, targetRow, {
+                damage: damage,
+                healing: healing,
+                targetDied: targetDied || (targetCryptid && game.getEffectiveHp(targetCryptid) <= 0)
+            });
         }
     }
     
@@ -2514,10 +2526,22 @@ function executeBurstDirect(card, targetOwner, targetCol, targetRow) {
     const targetCryptid = game.getFieldCryptid(targetOwner, targetCol, targetRow);
     const isTileTarget = card.targetType === 'tile' || card.targetType === 'enemyTile' || card.targetType === 'allyTile';
     
-    // Helper to send multiplayer hook after everything completes
+    // Track HP before effect for damage calculation
+    const hpBefore = targetCryptid?.currentHp || 0;
+    let targetDied = false;
+    
+    // Helper to send multiplayer hook with effect data
     function sendMultiplayerHook() {
         if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onBurst(card, targetOwner, targetCol, targetRow);
+            const hpAfter = targetCryptid?.currentHp || 0;
+            const damage = hpBefore > hpAfter ? hpBefore - hpAfter : 0;
+            const healing = hpAfter > hpBefore ? hpAfter - hpBefore : 0;
+            
+            window.multiplayerHook.onBurst(card, targetOwner, targetCol, targetRow, {
+                damage: damage,
+                healing: healing,
+                targetDied: targetDied || (targetCryptid && game.getEffectiveHp(targetCryptid) <= 0)
+            });
         }
     }
     
@@ -3438,17 +3462,31 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         }
     }
     
-    // Capture target info BEFORE attack for multiplayer death tracking
+    // Capture target info BEFORE attack for multiplayer death tracking and status comparison
     const targetBeforeAttack = game.getFieldCryptid(targetOwner, targetCol, targetRow);
     const targetKey = targetBeforeAttack?.key || null;
+    // Capture status state BEFORE attack (since targetBeforeAttack is a reference that will be mutated)
+    const targetStatusBefore = targetBeforeAttack ? {
+        burnTurns: targetBeforeAttack.burnTurns || 0,
+        bleedTurns: targetBeforeAttack.bleedTurns || 0,
+        paralyzed: targetBeforeAttack.paralyzed || false,
+        paralyzeTurns: targetBeforeAttack.paralyzeTurns || 0,
+        calamityCounters: targetBeforeAttack.calamityCounters || 0,
+        curseTokens: targetBeforeAttack.curseTokens || 0
+    } : null;
     const supportCol = game.getSupportCol(targetOwner);
+    const combatCol = game.getCombatCol(targetOwner);
     const supportBeforeAttack = game.getFieldCryptid(targetOwner, supportCol, targetRow);
     
     const result = game.attack(attacker, targetOwner, targetCol, targetRow);
     
     // Track deaths for multiplayer
     const targetDied = result.killed || false;
-    const supportDied = supportBeforeAttack && !game.getFieldCryptid(targetOwner, supportCol, targetRow);
+    // After attack, support may have promoted to combat col - check both positions
+    const supportAfterAttack = game.getFieldCryptid(targetOwner, supportCol, targetRow) || 
+                               (targetDied ? game.getFieldCryptid(targetOwner, combatCol, targetRow) : null);
+    // Support died if it existed before and either: no longer exists anywhere, or has pending death flag
+    const supportDied = supportBeforeAttack && (!supportAfterAttack || supportAfterAttack._pendingDeathFromAttack || supportAfterAttack.currentHp <= 0);
     
     const targetSprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`);
     const attackerSprite = document.querySelector(`.cryptid-sprite[data-owner="${attacker.owner}"][data-col="${attacker.col}"][data-row="${attacker.row}"]`);
@@ -3475,56 +3513,97 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         check();
     }
     
-    // Helper to send multiplayer hook after everything completes
-    // ENHANCED: Now sends full attack data including damage, explosion info, destroyer info
-    function sendMultiplayerHook() {
-        if (game.isMultiplayer && attacker.owner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-            // Build enhanced attack data for full sync
-            const attackData = {
-                damage: result.damage || 0,
-                targetDied: targetDied,
-                supportDied: supportDied,
-                protectionBlocked: result.protectionBlocked || false
-            };
-            
-            // Include Kuchisake explosion info if present
-            if (result.kuchisakeExplosionInfo && result.kuchisakeExplosionInfo.targets?.length > 0) {
-                attackData.explosionInfo = {
-                    victimName: result.kuchisakeExplosionInfo.victim?.name || 'enemy',
-                    damage: result.kuchisakeExplosionInfo.explosionDamage,
-                    targets: result.kuchisakeExplosionInfo.targets.map(t => ({
-                        col: t.col,
-                        row: t.row,
-                        died: t.cryptid?.currentHp <= 0
-                    }))
-                };
-                // Include destroyer info if deferred
-                if (result.kuchisakeExplosionInfo.pendingDestroyerInfo) {
-                    const di = result.kuchisakeExplosionInfo.pendingDestroyerInfo;
-                    attackData.destroyerInfo = {
-                        row: di.targetRow,
-                        damage: di.overkillDamage,
-                        supportDied: di.support?.currentHp <= 0
-                    };
-                }
-            }
-            
-            // Include standalone destroyer info (when no explosion)
-            if (!attackData.destroyerInfo && targetDied && attacker.hasDestroyer) {
-                const supportCol = game.getSupportCol(targetOwner);
-                const support = game.getFieldCryptid(targetOwner, supportCol, targetRow);
-                if (support && support._pendingDestroyerDamage) {
-                    attackData.destroyerInfo = {
-                        row: targetRow,
-                        damage: support._pendingDestroyerDamage.damage || support._pendingDestroyerDamage.actualDamage,
-                        supportDied: support.currentHp <= 0
-                    };
-                }
-            }
-            
-            window.multiplayerHook.onAttack(attacker, targetOwner, targetCol, targetRow, targetKey, attackData);
+    // Build multiplayer attack data IMMEDIATELY after attack completes (before animations)
+    // This allows opponent to start their animations in parallel with us
+    function buildAndSendMultiplayerHook() {
+        if (!game.isMultiplayer || attacker.owner !== 'player' || typeof window.multiplayerHook === 'undefined') {
+            return;
         }
+        
+        // Build enhanced attack data for full sync
+        const attackData = {
+            damage: result.damage || 0,
+            targetDied: targetDied,
+            supportDied: supportDied,
+            protectionBlocked: result.protectionBlocked || false
+        };
+        
+        // Include Kuchisake explosion info if present
+        if (result.kuchisakeExplosionInfo && result.kuchisakeExplosionInfo.targets?.length > 0) {
+            attackData.explosionInfo = {
+                victimName: result.kuchisakeExplosionInfo.victim?.name || 'enemy',
+                damage: result.kuchisakeExplosionInfo.explosionDamage,
+                targets: result.kuchisakeExplosionInfo.targets.map(t => ({
+                    col: t.col,
+                    row: t.row,
+                    died: t.cryptid?.currentHp <= 0
+                }))
+            };
+            // Include destroyer info if deferred (with explosion)
+            if (result.kuchisakeExplosionInfo.pendingDestroyerInfo) {
+                const di = result.kuchisakeExplosionInfo.pendingDestroyerInfo;
+                attackData.destroyerInfo = {
+                    row: di.targetRow,
+                    damage: di.overkillDamage,
+                    supportDied: di.support?.currentHp <= 0,
+                    hasResidue: true // Visual residue effect needed
+                };
+            }
+        }
+        
+        // Include status effects applied during attack (burn, paralyze, calamity, etc.)
+        const targetAfterAttack = game.getFieldCryptid(targetOwner, targetCol, targetRow);
+        if (targetAfterAttack && targetStatusBefore) {
+            const statusEffects = [];
+            
+            // Check for burn applied
+            if ((targetAfterAttack.burnTurns || 0) > targetStatusBefore.burnTurns) {
+                statusEffects.push({ type: 'burn', turns: targetAfterAttack.burnTurns });
+            }
+            // Check for paralyze applied
+            if (targetAfterAttack.paralyzed && !targetStatusBefore.paralyzed) {
+                statusEffects.push({ type: 'paralyze', turns: targetAfterAttack.paralyzeTurns });
+            }
+            // Check for bleed applied
+            if ((targetAfterAttack.bleedTurns || 0) > targetStatusBefore.bleedTurns) {
+                statusEffects.push({ type: 'bleed', turns: targetAfterAttack.bleedTurns });
+            }
+            // Check for calamity applied
+            if ((targetAfterAttack.calamityCounters || 0) > targetStatusBefore.calamityCounters) {
+                statusEffects.push({ type: 'calamity', stacks: (targetAfterAttack.calamityCounters || 0) - targetStatusBefore.calamityCounters });
+            }
+            // Check for curse applied
+            if ((targetAfterAttack.curseTokens || 0) > targetStatusBefore.curseTokens) {
+                statusEffects.push({ type: 'curse', tokens: (targetAfterAttack.curseTokens || 0) - targetStatusBefore.curseTokens });
+            }
+            
+            if (statusEffects.length > 0) {
+                attackData.statusEffects = statusEffects;
+            }
+        }
+        
+        // Include standalone destroyer info (when no explosion)
+        // After attack, support has promoted to combat col - check there
+        if (!attackData.destroyerInfo && targetDied && attacker.hasDestroyer && supportBeforeAttack) {
+            // Support is now in combat col after promotion
+            const promotedSupport = game.getFieldCryptid(targetOwner, combatCol, targetRow);
+            if (promotedSupport && promotedSupport._pendingDestroyerDamage) {
+                attackData.destroyerInfo = {
+                    row: targetRow,
+                    damage: promotedSupport._pendingDestroyerDamage.damage || promotedSupport._pendingDestroyerDamage.actualDamage,
+                    supportDied: promotedSupport.currentHp <= 0,
+                    hasResidue: true // Visual residue effect needed
+                };
+            }
+        }
+        
+        // Send IMMEDIATELY so opponent starts animations in parallel
+        window.multiplayerHook.onAttack(attacker, targetOwner, targetCol, targetRow, targetKey, attackData);
     }
+    
+    // SEND MULTIPLAYER HOOK IMMEDIATELY after attack logic completes
+    // This allows opponent to see animations in real-time instead of waiting
+    buildAndSendMultiplayerHook();
     
     // Handle negated attacks (e.g., Hellpup Guard, Primal Wendigo counter-kill)
     if (result.negated) {
@@ -3578,7 +3657,7 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
                 if (result.attackerKilled) {
                     processPendingPromotions(() => {
                         checkCascadingDeaths(() => { 
-                            sendMultiplayerHook(); // AFTER all cascades complete
+                            // Multiplayer hook already sent immediately after attack
                             
                             // Emit attack complete event (negated but attacker killed)
                             GameEvents.emit('onAttackComplete', { 
@@ -3595,7 +3674,7 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
                         });
                     });
                 } else {
-                    sendMultiplayerHook(); // AFTER animations complete
+                    // Multiplayer hook already sent immediately after attack
                     
                     // Emit attack complete event (negated)
                     GameEvents.emit('onAttackComplete', { 
@@ -3724,7 +3803,7 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
                     processKuchisakeExplosion(result.kuchisakeExplosionInfo, () => {
                         // Process Moleman splash damage AFTER explosion completes (sequenced)
                         processMolemanSplash(result.molemanSplashInfo, () => {
-                            sendMultiplayerHook(); // AFTER all cascades complete
+                            // Multiplayer hook already sent immediately after attack
                             
                             // Emit attack complete event for tutorial and other listeners
                             GameEvents.emit('onAttackComplete', { 

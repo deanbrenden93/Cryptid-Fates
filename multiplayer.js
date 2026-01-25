@@ -927,9 +927,14 @@ window.Multiplayer = {
             case 'attack': {
                 const atkCol = 1 - action.attackerCol;
                 const tgtCol = 1 - action.targetCol;
+                const g = window.game;
                 
                 const atkSprite = document.querySelector(`.cryptid-sprite[data-owner="enemy"][data-col="${atkCol}"][data-row="${action.attackerRow}"]`);
                 const tgtSprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${tgtCol}"][data-row="${action.targetRow}"]`);
+                
+                // Get target cryptid for damage number display
+                const targetCryptid = g?.playerField[tgtCol]?.[action.targetRow];
+                const damage = action.damage || 0;
                 
                 // Calculate total delay based on effects
                 let totalDelay = TIMING.attack;
@@ -937,13 +942,53 @@ window.Multiplayer = {
                 if (action.explosionInfo) totalDelay += action.explosionInfo.targets.length * 600;
                 if (action.destroyerInfo) totalDelay += 500;
                 if (action.supportDied && !action.destroyerInfo) totalDelay += 400;
+                if (action.statusEffects?.length > 0) totalDelay += action.statusEffects.length * 400;
+                
+                // Helper to play impact effects (damage number, particles, shake)
+                const playImpactEffects = () => {
+                    if (window.CombatEffects && tgtSprite) {
+                        const battlefield = document.getElementById('battlefield-area');
+                        if (battlefield) {
+                            const targetRect = tgtSprite.getBoundingClientRect();
+                            const battlefieldRect = battlefield.getBoundingClientRect();
+                            const impactX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+                            const impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+                            
+                            // Screen shake and particles
+                            window.CombatEffects.heavyImpact(Math.max(damage, 1));
+                            window.CombatEffects.createImpactFlash(impactX, impactY, 80 + damage * 10);
+                            window.CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
+                            window.CombatEffects.createImpactParticles(impactX, impactY, action.targetDied ? '#ff2222' : '#ff6666', 8 + damage);
+                            
+                            // Show damage number on our cryptid
+                            if (targetCryptid && damage > 0) {
+                                const isCrit = damage >= 5;
+                                window.CombatEffects.showDamageNumber(targetCryptid, damage, isCrit);
+                            }
+                        }
+                    }
+                    
+                    // Hit recoil if not killed
+                    if (tgtSprite && !action.targetDied) {
+                        tgtSprite.classList.add('hit-recoil');
+                        setTimeout(() => tgtSprite.classList.remove('hit-recoil'), 250);
+                    }
+                    
+                    // Play status effect animations if any were applied
+                    if (action.statusEffects && action.statusEffects.length > 0 && tgtSprite) {
+                        setTimeout(() => {
+                            self.playStatusEffectAnimations(tgtSprite, action.statusEffects);
+                        }, 200);
+                    }
+                };
                 
                 // Use enhanced attack animation if available
                 if (window.CombatEffects?.playEnhancedAttack && atkSprite) {
-                    const damage = action.damage || 3;
                     window.CombatEffects.playEnhancedAttack(atkSprite, 'enemy', tgtSprite, damage, 
                         // onImpact - damage effects
                         () => {
+                            playImpactEffects();
+                            
                             // Show death animation if target died
                             if (action.targetDied && tgtSprite && window.CombatEffects?.playDramaticDeath) {
                                 const rarity = tgtSprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
@@ -988,13 +1033,10 @@ window.Multiplayer = {
                     }
                     
                     setTimeout(() => {
-                        if (tgtSprite) {
-                            tgtSprite.classList.add('taking-damage');
-                            setTimeout(() => tgtSprite.classList.remove('taking-damage'), 400);
-                            
-                            if (action.targetDied) {
-                                setTimeout(() => tgtSprite.classList.add('dying-left'), 300);
-                            }
+                        playImpactEffects();
+                        
+                        if (action.targetDied && tgtSprite) {
+                            setTimeout(() => tgtSprite.classList.add('dying-left'), 300);
                         }
                         
                         // Process explosion chain if present
@@ -1013,6 +1055,13 @@ window.Multiplayer = {
                                 setTimeout(() => supportSprite.classList.add('dying-left'), 400);
                             }
                         }
+                        
+                        // Status effects in fallback path too
+                        if (action.statusEffects && action.statusEffects.length > 0 && tgtSprite) {
+                            setTimeout(() => {
+                                self.playStatusEffectAnimations(tgtSprite, action.statusEffects);
+                            }, 200);
+                        }
                     }, 250);
                 }
                 
@@ -1028,13 +1077,41 @@ window.Multiplayer = {
                     const tgtCol = 1 - action.targetCol;
                     const targetOwner = action.targetOwner === 'player' ? 'enemy' : 'player';
                     const tgtSprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${tgtCol}"][data-row="${action.targetRow}"]`);
+                    
                     if (tgtSprite) {
-                        tgtSprite.classList.add('spell-target');
-                        setTimeout(() => tgtSprite.classList.remove('spell-target'), TIMING.spell);
+                        // Play enhanced spell effect if available
+                        if (window.CombatEffects?.playSpellEffect) {
+                            window.CombatEffects.playSpellEffect(tgtSprite, action.cardKey);
+                        } else {
+                            tgtSprite.classList.add('spell-target');
+                            setTimeout(() => tgtSprite.classList.remove('spell-target'), TIMING.spell);
+                        }
+                        
+                        // Show damage/heal effects from burst data
+                        const g = window.game;
+                        const field = targetOwner === 'player' ? g?.playerField : g?.enemyField;
+                        const targetCryptid = field?.[tgtCol]?.[action.targetRow];
+                        
+                        if (action.damage && action.damage > 0 && targetCryptid && window.CombatEffects) {
+                            // Damage effect
+                            window.CombatEffects.showDamageNumber(targetCryptid, action.damage, action.damage >= 5);
+                            window.CombatEffects.heavyImpact(action.damage * 0.5);
+                        } else if (action.healing && action.healing > 0 && targetCryptid && window.CombatEffects?.showHealNumber) {
+                            // Heal effect
+                            window.CombatEffects.showHealNumber(targetCryptid, action.healing);
+                        }
+                        
+                        // Show death if target died
+                        if (action.targetDied && window.CombatEffects?.playDramaticDeath) {
+                            const rarity = tgtSprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                            setTimeout(() => {
+                                window.CombatEffects.playDramaticDeath(tgtSprite, targetOwner, rarity);
+                            }, 400);
+                        }
                     }
                 }
                 
-                setTimeout(safeComplete, TIMING.spell);
+                setTimeout(safeComplete, TIMING.spell + (action.targetDied ? 800 : 0));
                 break;
             }
             
@@ -1121,10 +1198,28 @@ window.Multiplayer = {
                 break;
             }
             
-            case 'pyreBurn':
+            case 'pyreBurn': {
                 showMessage('Opponent used Pyre Burn!');
+                
+                // Play pyre burn visual effect
+                const g = window.game;
+                const enemyPyre = document.querySelector('.player-info.enemy .pyre-display');
+                
+                if (window.CombatEffects?.playPyreBurn && enemyPyre) {
+                    // Animate pyre flames from enemy pyre display
+                    const pyreGain = action.deathCount || 1;
+                    window.CombatEffects.playPyreBurn(enemyPyre, pyreGain);
+                }
+                
+                // Show flame effect on enemy pyre counter
+                if (enemyPyre) {
+                    enemyPyre.classList.add('pyre-burning');
+                    setTimeout(() => enemyPyre.classList.remove('pyre-burning'), 800);
+                }
+                
                 setTimeout(safeComplete, TIMING.spell);
                 break;
+            }
             
             case 'ability': {
                 const abilityName = action.abilityName || 'ability';
@@ -1251,10 +1346,67 @@ window.Multiplayer = {
                 break;
             }
             
-            case 'turnStartSync':
-                // Silent sync - no animation needed
+            case 'turnStartSync': {
+                // Animate turn-start effects (burn damage, regen, etc.) on enemy cryptids
+                const g = window.game;
+                if (g && state) {
+                    // Compare current enemy HP to incoming state to detect burn/bleed/regen
+                    const effectsToAnimate = [];
+                    
+                    for (let c = 0; c < 2; c++) {
+                        const ourCol = 1 - c; // Column flip
+                        for (let r = 0; r < 3; r++) {
+                            const currentCryptid = g.enemyField[ourCol]?.[r];
+                            const newData = state.playerField[c]?.[r]; // Their player = our enemy
+                            
+                            if (currentCryptid && newData && currentCryptid.key === newData.key) {
+                                const hpChange = newData.currentHp - currentCryptid.currentHp;
+                                
+                                if (hpChange < 0) {
+                                    // HP decreased - burn/bleed damage
+                                    effectsToAnimate.push({
+                                        type: 'damage',
+                                        col: ourCol,
+                                        row: r,
+                                        amount: Math.abs(hpChange),
+                                        cryptidName: currentCryptid.name,
+                                        source: currentCryptid.burnTurns > 0 ? 'burn' : (currentCryptid.bleedTurns > 0 ? 'bleed' : 'tick')
+                                    });
+                                } else if (hpChange > 0) {
+                                    // HP increased - regeneration
+                                    effectsToAnimate.push({
+                                        type: 'heal',
+                                        col: ourCol,
+                                        row: r,
+                                        amount: hpChange,
+                                        cryptidName: currentCryptid.name
+                                    });
+                                }
+                                
+                                // Check for death
+                                if (currentCryptid.currentHp > 0 && newData.currentHp <= 0) {
+                                    effectsToAnimate.push({
+                                        type: 'death',
+                                        col: ourCol,
+                                        row: r,
+                                        cryptidName: currentCryptid.name,
+                                        source: currentCryptid.calamityCounters > 0 ? 'calamity' : 'turnStart'
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Play animations for turn-start effects
+                    if (effectsToAnimate.length > 0) {
+                        self.playTurnStartEffects(effectsToAnimate, safeComplete);
+                        break;
+                    }
+                }
+                
                 safeComplete();
                 break;
+            }
             
             case 'endPhase':
                 safeComplete();
@@ -1421,27 +1573,56 @@ window.Multiplayer = {
     },
     
     // Play Destroyer damage animation on receiving side
-    playDestroyerDamage(destroyerInfo) {
-        if (!destroyerInfo) return;
+    // This shows: 1) Residue in combat slot, 2) Support promotion into it, 3) Strike animation
+    playDestroyerDamage(destroyerInfo, onComplete) {
+        const self = this; // Capture for nested callbacks
         
-        const supportCol = 0; // After promotion, support is now in combat col (which is col 0 from player perspective after flip)
+        if (!destroyerInfo) {
+            onComplete?.();
+            return;
+        }
+        
         const tgtRow = destroyerInfo.row;
         const damage = destroyerInfo.damage || 0;
+        const g = window.game;
         
-        // Find the support sprite (now in combat position after promotion)
-        // Note: After state is applied, support will be in combat col from our perspective
-        let sprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="1"][data-row="${tgtRow}"]`);
-        if (!sprite) {
-            // Try the other column
-            sprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="0"][data-row="${tgtRow}"]`);
+        // Player's combat col from our perspective (where the residue should appear)
+        const playerCombatCol = g?.getCombatCol('player') ?? 1;
+        
+        // Step 1: Create Destroyer residue visual in the (now empty) combat slot
+        if (destroyerInfo.hasResidue && window.CombatEffects?.createDestroyerResidue) {
+            window.CombatEffects.createDestroyerResidue('player', playerCombatCol, tgtRow, damage);
         }
         
-        // Show destroyer message
-        if (typeof showMessage === 'function') {
-            showMessage(`💥 Destroyer: ${damage} damage pierces through!`, 800);
-        }
+        // Step 2: Wait for promotion animation (state already applied, support is in combat col)
+        // The render will show the support sliding into position
+        setTimeout(() => {
+            // Find the support sprite (now in combat position after state was applied)
+            let sprite = document.querySelector(`.cryptid-sprite[data-owner="player"][data-col="${playerCombatCol}"][data-row="${tgtRow}"]`);
+            
+            // Show destroyer message
+            if (typeof showMessage === 'function') {
+                showMessage(`💥 Destroyer: ${damage} damage pierces through!`, 800);
+            }
+            
+            // Step 3: Trigger residue strike animation
+            if (destroyerInfo.hasResidue && window.CombatEffects?.strikeDestroyerResidue) {
+                window.CombatEffects.strikeDestroyerResidue('player', tgtRow, () => {
+                    // After strike, play damage effects
+                    self.playDestroyerImpact(sprite, tgtRow, damage, destroyerInfo.supportDied, onComplete);
+                });
+            } else {
+                // No residue effect, just play impact
+                self.playDestroyerImpact(sprite, tgtRow, damage, destroyerInfo.supportDied, onComplete);
+            }
+        }, 400); // Wait for promotion to visually complete
+    },
+    
+    // Helper: Play the actual Destroyer impact effects (static - no 'this' needed)
+    playDestroyerImpact: function(sprite, tgtRow, damage, supportDied, onComplete) {
+        const g = window.game;
+        const playerCombatCol = g?.getCombatCol('player') ?? 1;
         
-        // Play destroyer damage effects
         if (sprite && window.CombatEffects) {
             const battlefield = document.getElementById('battlefield-area');
             if (battlefield) {
@@ -1450,40 +1631,176 @@ window.Multiplayer = {
                 const impactX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
                 const impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
                 
-                // Destroyer visual effects (more intense, red/orange)
+                // Destroyer visual effects (intense, red/orange)
                 window.CombatEffects.heavyImpact(damage);
                 window.CombatEffects.createImpactFlash(impactX, impactY, 100 + damage * 15);
                 window.CombatEffects.createSparks(impactX, impactY, 12 + damage * 2);
                 window.CombatEffects.createImpactParticles(impactX, impactY, '#ff4400', 12 + damage);
                 
                 // Show damage number
-                const g = window.game;
-                if (g) {
-                    // Find the actual cryptid at this position
-                    for (let c = 0; c < 2; c++) {
-                        const target = g.playerField[c]?.[tgtRow];
-                        if (target) {
-                            window.CombatEffects.showDamageNumber(target, damage, true);
-                            break;
-                        }
-                    }
+                const target = g?.playerField[playerCombatCol]?.[tgtRow];
+                if (target) {
+                    window.CombatEffects.showDamageNumber(target, damage, true);
                 }
             }
             
             // Hit recoil if not dead
-            if (!destroyerInfo.supportDied) {
+            if (!supportDied) {
                 sprite.classList.add('hit-recoil');
                 setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
             }
         }
         
         // Play death animation if support died
-        if (destroyerInfo.supportDied && sprite && window.CombatEffects?.playDramaticDeath) {
+        if (supportDied && sprite && window.CombatEffects?.playDramaticDeath) {
             const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
             setTimeout(() => {
-                window.CombatEffects.playDramaticDeath(sprite, 'player', rarity);
+                window.CombatEffects.playDramaticDeath(sprite, 'player', rarity, onComplete);
             }, 200);
+        } else {
+            setTimeout(() => onComplete?.(), 300);
         }
+    },
+    
+    // Play status effect application animations (burn, paralyze, bleed, etc.)
+    playStatusEffectAnimations(sprite, statusEffects) {
+        if (!sprite || !statusEffects || statusEffects.length === 0) return;
+        
+        let delay = 0;
+        for (const effect of statusEffects) {
+            setTimeout(() => {
+                switch (effect.type) {
+                    case 'burn':
+                        showMessage('🔥 Burn applied!', 500);
+                        sprite.classList.add('burn-applied');
+                        setTimeout(() => sprite.classList.remove('burn-applied'), 600);
+                        if (window.CombatEffects?.playBurnEffect) {
+                            window.CombatEffects.playBurnEffect(sprite);
+                        }
+                        break;
+                        
+                    case 'paralyze':
+                        showMessage('⚡ Paralyzed!', 500);
+                        sprite.classList.add('paralyze-applied');
+                        setTimeout(() => sprite.classList.remove('paralyze-applied'), 600);
+                        if (window.CombatEffects?.playParalyzeEffect) {
+                            window.CombatEffects.playParalyzeEffect(sprite);
+                        }
+                        break;
+                        
+                    case 'bleed':
+                        showMessage('🩸 Bleeding!', 500);
+                        sprite.classList.add('bleed-applied');
+                        setTimeout(() => sprite.classList.remove('bleed-applied'), 600);
+                        if (window.CombatEffects?.playBleedEffect) {
+                            window.CombatEffects.playBleedEffect(sprite);
+                        }
+                        break;
+                        
+                    case 'calamity':
+                        showMessage('💀 Calamity! (' + effect.stacks + ')', 500);
+                        sprite.classList.add('calamity-applied');
+                        setTimeout(() => sprite.classList.remove('calamity-applied'), 600);
+                        if (window.CombatEffects?.playCalamityEffect) {
+                            window.CombatEffects.playCalamityEffect(sprite, effect.stacks);
+                        }
+                        break;
+                        
+                    case 'curse':
+                        showMessage('☠ Cursed! (+' + effect.tokens + ')', 500);
+                        sprite.classList.add('curse-applied');
+                        setTimeout(() => sprite.classList.remove('curse-applied'), 600);
+                        break;
+                }
+            }, delay);
+            delay += 400; // Stagger multiple effects
+        }
+    },
+    
+    // Play turn-start effects (burn damage, regeneration, calamity death, etc.)
+    playTurnStartEffects(effects, onComplete) {
+        if (!effects || effects.length === 0) {
+            onComplete?.();
+            return;
+        }
+        
+        let currentIndex = 0;
+        const processNextEffect = () => {
+            if (currentIndex >= effects.length) {
+                onComplete?.();
+                return;
+            }
+            
+            const effect = effects[currentIndex];
+            currentIndex++;
+            
+            const sprite = document.querySelector(`.cryptid-sprite[data-owner="enemy"][data-col="${effect.col}"][data-row="${effect.row}"]`);
+            const g = window.game;
+            const cryptid = g?.enemyField[effect.col]?.[effect.row];
+            
+            switch (effect.type) {
+                case 'damage': {
+                    // Show burn/bleed tick damage
+                    const sourceEmoji = effect.source === 'burn' ? '🔥' : (effect.source === 'bleed' ? '🩸' : '💀');
+                    showMessage(`${sourceEmoji} ${effect.cryptidName} takes ${effect.amount} damage!`, 600);
+                    
+                    if (sprite && window.CombatEffects) {
+                        // Show damage number
+                        if (cryptid) {
+                            window.CombatEffects.showDamageNumber(cryptid, effect.amount, false);
+                        }
+                        
+                        // Add burn/bleed visual effect
+                        sprite.classList.add(effect.source === 'burn' ? 'burning-tick' : 'bleed-tick');
+                        setTimeout(() => sprite.classList.remove('burning-tick', 'bleed-tick'), 500);
+                        
+                        // Light screen shake
+                        window.CombatEffects.heavyImpact(effect.amount * 0.3);
+                    }
+                    
+                    setTimeout(processNextEffect, 500);
+                    break;
+                }
+                
+                case 'heal': {
+                    showMessage(`✨ ${effect.cryptidName} regenerates ${effect.amount} HP!`, 600);
+                    
+                    if (sprite && window.CombatEffects?.showHealNumber && cryptid) {
+                        window.CombatEffects.showHealNumber(cryptid, effect.amount);
+                    }
+                    
+                    if (sprite) {
+                        sprite.classList.add('healing-tick');
+                        setTimeout(() => sprite.classList.remove('healing-tick'), 500);
+                    }
+                    
+                    setTimeout(processNextEffect, 500);
+                    break;
+                }
+                
+                case 'death': {
+                    const deathEmoji = effect.source === 'calamity' ? '💀' : '☠';
+                    showMessage(`${deathEmoji} ${effect.cryptidName} succumbs!`, 800);
+                    
+                    if (sprite && window.CombatEffects?.playDramaticDeath) {
+                        const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                        window.CombatEffects.playDramaticDeath(sprite, 'enemy', rarity, () => {
+                            setTimeout(processNextEffect, 200);
+                        });
+                    } else {
+                        if (sprite) sprite.classList.add('dying-right');
+                        setTimeout(processNextEffect, 800);
+                    }
+                    break;
+                }
+                
+                default:
+                    setTimeout(processNextEffect, 100);
+            }
+        };
+        
+        // Start processing effects
+        processNextEffect();
     },
     
     handleOpponentEndTurn() {
@@ -2186,14 +2503,17 @@ window.multiplayerHook = {
         Multiplayer.sendGameAction('attack', data);
     },
     
-    onBurst(card, targetOwner, targetCol, targetRow) {
+    onBurst(card, targetOwner, targetCol, targetRow, effectData) {
         if (!this.shouldSend()) return;
         Multiplayer.sendGameAction('burst', {
             cardKey: card.key,
             cardName: card.name,
             targetOwner: targetOwner,
             targetCol: targetCol,
-            targetRow: targetRow
+            targetRow: targetRow,
+            damage: effectData?.damage || 0,
+            healing: effectData?.healing || 0,
+            targetDied: effectData?.targetDied || false
         });
     },
     
