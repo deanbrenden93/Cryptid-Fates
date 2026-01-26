@@ -1707,6 +1707,129 @@ window.Multiplayer = {
                 break;
             }
             
+            // === MISSING HANDLERS - Added for complete multiplayer sync ===
+            
+            case 'onBonusVsBurning': {
+                const bonus = data.bonus || 0;
+                const targetName = data.target?.name || 'target';
+                showMessage(`🔥 +${bonus} bonus damage vs burning ${targetName}!`, 400);
+                duration = 250;
+                break;
+            }
+            
+            case 'onCombatantDeath': {
+                // Combatant died - support may trigger abilities
+                // The actual death animation is handled by onDeath/onKill
+                const cryptid = data.cryptid;
+                if (cryptid) {
+                    console.log('[MP Playback] Combatant death:', cryptid.name);
+                }
+                duration = 50; // Minimal - death visuals handled elsewhere
+                break;
+            }
+            
+            case 'onCurseCleanse': {
+                const cryptid = data.cryptid;
+                const remaining = data.tokensRemaining || 0;
+                if (cryptid) {
+                    if (remaining > 0) {
+                        showMessage(`☠ Curse cleansed: ${remaining} tokens remain`, 400);
+                    } else {
+                        showMessage(`✨ Curse fully cleansed!`, 400);
+                    }
+                    const sprite = findSprite(cryptid.owner, cryptid.col, cryptid.row);
+                    if (sprite) {
+                        sprite.classList.add('cleansed');
+                        setTimeout(() => sprite.classList.remove('cleansed'), 500);
+                    }
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'onProtectionRemoved': {
+                const cryptid = data.cryptid;
+                const remaining = data.remaining || 0;
+                if (cryptid) {
+                    const sprite = findSprite(cryptid.owner, cryptid.col, cryptid.row);
+                    if (sprite) {
+                        sprite.classList.add('protection-consumed');
+                        setTimeout(() => sprite.classList.remove('protection-consumed'), 400);
+                    }
+                    if (remaining > 0) {
+                        showMessage(`🛡 Protection: ${remaining} charges left`, 350);
+                    } else {
+                        showMessage(`🛡 Protection depleted!`, 350);
+                    }
+                }
+                duration = 250;
+                break;
+            }
+            
+            case 'onToxicApplied': {
+                const owner = data.owner;
+                const col = data.col;
+                const row = data.row;
+                const flippedOwner = flipOwner(owner);
+                const flippedCol = flipCol(col);
+                showMessage(`☠ Toxic applied to tile!`, 400);
+                // Visual handled by render - just acknowledge
+                duration = 250;
+                break;
+            }
+            
+            case 'onToxicFade': {
+                showMessage(`✨ Toxic faded`, 300);
+                duration = 200;
+                break;
+            }
+            
+            case 'onTrapDestroyed': {
+                const trap = data.trap;
+                const trapName = trap?.name || 'Trap';
+                showMessage(`💥 ${trapName} destroyed!`, 500);
+                duration = 350;
+                break;
+            }
+            
+            case 'onTrapProtected': {
+                const trap = data.trap;
+                const trapName = trap?.name || 'Trap';
+                showMessage(`🛡 ${trapName} protected from destruction!`, 500);
+                duration = 350;
+                break;
+            }
+            
+            case 'onAuraRemoved': {
+                const cryptid = data.cryptid;
+                const aura = data.aura;
+                const auraName = aura?.name || 'Aura';
+                if (cryptid) {
+                    showMessage(`✨ ${auraName} expired from ${cryptid.name}`, 400);
+                    const sprite = findSprite(cryptid.owner, cryptid.col, cryptid.row);
+                    if (sprite) {
+                        sprite.classList.add('aura-removed');
+                        setTimeout(() => sprite.classList.remove('aura-removed'), 400);
+                    }
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'onTargeted': {
+                // Something was targeted - brief visual indicator
+                const target = data.target;
+                if (target) {
+                    const sprite = findSprite(target.owner, target.col, target.row);
+                    if (sprite) {
+                        sprite.classList.add('being-targeted');
+                        setTimeout(() => sprite.classList.remove('being-targeted'), 300);
+                    }
+                }
+                duration = 100; // Quick indicator
+                break;
+            }
+            
             default: {
                 // Unknown event - log it for debugging
                 console.log('[MP Playback] Unknown event type:', type, data);
