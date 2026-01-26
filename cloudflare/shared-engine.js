@@ -284,10 +284,12 @@ export class SharedGameEngine {
             if (deckData.mainDeck) this.state.playerDeck = deckData.mainDeck;
             if (deckData.kindling) this.state.playerKindling = deckData.kindling;
             if (deckData.hand) this.state.playerHand = deckData.hand;
+            this.state.playerDeckInitialized = true;
         } else {
             if (deckData.mainDeck) this.state.enemyDeck = deckData.mainDeck;
             if (deckData.kindling) this.state.enemyKindling = deckData.kindling;
             if (deckData.hand) this.state.enemyHand = deckData.hand;
+            this.state.enemyDeckInitialized = true;
         }
     }
     
@@ -1597,19 +1599,30 @@ export class SharedGameEngine {
             return serialized;
         };
         
-        // Player 1: myField=playerField (no swap needed), opponentField=enemyField (swap needed)
-        // Player 2: myField=enemyField (swap needed), opponentField=playerField (no swap needed)
+        // Server storage: playerField=[combat,support], enemyField=[support,combat]
+        // Client expects after its swap: playerField=[support,combat], enemyField=[combat,support]
+        // Client swap does: [received[1], received[0]]
+        // So server must send: playerField=[combat,support], enemyField=[support,combat]
+        // 
+        // For Player 1: send fields as-is (no swap)
+        // For Player 2: swap both fields (so their perspective matches client expectations)
         const myField = isPlayer ? this.state.playerField : this.state.enemyField;
         const opponentField = isPlayer ? this.state.enemyField : this.state.playerField;
-        const myFieldNeedsSwap = !isPlayer; // enemyField needs swap
-        const opponentFieldNeedsSwap = isPlayer; // enemyField needs swap
+        const myFieldNeedsSwap = !isPlayer;       // Player 2 needs swap
+        const opponentFieldNeedsSwap = !isPlayer; // Player 2 needs swap
+        
+        // Only send hand/kindling if this player's deck has been initialized
+        // Otherwise the client would overwrite their local hand with empty data
+        const myDeckInitialized = isPlayer ? this.state.playerDeckInitialized : this.state.enemyDeckInitialized;
         
         return {
             playerField: serializeField(myField, myFieldNeedsSwap),
             enemyField: serializeField(opponentField, opponentFieldNeedsSwap),
             
-            hand: myHand.map(c => this.serializeCard(c)),
-            kindling: myKindling.map(c => this.serializeCard(c)),
+            // Only include hand/kindling if server has authoritative data for this player
+            hand: myDeckInitialized ? myHand.map(c => this.serializeCard(c)) : null,
+            kindling: myDeckInitialized ? myKindling.map(c => this.serializeCard(c)) : null,
+            deckInitialized: myDeckInitialized || false,
             
             opponentHandCount: opponentHand.length,
             opponentKindlingCount: opponentKindling.length,

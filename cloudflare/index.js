@@ -32,7 +32,7 @@ import { SharedGameEngine, GameEventTypes, SeededRNG } from './shared-engine.js'
 
 // ==================== CONFIGURATION ====================
 
-const SERVER_VERSION = 23; // v=23 - Fix column normalization in getStateForPlayer
+const SERVER_VERSION = 24; // v=24 - Fix field swap logic + hand preservation
 
 const COOKIE_NAME = 'cf_session';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days in seconds
