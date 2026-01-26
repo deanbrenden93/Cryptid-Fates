@@ -4176,8 +4176,22 @@ function processMultiTargetDamage(options) {
         // Skip if already dead
         if (cryptid._alreadyKilled) return;
         
+        // Capture HP before damage for event emission
+        const hpBefore = cryptid.currentHp || cryptid.hp;
+        
         // Apply damage
         cryptid.currentHp = (cryptid.currentHp || cryptid.hp) - damage;
+        
+        // Emit onDamageTaken for multiplayer animation capture
+        // This ensures opponents see damage numbers and hit effects
+        GameEvents.emit('onDamageTaken', {
+            target: cryptid,
+            damage,
+            source,
+            sourceType: 'ability',
+            hpBefore,
+            hpAfter: cryptid.currentHp
+        });
         
         // Find sprite for visual effects
         const sprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${col}"][data-row="${row}"]`);
