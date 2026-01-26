@@ -1361,11 +1361,10 @@ window.Multiplayer = {
             case 'promotion': {
                 const flippedOwner = flipOwner(cmd.owner);
                 
-                // Promotion visual is handled by render - just show message
+                // Just show message - don't renderAll() here!
+                // Rendering mid-sequence would re-render dead cryptids before state is applied
+                // The promotion slide will show when state is applied and final render happens
                 showMessage?.(`⬆ Support promoted to combat!`, 400);
-                
-                // Trigger re-render to show promotion slide
-                if (typeof renderAll === 'function') renderAll();
                 
                 duration = 400;
                 break;
