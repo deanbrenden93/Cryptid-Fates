@@ -893,7 +893,7 @@ window.Multiplayer = {
                         this.applyReceivedState(state);
                     }
                     onAnimationComplete();
-                });
+                }, state);
             } else {
                 // For non-death actions, apply state first
                 if (state) {
@@ -904,7 +904,7 @@ window.Multiplayer = {
                     if (typeof renderAll === 'function') renderAll();
                     
                     setTimeout(() => {
-                        this.playAnimation(action, onAnimationComplete);
+                        this.playAnimation(action, onAnimationComplete, state);
                     }, 50);
                 });
             }
@@ -1718,7 +1718,7 @@ window.Multiplayer = {
     },
     
     // Legacy playAnimation kept for backwards compatibility with old messages
-    playAnimation(action, onComplete) {
+    playAnimation(action, onComplete, state = null) {
         // Capture 'this' for use in nested functions
         const self = this;
         
