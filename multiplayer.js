@@ -4395,10 +4395,15 @@ window.Multiplayer = {
     deserializeCryptid(data) {
         if (!data) return null;
         
+        // DEBUG: Log what we receive from server
+        console.log('[MP] deserializeCryptid received:', { id: data.id, key: data.key, name: data.name, isKindling: data.isKindling });
+        
         // Look up full card data from registry - check both cryptid and kindling
         const cardDef = window.CardRegistry?.getCryptid?.(data.key) || 
                        window.CardRegistry?.getKindling?.(data.key) ||
                        {};
+        
+        console.log('[MP] CardRegistry lookup for key "' + data.key + '":', cardDef?.name || 'NOT FOUND');
         
         // Determine if cryptid can attack (not paralyzed, not tapped, not already attacked)
         // NOTE: No summoning sickness - cryptids can attack immediately

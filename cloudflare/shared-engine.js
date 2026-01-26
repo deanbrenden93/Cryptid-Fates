@@ -502,19 +502,22 @@ export class SharedGameEngine {
         const pool = owner === 'player' ? this.state.playerKindling : this.state.enemyKindling;
         
         // DEBUG: Log kindling pool data
-        console.log('[SharedEngine] Kindling pool for', owner, ':', 
-            pool.map(k => ({ id: k.id, key: k.key, name: k.name })));
-        console.log('[SharedEngine] Looking for kindlingId:', kindlingId);
+        console.log('[SharedEngine] Kindling pool for', owner, '- length:', pool.length);
+        console.log('[SharedEngine] Pool contents:', JSON.stringify(pool.map(k => ({ id: k.id, key: k.key, name: k.name }))));
+        console.log('[SharedEngine] Looking for kindlingId:', kindlingId, 'type:', typeof kindlingId);
         
-        const kindlingIndex = pool.findIndex(k => k.id === kindlingId || k.key === kindlingId);
+        // Use loose comparison to handle string/number type mismatches
+        const kindlingIndex = pool.findIndex(k => 
+            k.id == kindlingId || k.key === kindlingId || String(k.id) === String(kindlingId)
+        );
         
         if (kindlingIndex === -1) {
             console.log('[SharedEngine] Kindling not found! Pool IDs:', pool.map(k => k.id));
-            return { valid: false, error: 'Kindling not found' };
+            return { valid: false, error: 'Kindling not found in pool of ' + pool.length + ' cards' };
         }
         
         const kindling = pool[kindlingIndex];
-        console.log('[SharedEngine] Found kindling:', { id: kindling.id, key: kindling.key, name: kindling.name });
+        console.log('[SharedEngine] Found kindling at index', kindlingIndex, ':', { id: kindling.id, key: kindling.key, name: kindling.name });
         
         // Validate slot is empty
         const field = owner === 'player' ? this.state.playerField : this.state.enemyField;
@@ -533,7 +536,9 @@ export class SharedGameEngine {
         }
         
         // Create cryptid from kindling
+        console.log('[SharedEngine] Creating cryptid from kindling:', { key: kindling.key, name: kindling.name });
         const cryptid = this.createCryptid({ ...kindling, isKindling: true }, owner, col, row);
+        console.log('[SharedEngine] Created cryptid:', { id: cryptid.id, key: cryptid.key, name: cryptid.name });
         field[col][row] = cryptid;
         
         this.emit(GameEventTypes.CRYPTID_SUMMONED, {

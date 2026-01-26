@@ -4948,6 +4948,14 @@ document.getElementById('pyre-burn-btn').onclick = () => {
 document.getElementById('end-conjure1-btn').onclick = () => {
     if (isAnimating) return;
     hideTooltip();
+    
+    // In multiplayer, send phase change to server
+    if (game.isMultiplayer && window.Multiplayer?.isMyTurn) {
+        window.Multiplayer.sendGameAction('endPhase');
+        // Server will respond with new state, don't change phase locally
+        return;
+    }
+    
     checkAllCreaturesForDeath(() => {
         const oldPhase = game.phase;
         game.phase = 'combat';
@@ -4961,6 +4969,14 @@ document.getElementById('end-conjure1-btn').onclick = () => {
 document.getElementById('end-combat-btn').onclick = () => {
     if (isAnimating) return;
     hideTooltip();
+    
+    // In multiplayer, send phase change to server
+    if (game.isMultiplayer && window.Multiplayer?.isMyTurn) {
+        window.Multiplayer.sendGameAction('endPhase');
+        // Server will respond with new state, don't change phase locally
+        return;
+    }
+    
     checkAllCreaturesForDeath(() => {
         const oldPhase = game.phase;
         game.phase = 'conjure2';
