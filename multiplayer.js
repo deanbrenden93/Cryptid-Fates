@@ -3829,9 +3829,18 @@ window.Multiplayer = {
         const type = cmd.type;
         let duration = 100;
         
+        // Server already flips owner in filterAnimationsForPlayer, so we just use it directly
+        // 'player' = my action, 'enemy' = opponent's action
+        const flipOwner = (owner) => owner;
+        
+        // Helper to convert server col to client col (server: combat=0, client: combat=1)
+        const serverToClientCol = (col) => col !== undefined ? 1 - col : undefined;
+        
         const findSprite = (owner, col, row) => {
+            // Convert server col to client col for sprite lookup
+            const clientCol = serverToClientCol(col);
             return document.querySelector(
-                `.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`
+                `.cryptid-sprite[data-owner="${owner}"][data-col="${clientCol}"][data-row="${row}"]`
             );
         };
         
@@ -3850,8 +3859,11 @@ window.Multiplayer = {
             }
             
             case 'attackMove': {
-                const atkSprite = findSprite(cmd.attackerOwner, cmd.attackerOwner === 'player' ? 0 : 1, cmd.attackerRow);
-                const tgtSprite = findSprite(cmd.targetOwner, cmd.targetOwner === 'player' ? 0 : 1, cmd.targetRow);
+                // Use server-provided cols with conversion, or fallback to combat col (0 on server)
+                const atkCol = cmd.attackerCol !== undefined ? cmd.attackerCol : 0;
+                const tgtCol = cmd.targetCol !== undefined ? cmd.targetCol : 0;
+                const atkSprite = findSprite(cmd.attackerOwner, atkCol, cmd.attackerRow);
+                const tgtSprite = findSprite(cmd.targetOwner, tgtCol, cmd.targetRow);
                 
                 if (atkSprite && window.CombatEffects?.playEnhancedAttack) {
                     window.CombatEffects.playEnhancedAttack(atkSprite, cmd.attackerOwner, tgtSprite, cmd.damage || 0);
@@ -3954,7 +3966,9 @@ window.Multiplayer = {
             }
             
             case 'attackBlocked': {
-                const sprite = findSprite(cmd.targetOwner, cmd.targetOwner === 'player' ? 0 : 1, cmd.targetRow);
+                // Use server-provided col with conversion, or fallback to combat col (0 on server)
+                const tgtCol = cmd.targetCol !== undefined ? cmd.targetCol : 0;
+                const sprite = findSprite(cmd.targetOwner, tgtCol, cmd.targetRow);
                 if (sprite) {
                     sprite.classList.add('attack-blocked');
                     setTimeout(() => sprite.classList.remove('attack-blocked'), 400);

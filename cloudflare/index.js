@@ -2591,6 +2591,16 @@ export class GameRoom {
             cryptid: this.serializeCryptid(target)
         });
         
+        // Add evolution animation
+        this.addAnimation('evolve', {
+            owner,
+            col: targetCol,
+            row: targetRow,
+            fromKey: oldKey,
+            toKey: card.key,
+            name: card.name
+        });
+        
         return { valid: true };
     }
     
