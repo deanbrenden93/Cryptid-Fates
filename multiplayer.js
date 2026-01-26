@@ -3964,18 +3964,50 @@ window.Multiplayer = {
             }
             
             case 'pyreGain': {
-                if (typeof showMessage === 'function') {
-                    showMessage(`🔥 +${cmd.amount} Pyre`, 800);
+                const flippedOwner = flipOwner(cmd.owner);
+                const amount = cmd.amount || 1;
+                
+                // Play pyre burn effect
+                if (window.CombatEffects?.playPyreBurn) {
+                    window.CombatEffects.playPyreBurn(null, amount);
                 }
-                duration = 200;
+                
+                // Flash pyre display
+                const pyreDisplay = document.querySelector(`.player-info.${flippedOwner} .pyre-display`);
+                if (pyreDisplay) {
+                    pyreDisplay.classList.add('pyre-gained');
+                    setTimeout(() => pyreDisplay.classList.remove('pyre-gained'), 600);
+                }
+                
+                if (cmd.source === 'turnStart') {
+                    showMessage?.(`🔥 +${amount} Pyre (turn start)`, 800);
+                } else {
+                    showMessage?.(`🔥 +${amount} Pyre`, 800);
+                }
+                
+                duration = 400;
                 break;
             }
             
-            case 'burnForPyre': {
-                if (typeof showMessage === 'function') {
-                    showMessage('🔥 Card burned for pyre', 800);
+            case 'burnForPyre':
+            case 'pyreBurn': {
+                const flippedOwner = flipOwner(cmd.owner);
+                const amount = cmd.amount || 1;
+                
+                // Play pyre burn visual effect
+                if (window.CombatEffects?.playPyreBurn) {
+                    window.CombatEffects.playPyreBurn(null, amount);
                 }
-                duration = 300;
+                
+                // Flash pyre display
+                const pyreDisplay = document.querySelector(`.player-info.${flippedOwner} .pyre-display`);
+                if (pyreDisplay) {
+                    pyreDisplay.classList.add('pyre-gained');
+                    setTimeout(() => pyreDisplay.classList.remove('pyre-gained'), 600);
+                }
+                
+                showMessage?.(`🜂 PYRE BURN +${amount} 🜂`, 1200);
+                duration = 800;
                 break;
             }
             
@@ -4318,6 +4350,9 @@ window.Multiplayer = {
                        window.CardRegistry?.getKindling?.(data.key) ||
                        {};
         
+        // Determine if cryptid can attack (not paralyzed, not just summoned, not tapped)
+        const canAttack = !data.paralyzed && !data.justSummoned && !data.tapped;
+        
         return {
             ...cardDef,
             ...data,
@@ -4326,7 +4361,11 @@ window.Multiplayer = {
             currentHp: data.currentHp ?? data.baseHp ?? data.hp ?? cardDef.hp ?? 1,
             maxHp: data.maxHp ?? data.hp ?? cardDef.hp ?? 1,
             name: data.name || cardDef.name || data.key,
-            sprite: data.sprite || cardDef.sprite
+            sprite: data.sprite || cardDef.sprite,
+            canAttack: data.canAttack ?? canAttack,
+            tapped: data.tapped ?? false,
+            paralyzed: data.paralyzed ?? false,
+            justSummoned: data.justSummoned ?? false
         };
     },
     

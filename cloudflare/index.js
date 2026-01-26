@@ -2162,8 +2162,10 @@ export class GameRoom {
             owner,
             col,
             row,
-            cryptidKey: cryptid.key,
-            cryptidName: cryptid.name
+            key: cryptid.key,
+            name: cryptid.name,
+            element: cryptid.element,
+            rarity: cryptid.rarity
         });
         
         // Handle onSummon / onEnterCombat / onSupport abilities
@@ -2239,8 +2241,10 @@ export class GameRoom {
             owner,
             col,
             row,
-            cryptidKey: cryptid.key,
-            cryptidName: cryptid.name,
+            key: cryptid.key,
+            name: cryptid.name,
+            element: cryptid.element,
+            rarity: cryptid.rarity,
             isKindling: true
         });
         
@@ -2324,13 +2328,17 @@ export class GameRoom {
             damage
         });
         
-        // Add attack animation
+        // Add attack animation (attackerCol already available from action params)
+        const targetCol = this.getCombatCol(opponentOwner);
         this.addAnimation('attackMove', {
             attackerOwner: owner,
+            attackerCol: attackerCol, // From action params
             attackerRow,
             targetOwner: opponentOwner,
+            targetCol,
             targetRow,
-            attackerKey: attacker.key
+            attackerKey: attacker.key,
+            attackerName: attacker.name
         });
         
         // Trigger onCombatAttack ability
@@ -2446,6 +2454,14 @@ export class GameRoom {
             owner,
             amount: -card.cost,
             newValue: owner === 'player' ? this.gameState.playerPyre : this.gameState.enemyPyre
+        });
+        
+        // Add trap set animation
+        this.addAnimation('trapSet', {
+            owner,
+            row,
+            key: card.key,
+            name: card.name
         });
         
         return { valid: true };
@@ -2574,8 +2590,7 @@ export class GameRoom {
     }
     
     handleBurnForPyre(owner, action) {
-        const { cardId } = action;
-        
+        // Pyre Burn: Convert death count into pyre and draw cards
         const usedFlag = owner === 'player' ? 
             this.gameState.playerPyreBurnUsed : 
             this.gameState.enemyPyreBurnUsed;
@@ -2584,26 +2599,38 @@ export class GameRoom {
             return { valid: false, error: 'Already burned this turn' };
         }
         
-        const hand = owner === 'player' ? this.gameState.playerHand : this.gameState.enemyHand;
-        const cardIndex = hand.findIndex(c => c.id === cardId);
+        // Get death count for this player
+        const deaths = owner === 'player' ? 
+            this.gameState.playerDeaths : 
+            this.gameState.enemyDeaths;
         
-        if (cardIndex === -1) {
-            return { valid: false, error: 'Card not in hand' };
+        if (!deaths || deaths <= 0) {
+            return { valid: false, error: 'No deaths to burn' };
         }
         
-        const card = hand.splice(cardIndex, 1)[0];
-        
+        // Grant pyre equal to death count
         if (owner === 'player') {
             this.gameState.playerPyreBurnUsed = true;
-            this.gameState.playerPyre += 1;
+            this.gameState.playerPyre += deaths;
         } else {
             this.gameState.enemyPyreBurnUsed = true;
-            this.gameState.enemyPyre += 1;
+            this.gameState.enemyPyre += deaths;
         }
+        
+        // Draw cards equal to death count
+        for (let i = 0; i < deaths; i++) {
+            this.drawCard(owner);
+        }
+        
+        // Add animation
+        this.addAnimation('pyreBurn', {
+            owner,
+            amount: deaths
+        });
         
         this.emit(GameEventTypes.PYRE_CHANGED, {
             owner,
-            amount: 1,
+            amount: deaths,
             newValue: owner === 'player' ? this.gameState.playerPyre : this.gameState.enemyPyre
         });
         
@@ -2765,7 +2792,9 @@ export class GameRoom {
             owner,
             col,
             row,
-            cryptidKey: cryptid.key
+            key: cryptid.key,
+            name: cryptid.name,
+            rarity: cryptid.rarity
         });
         
         // Notify death listeners (for Mothman's onAnyDeath)
@@ -2820,6 +2849,16 @@ export class GameRoom {
                 toCol: combatCol,
                 row,
                 cryptid: this.serializeCryptid(support)
+            });
+            
+            // Add promotion animation
+            this.addAnimation('promotion', {
+                owner,
+                row,
+                fromCol: supportCol,
+                toCol: combatCol,
+                key: support.key,
+                name: support.name
             });
             
             this.triggerAbility(support, 'onEnterCombat', { promoted: true });
@@ -3119,6 +3158,27 @@ export class GameRoom {
         // Process turn start effects (burn, bleed, curse, paralysis)
         this.processTurnStartEffects(this.gameState.currentTurn);
         
+        // Give 1 pyre at turn start
+        const newOwner = this.gameState.currentTurn;
+        if (newOwner === 'player') {
+            this.gameState.playerPyre += 1;
+        } else {
+            this.gameState.enemyPyre += 1;
+        }
+        
+        this.emit(GameEventTypes.PYRE_CHANGED, {
+            owner: newOwner,
+            amount: 1,
+            newValue: newOwner === 'player' ? this.gameState.playerPyre : this.gameState.enemyPyre,
+            source: 'turnStart'
+        });
+        
+        this.addAnimation('pyreGain', {
+            owner: newOwner,
+            amount: 1,
+            source: 'turnStart'
+        });
+        
         // Draw card
         this.drawCard(this.gameState.currentTurn);
         
@@ -3299,6 +3359,9 @@ export class GameRoom {
     }
     
     serializeCryptid(cryptid) {
+        // Calculate canAttack for client
+        const canAttack = !cryptid.paralyzed && !cryptid.justSummoned && !cryptid.tapped;
+        
         return {
             id: cryptid.id,
             key: cryptid.key,
@@ -3311,7 +3374,7 @@ export class GameRoom {
             maxHp: cryptid.maxHp,
             baseAtk: cryptid.baseAtk,
             baseHp: cryptid.baseHp,
-            tapped: cryptid.tapped,
+            tapped: cryptid.tapped || false,
             burnStacks: cryptid.burnStacks || 0,
             bleedStacks: cryptid.bleedStacks || 0,
             paralyzed: cryptid.paralyzed || false,
@@ -3319,7 +3382,11 @@ export class GameRoom {
             isKindling: cryptid.isKindling || false,
             evolutionChain: cryptid.evolutionChain || [],
             element: cryptid.element,
-            rarity: cryptid.rarity
+            rarity: cryptid.rarity,
+            // Additional properties for client
+            justSummoned: cryptid.justSummoned || false,
+            attackedThisTurn: cryptid.attackedThisTurn || false,
+            canAttack: canAttack
         };
     }
     
