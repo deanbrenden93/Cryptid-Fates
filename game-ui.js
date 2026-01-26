@@ -1121,25 +1121,28 @@ function renderSprites() {
     }
     
     // Clean up stale sprites (cryptids/traps that no longer exist)
-    Array.from(spriteLayer.children).forEach(child => {
-        // Skip death effect sprites and dramatic death sprites (they clean themselves up)
-        if (child.classList.contains('death-effect-sprite')) return;
-        if (child.classList.contains('death-drama-sprite')) return;
-        // Skip support link lines - they're managed separately by renderSupportLinks()
-        if (child.classList.contains('support-link-line')) return;
-        
-        const owner = child.dataset.owner;
-        const col = child.dataset.col;
-        const row = child.dataset.row;
-        
-        // Build the key based on sprite type
-        const key = col === 'trap' ? `${owner}-trap-${row}` : `${owner}-${col}-${row}`;
-        
-        // If this sprite wasn't rendered this pass, remove it
-        if (!renderedKeys.has(key)) {
-            child.remove();
-        }
-    });
+    // SKIP cleanup if harbinger animation is pending - we need the sprites for death animations!
+    if (!window.pendingHarbingerAnimation) {
+        Array.from(spriteLayer.children).forEach(child => {
+            // Skip death effect sprites and dramatic death sprites (they clean themselves up)
+            if (child.classList.contains('death-effect-sprite')) return;
+            if (child.classList.contains('death-drama-sprite')) return;
+            // Skip support link lines - they're managed separately by renderSupportLinks()
+            if (child.classList.contains('support-link-line')) return;
+            
+            const owner = child.dataset.owner;
+            const col = child.dataset.col;
+            const row = child.dataset.row;
+            
+            // Build the key based on sprite type
+            const key = col === 'trap' ? `${owner}-trap-${row}` : `${owner}-${col}-${row}`;
+            
+            // If this sprite wasn't rendered this pass, remove it
+            if (!renderedKeys.has(key)) {
+                child.remove();
+            }
+        });
+    }
     
     document.querySelectorAll('.tile.trap').forEach(tile => {
         const owner = tile.dataset.owner;
@@ -2299,17 +2302,23 @@ function summonToSlot(col, row) {
             setTimeout(() => {
                 const idx = game.playerHand.findIndex(c => c.id === card.id);
                 if (idx > -1) game.playerHand.splice(idx, 1);
-                renderAll();
-                updateButtons();
                 
-                // Check for pending Harbinger animation (Mothman - game logic already done)
+                // Check for pending Harbinger animation BEFORE renderAll!
+                // If Mothman killed enemies, we need sprites to exist for death animations
+                // Game state already has dead enemies removed, so renderAll would destroy sprites
                 if (window.pendingHarbingerAnimation) {
+                    // Render ONLY the summon (Mothman), keep enemy sprites intact for animation
+                    renderSprites(); // Updates sprites but doesn't remove dead ones yet
+                    updateButtons();
+                    
                     playHarbingerAnimation(() => {
                         isAnimating = false;
-                        renderAll();
+                        renderAll(); // Now safe to render - animations done
                         updateButtons();
                     });
                 } else {
+                    renderAll();
+                    updateButtons();
                     isAnimating = false;
                 }
             }, 400);
