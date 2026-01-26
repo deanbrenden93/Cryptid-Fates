@@ -25,6 +25,8 @@
 
 // ==================== CONFIGURATION ====================
 
+const SERVER_VERSION = 21; // v=21 - Increment for cache invalidation
+
 const COOKIE_NAME = 'cf_session';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days in seconds
 const CSRF_COOKIE = 'cf_csrf';
