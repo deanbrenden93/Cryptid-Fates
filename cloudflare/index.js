@@ -2484,6 +2484,14 @@ export class GameRoom {
             this.gameState.enemyPyre += 1;
         }
         
+        // Add animation for pyre card play
+        this.addAnimation('pyreCard', {
+            owner,
+            cardKey: card.key,
+            cardName: card.name,
+            pyreGained: 1
+        });
+        
         this.emit(GameEventTypes.PYRE_CHANGED, {
             owner,
             amount: 1,

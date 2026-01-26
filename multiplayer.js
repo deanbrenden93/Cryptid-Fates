@@ -1604,6 +1604,31 @@ window.Multiplayer = {
                 break;
             }
             
+            // ==================== PYRE CARD PLAYED ====================
+            case 'pyreCard': {
+                const flippedOwner = flipOwner(cmd.owner);
+                const pyreGained = cmd.pyreGained || 1;
+                const cardName = cmd.cardName || 'Pyre card';
+                
+                // Show message
+                showMessage?.(`🔥 ${cardName}: +${pyreGained} Pyre`, 1200);
+                
+                // Play pyre burn animation if available
+                if (window.CombatEffects?.playPyreBurn) {
+                    window.CombatEffects.playPyreBurn(null, pyreGained);
+                }
+                
+                // Flash pyre display
+                const pyreDisplay = document.querySelector(`.player-info.${flippedOwner} .pyre-display`);
+                if (pyreDisplay) {
+                    pyreDisplay.classList.add('pyre-gained');
+                    setTimeout(() => pyreDisplay.classList.remove('pyre-gained'), 600);
+                }
+                
+                duration = 800;
+                break;
+            }
+            
             // ==================== PYRE CHANGE ====================
             case 'pyreChange': {
                 const flippedOwner = flipOwner(cmd.owner);
@@ -4259,15 +4284,27 @@ window.Multiplayer = {
     
     /**
      * Deserialize field from server format
+     * Server uses: col 0 = combat, col 1 = support
+     * Client uses: col 0 = support, col 1 = combat
+     * So we swap columns when converting
      */
     deserializeField(fieldData) {
         if (!fieldData) return [[null, null, null], [null, null, null]];
         
-        return fieldData.map(col => 
-            col.map(cryptidData => 
-                cryptidData ? this.deserializeCryptid(cryptidData) : null
-            )
-        );
+        // Swap columns: server col 0 -> client col 1, server col 1 -> client col 0
+        const clientCol0 = fieldData[1]?.map(cryptidData => {
+            const c = cryptidData ? this.deserializeCryptid(cryptidData) : null;
+            if (c) c.col = 0; // Update cryptid's col to client convention
+            return c;
+        }) || [null, null, null];
+        
+        const clientCol1 = fieldData[0]?.map(cryptidData => {
+            const c = cryptidData ? this.deserializeCryptid(cryptidData) : null;
+            if (c) c.col = 1; // Update cryptid's col to client convention
+            return c;
+        }) || [null, null, null];
+        
+        return [clientCol0, clientCol1];
     },
     
     /**
@@ -4276,16 +4313,20 @@ window.Multiplayer = {
     deserializeCryptid(data) {
         if (!data) return null;
         
-        // Look up full card data from registry if available
-        const cardDef = window.CardRegistry?.getCryptid?.(data.key) || {};
+        // Look up full card data from registry - check both cryptid and kindling
+        const cardDef = window.CardRegistry?.getCryptid?.(data.key) || 
+                       window.CardRegistry?.getKindling?.(data.key) ||
+                       {};
         
         return {
             ...cardDef,
             ...data,
             // Ensure required fields exist
-            currentAtk: data.currentAtk ?? data.baseAtk ?? data.atk ?? 1,
-            currentHp: data.currentHp ?? data.baseHp ?? data.hp ?? 1,
-            maxHp: data.maxHp ?? data.hp ?? 1
+            currentAtk: data.currentAtk ?? data.baseAtk ?? data.atk ?? cardDef.atk ?? 1,
+            currentHp: data.currentHp ?? data.baseHp ?? data.hp ?? cardDef.hp ?? 1,
+            maxHp: data.maxHp ?? data.hp ?? cardDef.hp ?? 1,
+            name: data.name || cardDef.name || data.key,
+            sprite: data.sprite || cardDef.sprite
         };
     },
     
