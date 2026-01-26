@@ -3414,10 +3414,35 @@ function selectAttacker(cryptid) {
 
 function executeAttack(targetCol, targetRow) {
     if (!ui.attackingCryptid || isAnimating) return;
-    isAnimating = true;
     
     const attacker = ui.attackingCryptid;
     const targetOwner = 'enemy';
+    
+    // ============================================================
+    // MULTIPLAYER: Send intent to authoritative server
+    // ============================================================
+    if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
+        // Convert client columns to server convention
+        const serverAttackerCol = 1 - attacker.col;
+        const serverTargetCol = 1 - targetCol;
+        
+        window.Multiplayer.sendGameAction('attack', {
+            attackerCol: serverAttackerCol,
+            attackerRow: attacker.row,
+            attackerKey: attacker.key,
+            targetRow: targetRow
+        });
+        
+        // Clear selection but don't change game state
+        ui.attackingCryptid = null;
+        renderField(); // Remove attack target highlights
+        return; // Server will send state update with animations
+    }
+    
+    // ============================================================
+    // SINGLE PLAYER: Execute locally with animations
+    // ============================================================
+    isAnimating = true;
     
     // Apply Insatiable Hunger buff BEFORE attack (with animation)
     const applyPreAttackBuffs = (callback) => {
@@ -5158,6 +5183,39 @@ document.getElementById('end-turn-btn').onclick = () => {
     // Basic checks
     if (game.currentTurn !== 'player' || isAnimating) return;
     
+    // ============================================================
+    // MULTIPLAYER: Send intent to authoritative server
+    // ============================================================
+    if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
+        if (window.Multiplayer.turnTransitionLock) {
+            console.log('[System] End turn blocked - turn transition in progress');
+            return;
+        }
+        
+        // Clear UI state
+        hideTooltip();
+        ui.selectedCard = null; ui.attackingCryptid = null; ui.targetingBurst = null; ui.targetingEvolution = null; ui.showingKindling = false;
+        document.getElementById('cancel-target').classList.remove('show');
+        clearHandHoverStates();
+        
+        // Set transition lock and send intent
+        window.Multiplayer.turnTransitionLock = true;
+        window.Multiplayer.sendGameAction('endPhase', {});
+        window.Multiplayer.isMyTurn = false;
+        window.Multiplayer.stopTurnTimer?.();
+        
+        // Unlock after brief delay (server will send state update)
+        setTimeout(() => {
+            window.Multiplayer.turnTransitionLock = false;
+        }, 300);
+        
+        return; // Server will send state update
+    }
+    
+    // ============================================================
+    // SINGLE PLAYER: Execute locally
+    // ============================================================
+    
     // Multiplayer safeguard - prevent double-clicking during transition
     if (game.isMultiplayer && typeof window.Multiplayer !== 'undefined') {
         if (window.Multiplayer.turnTransitionLock) {
@@ -5180,27 +5238,7 @@ document.getElementById('end-turn-btn').onclick = () => {
         animateTurnEndEffects(() => {
             game.endTurn();
             
-            if (game.isMultiplayer) {
-                // Multiplayer: send hook AFTER turn-end effects complete
-                // The onEndPhase hook handles timer, isMyTurn, and sending the action
-                if (typeof window.multiplayerHook !== 'undefined') {
-                    window.multiplayerHook.onEndPhase();
-                }
-                
-                // Just set the transition lock here
-                if (typeof window.Multiplayer !== 'undefined') {
-                    window.Multiplayer.turnTransitionLock = true;
-                }
-                
-                isAnimating = false;
-                renderAll(); updateButtons();
-                
-                setTimeout(() => {
-                    if (typeof window.Multiplayer !== 'undefined') {
-                        window.Multiplayer.turnTransitionLock = false;
-                    }
-                }, 300);
-            } else if (game.currentTurn === 'enemy' && !game.gameOver) {
+            if (game.currentTurn === 'enemy' && !game.gameOver) {
                 // Check if tutorial is controlling the enemy
                 if (window.TutorialManager?.isActive && !window.TutorialManager?.freePlayMode) {
                     // Tutorial mode: don't run AI, let tutorial script control enemy
