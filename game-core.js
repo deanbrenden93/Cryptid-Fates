@@ -5863,8 +5863,16 @@ class Game {
         }
         
         // Multiplayer hook - AFTER all callbacks complete so state is final
+        // SKIP if there's a pending Harbinger effect - the UI will send after Harbinger completes
+        // This ensures all damage/death events from Harbinger are captured in the animation manifest
         if (this.isMultiplayer && owner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onSummon(cardData, owner, col, row, cardData.foil || false);
+            if (window.pendingHarbingerEffect) {
+                console.log('[MP] Deferring summon action - pendingHarbingerEffect detected');
+                // Mark that the UI needs to send this summon action after Harbinger
+                window.pendingHarbingerSummonData = { card: cardData, owner, col, row, foil: cardData.foil || false };
+            } else {
+                window.multiplayerHook.onSummon(cardData, owner, col, row, cardData.foil || false);
+            }
         }
         
         return cryptid;
@@ -7144,8 +7152,15 @@ class Game {
         GameEvents.emit('onSummon', { owner, cryptid, col, row, isSupport: col === supportCol, isKindling: true });
         
         // Multiplayer hook - AFTER all callbacks complete so state is final
+        // SKIP if there's a pending Harbinger effect - the UI will send after Harbinger completes
+        // This ensures all damage/death events from Harbinger are captured in the animation manifest
         if (this.isMultiplayer && owner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onSummon(kindlingCard, owner, col, row, kindlingCard.foil || false);
+            if (window.pendingHarbingerEffect) {
+                console.log('[MP] Deferring kindling summon action - pendingHarbingerEffect detected');
+                window.pendingHarbingerSummonData = { card: kindlingCard, owner, col, row, foil: kindlingCard.foil || false };
+            } else {
+                window.multiplayerHook.onSummon(kindlingCard, owner, col, row, kindlingCard.foil || false);
+            }
         }
         
         return cryptid;

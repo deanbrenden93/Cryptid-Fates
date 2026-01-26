@@ -2273,6 +2273,13 @@ function summonToSlot(col, row) {
                 // Check for pending Harbinger effect (Mothman entering combat)
                 if (window.pendingHarbingerEffect) {
                     processHarbingerEffect(() => {
+                        // Send deferred summon action NOW - after all Harbinger events are captured
+                        if (window.pendingHarbingerSummonData && window.multiplayerHook?.onSummon) {
+                            const { card: summonCard, owner, col: summonCol, row: summonRow, foil } = window.pendingHarbingerSummonData;
+                            console.log('[MP] Sending deferred summon after Harbinger complete');
+                            window.multiplayerHook.onSummon(summonCard, owner, summonCol, summonRow, foil);
+                            window.pendingHarbingerSummonData = null;
+                        }
                         isAnimating = false;
                         renderAll();
                         updateButtons();
@@ -2305,6 +2312,13 @@ function summonToSlot(col, row) {
                 // Check for pending Harbinger effect (Mothman entering combat)
                 if (window.pendingHarbingerEffect) {
                     processHarbingerEffect(() => {
+                        // Send deferred summon action NOW - after all Harbinger events are captured
+                        if (window.pendingHarbingerSummonData && window.multiplayerHook?.onSummon) {
+                            const { card: summonCard, owner, col: summonCol, row: summonRow, foil } = window.pendingHarbingerSummonData;
+                            console.log('[MP] Sending deferred summon after Harbinger complete');
+                            window.multiplayerHook.onSummon(summonCard, owner, summonCol, summonRow, foil);
+                            window.pendingHarbingerSummonData = null;
+                        }
                         isAnimating = false;
                         renderAll();
                         updateButtons();
