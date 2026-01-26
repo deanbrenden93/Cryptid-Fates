@@ -941,15 +941,18 @@ window.Multiplayer = {
     
     /**
      * Build deck data to send to server for initialization
+     * Includes current hand so server uses exact same cards with same IDs
      */
     buildDeckData() {
         const g = window.game;
         if (!g) return null;
         
-        // Send deck and kindling pool
+        // Send deck, kindling, AND current hand
+        // Server will use our hand directly (same IDs) instead of drawing its own
         return {
             mainDeck: g.deck?.map(c => this.serializeCardForServer(c)) || [],
-            kindling: g.playerKindling?.map(k => this.serializeCardForServer(k)) || []
+            kindling: g.playerKindling?.map(k => this.serializeCardForServer(k)) || [],
+            hand: g.playerHand?.map(c => this.serializeCardForServer(c)) || []
         };
     },
     

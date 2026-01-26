@@ -3251,20 +3251,35 @@ export class GameRoom {
     initializeDecks(playerId, deckData) {
         const isPlayer1 = playerId === this.playerIds[0];
         
-        // For now, trust client deck data (proper validation would check against card registry)
+        // Trust client deck data - client has already shuffled and drawn
+        // If client sends hand, use it directly; otherwise draw from deck
         if (isPlayer1) {
-            this.gameState.playerDeck = this.rng.shuffle([...deckData.mainDeck]);
+            // Use deck as-is (client already shuffled) - NO re-shuffle for consistent IDs
+            this.gameState.playerDeck = [...deckData.mainDeck];
             this.gameState.playerKindling = [...deckData.kindling];
-            // Draw initial hand
-            for (let i = 0; i < 5 && this.gameState.playerDeck.length > 0; i++) {
-                this.gameState.playerHand.push(this.gameState.playerDeck.shift());
+            
+            // If client sent pre-drawn hand, use it; otherwise draw 7 cards
+            if (deckData.hand && deckData.hand.length > 0) {
+                this.gameState.playerHand = [...deckData.hand];
+            } else {
+                // Fallback: draw 7 cards from top of deck
+                for (let i = 0; i < 7 && this.gameState.playerDeck.length > 0; i++) {
+                    this.gameState.playerHand.push(this.gameState.playerDeck.shift());
+                }
             }
         } else {
-            this.gameState.enemyDeck = this.rng.shuffle([...deckData.mainDeck]);
+            // Use deck as-is (client already shuffled) - NO re-shuffle for consistent IDs
+            this.gameState.enemyDeck = [...deckData.mainDeck];
             this.gameState.enemyKindling = [...deckData.kindling];
-            // Draw initial hand
-            for (let i = 0; i < 5 && this.gameState.enemyDeck.length > 0; i++) {
-                this.gameState.enemyHand.push(this.gameState.enemyDeck.shift());
+            
+            // If client sent pre-drawn hand, use it; otherwise draw 7 cards
+            if (deckData.hand && deckData.hand.length > 0) {
+                this.gameState.enemyHand = [...deckData.hand];
+            } else {
+                // Fallback: draw 7 cards from top of deck
+                for (let i = 0; i < 7 && this.gameState.enemyDeck.length > 0; i++) {
+                    this.gameState.enemyHand.push(this.gameState.enemyDeck.shift());
+                }
             }
         }
     }

@@ -5790,7 +5790,11 @@ class Game {
         const hand = owner === 'player' ? this.playerHand : this.enemyHand;
         if (deck.length > 0 && hand.length < 20) {
             const card = deck.pop();
-            card.id = Math.random().toString(36).substr(2, 9);
+            // Only generate new ID if card doesn't already have one
+            // In multiplayer, cards come from server with IDs that must be preserved
+            if (!card.id) {
+                card.id = Math.random().toString(36).substr(2, 9);
+            }
             hand.push(card);
             GameEvents.emit('onCardDrawn', { owner, card, handSize: hand.length, deckSize: deck.length, source });
             return card;
