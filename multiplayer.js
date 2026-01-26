@@ -4396,10 +4396,13 @@ window.Multiplayer = {
     // Send forced summon (e.g., from Summon Storm card effect)
     sendForcedSummon(cardKey, col, row) {
         if (!this.isInMatch || !this.isMyTurn) return;
-        this.sendGameAction('summon', {
+        // Convert client column to server convention
+        const serverCol = 1 - col;
+        this.sendGameAction('summonKindling', {
+            kindlingId: cardKey, // For forced summons, we use key as ID
             cardKey: cardKey,
             cardName: cardKey,
-            col: col,
+            col: serverCol,
             row: row,
             isKindling: true,
             forced: true
@@ -4409,9 +4412,11 @@ window.Multiplayer = {
     // Action methods for backwards compatibility with ability buttons
     actionActivateAbility(abilityName, col, row, extraData) {
         if (!this.isInMatch || !this.isMyTurn || this.processingOpponentAction) return;
-        this.sendGameAction('ability', Object.assign({ 
+        // Convert client column to server convention
+        const serverCol = 1 - col;
+        this.sendGameAction('activateAbility', Object.assign({ 
             abilityName: abilityName, 
-            col: col, 
+            col: serverCol, 
             row: row 
         }, extraData || {}));
     },
@@ -4831,52 +4836,70 @@ window.multiplayerHook = {
         const combatCol = g?.getCombatCol(owner);
         const isCombatPosition = col === combatCol;
         
-        // Build summon data with on-enter-combat effect info
-        const summonData = {
-            cardKey: card.key,
-            cardName: card.name,
-            col: col,
-            row: row,
-            isKindling: card.isKindling || false
-        };
+        // Convert client column to server column convention
+        // Client: player combat=1, support=0 | Server: player combat=0, support=1
+        const serverCol = 1 - col;
         
-        // Include on-enter-combat effect info for opponent to animate
-        if (isCombatPosition && card.onEnterCombat) {
-            // Check for specific effect types
-            if (card.key === 'mothman') {
-                // Mothman applies 3 calamity to all enemy combatants
-                summonData.onEnterCombatEffect = {
-                    type: 'calamityAll',
-                    stacks: 3,
-                    targetDescription: 'all enemy combatants'
-                };
-            } else if (card.key === 'theFlayer' || card.key === 'bogeyman') {
-                // These apply paralyze on enter
-                summonData.onEnterCombatEffect = {
-                    type: 'paralyzeEnemies',
-                    targetDescription: 'enemies across'
-                };
+        // Determine action type based on whether this is a kindling summon
+        if (card.isKindling) {
+            // Kindling summons use different action and ID field
+            const summonData = {
+                kindlingId: card.id,   // Server expects kindlingId for kindling
+                cardKey: card.key,
+                cardName: card.name,
+                col: serverCol,
+                row: row
+            };
+            Multiplayer.sendGameAction('summonKindling', summonData);
+        } else {
+            // Regular cryptid summons from hand
+            const summonData = {
+                cardId: card.id,       // Server expects cardId (unique instance ID)
+                cardKey: card.key,     // Also send key for fallback/debugging
+                cardName: card.name,
+                col: serverCol,        // Use server's column convention
+                row: row
+            };
+            
+            // Include on-enter-combat effect info for opponent to animate
+            if (isCombatPosition && card.onEnterCombat) {
+                // Check for specific effect types
+                if (card.key === 'mothman') {
+                    summonData.onEnterCombatEffect = {
+                        type: 'calamityAll',
+                        stacks: 3,
+                        targetDescription: 'all enemy combatants'
+                    };
+                } else if (card.key === 'theFlayer' || card.key === 'bogeyman') {
+                    summonData.onEnterCombatEffect = {
+                        type: 'paralyzeEnemies',
+                        targetDescription: 'enemies across'
+                    };
+                }
             }
-            // Add more effect types as needed
+            
+            Multiplayer.sendGameAction('summon', summonData);
         }
-        
-        Multiplayer.sendGameAction('summon', summonData);
     },
     
     onAttack(attacker, targetOwner, targetCol, targetRow, targetKey, attackData) {
         if (!this.shouldSend() || attacker.owner !== 'player') return;
+        
+        // Convert client columns to server convention (flip: server uses opposite col assignments)
+        const serverAttackerCol = 1 - attacker.col;
+        const serverTargetCol = 1 - targetCol;
         
         // Support both old format (targetDied, supportDied as booleans) and new format (attackData object)
         let data;
         if (typeof attackData === 'object' && attackData !== null) {
             // New enhanced format
             data = {
-                attackerCol: attacker.col,
+                attackerCol: serverAttackerCol,
                 attackerRow: attacker.row,
                 attackerKey: attacker.key,
                 hasDestroyer: attacker.hasDestroyer || false,
                 targetOwner: targetOwner,
-                targetCol: targetCol,
+                targetCol: serverTargetCol,
                 targetRow: targetRow,
                 targetKey: targetKey || null,
                 damage: attackData.damage || 0,
@@ -4889,12 +4912,12 @@ window.multiplayerHook = {
         } else {
             // Old format for backwards compatibility
             data = {
-                attackerCol: attacker.col,
+                attackerCol: serverAttackerCol,
                 attackerRow: attacker.row,
                 attackerKey: attacker.key,
                 hasDestroyer: attacker.hasDestroyer || false,
                 targetOwner: targetOwner,
-                targetCol: targetCol,
+                targetCol: serverTargetCol,
                 targetRow: targetRow,
                 targetKey: targetKey || null,
                 damage: 0,
@@ -4908,11 +4931,14 @@ window.multiplayerHook = {
     
     onBurst(card, targetOwner, targetCol, targetRow, effectData) {
         if (!this.shouldSend()) return;
-        Multiplayer.sendGameAction('burst', {
+        // Convert client column to server convention
+        const serverTargetCol = 1 - targetCol;
+        Multiplayer.sendGameAction('playBurst', {
+            cardId: card.id,
             cardKey: card.key,
             cardName: card.name,
             targetOwner: targetOwner,
-            targetCol: targetCol,
+            targetCol: serverTargetCol,
             targetRow: targetRow,
             damage: effectData?.damage || 0,
             healing: effectData?.healing || 0,
@@ -4922,7 +4948,8 @@ window.multiplayerHook = {
     
     onTrap(card, row) {
         if (!this.shouldSend()) return;
-        Multiplayer.sendGameAction('trap', {
+        Multiplayer.sendGameAction('playTrap', {
+            cardId: card.id,
             cardKey: card.key,
             cardName: card.name,
             row: row
@@ -4931,17 +4958,21 @@ window.multiplayerHook = {
     
     onAura(card, col, row) {
         if (!this.shouldSend()) return;
-        Multiplayer.sendGameAction('aura', {
+        // Convert client column to server convention
+        const serverCol = 1 - col;
+        Multiplayer.sendGameAction('playAura', {
+            cardId: card.id,
             cardKey: card.key,
             cardName: card.name,
-            col: col,
+            col: serverCol,
             row: row
         });
     },
     
     onPyre(card) {
         if (!this.shouldSend()) return;
-        Multiplayer.sendGameAction('pyre', {
+        Multiplayer.sendGameAction('playPyre', {
+            cardId: card.id,
             cardKey: card.key,
             cardName: card.name
         });
@@ -4949,22 +4980,27 @@ window.multiplayerHook = {
     
     onEvolve(card, col, row) {
         if (!this.shouldSend()) return;
+        // Convert client column to server convention
+        const serverTargetCol = 1 - col;
         Multiplayer.sendGameAction('evolve', {
+            cardId: card.id,
             cardKey: card.key,
             cardName: card.name,
-            targetCol: col,
+            targetCol: serverTargetCol,
             targetRow: row
         });
     },
     
     onPyreBurn(deathCount) {
         if (!this.shouldSend()) return;
-        Multiplayer.sendGameAction('pyreBurn', { deathCount: deathCount });
+        Multiplayer.sendGameAction('burnForPyre', { deathCount: deathCount });
     },
     
     onActivateAbility(abilityName, col, row, extra) {
         if (!this.shouldSend()) return;
-        Multiplayer.sendGameAction('ability', Object.assign({ abilityName: abilityName, col: col, row: row }, extra || {}));
+        // Convert client column to server convention
+        const serverCol = 1 - col;
+        Multiplayer.sendGameAction('activateAbility', Object.assign({ abilityName: abilityName, col: serverCol, row: row }, extra || {}));
     },
     
     onEndPhase() {
