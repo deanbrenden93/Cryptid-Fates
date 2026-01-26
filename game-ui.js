@@ -625,6 +625,12 @@ function renderField() {
     const battlefieldArea = document.getElementById('battlefield-area');
     let hasInteractiveElements = false;
     
+    // Guard against undefined game object (can happen during multiplayer state transitions)
+    if (!game) {
+        console.warn('[renderField] game object is undefined, skipping render');
+        return;
+    }
+    
     document.querySelectorAll('.tile').forEach(tile => {
         const owner = tile.dataset.owner;
         const col = tile.dataset.col;
@@ -2218,9 +2224,51 @@ function selectCard(card) {
 
 function summonToSlot(col, row) {
     if (isAnimating) return;
-    window.Multiplayer?.startActionCapture?.();
     const card = ui.selectedCard || ui.draggedCard;
     if (!card || card.type !== 'cryptid') return;
+    
+    // ============================================================
+    // MULTIPLAYER: Send intent to authoritative server, NO local execution
+    // Server will process and send back state to both players
+    // ============================================================
+    if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
+        // Convert client column to server convention
+        const serverCol = 1 - col;
+        
+        if (card.isKindling) {
+            if (game.playerKindlingPlayedThisTurn) return;
+            
+            // Send kindling summon intent to server
+            window.Multiplayer.sendGameAction('summonKindling', {
+                kindlingId: card.id,
+                cardKey: card.key,
+                cardName: card.name,
+                col: serverCol,
+                row: row
+            });
+        } else {
+            if (game.playerPyre < card.cost) return;
+            
+            // Send summon intent to server
+            window.Multiplayer.sendGameAction('summon', {
+                cardId: card.id,
+                cardKey: card.key,
+                cardName: card.name,
+                col: serverCol,
+                row: row
+            });
+        }
+        
+        // Clear selection (UI feedback) but don't change game state
+        ui.selectedCard = null;
+        ui.draggedCard = null;
+        return; // Server will send state update, we apply it when received
+    }
+    
+    // ============================================================
+    // SINGLE PLAYER: Execute locally as before
+    // ============================================================
+    window.Multiplayer?.startActionCapture?.();
     
     if (card.isKindling) {
         if (game.playerKindlingPlayedThisTurn) return;
@@ -2949,6 +2997,23 @@ function executeDecayRatAbility(targetCol, targetRow) {
 
 function executePyreCard(card) {
     if (!game.canPlayPyreCard('player') || isAnimating) return;
+    
+    // ============================================================
+    // MULTIPLAYER: Send intent to authoritative server
+    // ============================================================
+    if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
+        window.Multiplayer.sendGameAction('playPyre', {
+            cardId: card.id,
+            cardKey: card.key,
+            cardName: card.name
+        });
+        ui.selectedCard = null;
+        return; // Server will send state update
+    }
+    
+    // ============================================================
+    // SINGLE PLAYER: Execute locally
+    // ============================================================
     isAnimating = true;
     window.Multiplayer?.startActionCapture?.();
     
@@ -2960,11 +3025,6 @@ function executePyreCard(card) {
     animateCardRemoval(card.id, 'playing');
     
     const result = game.playPyreCard('player', card);
-    
-    // Multiplayer hook - AFTER effect so we know the resulting pyre
-    if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-        window.multiplayerHook.onPyre(card);
-    }
     
     // Always clean up, even if result is falsy
     ui.selectedCard = null;
@@ -3019,6 +3079,27 @@ function executePyreCard(card) {
 
 function executePyreCardWithAnimation(card, dropX, dropY) {
     if (!game.canPlayPyreCard('player')) return;
+    
+    // ============================================================
+    // MULTIPLAYER: Send intent to authoritative server
+    // ============================================================
+    if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
+        // Clean up drag state
+        ui.selectedCard = null; 
+        ui.draggedCard = null;
+        if (ui.dragGhost) { ui.dragGhost.remove(); ui.dragGhost = null; }
+        
+        window.Multiplayer.sendGameAction('playPyre', {
+            cardId: card.id,
+            cardKey: card.key,
+            cardName: card.name
+        });
+        return; // Server will send state update
+    }
+    
+    // ============================================================
+    // SINGLE PLAYER: Execute locally
+    // ============================================================
     isAnimating = true;
     window.Multiplayer?.startActionCapture?.();
     
@@ -3035,11 +3116,6 @@ function executePyreCardWithAnimation(card, dropX, dropY) {
     animateCardRemoval(card.id, 'playing');
     
     const result = game.playPyreCard('player', card);
-    
-    // Multiplayer hook - AFTER effect so we know the resulting pyre
-    if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-        window.multiplayerHook.onPyre(card);
-    }
     
     // Remove from hand immediately
     const idx = game.playerHand.findIndex(c => c.id === card.id);
