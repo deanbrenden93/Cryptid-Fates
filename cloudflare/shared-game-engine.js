@@ -1,81 +1,15 @@
 /**
- * Cryptid Fates - Shared Game Engine
- * This is the authoritative game logic used by both server and client.
- * Contains pure game state and logic with NO browser/DOM dependencies.
+ * Shared Game Engine - Clean Rewrite
  * 
- * Architecture:
- * - Server creates instance, processes actions, sends state to clients
- * - Clients receive state and render it (no local game logic in multiplayer)
+ * ARCHITECTURE PRINCIPLE:
+ * - Store state by PLAYER ID, not 'player'/'enemy'
+ * - Each player's field uses THEIR convention: combat=col1, support=col0
+ * - When referencing opponent's field, flip columns (enemy combat appears as col0)
+ * - Server validates, processes, returns state - client handles display
  */
 
-// ==================== SEEDED RANDOM NUMBER GENERATOR ====================
-// Used for deterministic randomness (same seed = same sequence)
-export class SeededRNG {
-    constructor(seed = Date.now()) {
-        this.seed = seed;
-        this.m = 0x80000000; // 2^31
-        this.a = 1103515245;
-        this.c = 12345;
-        this.state = seed;
-    }
-    
-    nextInt() {
-        this.state = (this.a * this.state + this.c) % this.m;
-        return this.state;
-    }
-    
-    nextFloat() {
-        return this.nextInt() / (this.m - 1);
-    }
-    
-    nextRange(min, max) {
-        return min + Math.floor(this.nextFloat() * (max - min + 1));
-    }
-    
-    shuffle(array) {
-        const result = [...array];
-        for (let i = result.length - 1; i > 0; i--) {
-            const j = Math.floor(this.nextFloat() * (i + 1));
-            [result[i], result[j]] = [result[j], result[i]];
-        }
-        return result;
-    }
-}
-
-// ==================== EVENT TYPES ====================
-// Events emitted by the game engine (for animation sync)
-export const GameEventTypes = {
-    // Combat
-    ATTACK_DECLARED: 'attackDeclared',
-    DAMAGE_TAKEN: 'damageTaken',
-    DEATH: 'death',
-    
-    // Field changes
-    SUMMON: 'summon',
-    PROMOTION: 'promotion',
-    EVOLUTION: 'evolution',
-    
-    // Status effects
-    STATUS_APPLIED: 'statusApplied',
-    STATUS_TICK: 'statusTick',
-    STATUS_REMOVED: 'statusRemoved',
-    
-    // Resources
-    PYRE_CHANGED: 'pyreChanged',
-    CARD_DRAWN: 'cardDrawn',
-    
-    // Turn management
-    TURN_START: 'turnStart',
-    TURN_END: 'turnEnd',
-    PHASE_CHANGE: 'phaseChange',
-    
-    // Game state
-    GAME_OVER: 'gameOver'
-};
-
 // ==================== ACTION TYPES ====================
-// Actions that can be sent to the server
-export const ActionTypes = {
+const ActionTypes = {
     SUMMON: 'summon',
     SUMMON_KINDLING: 'summonKindling',
     ATTACK: 'attack',
@@ -83,369 +17,270 @@ export const ActionTypes = {
     PLAY_PYRE: 'playPyre',
     PLAY_BURST: 'playBurst',
     PLAY_AURA: 'playAura',
-    PLAY_TRAP: 'playTrap',  // Client sends playTrap
+    SET_TRAP: 'setTrap',
     END_PHASE: 'endPhase',
     CONCEDE: 'concede'
 };
 
+const GameEventTypes = {
+    SUMMON: 'onSummon',
+    KINDLING_SUMMON: 'onKindlingSummon',
+    ATTACK: 'onAttack',
+    DAMAGE: 'onDamage',
+    DEATH: 'onDeath',
+    EVOLVE: 'onEvolve',
+    PYRE_CHANGED: 'onPyreChanged',
+    PHASE_CHANGE: 'onPhaseChange',
+    TURN_START: 'onTurnStart',
+    TURN_END: 'onTurnEnd',
+    GAME_OVER: 'onGameOver'
+};
+
 // ==================== SHARED GAME ENGINE ====================
-export class SharedGameEngine {
-    constructor(cardRegistry = null) {
-        // Card registry is injected - server and client can use different implementations
-        this.cardRegistry = cardRegistry;
-        
-        // Initialize empty state
-        this.state = this.createInitialState();
-        
-        // Event queue for animation sync
+class SharedGameEngine {
+    constructor() {
+        this.state = null;
         this.eventQueue = [];
-        
-        // RNG for deterministic randomness
-        this.rng = null;
     }
+
+    // ==================== INITIALIZATION ====================
     
-    // ==================== STATE INITIALIZATION ====================
-    createInitialState() {
-        return {
-            // Fields: [col][row] where col 0/1, row 0/1/2
-            playerField: [[null, null, null], [null, null, null]],
-            enemyField: [[null, null, null], [null, null, null]],
+    /**
+     * Initialize a new match
+     * @param {string} player1Id - First player's ID
+     * @param {string} player2Id - Second player's ID  
+     * @param {number} seed - Random seed
+     * @param {string} firstPlayerId - Who goes first (from coin flip)
+     */
+    initMatch(player1Id, player2Id, seed = Date.now(), firstPlayerId = null) {
+        console.log('[Engine] initMatch:', { player1Id, player2Id, seed, firstPlayerId });
+        
+        this.state = {
+            // Player IDs
+            player1Id,
+            player2Id,
             
-            // Hands and decks
-            playerHand: [],
-            enemyHand: [],
-            playerDeck: [],
-            enemyDeck: [],
-            playerKindling: [],
-            enemyKindling: [],
+            // Fields - stored by player ID
+            // Each uses consistent convention: col 0 = support, col 1 = combat
+            fields: {
+                [player1Id]: [[null, null, null], [null, null, null]],
+                [player2Id]: [[null, null, null], [null, null, null]]
+            },
+            
+            // Hands
+            hands: {
+                [player1Id]: [],
+                [player2Id]: []
+            },
+            
+            // Decks
+            decks: {
+                [player1Id]: [],
+                [player2Id]: []
+            },
+            
+            // Kindling pools
+            kindling: {
+                [player1Id]: [],
+                [player2Id]: []
+            },
             
             // Resources
-            playerPyre: 0,
-            enemyPyre: 0,
+            pyre: {
+                [player1Id]: 0,
+                [player2Id]: 0
+            },
             
-            // Death counters (win condition: first to 10 kills)
-            playerDeaths: 0,
-            enemyDeaths: 0,
+            // Death counts
+            deaths: {
+                [player1Id]: 0,
+                [player2Id]: 0
+            },
             
-            // Turn tracking
-            currentTurn: 'player',
-            phase: 'conjure1', // conjure1 -> combat -> conjure2 -> end
-            turnNumber: 0,
+            // Traps (2 slots each)
+            traps: {
+                [player1Id]: [null, null],
+                [player2Id]: [null, null]
+            },
             
             // Per-turn flags
-            playerKindlingPlayedThisTurn: false,
-            enemyKindlingPlayedThisTurn: false,
-            playerPyreCardPlayedThisTurn: false,
-            enemyPyreCardPlayedThisTurn: false,
-            
-            // Traps: [slot0, slot1] for each player
-            playerTraps: [null, null],
-            enemyTraps: [null, null],
-            
-            // Toxic tiles: [col][row] = turns remaining
-            playerToxicTiles: [[0, 0, 0], [0, 0, 0]],
-            enemyToxicTiles: [[0, 0, 0], [0, 0, 0]],
-            
-            // Evolution tracking (prevent multiple evolutions same position)
+            kindlingPlayedThisTurn: {
+                [player1Id]: false,
+                [player2Id]: false
+            },
+            pyreCardPlayedThisTurn: {
+                [player1Id]: false,
+                [player2Id]: false
+            },
             evolvedThisTurn: {},
             
-            // Game over flag
+            // Turn management
+            currentTurn: firstPlayerId || player1Id,
+            phase: 'conjure1',
+            turnNumber: 1,
+            
+            // Game end
             gameOver: false,
             winner: null,
             
-            // Match statistics
+            // Stats
             matchStats: {
-                startTime: Date.now(),
-                damageDealt: 0,
-                damageTaken: 0,
-                spellsCast: 0,
-                evolutions: 0,
-                kindlingSummoned: 0
+                cryptidsSummoned: 0,
+                kindlingSummoned: 0,
+                attacks: 0,
+                evolutions: 0
             }
         };
+        
+        console.log('[Engine] Match initialized. First turn:', this.state.currentTurn);
+        return this.state;
+    }
+
+    /**
+     * Initialize a player's deck data (called when player joins)
+     */
+    initPlayerDeck(playerId, deckData) {
+        if (!this.state) return;
+        
+        console.log('[Engine] initPlayerDeck:', { playerId, handSize: deckData.hand?.length, kindlingSize: deckData.kindling?.length });
+        
+        if (deckData.hand) {
+            this.state.hands[playerId] = deckData.hand.map((card, i) => ({
+                ...card,
+                id: card.id || `${playerId}-hand-${i}-${Date.now()}`
+            }));
+        }
+        
+        if (deckData.kindling) {
+            this.state.kindling[playerId] = deckData.kindling.map((card, i) => ({
+                ...card,
+                id: card.id || `${playerId}-kindling-${i}-${Date.now()}`
+            }));
+        }
+        
+        if (deckData.deck) {
+            this.state.decks[playerId] = deckData.deck;
+        }
+    }
+
+    // ==================== UTILITY FUNCTIONS ====================
+    
+    getOpponentId(playerId) {
+        return playerId === this.state.player1Id ? this.state.player2Id : this.state.player1Id;
     }
     
-    // ==================== COLUMN HELPERS ====================
-    // These are CRITICAL for correct field operations
-    // Player: support=0, combat=1
-    // Enemy: support=1, combat=0
-    getSupportCol(owner) {
-        return owner === 'player' ? 0 : 1;
+    /**
+     * Get cryptid from a player's field
+     */
+    getFieldCryptid(playerId, col, row) {
+        return this.state.fields[playerId]?.[col]?.[row] || null;
     }
     
-    getCombatCol(owner) {
-        return owner === 'player' ? 1 : 0;
+    /**
+     * Set cryptid on a player's field
+     */
+    setFieldCryptid(playerId, col, row, cryptid) {
+        if (!this.state.fields[playerId]) return;
+        this.state.fields[playerId][col][row] = cryptid;
     }
     
-    // ==================== FIELD OPERATIONS ====================
-    getFieldCryptid(owner, col, row) {
-        const field = owner === 'player' ? this.state.playerField : this.state.enemyField;
-        return field[col]?.[row] || null;
-    }
-    
-    setFieldCryptid(owner, col, row, cryptid) {
-        const field = owner === 'player' ? this.state.playerField : this.state.enemyField;
-        field[col][row] = cryptid;
-    }
-    
-    isFieldEmpty(owner) {
-        const field = owner === 'player' ? this.state.playerField : this.state.enemyField;
-        for (let c = 0; c < 2; c++) {
-            for (let r = 0; r < 3; r++) {
-                if (field[c][r]) return false;
+    /**
+     * Check if a player's field is empty
+     */
+    isFieldEmpty(playerId) {
+        const field = this.state.fields[playerId];
+        if (!field) return true;
+        for (let col = 0; col < 2; col++) {
+            for (let row = 0; row < 3; row++) {
+                if (field[col][row]) return false;
             }
         }
         return true;
     }
     
-    // Get combatant in same row as a support
-    getCombatant(cryptid) {
-        if (!cryptid) return null;
-        const owner = cryptid.owner;
-        const combatCol = this.getCombatCol(owner);
-        const supportCol = this.getSupportCol(owner);
+    /**
+     * Get valid summon slots for a player
+     * Priority: Combat first, then support behind existing combat
+     */
+    getValidSummonSlots(playerId) {
+        const field = this.state.fields[playerId];
+        const slots = [];
         
-        if (cryptid.col === supportCol) {
-            return this.getFieldCryptid(owner, combatCol, cryptid.row);
-        }
-        return null;
-    }
-    
-    // Get support in same row as a combatant
-    getSupport(cryptid) {
-        if (!cryptid) return null;
-        const owner = cryptid.owner;
-        const combatCol = this.getCombatCol(owner);
-        const supportCol = this.getSupportCol(owner);
-        
-        if (cryptid.col === combatCol) {
-            return this.getFieldCryptid(owner, supportCol, cryptid.row);
-        }
-        return null;
-    }
-    
-    isInCombat(cryptid) {
-        return cryptid && cryptid.col === this.getCombatCol(cryptid.owner);
-    }
-    
-    isInSupport(cryptid) {
-        return cryptid && cryptid.col === this.getSupportCol(cryptid.owner);
-    }
-    
-    // ==================== GAME INITIALIZATION ====================
-    initMatch(player1Id, player2Id, seed = Date.now(), player1GoesFirst = true) {
-        console.log('[Engine] initMatch called with:', { player1Id, player2Id, seed, player1GoesFirst });
-        
-        this.state = this.createInitialState();
-        this.rng = new SeededRNG(seed);
-        
-        // Store player IDs
-        this.state.player1Id = player1Id;
-        this.state.player2Id = player2Id;
-        
-        // Pyre starts at 0, +1 at each turn start
-        this.state.playerPyre = 0;
-        this.state.enemyPyre = 0;
-        
-        // Set who goes first based on matchmaker's coin flip
-        // 'player' means player1's turn, 'enemy' means player2's turn
-        this.state.currentTurn = player1GoesFirst ? 'player' : 'enemy';
-        this.state.turnNumber = 0;
-        
-        this.eventQueue = [];
-        
-        console.log('[Engine] initMatch complete. State:', {
-            player1Id: this.state.player1Id,
-            player2Id: this.state.player2Id,
-            currentTurn: this.state.currentTurn,
-            currentTurnMeansPlayer: this.state.currentTurn === 'player' ? 'player1' : 'player2'
-        });
-    }
-    
-    // Initialize decks from client-provided data
-    // Client sends: { mainDeck, kindling, hand }
-    // We use the exact hand client provides (same IDs) for consistency
-    initializeDecks(playerId, deckData) {
-        const isPlayer1 = playerId === this.state.player1Id;
-        
-        if (isPlayer1) {
-            this.state.playerDeck = deckData.mainDeck || [];
-            this.state.playerKindling = deckData.kindling || [];
-            
-            // Use provided hand if available (client already drew these)
-            // Otherwise shuffle and draw
-            if (deckData.hand && deckData.hand.length > 0) {
-                this.state.playerHand = deckData.hand;
-            } else {
-                this.state.playerDeck = this.rng.shuffle(this.state.playerDeck);
-                this.state.playerHand = [];
-                for (let i = 0; i < 7 && this.state.playerDeck.length > 0; i++) {
-                    this.state.playerHand.push(this.state.playerDeck.shift());
-                }
-            }
-        } else {
-            this.state.enemyDeck = deckData.mainDeck || [];
-            this.state.enemyKindling = deckData.kindling || [];
-            
-            // Use provided hand if available
-            if (deckData.hand && deckData.hand.length > 0) {
-                this.state.enemyHand = deckData.hand;
-            } else {
-                this.state.enemyDeck = this.rng.shuffle(this.state.enemyDeck);
-                this.state.enemyHand = [];
-                for (let i = 0; i < 7 && this.state.enemyDeck.length > 0; i++) {
-                    this.state.enemyHand.push(this.state.enemyDeck.shift());
-                }
+        // Combat column (col 1) slots
+        for (let row = 0; row < 3; row++) {
+            if (!field[1][row]) {
+                slots.push({ col: 1, row });
             }
         }
-    }
-    
-    // ==================== TURN MANAGEMENT ====================
-    startTurn(owner) {
-        this.state.currentTurn = owner;
-        this.state.phase = 'conjure1';
-        this.state.turnNumber++;
-        this.state.evolvedThisTurn = {};
         
-        // Grant 1 pyre at turn start
-        if (owner === 'player') {
-            this.state.playerPyre++;
-            this.state.playerKindlingPlayedThisTurn = false;
-            this.state.playerPyreCardPlayedThisTurn = false;
-        } else {
-            this.state.enemyPyre++;
-            this.state.enemyKindlingPlayedThisTurn = false;
-            this.state.enemyPyreCardPlayedThisTurn = false;
+        // Support column (col 0) - only if combat in same row is occupied
+        for (let row = 0; row < 3; row++) {
+            if (!field[0][row] && field[1][row]) {
+                slots.push({ col: 0, row });
+            }
         }
         
-        // Draw a card
-        this.drawCard(owner);
-        
-        // Process start-of-turn effects
-        this.processStatusEffects(owner);
-        this.untapCryptids(owner);
-        
-        // Emit event
-        this.emitEvent(GameEventTypes.TURN_START, {
-            owner,
-            turnNumber: this.state.turnNumber,
-            pyre: owner === 'player' ? this.state.playerPyre : this.state.enemyPyre
-        });
+        return slots;
     }
-    
-    endPhase() {
-        const currentPhase = this.state.phase;
-        const owner = this.state.currentTurn;
-        
-        if (currentPhase === 'conjure1') {
-            this.state.phase = 'combat';
-        } else if (currentPhase === 'combat') {
-            this.state.phase = 'conjure2';
-        } else if (currentPhase === 'conjure2') {
-            // End turn, switch to opponent
-            this.endTurn();
-            return;
-        }
-        
-        this.emitEvent(GameEventTypes.PHASE_CHANGE, {
-            owner,
-            newPhase: this.state.phase,
-            oldPhase: currentPhase
-        });
-    }
-    
-    endTurn() {
-        const owner = this.state.currentTurn;
-        
-        // Process end-of-turn effects
-        this.processEndOfTurnEffects(owner);
-        
-        this.emitEvent(GameEventTypes.TURN_END, {
-            owner,
-            turnNumber: this.state.turnNumber
-        });
-        
-        // Switch to opponent
-        const nextOwner = owner === 'player' ? 'enemy' : 'player';
-        this.startTurn(nextOwner);
-    }
-    
-    drawCard(owner) {
-        const deck = owner === 'player' ? this.state.playerDeck : this.state.enemyDeck;
-        const hand = owner === 'player' ? this.state.playerHand : this.state.enemyHand;
-        
-        if (deck.length > 0) {
-            const card = deck.shift();
-            hand.push(card);
-            
-            this.emitEvent(GameEventTypes.CARD_DRAWN, {
-                owner,
-                cardId: card.id,
-                handSize: hand.length
-            });
-        }
-    }
-    
+
     // ==================== ACTION PROCESSING ====================
+    
+    /**
+     * Process an action from a player
+     * @param {string} playerId - The acting player's ID
+     * @param {object} action - The action to process
+     */
     processAction(playerId, action) {
-        // DEBUG: Log player ID matching
-        console.log('[Engine] processAction called:', {
-            playerId,
-            player1Id: this.state.player1Id,
-            player2Id: this.state.player2Id,
-            currentTurn: this.state.currentTurn,
-            actionType: action?.type
-        });
+        console.log('[Engine] processAction:', { playerId, actionType: action?.type, currentTurn: this.state.currentTurn });
         
-        // Determine if this is player or enemy from the server's perspective
-        const isPlayer1 = playerId === this.state.player1Id;
-        const actorOwner = isPlayer1 ? 'player' : 'enemy';
-        
-        console.log('[Engine] Turn check:', { isPlayer1, actorOwner, currentTurn: this.state.currentTurn });
+        // Validate game is active
+        if (this.state.gameOver) {
+            return { success: false, error: 'Game is over' };
+        }
         
         // Validate it's this player's turn (except for concede)
-        if (action.type !== ActionTypes.CONCEDE && this.state.currentTurn !== actorOwner) {
+        if (action.type !== ActionTypes.CONCEDE && this.state.currentTurn !== playerId) {
             console.log('[Engine] REJECTED - not your turn');
-            return { success: false, error: `Not your turn (you are ${actorOwner}, current turn is ${this.state.currentTurn})` };
+            return { success: false, error: `Not your turn (current: ${this.state.currentTurn}, you: ${playerId})` };
         }
         
-        // Clear event queue for this action
+        // Clear event queue
         this.eventQueue = [];
         
         let result;
         switch (action.type) {
             case ActionTypes.SUMMON:
-                result = this.handleSummon(actorOwner, action);
+                result = this.handleSummon(playerId, action);
                 break;
             case ActionTypes.SUMMON_KINDLING:
-                result = this.handleSummonKindling(actorOwner, action);
+                result = this.handleSummonKindling(playerId, action);
                 break;
             case ActionTypes.ATTACK:
-                result = this.handleAttack(actorOwner, action);
+                result = this.handleAttack(playerId, action);
                 break;
             case ActionTypes.EVOLVE:
-                result = this.handleEvolve(actorOwner, action);
+                result = this.handleEvolve(playerId, action);
                 break;
             case ActionTypes.PLAY_PYRE:
-                result = this.handlePlayPyre(actorOwner, action);
+                result = this.handlePlayPyre(playerId, action);
                 break;
             case ActionTypes.PLAY_BURST:
-                result = this.handlePlayBurst(actorOwner, action);
+                result = this.handlePlayBurst(playerId, action);
                 break;
             case ActionTypes.PLAY_AURA:
-                result = this.handlePlayAura(actorOwner, action);
+                result = this.handlePlayAura(playerId, action);
                 break;
-            case ActionTypes.PLAY_TRAP:
-                result = this.handleSetTrap(actorOwner, action);
+            case ActionTypes.SET_TRAP:
+                result = this.handleSetTrap(playerId, action);
                 break;
             case ActionTypes.END_PHASE:
-                result = this.handleEndPhase(actorOwner);
+                result = this.handleEndPhase(playerId);
                 break;
             case ActionTypes.CONCEDE:
-                result = this.handleConcede(actorOwner);
+                result = this.handleConcede(playerId);
                 break;
             default:
-                result = { success: false, error: `Unknown action type: ${action.type}` };
+                result = { success: false, error: `Unknown action: ${action.type}` };
         }
         
         return {
@@ -454,154 +289,158 @@ export class SharedGameEngine {
             state: this.state
         };
     }
-    
+
     // ==================== ACTION HANDLERS ====================
     
-    handleSummon(owner, action) {
-        const { cardIndex, col, row } = action;
-        const hand = owner === 'player' ? this.state.playerHand : this.state.enemyHand;
-        const pyre = owner === 'player' ? this.state.playerPyre : this.state.enemyPyre;
+    handleSummon(playerId, action) {
+        const { cardId, col, row } = action;
+        const hand = this.state.hands[playerId];
+        const pyre = this.state.pyre[playerId];
+        
+        console.log('[Engine] handleSummon:', { playerId, cardId, col, row, handSize: hand.length });
         
         // Validate phase
         if (this.state.phase !== 'conjure1' && this.state.phase !== 'conjure2') {
-            return { success: false, error: 'Can only summon during conjure phases' };
+            return { success: false, error: `Wrong phase: ${this.state.phase}` };
         }
         
-        // Validate card exists in hand
-        if (cardIndex < 0 || cardIndex >= hand.length) {
-            return { success: false, error: 'Invalid card index' };
+        // Find card in hand
+        const cardIndex = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        if (cardIndex < 0) {
+            return { success: false, error: `Card not in hand: ${cardId}` };
         }
         
         const card = hand[cardIndex];
         
-        // Validate it's a cryptid
+        // Validate type
         if (card.type !== 'cryptid') {
-            return { success: false, error: 'Can only summon cryptids' };
+            return { success: false, error: `Not a cryptid: ${card.type}` };
         }
         
         // Validate cost
         if (card.cost > pyre) {
-            return { success: false, error: 'Not enough pyre' };
+            return { success: false, error: `Not enough pyre: need ${card.cost}, have ${pyre}` };
         }
         
-        // Validate position is empty
-        if (this.getFieldCryptid(owner, col, row)) {
+        // Validate position
+        if (this.getFieldCryptid(playerId, col, row)) {
             return { success: false, error: 'Position occupied' };
         }
         
-        // Validate it's a valid summon slot (combat first, then support)
-        const validSlots = this.getValidSummonSlots(owner);
-        const isValid = validSlots.some(s => s.col === col && s.row === row);
-        if (!isValid) {
-            return { success: false, error: 'Invalid summon position' };
+        // Validate valid slot
+        const validSlots = this.getValidSummonSlots(playerId);
+        if (!validSlots.some(s => s.col === col && s.row === row)) {
+            return { success: false, error: `Invalid position: col=${col}, row=${row}` };
         }
         
         // Perform summon
         hand.splice(cardIndex, 1);
-        if (owner === 'player') {
-            this.state.playerPyre -= card.cost;
-        } else {
-            this.state.enemyPyre -= card.cost;
-        }
+        this.state.pyre[playerId] -= card.cost;
         
-        const cryptid = this.summonCryptid(owner, col, row, card);
+        const cryptid = this.createCryptid(playerId, col, row, card);
+        this.setFieldCryptid(playerId, col, row, cryptid);
         
-        return {
-            success: true,
+        this.state.matchStats.cryptidsSummoned++;
+        
+        this.emitEvent(GameEventTypes.SUMMON, {
+            owner: playerId,
             cryptid,
-            action: { ...action, cryptid }
-        };
+            col,
+            row
+        });
+        
+        return { success: true, cryptid, action: { ...action, cryptid } };
     }
     
-    handleSummonKindling(owner, action) {
-        const { kindlingIndex, col, row } = action;
-        const kindling = owner === 'player' ? this.state.playerKindling : this.state.enemyKindling;
+    handleSummonKindling(playerId, action) {
+        const { kindlingId, col, row } = action;
+        const kindlingPool = this.state.kindling[playerId];
+        
+        console.log('[Engine] handleSummonKindling:', { playerId, kindlingId, col, row, poolSize: kindlingPool.length });
         
         // Validate phase
         if (this.state.phase !== 'conjure1' && this.state.phase !== 'conjure2') {
-            return { success: false, error: 'Can only summon during conjure phases' };
+            return { success: false, error: `Wrong phase: ${this.state.phase}` };
         }
         
-        // Validate one kindling per turn
-        const playedThisTurn = owner === 'player' 
-            ? this.state.playerKindlingPlayedThisTurn 
-            : this.state.enemyKindlingPlayedThisTurn;
-        if (playedThisTurn) {
+        // Validate one per turn
+        if (this.state.kindlingPlayedThisTurn[playerId]) {
             return { success: false, error: 'Already played kindling this turn' };
         }
         
-        // Validate kindling exists
-        if (kindlingIndex < 0 || kindlingIndex >= kindling.length) {
-            return { success: false, error: 'Invalid kindling index' };
+        // Find kindling
+        const kindlingIndex = kindlingPool.findIndex(k => k.id === kindlingId || k.id == kindlingId);
+        if (kindlingIndex < 0) {
+            return { success: false, error: `Kindling not found: ${kindlingId}` };
         }
         
-        // Validate position is empty
-        if (this.getFieldCryptid(owner, col, row)) {
+        const kindlingCard = kindlingPool[kindlingIndex];
+        
+        // Validate position
+        if (this.getFieldCryptid(playerId, col, row)) {
             return { success: false, error: 'Position occupied' };
         }
         
         // Perform summon
-        const kindlingCard = kindling.splice(kindlingIndex, 1)[0];
-        if (owner === 'player') {
-            this.state.playerKindlingPlayedThisTurn = true;
-        } else {
-            this.state.enemyKindlingPlayedThisTurn = true;
-        }
+        kindlingPool.splice(kindlingIndex, 1);
+        this.state.kindlingPlayedThisTurn[playerId] = true;
         
-        const cryptid = this.summonKindling(owner, col, row, kindlingCard);
+        const cryptid = this.createCryptid(playerId, col, row, kindlingCard, true);
+        this.setFieldCryptid(playerId, col, row, cryptid);
         
         this.state.matchStats.kindlingSummoned++;
         
-        return {
-            success: true,
+        this.emitEvent(GameEventTypes.KINDLING_SUMMON, {
+            owner: playerId,
             cryptid,
-            action: { ...action, cryptid, kindlingCard }
-        };
+            col,
+            row
+        });
+        
+        return { success: true, cryptid, action: { ...action, cryptid, kindlingCard } };
     }
     
-    handleAttack(owner, action) {
-        const { attackerCol, attackerRow, targetRow, targetCol } = action;
+    handleAttack(playerId, action) {
+        const { attackerCol, attackerRow, targetCol, targetRow } = action;
+        const opponentId = this.getOpponentId(playerId);
+        
+        console.log('[Engine] handleAttack:', { playerId, attackerCol, attackerRow, targetCol, targetRow });
         
         // Validate phase
         if (this.state.phase !== 'combat') {
-            return { success: false, error: 'Can only attack during combat phase' };
+            return { success: false, error: `Wrong phase: ${this.state.phase}` };
         }
         
-        // Get attacker
-        const attacker = this.getFieldCryptid(owner, attackerCol, attackerRow);
+        // Get attacker from player's field
+        const attacker = this.getFieldCryptid(playerId, attackerCol, attackerRow);
         if (!attacker) {
             return { success: false, error: 'No attacker at position' };
         }
         
         // Validate attacker can attack
-        if (attacker.tapped || !attacker.canAttack) {
+        if (attacker.tapped || attacker.attackedThisTurn) {
             return { success: false, error: 'Attacker cannot attack' };
         }
         
-        // Validate attacker is in combat position
-        if (!this.isInCombat(attacker)) {
-            return { success: false, error: 'Only combatants can attack' };
+        // Attacker must be in combat position (col 1)
+        if (attackerCol !== 1) {
+            return { success: false, error: 'Only combat cryptids can attack' };
         }
         
-        // Get target owner (always the opponent)
-        const targetOwner = owner === 'player' ? 'enemy' : 'player';
+        // IMPORTANT: Target position is from attacker's VIEW of enemy field
+        // Client uses enemy conventions: combat=col0, support=col1
+        // We need to flip to find it in opponent's storage (combat=col1)
+        const actualTargetCol = targetCol === 0 ? 1 : 0;
         
-        // Determine actual target column
-        let actualTargetCol = targetCol;
-        if (actualTargetCol === undefined || actualTargetCol === null) {
-            // Default to combat column
-            actualTargetCol = this.getCombatCol(targetOwner);
-        }
+        console.log('[Engine] Target col translation:', { clientCol: targetCol, storageCol: actualTargetCol });
         
-        // Get target
-        let target = this.getFieldCryptid(targetOwner, actualTargetCol, targetRow);
+        // Get target from opponent's field
+        let target = this.getFieldCryptid(opponentId, actualTargetCol, targetRow);
         
-        // If no target and enemy field is empty, force kindling summon
-        if (!target && this.isFieldEmpty(targetOwner)) {
-            const forcedKindling = this.forceKindlingSummon(targetOwner, actualTargetCol, targetRow);
-            if (forcedKindling) {
-                target = forcedKindling;
-            } else {
+        // If no target and field is empty, force a kindling summon
+        if (!target && this.isFieldEmpty(opponentId)) {
+            target = this.forceKindlingSummon(opponentId, actualTargetCol, targetRow);
+            if (!target) {
                 return { success: false, error: 'No valid target' };
             }
         }
@@ -610,812 +449,510 @@ export class SharedGameEngine {
             return { success: false, error: 'No target at position' };
         }
         
-        // Perform attack
-        const result = this.attack(attacker, target);
+        // Mark attacker as having attacked
+        attacker.attackedThisTurn = true;
+        attacker.tapped = true;
         
-        return {
-            success: true,
-            attackResult: result,
-            action: { ...action, result }
-        };
+        // Calculate and apply damage
+        const damage = this.calculateDamage(attacker);
+        const result = this.applyDamage(target, damage, attacker);
+        
+        this.state.matchStats.attacks++;
+        
+        this.emitEvent(GameEventTypes.ATTACK, {
+            attacker,
+            target,
+            damage,
+            result
+        });
+        
+        // Check for win condition
+        this.checkWinCondition();
+        
+        return { success: true, attackResult: result, action: { ...action, result } };
     }
     
-    handleEvolve(owner, action) {
-        const { cardIndex, targetCol, targetRow } = action;
-        const hand = owner === 'player' ? this.state.playerHand : this.state.enemyHand;
-        const pyre = owner === 'player' ? this.state.playerPyre : this.state.enemyPyre;
+    handleEvolve(playerId, action) {
+        const { cardId, col, row } = action;
+        const hand = this.state.hands[playerId];
+        const pyre = this.state.pyre[playerId];
+        
+        console.log('[Engine] handleEvolve:', { playerId, cardId, col, row });
         
         // Validate phase
         if (this.state.phase !== 'conjure1' && this.state.phase !== 'conjure2') {
-            return { success: false, error: 'Can only evolve during conjure phases' };
+            return { success: false, error: `Wrong phase: ${this.state.phase}` };
         }
         
-        // Validate card exists
-        if (cardIndex < 0 || cardIndex >= hand.length) {
-            return { success: false, error: 'Invalid card index' };
+        // Find evolution card
+        const cardIndex = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        if (cardIndex < 0) {
+            return { success: false, error: 'Card not in hand' };
         }
         
         const card = hand[cardIndex];
         
         // Validate it's an evolution
         if (!card.evolvesFrom) {
-            return { success: false, error: 'Card is not an evolution' };
+            return { success: false, error: 'Not an evolution card' };
         }
         
         // Validate cost
         if (card.cost > pyre) {
-            return { success: false, error: 'Not enough pyre' };
+            return { success: false, error: `Not enough pyre: need ${card.cost}, have ${pyre}` };
         }
         
         // Get base cryptid
-        const baseCryptid = this.getFieldCryptid(owner, targetCol, targetRow);
+        const baseCryptid = this.getFieldCryptid(playerId, col, row);
         if (!baseCryptid) {
-            return { success: false, error: 'No cryptid at target position' };
+            return { success: false, error: 'No cryptid at position' };
         }
         
         // Validate base matches
         if (baseCryptid.key !== card.evolvesFrom) {
-            return { success: false, error: 'Base cryptid does not match evolution requirement' };
+            return { success: false, error: `Wrong base: need ${card.evolvesFrom}, have ${baseCryptid.key}` };
         }
         
-        // Validate not already evolved this turn
-        const posKey = `${owner}-${targetCol}-${targetRow}`;
+        // Check evolved this turn
+        const posKey = `${playerId}-${col}-${row}`;
         if (this.state.evolvedThisTurn[posKey]) {
-            return { success: false, error: 'Already evolved at this position this turn' };
+            return { success: false, error: 'Already evolved this position' };
         }
         
         // Perform evolution
         hand.splice(cardIndex, 1);
-        if (owner === 'player') {
-            this.state.playerPyre -= card.cost;
-        } else {
-            this.state.enemyPyre -= card.cost;
-        }
+        this.state.pyre[playerId] -= card.cost;
         
         const evolved = this.evolveCryptid(baseCryptid, card);
+        this.setFieldCryptid(playerId, col, row, evolved);
         this.state.evolvedThisTurn[posKey] = true;
+        
         this.state.matchStats.evolutions++;
         
-        return {
-            success: true,
+        this.emitEvent(GameEventTypes.EVOLVE, {
+            owner: playerId,
+            baseCryptid,
             evolved,
-            action: { ...action, evolved, baseCryptid }
-        };
-    }
-    
-    handlePlayPyre(owner, action) {
-        const { cardIndex } = action;
-        const hand = owner === 'player' ? this.state.playerHand : this.state.enemyHand;
-        
-        // Validate one pyre card per turn
-        const playedThisTurn = owner === 'player' 
-            ? this.state.playerPyreCardPlayedThisTurn 
-            : this.state.enemyPyreCardPlayedThisTurn;
-        if (playedThisTurn) {
-            return { success: false, error: 'Already played pyre card this turn' };
-        }
-        
-        // Validate card exists
-        if (cardIndex < 0 || cardIndex >= hand.length) {
-            return { success: false, error: 'Invalid card index' };
-        }
-        
-        const card = hand[cardIndex];
-        
-        // Validate it's a pyre card
-        if (card.type !== 'pyre') {
-            return { success: false, error: 'Not a pyre card' };
-        }
-        
-        // Perform pyre card play
-        hand.splice(cardIndex, 1);
-        if (owner === 'player') {
-            this.state.playerPyreCardPlayedThisTurn = true;
-            this.state.playerPyre += (card.pyreValue || 1);
-        } else {
-            this.state.enemyPyreCardPlayedThisTurn = true;
-            this.state.enemyPyre += (card.pyreValue || 1);
-        }
-        
-        this.emitEvent(GameEventTypes.PYRE_CHANGED, {
-            owner,
-            change: card.pyreValue || 1,
-            newValue: owner === 'player' ? this.state.playerPyre : this.state.enemyPyre,
-            source: card.name
+            col,
+            row
         });
         
-        return {
-            success: true,
-            pyreGained: card.pyreValue || 1,
-            action: { ...action, card }
-        };
+        return { success: true, evolved, action: { ...action, evolved, baseCryptid } };
     }
     
-    handlePlayBurst(owner, action) {
-        const { cardIndex, targetOwner, targetCol, targetRow } = action;
-        const hand = owner === 'player' ? this.state.playerHand : this.state.enemyHand;
-        const pyre = owner === 'player' ? this.state.playerPyre : this.state.enemyPyre;
+    handlePlayPyre(playerId, action) {
+        const { cardId } = action;
+        const hand = this.state.hands[playerId];
         
-        // Validate card exists
-        if (cardIndex < 0 || cardIndex >= hand.length) {
-            return { success: false, error: 'Invalid card index' };
+        console.log('[Engine] handlePlayPyre:', { playerId, cardId });
+        
+        // Validate one per turn
+        if (this.state.pyreCardPlayedThisTurn[playerId]) {
+            return { success: false, error: 'Already played pyre card' };
+        }
+        
+        // Find card
+        const cardIndex = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        if (cardIndex < 0) {
+            return { success: false, error: 'Card not in hand' };
         }
         
         const card = hand[cardIndex];
         
-        // Validate it's a burst
+        // Validate type
+        if (card.type !== 'pyre') {
+            return { success: false, error: `Not a pyre card: ${card.type}` };
+        }
+        
+        // Perform
+        hand.splice(cardIndex, 1);
+        this.state.pyreCardPlayedThisTurn[playerId] = true;
+        const pyreGained = card.pyreValue || 1;
+        this.state.pyre[playerId] += pyreGained;
+        
+        this.emitEvent(GameEventTypes.PYRE_CHANGED, {
+            owner: playerId,
+            change: pyreGained,
+            newValue: this.state.pyre[playerId]
+        });
+        
+        return { success: true, pyreGained, action: { ...action, card } };
+    }
+    
+    handlePlayBurst(playerId, action) {
+        const { cardId, targetCol, targetRow, targetOwner } = action;
+        const hand = this.state.hands[playerId];
+        const pyre = this.state.pyre[playerId];
+        
+        console.log('[Engine] handlePlayBurst:', { playerId, cardId, targetCol, targetRow, targetOwner });
+        
+        // Find card
+        const cardIndex = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        if (cardIndex < 0) {
+            return { success: false, error: 'Card not in hand' };
+        }
+        
+        const card = hand[cardIndex];
+        
+        // Validate type
         if (card.type !== 'burst') {
-            return { success: false, error: 'Not a burst card' };
+            return { success: false, error: `Not a burst card: ${card.type}` };
         }
         
         // Validate cost
         if (card.cost > pyre) {
-            return { success: false, error: 'Not enough pyre' };
+            return { success: false, error: `Not enough pyre: need ${card.cost}, have ${pyre}` };
+        }
+        
+        // Determine target owner (might be self or enemy)
+        let actualTargetOwner = playerId;
+        let actualTargetCol = targetCol;
+        
+        if (targetOwner === 'enemy') {
+            actualTargetOwner = this.getOpponentId(playerId);
+            // Flip column when targeting enemy
+            actualTargetCol = targetCol === 0 ? 1 : 0;
         }
         
         // Get target if required
         let target = null;
-        if (card.targetRequired !== false) {
-            target = this.getFieldCryptid(targetOwner, targetCol, targetRow);
+        if (card.targetRequired !== false && targetCol !== undefined) {
+            target = this.getFieldCryptid(actualTargetOwner, actualTargetCol, targetRow);
             if (!target) {
                 return { success: false, error: 'No target for burst' };
             }
         }
         
-        // Perform burst
+        // Perform
         hand.splice(cardIndex, 1);
-        if (owner === 'player') {
-            this.state.playerPyre -= card.cost;
-        } else {
-            this.state.enemyPyre -= card.cost;
-        }
+        this.state.pyre[playerId] -= card.cost;
         
-        // Execute burst effect
-        if (card.onCast) {
-            card.onCast(target, owner, this);
-        }
+        // Note: Actual burst effects would need card-specific handlers
+        // For now, just record the action
         
-        this.state.matchStats.spellsCast++;
-        
-        return {
-            success: true,
-            action: { ...action, card, target }
-        };
+        return { success: true, action: { ...action, card, target } };
     }
     
-    handlePlayAura(owner, action) {
-        const { cardIndex, targetCol, targetRow } = action;
-        const hand = owner === 'player' ? this.state.playerHand : this.state.enemyHand;
-        const pyre = owner === 'player' ? this.state.playerPyre : this.state.enemyPyre;
+    handlePlayAura(playerId, action) {
+        const { cardId, col, row } = action;
+        const hand = this.state.hands[playerId];
+        const pyre = this.state.pyre[playerId];
         
-        // Validate card exists
-        if (cardIndex < 0 || cardIndex >= hand.length) {
-            return { success: false, error: 'Invalid card index' };
+        console.log('[Engine] handlePlayAura:', { playerId, cardId, col, row });
+        
+        // Find card
+        const cardIndex = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        if (cardIndex < 0) {
+            return { success: false, error: 'Card not in hand' };
         }
         
         const card = hand[cardIndex];
         
-        // Validate it's an aura
+        // Validate type
         if (card.type !== 'aura') {
-            return { success: false, error: 'Not an aura card' };
+            return { success: false, error: `Not an aura card: ${card.type}` };
         }
         
         // Validate cost
         if (card.cost > pyre) {
-            return { success: false, error: 'Not enough pyre' };
+            return { success: false, error: `Not enough pyre: need ${card.cost}, have ${pyre}` };
         }
         
-        // Get target (auras target friendly cryptids)
-        const target = this.getFieldCryptid(owner, targetCol, targetRow);
+        // Auras target friendly cryptids - no column flip needed
+        const target = this.getFieldCryptid(playerId, col, row);
         if (!target) {
             return { success: false, error: 'No target for aura' };
         }
         
-        // Perform aura attachment
+        // Perform
         hand.splice(cardIndex, 1);
-        if (owner === 'player') {
-            this.state.playerPyre -= card.cost;
-        } else {
-            this.state.enemyPyre -= card.cost;
-        }
+        this.state.pyre[playerId] -= card.cost;
         
-        this.applyAura(target, card);
+        // Attach aura
+        if (!target.auras) target.auras = [];
+        target.auras.push({ key: card.key, name: card.name });
         
-        return {
-            success: true,
-            action: { ...action, card, target }
-        };
+        return { success: true, action: { ...action, card, target } };
     }
     
-    handleSetTrap(owner, action) {
-        const { cardIndex, slot } = action;
-        const hand = owner === 'player' ? this.state.playerHand : this.state.enemyHand;
-        const pyre = owner === 'player' ? this.state.playerPyre : this.state.enemyPyre;
-        const traps = owner === 'player' ? this.state.playerTraps : this.state.enemyTraps;
+    handleSetTrap(playerId, action) {
+        const { cardId, slot } = action;
+        const hand = this.state.hands[playerId];
+        const pyre = this.state.pyre[playerId];
+        const traps = this.state.traps[playerId];
         
-        // Validate card exists
-        if (cardIndex < 0 || cardIndex >= hand.length) {
-            return { success: false, error: 'Invalid card index' };
+        console.log('[Engine] handleSetTrap:', { playerId, cardId, slot });
+        
+        // Find card
+        const cardIndex = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        if (cardIndex < 0) {
+            return { success: false, error: 'Card not in hand' };
         }
         
         const card = hand[cardIndex];
         
-        // Validate it's a trap
+        // Validate type
         if (card.type !== 'trap') {
-            return { success: false, error: 'Not a trap card' };
+            return { success: false, error: `Not a trap card: ${card.type}` };
         }
         
         // Validate cost
         if (card.cost > pyre) {
-            return { success: false, error: 'Not enough pyre' };
+            return { success: false, error: `Not enough pyre: need ${card.cost}, have ${pyre}` };
         }
         
-        // Validate slot is available
-        if (slot < 0 || slot > 1 || traps[slot] !== null) {
-            return { success: false, error: 'Trap slot not available' };
+        // Validate slot
+        if (slot < 0 || slot > 1 || traps[slot]) {
+            return { success: false, error: `Trap slot not available: ${slot}` };
         }
         
-        // Set trap
+        // Perform
         hand.splice(cardIndex, 1);
-        if (owner === 'player') {
-            this.state.playerPyre -= card.cost;
-        } else {
-            this.state.enemyPyre -= card.cost;
+        this.state.pyre[playerId] -= card.cost;
+        traps[slot] = { key: card.key, name: card.name, owner: playerId };
+        
+        return { success: true, action: { ...action, card, slot } };
+    }
+    
+    handleEndPhase(playerId) {
+        console.log('[Engine] handleEndPhase:', { playerId, currentPhase: this.state.phase });
+        
+        const previousPhase = this.state.phase;
+        
+        if (this.state.phase === 'conjure1') {
+            this.state.phase = 'combat';
+        } else if (this.state.phase === 'combat') {
+            this.state.phase = 'conjure2';
+        } else if (this.state.phase === 'conjure2') {
+            // End turn
+            this.endTurn();
         }
         
-        traps[slot] = { ...card, owner };
+        console.log('[Engine] Phase changed:', { from: previousPhase, to: this.state.phase });
         
-        return {
-            success: true,
-            action: { ...action, card, slot }
-        };
+        this.emitEvent(GameEventTypes.PHASE_CHANGE, {
+            previousPhase,
+            newPhase: this.state.phase
+        });
+        
+        return { success: true, newPhase: this.state.phase, action: { type: ActionTypes.END_PHASE } };
     }
     
-    handleEndPhase(owner) {
-        this.endPhase();
-        return {
-            success: true,
-            newPhase: this.state.phase,
-            action: { type: ActionTypes.END_PHASE }
-        };
+    handleConcede(playerId) {
+        const opponentId = this.getOpponentId(playerId);
+        this.state.gameOver = true;
+        this.state.winner = opponentId;
+        
+        this.emitEvent(GameEventTypes.GAME_OVER, {
+            winner: opponentId,
+            reason: 'concede'
+        });
+        
+        return { success: true, winner: opponentId };
     }
-    
-    handleConcede(owner) {
-        const winner = owner === 'player' ? 'enemy' : 'player';
-        this.endGame(winner);
-        return {
-            success: true,
-            winner,
-            action: { type: ActionTypes.CONCEDE }
-        };
-    }
-    
+
     // ==================== GAME LOGIC ====================
     
-    summonCryptid(owner, col, row, cardData) {
-        const supportCol = this.getSupportCol(owner);
-        const combatCol = this.getCombatCol(owner);
-        
-        const cryptid = {
-            ...cardData,
-            owner,
+    createCryptid(ownerId, col, row, cardData, isKindling = false) {
+        return {
+            id: `${ownerId}-${col}-${row}-${Date.now()}`,
+            key: cardData.key,
+            name: cardData.name,
+            owner: ownerId,
             col,
             row,
-            currentHp: cardData.hp,
-            maxHp: cardData.hp,
-            currentAtk: cardData.atk,
-            baseAtk: cardData.atk,
-            baseHp: cardData.hp,
+            type: 'cryptid',
+            cost: cardData.cost || 0,
+            atk: cardData.atk || 0,
+            hp: cardData.hp || 1,
+            currentAtk: cardData.atk || 0,
+            currentHp: cardData.hp || 1,
+            maxHp: cardData.hp || 1,
+            baseAtk: cardData.atk || 0,
+            baseHp: cardData.hp || 1,
             tapped: false,
-            canAttack: true,
-            extraTapTurns: 0,
-            evolutionChain: cardData.evolutionChain || [cardData.key],
-            evolvedThisTurn: false,
-            justSummoned: true,
-            burnTurns: 0,
-            stunned: false,
-            paralyzed: false,
-            paralyzeTurns: 0,
-            bleedTurns: 0,
-            protectionCharges: 0,
-            curseTokens: 0,
-            latchedTo: null,
-            latchedBy: null,
-            auras: [],
             attackedThisTurn: false,
-            restedThisTurn: false
+            isKindling,
+            evolutionChain: cardData.evolutionChain || [cardData.key],
+            auras: [],
+            series: cardData.series,
+            element: cardData.element,
+            rarity: cardData.rarity
         };
+    }
+    
+    evolveCryptid(baseCryptid, evolutionCard) {
+        const hpGain = baseCryptid.currentHp - baseCryptid.baseHp;
         
-        this.setFieldCryptid(owner, col, row, cryptid);
+        return {
+            ...baseCryptid,
+            key: evolutionCard.key,
+            name: evolutionCard.name,
+            atk: evolutionCard.atk,
+            hp: evolutionCard.hp,
+            currentAtk: evolutionCard.atk,
+            currentHp: evolutionCard.hp + Math.max(0, hpGain),
+            maxHp: evolutionCard.hp,
+            baseAtk: evolutionCard.atk,
+            baseHp: evolutionCard.hp,
+            evolutionChain: [...(baseCryptid.evolutionChain || []), evolutionCard.key],
+            evolvedThisTurn: true,
+            evolvesFrom: evolutionCard.evolvesFrom
+        };
+    }
+    
+    forceKindlingSummon(playerId, col, row) {
+        const kindlingPool = this.state.kindling[playerId];
+        if (!kindlingPool || kindlingPool.length === 0) return null;
         
-        // Trigger onSummon callback if exists
-        if (cryptid.onSummon) {
-            cryptid.onSummon(cryptid, owner, this);
-        }
+        // Random kindling
+        const index = Math.floor(Math.random() * kindlingPool.length);
+        const kindlingCard = kindlingPool.splice(index, 1)[0];
         
-        // Trigger position-specific callbacks
-        if (col === supportCol && cryptid.onSupport) {
-            cryptid.onSupport(cryptid, owner, this);
-        }
-        if (col === combatCol && cryptid.onCombat) {
-            cryptid.onCombat(cryptid, owner, this);
-        }
+        const cryptid = this.createCryptid(playerId, col, row, kindlingCard, true);
+        this.setFieldCryptid(playerId, col, row, cryptid);
         
-        this.emitEvent(GameEventTypes.SUMMON, {
-            owner,
+        this.emitEvent(GameEventTypes.KINDLING_SUMMON, {
+            owner: playerId,
+            cryptid,
             col,
             row,
-            cryptid: this.serializeCryptid(cryptid),
-            isKindling: cardData.isKindling || false
+            forced: true
         });
         
         return cryptid;
     }
     
-    summonKindling(owner, col, row, kindlingCard) {
-        if (!kindlingCard) return null;
+    calculateDamage(attacker) {
+        let damage = attacker.currentAtk - (attacker.atkDebuff || 0) - (attacker.curseTokens || 0);
         
-        const cryptid = this.summonCryptid(owner, col, row, {
-            ...kindlingCard,
-            isKindling: true
-        });
-        
-        return cryptid;
-    }
-    
-    forceKindlingSummon(owner, col, row) {
-        // When attacked with empty field, defender must summon random kindling
-        const kindling = owner === 'player' ? this.state.playerKindling : this.state.enemyKindling;
-        
-        if (kindling.length === 0) return null;
-        
-        const idx = Math.floor(this.rng.nextFloat() * kindling.length);
-        const kindlingCard = kindling.splice(idx, 1)[0];
-        
-        return this.summonKindling(owner, col, row, kindlingCard);
-    }
-    
-    getValidSummonSlots(owner) {
-        const field = owner === 'player' ? this.state.playerField : this.state.enemyField;
-        const combatCol = this.getCombatCol(owner);
-        const supportCol = this.getSupportCol(owner);
-        const slots = [];
-        
-        // Combat slots have priority
-        for (let r = 0; r < 3; r++) {
-            if (field[combatCol][r] === null) {
-                slots.push({ col: combatCol, row: r });
-            } else if (field[supportCol][r] === null) {
-                slots.push({ col: supportCol, row: r });
-            }
-        }
-        
-        return slots;
-    }
-    
-    calculateAttackDamage(attacker) {
-        const { owner, col, row } = attacker;
-        const combatCol = this.getCombatCol(owner);
-        const supportCol = this.getSupportCol(owner);
-        
-        let damage = attacker.currentAtk 
-            - (attacker.atkDebuff || 0) 
-            - (attacker.curseTokens || 0)
-            - (attacker.gremlinAtkDebuff || 0)
-            - (attacker.decayRatAtkDebuff || 0);
-        
-        // Add support ATK if in combat
-        if (col === combatCol) {
-            const support = this.getFieldCryptid(owner, supportCol, row);
+        // Get support bonus if in combat
+        if (attacker.col === 1) {
+            const support = this.getFieldCryptid(attacker.owner, 0, attacker.row);
             if (support) {
-                damage += support.currentAtk 
-                    - (support.atkDebuff || 0) 
-                    - (support.curseTokens || 0)
-                    - (support.decayRatAtkDebuff || 0);
+                damage += support.currentAtk - (support.curseTokens || 0);
             }
         }
-        
-        // Bonus damage
-        if (attacker.bonusDamage) damage += attacker.bonusDamage;
-        
-        // Toxic tile penalty
-        if (this.isTileToxic(owner, col, row)) damage -= 1;
         
         return Math.max(0, damage);
     }
     
-    attack(attacker, target) {
-        const targetOwner = target.owner;
-        const targetCol = target.col;
-        const targetRow = target.row;
+    applyDamage(target, damage, source) {
+        const result = {
+            damage,
+            targetDied: false,
+            supportDied: false
+        };
         
-        // Calculate damage
-        let damage = this.calculateAttackDamage(attacker);
-        
-        // Apply combat ability damage bonus
-        if (attacker.onCombatAttack) {
-            damage += attacker.onCombatAttack(attacker, target, this) || 0;
-        }
-        
-        // Bleed doubles damage
-        if (target.bleedTurns > 0) {
-            damage *= 2;
-        }
-        
-        // Protection check
-        let protectionBlocked = false;
-        if (target.protectionCharges > 0 && target.blockFirstHit) {
-            target.protectionCharges--;
-            if (target.protectionCharges === 0) {
-                target.blockFirstHit = false;
-                target.damageReduction = 0;
-            }
-            damage = 0;
-            protectionBlocked = true;
-        }
-        
-        // Apply damage
-        const hpBefore = target.currentHp;
         target.currentHp -= damage;
         
-        this.emitEvent(GameEventTypes.DAMAGE_TAKEN, {
-            target: this.serializeCryptid(target),
+        this.emitEvent(GameEventTypes.DAMAGE, {
+            target,
             damage,
-            source: this.serializeCryptid(attacker),
-            sourceType: 'attack',
-            hpBefore,
-            hpAfter: target.currentHp
+            source,
+            newHp: target.currentHp
         });
         
-        // Track stats
-        if (attacker.owner === 'player') {
-            this.state.matchStats.damageDealt += damage;
-        } else {
-            this.state.matchStats.damageTaken += damage;
+        if (target.currentHp <= 0) {
+            this.killCryptid(target);
+            result.targetDied = true;
         }
         
-        // Tap attacker
-        const support = this.getSupport(attacker);
-        const hasFocus = attacker.hasFocus || (support?.grantsFocus);
-        const preventTap = support?.preventCombatantTap || attacker.noTapOnAttack;
-        
-        if (attacker.canAttackAgain) {
-            attacker.canAttackAgain = false;
-        } else if (hasFocus || preventTap) {
-            attacker.canAttack = false;
-        } else {
-            attacker.tapped = true;
-            attacker.canAttack = false;
-        }
-        attacker.attackedThisTurn = true;
-        
-        // Check death
-        let killed = false;
-        if (this.getEffectiveHp(target) <= 0) {
-            this.killCryptid(target, attacker);
-            killed = true;
-        }
-        
-        return { damage, killed, protectionBlocked };
+        return result;
     }
     
-    getEffectiveHp(cryptid) {
-        if (!cryptid) return 0;
-        let hp = cryptid.currentHp;
-        
-        // Combat units pool HP with their support
-        if (this.isInCombat(cryptid)) {
-            const support = this.getSupport(cryptid);
-            if (support) hp += support.currentHp;
-        }
-        
-        return hp;
-    }
-    
-    killCryptid(cryptid, killedBy = null) {
+    killCryptid(cryptid) {
         const { owner, col, row } = cryptid;
-        const combatCol = this.getCombatCol(owner);
-        const supportCol = this.getSupportCol(owner);
         
         // Remove from field
         this.setFieldCryptid(owner, col, row, null);
         
         // Count deaths (evolution chain length)
         const deathCount = cryptid.evolutionChain?.length || 1;
-        
-        // Update death counters
-        if (owner === 'player') {
-            this.state.playerDeaths += deathCount;
-        } else {
-            this.state.enemyDeaths += deathCount;
-        }
+        this.state.deaths[owner] += deathCount;
         
         this.emitEvent(GameEventTypes.DEATH, {
-            cryptid: this.serializeCryptid(cryptid),
+            cryptid,
             owner,
             col,
             row,
-            deathCount,
-            killedBy: killedBy ? this.serializeCryptid(killedBy) : null
+            deathCount
         });
         
-        // Promote support if combatant died
-        if (col === combatCol) {
-            const support = this.getFieldCryptid(owner, supportCol, row);
-            if (support) {
-                this.promoteSupport(owner, row);
-            }
+        // If combat dies, promote support
+        if (col === 1) {
+            this.promoteSupport(owner, row);
         }
-        
-        // Check game over
-        this.checkGameOver();
-        
-        return { owner, col, row, deathCount };
     }
     
-    promoteSupport(owner, row) {
-        const combatCol = this.getCombatCol(owner);
-        const supportCol = this.getSupportCol(owner);
-        
-        const support = this.getFieldCryptid(owner, supportCol, row);
+    promoteSupport(playerId, row) {
+        const support = this.getFieldCryptid(playerId, 0, row);
         if (!support) return null;
         
         // Move to combat
-        this.setFieldCryptid(owner, supportCol, row, null);
-        support.col = combatCol;
-        this.setFieldCryptid(owner, combatCol, row, support);
-        
-        // Trigger combat callbacks
-        if (support.onCombat) {
-            support.onCombat(support, owner, this);
-        }
-        if (support.onEnterCombat) {
-            support.onEnterCombat(support, owner, this);
-        }
-        
-        this.emitEvent(GameEventTypes.PROMOTION, {
-            cryptid: this.serializeCryptid(support),
-            owner,
-            row,
-            fromCol: supportCol,
-            toCol: combatCol
-        });
+        this.setFieldCryptid(playerId, 0, row, null);
+        support.col = 1;
+        this.setFieldCryptid(playerId, 1, row, support);
         
         return support;
     }
     
-    evolveCryptid(baseCryptid, evolutionCard) {
-        const { owner, col, row } = baseCryptid;
+    endTurn() {
+        const currentPlayerId = this.state.currentTurn;
+        const nextPlayerId = this.getOpponentId(currentPlayerId);
         
-        const evolved = {
-            ...evolutionCard,
-            owner,
-            col,
-            row,
-            currentHp: evolutionCard.hp,
-            maxHp: evolutionCard.hp,
-            currentAtk: evolutionCard.atk,
-            baseAtk: evolutionCard.atk,
-            baseHp: evolutionCard.hp,
-            tapped: baseCryptid.tapped,
-            canAttack: baseCryptid.canAttack,
-            extraTapTurns: 0,
-            evolutionChain: [...(baseCryptid.evolutionChain || [baseCryptid.key]), evolutionCard.key],
-            evolvedThisTurn: true,
-            justSummoned: false,
-            burnTurns: 0,
-            stunned: false,
-            paralyzed: false,
-            paralyzeTurns: 0,
-            bleedTurns: 0,
-            protectionCharges: 0,
-            curseTokens: 0,
-            latchedTo: null,
-            latchedBy: null,
-            auras: [],
-            attackedThisTurn: baseCryptid.attackedThisTurn || false,
-            restedThisTurn: baseCryptid.restedThisTurn || false
-        };
+        // Reset turn flags
+        this.state.kindlingPlayedThisTurn[currentPlayerId] = false;
+        this.state.pyreCardPlayedThisTurn[currentPlayerId] = false;
+        this.state.evolvedThisTurn = {};
         
-        this.setFieldCryptid(owner, col, row, evolved);
-        
-        // Trigger callbacks
-        if (evolved.onSummon) {
-            evolved.onSummon(evolved, owner, this);
-        }
-        
-        const combatCol = this.getCombatCol(owner);
-        const supportCol = this.getSupportCol(owner);
-        
-        if (col === combatCol && evolved.onCombat) {
-            evolved.onCombat(evolved, owner, this);
-        }
-        if (col === supportCol && evolved.onSupport) {
-            evolved.onSupport(evolved, owner, this);
-        }
-        
-        this.emitEvent(GameEventTypes.EVOLUTION, {
-            baseCryptid: this.serializeCryptid(baseCryptid),
-            evolved: this.serializeCryptid(evolved),
-            owner,
-            col,
-            row
-        });
-        
-        return evolved;
-    }
-    
-    // ==================== STATUS EFFECTS ====================
-    
-    isTileToxic(owner, col, row) {
-        const tiles = owner === 'player' ? this.state.playerToxicTiles : this.state.enemyToxicTiles;
-        return tiles[col]?.[row] > 0;
-    }
-    
-    applyBurn(target, turns = 2) {
-        target.burnTurns = Math.max(target.burnTurns, turns);
-        this.emitEvent(GameEventTypes.STATUS_APPLIED, {
-            target: this.serializeCryptid(target),
-            status: 'burn',
-            turns
-        });
-    }
-    
-    applyStun(target) {
-        target.stunned = true;
-        target.extraTapTurns = 1;
-        this.emitEvent(GameEventTypes.STATUS_APPLIED, {
-            target: this.serializeCryptid(target),
-            status: 'stun'
-        });
-    }
-    
-    applyParalyze(target) {
-        target.paralyzed = true;
-        target.paralyzeTurns = 1;
-        this.emitEvent(GameEventTypes.STATUS_APPLIED, {
-            target: this.serializeCryptid(target),
-            status: 'paralyze'
-        });
-    }
-    
-    applyBleed(target, turns = 1) {
-        target.bleedTurns = Math.max(target.bleedTurns, turns);
-        this.emitEvent(GameEventTypes.STATUS_APPLIED, {
-            target: this.serializeCryptid(target),
-            status: 'bleed',
-            turns
-        });
-    }
-    
-    applyCurse(target, stacks = 1) {
-        target.curseTokens = (target.curseTokens || 0) + stacks;
-        this.emitEvent(GameEventTypes.STATUS_APPLIED, {
-            target: this.serializeCryptid(target),
-            status: 'curse',
-            stacks: target.curseTokens
-        });
-    }
-    
-    applyProtection(target, charges = 1) {
-        target.protectionCharges = (target.protectionCharges || 0) + charges;
-        target.blockFirstHit = true;
-        target.damageReduction = 999;
-        this.emitEvent(GameEventTypes.STATUS_APPLIED, {
-            target: this.serializeCryptid(target),
-            status: 'protection',
-            charges: target.protectionCharges
-        });
-    }
-    
-    applyAura(target, auraCard) {
-        if (!target.auras) target.auras = [];
-        target.auras.push({ ...auraCard });
-        
-        // Apply aura effects
-        if (auraCard.atkBonus) {
-            target.currentAtk += auraCard.atkBonus;
-        }
-        if (auraCard.hpBonus) {
-            target.currentHp += auraCard.hpBonus;
-            target.maxHp += auraCard.hpBonus;
-        }
-    }
-    
-    hasStatusAilment(cryptid) {
-        return cryptid.burnTurns > 0 || 
-               cryptid.stunned || 
-               cryptid.paralyzed || 
-               cryptid.bleedTurns > 0 ||
-               cryptid.curseTokens > 0;
-    }
-    
-    processStatusEffects(owner) {
-        const field = owner === 'player' ? this.state.playerField : this.state.enemyField;
-        
-        for (let c = 0; c < 2; c++) {
-            for (let r = 0; r < 3; r++) {
-                const cryptid = field[c][r];
-                if (!cryptid) continue;
-                
-                // Burn damage
-                if (cryptid.burnTurns > 0) {
-                    cryptid.currentHp -= 1;
-                    cryptid.burnTurns--;
-                    
-                    this.emitEvent(GameEventTypes.STATUS_TICK, {
-                        target: this.serializeCryptid(cryptid),
-                        status: 'burn',
-                        damage: 1,
-                        turnsRemaining: cryptid.burnTurns
-                    });
-                    
-                    if (this.getEffectiveHp(cryptid) <= 0) {
-                        this.killCryptid(cryptid, null);
-                    }
-                }
-            }
-        }
-    }
-    
-    untapCryptids(owner) {
-        const field = owner === 'player' ? this.state.playerField : this.state.enemyField;
-        
-        for (let c = 0; c < 2; c++) {
-            for (let r = 0; r < 3; r++) {
-                const cryptid = field[c][r];
-                if (!cryptid) continue;
-                
-                cryptid.justSummoned = false;
-                cryptid.evolvedThisTurn = false;
-                cryptid.attackedThisTurn = false;
-                
-                if (cryptid.extraTapTurns > 0) {
-                    cryptid.extraTapTurns--;
-                } else if (cryptid.paralyzed) {
-                    cryptid.paralyzeTurns--;
-                    if (cryptid.paralyzeTurns <= 0) {
-                        cryptid.paralyzed = false;
-                        cryptid.paralyzeTurns = 0;
-                    }
-                } else {
+        // Reset attack states for current player's cryptids
+        for (const col of [0, 1]) {
+            for (const row of [0, 1, 2]) {
+                const cryptid = this.getFieldCryptid(currentPlayerId, col, row);
+                if (cryptid) {
+                    cryptid.attackedThisTurn = false;
                     cryptid.tapped = false;
-                    cryptid.canAttack = true;
                 }
             }
         }
-    }
-    
-    processEndOfTurnEffects(owner) {
-        // Process any end-of-turn effects here
-    }
-    
-    // ==================== WIN CONDITION ====================
-    
-    checkGameOver() {
-        // First to 10 kills wins
-        if (this.state.playerDeaths >= 10) {
-            this.endGame('enemy');
-        } else if (this.state.enemyDeaths >= 10) {
-            this.endGame('player');
-        }
-    }
-    
-    endGame(winner) {
-        if (this.state.gameOver) return;
         
-        this.state.gameOver = true;
-        this.state.winner = winner;
+        // Switch turn
+        this.state.currentTurn = nextPlayerId;
+        this.state.phase = 'conjure1';
+        this.state.turnNumber++;
         
-        this.emitEvent(GameEventTypes.GAME_OVER, {
-            winner,
-            playerDeaths: this.state.playerDeaths,
-            enemyDeaths: this.state.enemyDeaths,
-            turnNumber: this.state.turnNumber,
-            stats: this.state.matchStats
+        // Give pyre to new active player
+        this.state.pyre[nextPlayerId]++;
+        
+        this.emitEvent(GameEventTypes.TURN_START, {
+            player: nextPlayerId,
+            turnNumber: this.state.turnNumber
+        });
+        
+        this.emitEvent(GameEventTypes.PYRE_CHANGED, {
+            owner: nextPlayerId,
+            change: 1,
+            newValue: this.state.pyre[nextPlayerId]
         });
     }
     
+    checkWinCondition() {
+        for (const playerId of [this.state.player1Id, this.state.player2Id]) {
+            if (this.state.deaths[playerId] >= 10) {
+                const winner = this.getOpponentId(playerId);
+                this.state.gameOver = true;
+                this.state.winner = winner;
+                
+                this.emitEvent(GameEventTypes.GAME_OVER, {
+                    winner,
+                    reason: 'deaths',
+                    deaths: this.state.deaths
+                });
+            }
+        }
+    }
+
     // ==================== EVENT SYSTEM ====================
     
     emitEvent(type, data) {
@@ -1425,13 +962,12 @@ export class SharedGameEngine {
             timestamp: Date.now()
         });
     }
-    
+
     // ==================== SERIALIZATION ====================
     
     serializeCryptid(cryptid) {
         if (!cryptid) return null;
         
-        // Return a clean copy without function references
         return {
             id: cryptid.id,
             key: cryptid.key,
@@ -1449,27 +985,10 @@ export class SharedGameEngine {
             baseAtk: cryptid.baseAtk,
             baseHp: cryptid.baseHp,
             tapped: cryptid.tapped,
-            canAttack: cryptid.canAttack,
-            justSummoned: cryptid.justSummoned,
+            attackedThisTurn: cryptid.attackedThisTurn,
             isKindling: cryptid.isKindling,
             evolutionChain: cryptid.evolutionChain,
-            evolvedThisTurn: cryptid.evolvedThisTurn,
-            burnTurns: cryptid.burnTurns,
-            stunned: cryptid.stunned,
-            paralyzed: cryptid.paralyzed,
-            paralyzeTurns: cryptid.paralyzeTurns,
-            bleedTurns: cryptid.bleedTurns,
-            protectionCharges: cryptid.protectionCharges,
-            curseTokens: cryptid.curseTokens,
-            auras: cryptid.auras?.map(a => ({ key: a.key, name: a.name })) || [],
-            // Card-specific flags that affect gameplay
-            hasCleave: cryptid.hasCleave,
-            hasFocus: cryptid.hasFocus,
-            hasLifesteal: cryptid.hasLifesteal,
-            bonusDamage: cryptid.bonusDamage,
-            damageReduction: cryptid.damageReduction,
-            regeneration: cryptid.regeneration,
-            evolvesFrom: cryptid.evolvesFrom,
+            auras: cryptid.auras || [],
             series: cryptid.series,
             element: cryptid.element,
             rarity: cryptid.rarity
@@ -1478,6 +997,29 @@ export class SharedGameEngine {
     
     serializeField(field) {
         return field.map(col => col.map(cryptid => this.serializeCryptid(cryptid)));
+    }
+    
+    /**
+     * Serialize field with column flip for enemy view
+     * When viewing opponent's field, their col1 (combat) appears as col0 to us
+     */
+    serializeFieldFlipped(field) {
+        // Swap columns: [col0, col1] -> [col1, col0]
+        const flipped = [
+            field[1].map(cryptid => {
+                if (!cryptid) return null;
+                const s = this.serializeCryptid(cryptid);
+                s.col = 0; // Was 1, now 0
+                return s;
+            }),
+            field[0].map(cryptid => {
+                if (!cryptid) return null;
+                const s = this.serializeCryptid(cryptid);
+                s.col = 1; // Was 0, now 1
+                return s;
+            })
+        ];
+        return flipped;
     }
     
     serializeHand(hand) {
@@ -1510,94 +1052,58 @@ export class SharedGameEngine {
         }));
     }
     
-    // Get state for a specific player (hides opponent's hand)
-    // Returns in CLIENT-EXPECTED format: playerField, enemyField, hand, etc.
+    /**
+     * Get state formatted for a specific player
+     * - playerField: Their field (no flip)
+     * - enemyField: Opponent's field (flipped)
+     */
     getStateForPlayer(playerId) {
-        const isPlayer1 = playerId === this.state.player1Id;
+        const opponentId = this.getOpponentId(playerId);
         
-        // From each player's perspective:
-        // - "playerField" is THEIR field (what they control)
-        // - "enemyField" is their OPPONENT's field
-        // This matches how the client's Game object works
+        const myField = this.state.fields[playerId];
+        const theirField = this.state.fields[opponentId];
         
-        const myField = isPlayer1 
-            ? this.state.playerField 
-            : this.state.enemyField;
-        const theirField = isPlayer1 
-            ? this.state.enemyField 
-            : this.state.playerField;
+        console.log('[Engine] getStateForPlayer:', { playerId, opponentId, isMyTurn: this.state.currentTurn === playerId });
         
         return {
-            // Fields - from this player's perspective
-            // "playerField" = this player's field
-            // "enemyField" = opponent's field
+            // Fields
+            // My field: no transformation
+            // Enemy field: flip columns (their combat=col1 appears as col0 to me)
             playerField: this.serializeField(myField),
-            enemyField: this.serializeField(theirField),
+            enemyField: this.serializeFieldFlipped(theirField),
             
-            // Hand (only the requesting player's hand, opponent's is hidden)
-            hand: isPlayer1 
-                ? this.serializeHand(this.state.playerHand)
-                : this.serializeHand(this.state.enemyHand),
-            
-            // Kindling
-            kindling: isPlayer1
-                ? this.serializeKindling(this.state.playerKindling)
-                : this.serializeKindling(this.state.enemyKindling),
+            // Hand & kindling
+            hand: this.serializeHand(this.state.hands[playerId]),
+            kindling: this.serializeKindling(this.state.kindling[playerId]),
             
             // Resources
-            playerPyre: isPlayer1 ? this.state.playerPyre : this.state.enemyPyre,
-            enemyPyre: isPlayer1 ? this.state.enemyPyre : this.state.playerPyre,
-            playerDeaths: isPlayer1 ? this.state.playerDeaths : this.state.enemyDeaths,
-            enemyDeaths: isPlayer1 ? this.state.enemyDeaths : this.state.playerDeaths,
+            playerPyre: this.state.pyre[playerId],
+            enemyPyre: this.state.pyre[opponentId],
+            playerDeaths: this.state.deaths[playerId],
+            enemyDeaths: this.state.deaths[opponentId],
             
-            // Per-turn flags
-            kindlingPlayed: isPlayer1 
-                ? this.state.playerKindlingPlayedThisTurn 
-                : this.state.enemyKindlingPlayedThisTurn,
-            pyreCardPlayed: isPlayer1
-                ? this.state.playerPyreCardPlayedThisTurn
-                : this.state.enemyPyreCardPlayedThisTurn,
+            // Flags
+            kindlingPlayed: this.state.kindlingPlayedThisTurn[playerId],
+            pyreCardPlayed: this.state.pyreCardPlayedThisTurn[playerId],
             
             // Traps
-            playerTraps: isPlayer1 
-                ? this.state.playerTraps.map(t => t ? { key: t.key, name: t.name } : null)
-                : this.state.enemyTraps.map(t => t ? { key: t.key, name: t.name } : null),
-            enemyTraps: isPlayer1
-                ? this.state.enemyTraps.map(t => t ? true : null) // Only show trap exists
-                : this.state.playerTraps.map(t => t ? true : null),
+            playerTraps: this.state.traps[playerId].map(t => t ? { key: t.key, name: t.name } : null),
+            enemyTraps: this.state.traps[opponentId].map(t => t ? true : null),
             
             // Game state
             phase: this.state.phase,
             turnNumber: this.state.turnNumber,
-            isMyTurn: (isPlayer1 && this.state.currentTurn === 'player') ||
-                      (!isPlayer1 && this.state.currentTurn === 'enemy'),
+            isMyTurn: this.state.currentTurn === playerId,
             gameOver: this.state.gameOver,
             winner: this.state.winner,
             
-            // Deck sizes
-            deckSize: isPlayer1 ? this.state.playerDeck.length : this.state.enemyDeck.length,
-            enemyDeckSize: isPlayer1 ? this.state.enemyDeck.length : this.state.playerDeck.length,
-            enemyHandSize: isPlayer1 ? this.state.enemyHand.length : this.state.playerHand.length
-        };
-    }
-    
-    // Get full state (for server logging/debugging)
-    getFullState() {
-        return {
-            playerField: this.serializeField(this.state.playerField),
-            enemyField: this.serializeField(this.state.enemyField),
-            playerHand: this.serializeHand(this.state.playerHand),
-            enemyHand: this.serializeHand(this.state.enemyHand),
-            playerPyre: this.state.playerPyre,
-            enemyPyre: this.state.enemyPyre,
-            playerDeaths: this.state.playerDeaths,
-            enemyDeaths: this.state.enemyDeaths,
-            currentTurn: this.state.currentTurn,
-            phase: this.state.phase,
-            turnNumber: this.state.turnNumber,
-            gameOver: this.state.gameOver,
-            winner: this.state.winner
+            // Deck info
+            deckSize: this.state.decks[playerId]?.length || 0,
+            enemyDeckSize: this.state.decks[opponentId]?.length || 0,
+            enemyHandSize: this.state.hands[opponentId]?.length || 0
         };
     }
 }
 
+// Export for Cloudflare Worker
+export { SharedGameEngine, ActionTypes, GameEventTypes };

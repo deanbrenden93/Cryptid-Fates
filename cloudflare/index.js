@@ -28,11 +28,11 @@
 
 // ==================== IMPORTS ====================
 
-import { SharedGameEngine, GameEventTypes, ActionTypes, SeededRNG } from './shared-game-engine.js';
+import { SharedGameEngine, GameEventTypes, ActionTypes } from './shared-game-engine.js';
 
 // ==================== CONFIGURATION ====================
 
-const SERVER_VERSION = 31; // v=31 - Fixed turn initialization to respect coin flip winner
+const SERVER_VERSION = 33; // v=33 - Clean rewrite with player ID-based state
 
 const COOKIE_NAME = 'cf_session';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days in seconds
@@ -1262,12 +1262,11 @@ export class GameRoom {
         
         // Determine who goes first based on matchmaker's coin flip
         const firstPlayerId = data.goesFirst || p1Id;
-        const player1GoesFirst = (firstPlayerId === p1Id);
         
-        console.log('[GameRoom] Init - p1Id:', p1Id, 'p2Id:', p2Id, 'goesFirst:', firstPlayerId, 'player1GoesFirst:', player1GoesFirst);
+        console.log('[GameRoom] Init - p1Id:', p1Id, 'p2Id:', p2Id, 'firstPlayerId:', firstPlayerId);
         
         // Initialize the game engine with player IDs and who goes first
-        this.engine.initMatch(p1Id, p2Id, this.seed, player1GoesFirst);
+        this.engine.initMatch(p1Id, p2Id, this.seed, firstPlayerId);
         
         this.startTurnTimer();
         
@@ -1288,8 +1287,8 @@ export class GameRoom {
         
         // Initialize deck if provided (first action of match for this player)
         if (deckData && !player.deckInitialized) {
-            console.log(`[GameRoom] Initializing deck for ${playerId}, isPlayer1: ${isPlayer1}`);
-            this.engine.initializeDecks(playerId, deckData);
+            console.log(`[GameRoom] Initializing deck for ${playerId}`);
+            this.engine.initPlayerDeck(playerId, deckData);
             player.deckInitialized = true;
         }
         
@@ -1371,7 +1370,8 @@ export class GameRoom {
     handleTurnTimeout() {
         this.stopTurnTimer();
         
-        const currentPlayerId = this.engine.state.currentTurn === 'player' ? this.playerIds[0] : this.playerIds[1];
+        // currentTurn is now the player ID directly
+        const currentPlayerId = this.engine.state.currentTurn;
         const player = this.players[currentPlayerId];
         
         if (player) {
@@ -1436,7 +1436,7 @@ export class GameRoom {
                 const winnerId = this.playerIds.find(id => id !== playerId);
                 // Mark match as ended due to disconnect using engine
                 this.engine.state.gameOver = true;
-                this.engine.state.winner = winnerId === this.playerIds[0] ? 'player' : 'enemy';
+                this.engine.state.winner = winnerId;
             }, this.DISCONNECT_GRACE);
         }
         
