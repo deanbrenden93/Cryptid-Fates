@@ -1770,8 +1770,8 @@ export class GameRoom {
             playerKindling: [],
             enemyKindling: [],
             
-            // Resources
-            playerPyre: 0,
+            // Resources - First player (player1) starts with 1 pyre
+            playerPyre: 1,
             enemyPyre: 0,
             
             // Turn state
@@ -1908,9 +1908,14 @@ export class GameRoom {
     async handleAction(data) {
         const { playerId, action, type, deckData } = data;
         
-        // Initialize deck if provided (first action of match)
-        if (deckData && !this.gameState.playerDeck.length) {
-            this.initializeDecks(playerId, deckData);
+        // Initialize deck if provided (first action of match for this player)
+        // Check THIS PLAYER's deck, not just player1's deck
+        if (deckData) {
+            const isPlayer1 = playerId === this.playerIds[0];
+            const playerDeck = isPlayer1 ? this.gameState.playerDeck : this.gameState.enemyDeck;
+            if (!playerDeck || playerDeck.length === 0) {
+                this.initializeDecks(playerId, deckData);
+            }
         }
         
         // Handle special action types

@@ -3842,7 +3842,8 @@ window.Multiplayer = {
                     window.CombatEffects.playSummonAnimation(sprite);
                 }
                 if (typeof showMessage === 'function') {
-                    showMessage(`${cmd.cryptidName || 'Cryptid'} summoned!`, 1000);
+                    const cardName = cmd.name || cmd.cryptidName || cmd.key || 'Cryptid';
+                    showMessage(`${cardName} summoned!`, 1000);
                 }
                 duration = 500;
                 break;
@@ -3891,7 +3892,8 @@ window.Multiplayer = {
                     window.CombatEffects.playDramaticDeath(sprite, cmd.owner, cmd.rarity || 'common');
                 }
                 if (typeof showMessage === 'function') {
-                    showMessage(`💀 ${cmd.cryptidKey || 'Cryptid'} falls!`, 1200);
+                    const cardName = cmd.name || cmd.cryptidKey || cmd.key || 'Cryptid';
+                    showMessage(`💀 ${cardName} falls!`, 1200);
                 }
                 duration = 800;
                 break;
@@ -3905,7 +3907,8 @@ window.Multiplayer = {
                     setTimeout(() => sprite.classList.remove('promoting'), 400);
                 }
                 if (typeof showMessage === 'function') {
-                    showMessage(`${cmd.cryptidKey || 'Support'} promoted!`, 800);
+                    const cardName = cmd.name || cmd.cryptidKey || cmd.key || 'Support';
+                    showMessage(`${cardName} promoted!`, 800);
                 }
                 duration = 500;
                 break;
@@ -3986,6 +3989,30 @@ window.Multiplayer = {
                 }
                 
                 duration = 400;
+                break;
+            }
+            
+            case 'pyreCard': {
+                const flippedOwner = flipOwner(cmd.owner);
+                const pyreGained = cmd.pyreGained || 1;
+                const cardName = cmd.cardName || 'Pyre card';
+                
+                // Show message
+                showMessage?.(`🔥 ${cardName}: +${pyreGained} Pyre`, 1200);
+                
+                // Play pyre burn animation
+                if (window.CombatEffects?.playPyreBurn) {
+                    window.CombatEffects.playPyreBurn(null, pyreGained);
+                }
+                
+                // Flash pyre display
+                const pyreDisplay = document.querySelector(`.player-info.${flippedOwner} .pyre-display`);
+                if (pyreDisplay) {
+                    pyreDisplay.classList.add('pyre-gained');
+                    setTimeout(() => pyreDisplay.classList.remove('pyre-gained'), 600);
+                }
+                
+                duration = 800;
                 break;
             }
             
