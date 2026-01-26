@@ -72,6 +72,8 @@ window.Multiplayer = {
     pendingLocalAction: null,   // Action we sent, waiting for server relay
     deferAnimations: false,     // When true, animations are captured but not played locally
     deferredAnimationSequence: null, // Stored for playback when server relay arrives
+    awaitingServerResponse: false,   // Waiting for server to process our action
+    deckDataSent: false,        // Whether we've sent deck data to server
 
     // ==================== CONNECTION ====================
     
@@ -897,6 +899,11 @@ window.Multiplayer = {
      * Send a game action with animation sequence
      * AnimationSequence is built during game logic execution
      */
+    /**
+     * NEW ARCHITECTURE: Send intent to server
+     * Server validates, executes, and broadcasts result to both players
+     * Client does NOT execute game logic locally anymore
+     */
     sendGameAction(actionType, details = {}) {
         // Special case: cheatSync can be sent anytime (for debugging)
         const bypassTurnCheck = actionType === 'cheatSync';
@@ -906,30 +913,63 @@ window.Multiplayer = {
             return;
         }
         
-        // Get captured animation data (new sequence system + legacy events)
-        const captureResult = window.AnimationCapture?.stopCapture?.() || {};
-        const animationSequence = captureResult.sequence || [];
-        const animationEvents = captureResult.events || [];  // Legacy compatibility
-        
+        // Build intent message - NO state, NO animation capture
+        // Server will process and send back authoritative result
         const msg = {
             type: 'action',
             matchId: this.matchId,
             playerId: this.playerId,
             action: { 
                 type: actionType, 
-                ...details,
-                // NEW: Animation sequence (ordered commands)
-                animationSequence: animationSequence,
-                // LEGACY: Animation events (for backwards compat)
-                animationEvents: animationEvents
-            },
-            state: this.serializeGameState()
+                ...details
+            }
+            // NOTE: No state sent - server is authoritative
         };
         
-        console.log('[MP] Sending:', actionType, 
-            animationSequence.length ? `(${animationSequence.length} seq cmds)` : '',
-            animationEvents.length ? `(${animationEvents.length} events)` : '');
+        // For first action, include deck data so server can initialize
+        if (!this.deckDataSent && window.game) {
+            msg.deckData = this.buildDeckData();
+            this.deckDataSent = true;
+        }
+        
+        console.log('[MP] Sending intent:', actionType);
         this.send(msg);
+        
+        // Mark that we're waiting for server response
+        this.awaitingServerResponse = true;
+    },
+    
+    /**
+     * Build deck data to send to server for initialization
+     */
+    buildDeckData() {
+        const g = window.game;
+        if (!g) return null;
+        
+        // Send deck and kindling pool
+        return {
+            mainDeck: g.deck?.map(c => this.serializeCardForServer(c)) || [],
+            kindling: g.playerKindling?.map(k => this.serializeCardForServer(k)) || []
+        };
+    },
+    
+    /**
+     * Serialize a card for server (minimal data needed)
+     */
+    serializeCardForServer(card) {
+        return {
+            id: card.id,
+            key: card.key,
+            name: card.name,
+            type: card.type || 'cryptid',
+            cost: card.cost || 0,
+            atk: card.atk,
+            hp: card.hp,
+            element: card.element,
+            rarity: card.rarity,
+            evolvesFrom: card.evolvesFrom,
+            isKindling: card.isKindling
+        };
     },
     
     /**
@@ -3577,6 +3617,15 @@ window.Multiplayer = {
                 console.error('[MP] Error:', msg.message);
                 break;
             
+            // Server rejected our action
+            case 'actionError':
+                console.error('[MP] Action rejected:', msg.error);
+                this.awaitingServerResponse = false;
+                if (typeof showMessage === 'function') {
+                    showMessage(`Action failed: ${msg.error}`, 2000);
+                }
+                break;
+            
             // Rematch system
             case 'rematch_requested':
             case 'opponent_left_results':
@@ -3588,117 +3637,721 @@ window.Multiplayer = {
     
     /**
      * NEW ARCHITECTURE: Handle resolved action from server
-     * Both players (action source AND opponent) receive this same message
-     * This allows synchronized animation playback
+     * Server sends authoritative events + animationSequence + state to both players
+     * Both players play animations, then apply state
      */
     handleResolvedAction(msg) {
-        const { action, state, animationSequence, sourcePlayerId, startAtServerMs, serverTime } = msg;
-        const isMyAction = sourcePlayerId === this.playerId;
+        const { action, events, animationSequence, state, isMyAction, startAtServerMs, serverTime } = msg;
         
-        console.log(`[MP] Resolved action: ${action.type} from ${isMyAction ? 'self' : 'opponent'}`);
+        console.log(`[MP] Resolved action: ${action?.type} from ${isMyAction ? 'self' : 'opponent'}, ${animationSequence?.length || 0} animations, ${events?.length || 0} events`);
         
-        // SOURCE PLAYER: They've already executed game logic and seen animations locally
-        // Just acknowledge the relay and continue
-        if (isMyAction) {
-            console.log('[MP] Own action acknowledged by server');
-            this.pendingLocalAction = null;
-            // Don't replay animations or apply state - already done locally
-            return;
-        }
+        // Clear awaiting flag
+        this.awaitingServerResponse = false;
         
-        // OPPONENT: They need to see the animation and apply state
         // Calculate when to start the animation for sync
         const msUntilStart = this.msUntilServerTime(startAtServerMs);
         
-        // Queue the action for synchronized playback
+        // Queue entry for processing
         const queueEntry = {
             action,
+            events: events || [],
+            animationSequence: animationSequence || [],
             state,
-            animationSequence: animationSequence || action.animationSequence,
-            scheduledStartTime: startAtServerMs,
-            serverTime
+            isMyAction,
+            scheduledStartTime: startAtServerMs
         };
         
         if (msUntilStart > 50) {
             // We have time - schedule it for sync
-            console.log(`[MP] Scheduling opponent action in ${msUntilStart}ms`);
+            console.log(`[MP] Scheduling action in ${msUntilStart}ms`);
             setTimeout(() => {
                 this.executeResolvedAction(queueEntry);
             }, msUntilStart);
         } else if (msUntilStart > -this.MAX_LATE_MS) {
             // We're a bit late but within tolerance - execute immediately
-            console.log(`[MP] Opponent action ${-msUntilStart}ms late - executing now`);
+            console.log(`[MP] Action ${-msUntilStart}ms late - executing now`);
             this.executeResolvedAction(queueEntry);
         } else {
             // We're very late - skip animation, just apply state
-            console.log(`[MP] Opponent action ${-msUntilStart}ms late - skipping animation`);
-            this.applyReceivedState(state);
-            renderAll();
-            if (action.type === 'endPhase') {
-                this.onOpponentEndPhase();
-            }
+            console.log(`[MP] Action ${-msUntilStart}ms late - skipping animation, applying state`);
+            this.applyServerState(state);
+            if (typeof renderAll === 'function') renderAll();
+            this.handleTurnChanges(action, state);
         }
     },
     
     /**
-     * Execute a resolved action from opponent (play animation, then apply state)
+     * Execute a resolved action (play animations, then apply state)
+     * Same code path for BOTH players!
      */
     executeResolvedAction(entry) {
-        const { action, state, animationSequence } = entry;
+        const { action, events, animationSequence, state, isMyAction } = entry;
         
-        this.processingOpponentAction = true;
+        this.processingOpponentAction = !isMyAction;
         
-        const hasAnimations = animationSequence && animationSequence.length > 0;
+        // Determine if we need to animate before or after state application
+        const hasDeaths = events.some(e => e.type === 'cryptidDied') || 
+                          animationSequence.some(a => a.type === 'death');
+        const hasDamage = events.some(e => e.type === 'damageDealt') ||
+                          animationSequence.some(a => a.type === 'damage');
+        const hasAttack = events.some(e => e.type === 'attackDeclared') ||
+                          animationSequence.some(a => a.type === 'attackMove');
+        const hasSummon = events.some(e => e.type === 'cryptidSummoned') ||
+                          animationSequence.some(a => a.type === 'summon');
         
-        // For deaths and damage, we need to animate BEFORE applying state
-        // (so the sprites still exist for the animation)
-        const hasDeaths = animationSequence?.some(c => c.type === 'death');
-        const hasDamage = animationSequence?.some(c => c.type === 'damage' || c.type === 'attackMove');
-        const shouldAnimateFirst = hasDeaths || hasDamage;
+        // For summons with effects (like Mothman), apply state FIRST so sprite exists
+        // Then play animations against existing sprites
+        const shouldApplyStateFirst = hasSummon && (hasDeaths || hasDamage);
+        const shouldAnimateFirst = (hasDeaths || hasDamage || hasAttack) && !shouldApplyStateFirst;
+        
+        const hasAnimations = (animationSequence && animationSequence.length > 0) || 
+                             (events && events.length > 0);
         
         const onComplete = () => {
-            this.applyReceivedState(state);
-            renderAll();
+            // Apply authoritative state from server (if not already applied)
+            if (!shouldApplyStateFirst) {
+                this.applyServerState(state);
+            }
+            if (typeof renderAll === 'function') renderAll();
+            if (typeof updateButtons === 'function') updateButtons();
+            
             this.processingOpponentAction = false;
             
-            // Handle turn changes for endPhase
-            if (action.type === 'endPhase') {
-                this.onOpponentEndPhase();
-            }
+            // Handle turn changes
+            this.handleTurnChanges(action, state);
         };
         
-        if (hasAnimations && shouldAnimateFirst) {
-            // Play animation first, then apply state
-            this.playAnimationSequence(animationSequence, onComplete);
-        } else if (hasAnimations) {
-            // Apply state first (for summons etc.), then animate
-            this.applyReceivedState(state);
-            renderAll();
-            this.playAnimationSequence(animationSequence, () => {
+        if (shouldApplyStateFirst && hasAnimations) {
+            // Apply state first to create sprites, then animate
+            this.applyServerState(state);
+            if (typeof renderAll === 'function') renderAll();
+            
+            this.playServerAnimations(animationSequence, events, () => {
+                if (typeof updateButtons === 'function') updateButtons();
                 this.processingOpponentAction = false;
-                if (action.type === 'endPhase') {
-                    this.onOpponentEndPhase();
-                }
+                this.handleTurnChanges(action, state);
+            });
+        } else if (hasAnimations && shouldAnimateFirst) {
+            // Play animations first (for attacks, damage, deaths)
+            this.playServerAnimations(animationSequence, events, onComplete);
+        } else if (hasAnimations) {
+            // Default: apply state first, then animate
+            this.applyServerState(state);
+            if (typeof renderAll === 'function') renderAll();
+            this.playServerAnimations(animationSequence, events, () => {
+                if (typeof updateButtons === 'function') updateButtons();
+                this.processingOpponentAction = false;
+                this.handleTurnChanges(action, state);
             });
         } else {
-            // No animation - just apply state
+            // No animations - just apply state
             onComplete();
         }
     },
     
     /**
-     * Called when opponent ends their phase (from resolved action)
+     * Play server-provided animation sequence
+     * Uses animationSequence if available, falls back to events
+     */
+    playServerAnimations(animationSequence, events, onComplete) {
+        // Prefer animation sequence over events
+        if (animationSequence && animationSequence.length > 0) {
+            this.playAnimationSequence(animationSequence, onComplete);
+        } else if (events && events.length > 0) {
+            this.playEventAnimations(events, onComplete);
+        } else {
+            onComplete?.();
+        }
+    },
+    
+    /**
+     * Play animations from server-provided sequence
+     */
+    playAnimationSequence(sequence, onComplete) {
+        if (!sequence || sequence.length === 0) {
+            onComplete?.();
+            return;
+        }
+        
+        console.log('[MP] Playing', sequence.length, 'server animations');
+        
+        let index = 0;
+        const self = this;
+        
+        const playNext = () => {
+            if (index >= sequence.length) {
+                onComplete?.();
+                return;
+            }
+            
+            const cmd = sequence[index++];
+            const duration = self.playSequenceAnimation(cmd);
+            
+            // Move to next after animation
+            setTimeout(playNext, duration + 50);
+        };
+        
+        playNext();
+    },
+    
+    /**
+     * Play a single animation from server sequence
+     */
+    playSequenceAnimation(cmd) {
+        const type = cmd.type;
+        let duration = 100;
+        
+        const findSprite = (owner, col, row) => {
+            return document.querySelector(
+                `.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`
+            );
+        };
+        
+        switch (type) {
+            case 'summon': {
+                const sprite = findSprite(cmd.owner, cmd.col, cmd.row);
+                if (sprite && window.CombatEffects?.playSummonAnimation) {
+                    window.CombatEffects.playSummonAnimation(sprite);
+                }
+                if (typeof showMessage === 'function') {
+                    showMessage(`${cmd.cryptidName || 'Cryptid'} summoned!`, 1000);
+                }
+                duration = 500;
+                break;
+            }
+            
+            case 'attackMove': {
+                const atkSprite = findSprite(cmd.attackerOwner, cmd.attackerOwner === 'player' ? 0 : 1, cmd.attackerRow);
+                const tgtSprite = findSprite(cmd.targetOwner, cmd.targetOwner === 'player' ? 0 : 1, cmd.targetRow);
+                
+                if (atkSprite && window.CombatEffects?.playEnhancedAttack) {
+                    window.CombatEffects.playEnhancedAttack(atkSprite, cmd.attackerOwner, tgtSprite, cmd.damage || 0);
+                }
+                duration = 500;
+                break;
+            }
+            
+            case 'damage': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                
+                if (sprite && window.CombatEffects) {
+                    const cryptid = { col: cmd.targetCol, row: cmd.targetRow, owner: cmd.targetOwner };
+                    window.CombatEffects.showDamageNumber(cryptid, cmd.amount, cmd.amount >= 5);
+                    
+                    const battlefield = document.getElementById('battlefield-area');
+                    if (battlefield) {
+                        const rect = sprite.getBoundingClientRect();
+                        const bfRect = battlefield.getBoundingClientRect();
+                        const x = rect.left + rect.width/2 - bfRect.left;
+                        const y = rect.top + rect.height/2 - bfRect.top;
+                        
+                        window.CombatEffects.createImpactFlash?.(x, y, 50 + cmd.amount * 8);
+                        window.CombatEffects.createSparks?.(x, y, 5 + cmd.amount);
+                    }
+                    
+                    sprite.classList.add('hit-recoil');
+                    setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'death': {
+                const sprite = findSprite(cmd.owner, cmd.col, cmd.row);
+                
+                if (sprite && window.CombatEffects?.playDramaticDeath) {
+                    window.CombatEffects.playDramaticDeath(sprite, cmd.owner, cmd.rarity || 'common');
+                }
+                if (typeof showMessage === 'function') {
+                    showMessage(`💀 ${cmd.cryptidKey || 'Cryptid'} falls!`, 1200);
+                }
+                duration = 800;
+                break;
+            }
+            
+            case 'promotion': {
+                const combatCol = cmd.owner === 'player' ? 0 : 1;
+                const sprite = findSprite(cmd.owner, combatCol, cmd.row);
+                if (sprite) {
+                    sprite.classList.add('promoting');
+                    setTimeout(() => sprite.classList.remove('promoting'), 400);
+                }
+                if (typeof showMessage === 'function') {
+                    showMessage(`${cmd.cryptidKey || 'Support'} promoted!`, 800);
+                }
+                duration = 500;
+                break;
+            }
+            
+            case 'statusApply': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                if (sprite) {
+                    // Different colors for different statuses
+                    const statusClass = cmd.status === 'burn' ? 'status-burn' :
+                                       cmd.status === 'curse' ? 'status-curse' :
+                                       cmd.status === 'bleed' ? 'status-bleed' : 'status-applied';
+                    sprite.classList.add(statusClass);
+                    setTimeout(() => sprite.classList.remove(statusClass), 400);
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'evolve': {
+                const sprite = findSprite(cmd.owner, cmd.col, cmd.row);
+                if (sprite && window.CombatEffects?.playEvolveAnimation) {
+                    window.CombatEffects.playEvolveAnimation(sprite);
+                }
+                if (typeof showMessage === 'function') {
+                    showMessage(`⚡ Evolved into ${cmd.toKey}!`, 1000);
+                }
+                duration = 600;
+                break;
+            }
+            
+            case 'protectionBlock': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                if (sprite) {
+                    sprite.classList.add('protection-block');
+                    setTimeout(() => sprite.classList.remove('protection-block'), 400);
+                }
+                if (typeof showMessage === 'function') {
+                    showMessage('🛡️ Protected!', 800);
+                }
+                duration = 400;
+                break;
+            }
+            
+            case 'attackBlocked': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetOwner === 'player' ? 0 : 1, cmd.targetRow);
+                if (sprite) {
+                    sprite.classList.add('attack-blocked');
+                    setTimeout(() => sprite.classList.remove('attack-blocked'), 400);
+                }
+                if (typeof showMessage === 'function') {
+                    showMessage('🛡️ Attack blocked!', 800);
+                }
+                duration = 400;
+                break;
+            }
+            
+            case 'pyreGain': {
+                if (typeof showMessage === 'function') {
+                    showMessage(`🔥 +${cmd.amount} Pyre`, 800);
+                }
+                duration = 200;
+                break;
+            }
+            
+            case 'burnForPyre': {
+                if (typeof showMessage === 'function') {
+                    showMessage('🔥 Card burned for pyre', 800);
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'burstCast': {
+                if (typeof showMessage === 'function') {
+                    showMessage(`✨ ${cmd.cardName || 'Burst'} cast!`, 1000);
+                }
+                duration = 400;
+                break;
+            }
+            
+            case 'trapSet': {
+                if (typeof showMessage === 'function') {
+                    showMessage('🪤 Trap set!', 800);
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'trapTriggered': {
+                if (typeof showMessage === 'function') {
+                    showMessage(`🪤 Trap triggered: ${cmd.trapKey}!`, 1000);
+                }
+                duration = 400;
+                break;
+            }
+            
+            case 'auraAttach': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                if (sprite) {
+                    sprite.classList.add('aura-attached');
+                    setTimeout(() => sprite.classList.remove('aura-attached'), 500);
+                }
+                if (typeof showMessage === 'function') {
+                    showMessage(`✨ ${cmd.auraName || 'Aura'} attached!`, 1000);
+                }
+                duration = 500;
+                break;
+            }
+            
+            case 'turnStart': {
+                if (typeof showMessage === 'function') {
+                    showMessage(`Turn ${cmd.turnNumber}: ${cmd.owner === 'player' ? 'Your' : 'Enemy'} turn`, 1000);
+                }
+                duration = 200;
+                break;
+            }
+            
+            case 'turnEnd': {
+                duration = 100;
+                break;
+            }
+            
+            case 'message': {
+                if (typeof showMessage === 'function') {
+                    showMessage(cmd.text || cmd.message, cmd.duration || 1000);
+                }
+                duration = cmd.duration || 300;
+                break;
+            }
+            
+            case 'cardDraw': {
+                if (typeof showMessage === 'function' && cmd.owner === 'enemy') {
+                    showMessage('Enemy drew a card', 600);
+                }
+                duration = 200;
+                break;
+            }
+            
+            default:
+                console.log('[MP] Unknown animation type:', type, cmd);
+                duration = 100;
+        }
+        
+        return duration;
+    },
+    
+    /**
+     * Play animations based on server events
+     */
+    playEventAnimations(events, onComplete) {
+        if (!events || events.length === 0) {
+            onComplete?.();
+            return;
+        }
+        
+        console.log('[MP] Playing', events.length, 'event animations');
+        
+        let index = 0;
+        const self = this;
+        
+        const playNext = () => {
+            if (index >= events.length) {
+                onComplete?.();
+                return;
+            }
+            
+            const event = events[index++];
+            const duration = self.playEventAnimation(event);
+            
+            // Move to next event after animation completes
+            setTimeout(playNext, duration + 50);
+        };
+        
+        playNext();
+    },
+    
+    /**
+     * Play animation for a single event
+     * Returns duration in ms
+     */
+    playEventAnimation(event) {
+        const type = event.type;
+        let duration = 100;
+        
+        // Helper to find sprite
+        const findSprite = (owner, col, row) => {
+            return document.querySelector(
+                `.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`
+            );
+        };
+        
+        switch (type) {
+            case 'cryptidSummoned': {
+                const sprite = findSprite(event.owner, event.col, event.row);
+                if (sprite && window.CombatEffects?.playSummonAnimation) {
+                    window.CombatEffects.playSummonAnimation(sprite);
+                }
+                if (typeof showMessage === 'function') {
+                    showMessage(`${event.cryptid?.name || 'Cryptid'} summoned!`, 1000);
+                }
+                duration = 500;
+                break;
+            }
+            
+            case 'attackDeclared': {
+                const atkSprite = findSprite(event.attackerOwner, event.attackerCol, event.attackerRow);
+                const tgtSprite = event.target ? findSprite(event.target.owner, event.target.col, event.target.row) : null;
+                
+                if (atkSprite && window.CombatEffects?.playEnhancedAttack) {
+                    window.CombatEffects.playEnhancedAttack(atkSprite, event.attackerOwner, tgtSprite, event.damage);
+                }
+                duration = 500;
+                break;
+            }
+            
+            case 'damageDealt': {
+                const sprite = findSprite(event.targetOwner, event.targetCol, event.targetRow);
+                
+                if (sprite && window.CombatEffects) {
+                    // Show damage number
+                    const cryptid = { col: event.targetCol, row: event.targetRow, owner: event.targetOwner };
+                    window.CombatEffects.showDamageNumber(cryptid, event.amount, event.amount >= 5);
+                    
+                    // Impact effects
+                    const battlefield = document.getElementById('battlefield-area');
+                    if (battlefield) {
+                        const rect = sprite.getBoundingClientRect();
+                        const bfRect = battlefield.getBoundingClientRect();
+                        const x = rect.left + rect.width/2 - bfRect.left;
+                        const y = rect.top + rect.height/2 - bfRect.top;
+                        
+                        window.CombatEffects.createImpactFlash?.(x, y, 50 + event.amount * 8);
+                        window.CombatEffects.createSparks?.(x, y, 5 + event.amount);
+                    }
+                    
+                    sprite.classList.add('hit-recoil');
+                    setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'cryptidDied': {
+                const sprite = findSprite(event.owner, event.col, event.row);
+                
+                if (sprite && window.CombatEffects?.playDramaticDeath) {
+                    const rarity = event.cryptid?.rarity || 'common';
+                    window.CombatEffects.playDramaticDeath(sprite, event.owner, rarity);
+                }
+                if (typeof showMessage === 'function') {
+                    showMessage(`💀 ${event.cryptid?.name || 'Cryptid'} falls!`, 1200);
+                }
+                duration = 800;
+                break;
+            }
+            
+            case 'cryptidPromoted': {
+                const sprite = findSprite(event.owner, event.toCol, event.row);
+                if (sprite) {
+                    sprite.classList.add('promoting');
+                    setTimeout(() => sprite.classList.remove('promoting'), 400);
+                }
+                if (typeof showMessage === 'function') {
+                    showMessage(`${event.cryptid?.name || 'Support'} promoted!`, 800);
+                }
+                duration = 500;
+                break;
+            }
+            
+            case 'statusApplied': {
+                const sprite = findSprite(event.target?.owner, event.target?.col, event.target?.row);
+                if (sprite) {
+                    sprite.classList.add('status-applied');
+                    setTimeout(() => sprite.classList.remove('status-applied'), 400);
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'pyreChanged': {
+                if (typeof showMessage === 'function' && event.amount !== 0) {
+                    const sign = event.amount > 0 ? '+' : '';
+                    showMessage(`🔥 ${sign}${event.amount} Pyre`, 800);
+                }
+                duration = 200;
+                break;
+            }
+            
+            case 'phaseChange': {
+                if (typeof showMessage === 'function') {
+                    showMessage(`Phase: ${event.phase}`, 600);
+                }
+                duration = 200;
+                break;
+            }
+            
+            case 'turnStart': {
+                if (typeof showMessage === 'function') {
+                    showMessage(`Turn ${event.turnNumber}`, 800);
+                }
+                duration = 300;
+                break;
+            }
+            
+            case 'message': {
+                if (typeof showMessage === 'function') {
+                    showMessage(event.text, 1000);
+                }
+                duration = 200;
+                break;
+            }
+            
+            case 'abilityTriggered': {
+                if (typeof showMessage === 'function') {
+                    showMessage(`${event.cryptidKey}: ${event.abilityName}`, 800);
+                }
+                duration = 200;
+                break;
+            }
+            
+            default:
+                console.log('[MP] Unknown event type:', type);
+                duration = 100;
+        }
+        
+        return duration;
+    },
+    
+    /**
+     * Apply authoritative state from server
+     * This replaces local game state with server state
+     */
+    applyServerState(state) {
+        if (!state) return;
+        
+        const g = window.game;
+        if (!g) return;
+        
+        console.log('[MP] Applying server state');
+        
+        // Update fields
+        g.playerField = this.deserializeField(state.playerField);
+        g.enemyField = this.deserializeField(state.enemyField);
+        
+        // Update hand
+        if (state.hand) {
+            g.playerHand = state.hand.map(c => this.deserializeCard(c));
+        }
+        
+        // Update kindling
+        if (state.kindling) {
+            g.playerKindling = state.kindling.map(k => this.deserializeCard(k));
+        }
+        
+        // Update resources
+        g.playerPyre = state.playerPyre ?? g.playerPyre;
+        g.enemyPyre = state.enemyPyre ?? g.enemyPyre;
+        
+        // Update turn state
+        g.currentTurn = state.isMyTurn ? 'player' : 'enemy';
+        g.phase = state.phase || g.phase;
+        g.turnNumber = state.turnNumber || g.turnNumber;
+        
+        // Update flags
+        g.playerKindlingPlayedThisTurn = state.kindlingPlayed || false;
+        g.playerPyreCardPlayedThisTurn = state.pyreCardPlayed || false;
+        g.playerPyreBurnUsed = state.pyreBurnUsed || false;
+        
+        // Update game end state
+        if (state.gameOver) {
+            g.gameOver = true;
+            // Handle win/loss
+        }
+    },
+    
+    /**
+     * Deserialize field from server format
+     */
+    deserializeField(fieldData) {
+        if (!fieldData) return [[null, null, null], [null, null, null]];
+        
+        return fieldData.map(col => 
+            col.map(cryptidData => 
+                cryptidData ? this.deserializeCryptid(cryptidData) : null
+            )
+        );
+    },
+    
+    /**
+     * Deserialize cryptid from server format
+     */
+    deserializeCryptid(data) {
+        if (!data) return null;
+        
+        // Look up full card data from registry if available
+        const cardDef = window.CardRegistry?.getCryptid?.(data.key) || {};
+        
+        return {
+            ...cardDef,
+            ...data,
+            // Ensure required fields exist
+            currentAtk: data.currentAtk ?? data.baseAtk ?? data.atk ?? 1,
+            currentHp: data.currentHp ?? data.baseHp ?? data.hp ?? 1,
+            maxHp: data.maxHp ?? data.hp ?? 1
+        };
+    },
+    
+    /**
+     * Deserialize card from server format  
+     */
+    deserializeCard(data) {
+        if (!data) return null;
+        
+        // Look up full card data from registry if available
+        const cardDef = window.CardRegistry?.getCryptid?.(data.key) || 
+                       window.CardRegistry?.getBurst?.(data.key) ||
+                       window.CardRegistry?.getTrap?.(data.key) ||
+                       window.CardRegistry?.getAura?.(data.key) ||
+                       window.CardRegistry?.getPyre?.(data.key) ||
+                       window.CardRegistry?.getKindling?.(data.key) ||
+                       {};
+        
+        return {
+            ...cardDef,
+            ...data
+        };
+    },
+    
+    /**
+     * Handle turn changes after action resolves
+     */
+    handleTurnChanges(action, state) {
+        if (!state) return;
+        
+        const wasMyTurn = this.isMyTurn;
+        this.isMyTurn = state.isMyTurn;
+        
+        // Update game turn state
+        const g = window.game;
+        if (g) {
+            g.currentTurn = state.isMyTurn ? 'player' : 'enemy';
+            g.phase = state.phase;
+        }
+        
+        // If turn changed to us, notify player
+        if (!wasMyTurn && this.isMyTurn) {
+            this.turnTimeRemaining = this.TURN_TIME;
+            this.timerWarningShown = false;
+            this.startTurnTimer(true);
+            if (typeof showMessage === 'function') {
+                showMessage("Your turn!", 1000);
+            }
+        } else if (wasMyTurn && !this.isMyTurn) {
+            // Turn ended
+            this.startTurnTimer(false);
+        }
+    },
+    
+    /**
+     * Called when opponent ends their phase (legacy support)
      */
     onOpponentEndPhase() {
         this.isMyTurn = true;
         const g = window.game;
         if (g) {
             g.currentTurn = 'player';
-            g.advancePhase();
+            g.advancePhase?.();
             this.turnTimeRemaining = this.TURN_TIME;
             this.timerWarningShown = false;
             this.startTurnTimer(true);
-            showMessage("Your turn!");
+            if (typeof showMessage === 'function') {
+                showMessage("Your turn!", 1000);
+            }
         }
     },
 
@@ -3790,6 +4443,10 @@ window.Multiplayer = {
         
         // Start time synchronization for coordinated animations
         this.startTimeSync();
+        
+        // Reset deck data flag for new match
+        this.deckDataSent = false;
+        this.awaitingServerResponse = false;
         
         const statusEl = document.getElementById('qp-status');
         if (statusEl) statusEl.innerHTML = '<span style="color:#80e080;">Match found!</span>';
