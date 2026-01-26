@@ -2847,9 +2847,11 @@ window.Multiplayer = {
             case 'evolve': {
                 showMessage('Opponent evolved into ' + (action.cardName || action.cardKey) + '!');
                 
-                // Add evolution effect
-                const col = 1 - action.targetCol;
-                const sprite = document.querySelector(`.cryptid-sprite[data-owner="enemy"][data-col="${col}"][data-row="${action.targetRow}"]`);
+                // Add evolution effect - server sends 'col' and 'row', not 'targetCol'/'targetRow'
+                const evolveCol = action.col !== undefined ? action.col : action.targetCol;
+                const evolveRow = action.row !== undefined ? action.row : action.targetRow;
+                const col = 1 - evolveCol;
+                const sprite = document.querySelector(`.cryptid-sprite[data-owner="enemy"][data-col="${col}"][data-row="${evolveRow}"]`);
                 if (sprite) {
                     // Use enhanced evolution animation if available
                     if (window.CombatEffects?.playEvolutionAnimation) {

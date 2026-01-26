@@ -2004,6 +2004,29 @@ export class GameRoom {
         });
     }
     
+    /**
+     * Normalize column from client perspective to server perspective.
+     * 
+     * Client always sees themselves as 'player' with:
+     *   - combat col = 1 (right side)
+     *   - support col = 0 (left side)
+     * Client sends cols after transformation: serverCol = 1 - clientCol
+     * So client sends col 0 for their combat position.
+     * 
+     * Server has different conventions for 'player' vs 'enemy':
+     *   - 'player': combat = col 0, support = col 1
+     *   - 'enemy': combat = col 1, support = col 0
+     * 
+     * For 'player' owner: received col 0 (client combat) = server col 0 (server player combat) ✓
+     * For 'enemy' owner: received col 0 (client combat) should = server col 1 (server enemy combat)
+     * 
+     * Solution: flip column for 'enemy' owner
+     */
+    normalizeClientCol(col, owner) {
+        if (col === undefined || col === null) return col;
+        return owner === 'enemy' ? 1 - col : col;
+    }
+    
     processAction(playerId, action) {
         if (!action || !action.type) {
             return { valid: false, error: 'Invalid action' };
@@ -2105,7 +2128,9 @@ export class GameRoom {
     }
     
     handleSummon(owner, action) {
-        const { cardId, col, row } = action;
+        const { cardId, row } = action;
+        // Normalize column from client perspective to server perspective
+        const col = this.normalizeClientCol(action.col, owner);
         
         // Validate phase
         if (this.gameState.phase !== 'conjure1' && this.gameState.phase !== 'conjure2') {
@@ -2190,7 +2215,9 @@ export class GameRoom {
     }
     
     handleSummonKindling(owner, action) {
-        const { kindlingId, col, row } = action;
+        const { kindlingId, row } = action;
+        // Normalize column from client perspective to server perspective
+        const col = this.normalizeClientCol(action.col, owner);
         
         // Validate phase
         if (this.gameState.phase !== 'conjure1' && this.gameState.phase !== 'conjure2') {
@@ -2270,8 +2297,14 @@ export class GameRoom {
     }
     
     handleAttack(owner, action) {
-        const { attackerCol, attackerRow, targetRow } = action;
+        const { attackerRow, targetRow } = action;
+        // Normalize attacker column from client perspective to server perspective
+        const attackerCol = this.normalizeClientCol(action.attackerCol, owner);
+        // Target column normalization: client targets enemy's field from their perspective
+        // The targetCol (if present) targets the opponent, so we normalize with opponent's owner
         const opponentOwner = owner === 'player' ? 'enemy' : 'player';
+        const targetCol = action.targetCol !== undefined ? 
+            this.normalizeClientCol(action.targetCol, opponentOwner) : undefined;
         
         // Validate combat phase
         if (this.gameState.phase !== 'combat') {
@@ -2334,13 +2367,13 @@ export class GameRoom {
         });
         
         // Add attack animation (attackerCol already available from action params)
-        const targetCol = this.getCombatCol(opponentOwner);
+        const animTargetCol = this.getCombatCol(opponentOwner);
         this.addAnimation('attackMove', {
             attackerOwner: owner,
             attackerCol: attackerCol, // From action params
             attackerRow,
             targetOwner: opponentOwner,
-            targetCol,
+            targetCol: animTargetCol,
             targetRow,
             attackerKey: attacker.key,
             attackerName: attacker.name
@@ -2380,7 +2413,14 @@ export class GameRoom {
     }
     
     handlePlayBurst(owner, action) {
-        const { cardId, targetOwner, targetCol, targetRow } = action;
+        const { cardId, targetRow } = action;
+        // Determine actual target owner on server (client sends 'player'/'enemy' from their perspective)
+        // If client says 'enemy', that's the opponent from their view
+        const clientTargetOwner = action.targetOwner;
+        const actualTargetOwner = clientTargetOwner === 'player' ? owner : 
+            (owner === 'player' ? 'enemy' : 'player');
+        // Normalize target column based on actual target owner
+        const targetCol = this.normalizeClientCol(action.targetCol, actualTargetOwner);
         
         const hand = owner === 'player' ? this.gameState.playerHand : this.gameState.enemyHand;
         const cardIndex = hand.findIndex(c => c.id === cardId);
@@ -2523,7 +2563,9 @@ export class GameRoom {
     }
     
     handleEvolve(owner, action) {
-        const { cardId, targetCol, targetRow } = action;
+        const { cardId, targetRow } = action;
+        // Normalize column from client perspective to server perspective
+        const targetCol = this.normalizeClientCol(action.targetCol, owner);
         
         const hand = owner === 'player' ? this.gameState.playerHand : this.gameState.enemyHand;
         const cardIndex = hand.findIndex(c => c.id === cardId);
