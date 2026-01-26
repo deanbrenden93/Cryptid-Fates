@@ -495,6 +495,40 @@ window.Multiplayer = {
         return { ...template, ...data };
     },
     
+    /**
+     * Apply ONLY the summoned cryptid from state (for staged animation)
+     * This allows the summon animation to play before other effects
+     * without removing dead cryptids that need death animations
+     */
+    applySummonedCryptidOnly(state, action) {
+        if (!state || !action) return;
+        const g = window.game;
+        if (!g) return;
+        
+        // Get the summon position from action data
+        const summonCol = action.col;
+        const summonRow = action.row;
+        if (summonCol === undefined || summonRow === undefined) return;
+        
+        console.log('[MP] Applying summoned cryptid only at col:', summonCol, 'row:', summonRow);
+        
+        // Their "player" = our "enemy" (perspective flip)
+        // Their col 0 (combat) -> our col 1, their col 1 (support) -> our col 0
+        const ourCol = 1 - summonCol;
+        
+        // Find the cryptid data in their playerField at the summon position
+        const data = state.playerField[summonCol]?.[summonRow];
+        if (data) {
+            const cryptid = this.deserializeCryptid(data, 'enemy');
+            if (cryptid) {
+                cryptid.col = ourCol;
+                cryptid.row = summonRow;
+                g.enemyField[ourCol][summonRow] = cryptid;
+                console.log('[MP] Summoned cryptid added:', cryptid.name);
+            }
+        }
+    },
+    
     applyReceivedState(state) {
         if (!state) return;
         const g = window.game;
@@ -766,7 +800,10 @@ window.Multiplayer = {
      * AnimationSequence is built during game logic execution
      */
     sendGameAction(actionType, details = {}) {
-        if (!this.isInMatch || !this.isMyTurn) {
+        // Special case: cheatSync can be sent anytime (for debugging)
+        const bypassTurnCheck = actionType === 'cheatSync';
+        
+        if (!this.isInMatch || (!this.isMyTurn && !bypassTurnCheck)) {
             console.warn('[MP] Cannot send - not in match or not our turn');
             return;
         }
@@ -873,8 +910,30 @@ window.Multiplayer = {
             // NEW: Use animation sequence playback (preferred)
             console.log('[MP] Playing animation sequence:', action.animationSequence.length, 'commands');
             
-            if (shouldAnimateBeforeState) {
-                // Play sequence FIRST, then apply state
+            // Special handling for summons with deaths - need staged state application
+            // 1. Apply summoned cryptid first (so sprite exists for animation)
+            // 2. Play all animations (summon, damage, deaths on existing sprites)
+            // 3. Apply full state (removes dead cryptids)
+            const isSummonWithEffects = action.type === 'summon' && shouldAnimateBeforeState;
+            
+            if (isSummonWithEffects && state) {
+                // STAGED APPLICATION: Add summoned cryptid first
+                this.applySummonedCryptidOnly(state, action);
+                
+                requestAnimationFrame(() => {
+                    if (typeof renderAll === 'function') renderAll();
+                    
+                    setTimeout(() => {
+                        // Play full animation sequence
+                        this.playAnimationSequence(action.animationSequence, () => {
+                            // Now apply full state (removes dead cryptids)
+                            this.applyReceivedState(state);
+                            onAnimationComplete();
+                        });
+                    }, 50);
+                });
+            } else if (shouldAnimateBeforeState) {
+                // Play sequence FIRST, then apply state (attacks, etc.)
                 this.playAnimationSequence(action.animationSequence, () => {
                     if (state) {
                         this.applyReceivedState(state);
