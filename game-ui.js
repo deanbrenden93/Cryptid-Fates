@@ -1121,8 +1121,8 @@ function renderSprites() {
     }
     
     // Clean up stale sprites (cryptids/traps that no longer exist)
-    // SKIP cleanup if harbinger animation is pending - we need the sprites for death animations!
-    if (!window.pendingHarbingerAnimation) {
+    // SKIP cleanup if harbinger animation is pending or in progress - we need the sprites for death animations!
+    if (!window.pendingHarbingerAnimation && !window.harbingerAnimationInProgress) {
         Array.from(spriteLayer.children).forEach(child => {
             // Skip death effect sprites and dramatic death sprites (they clean themselves up)
             if (child.classList.contains('death-effect-sprite')) return;
@@ -4499,11 +4499,16 @@ function playHarbingerAnimation(onComplete) {
     const harbinger = window.pendingHarbingerAnimation;
     if (!harbinger || !harbinger.targets || harbinger.targets.length === 0) {
         window.pendingHarbingerAnimation = null;
+        window.harbingerAnimationInProgress = false;
         onComplete?.();
         return;
     }
     
     const { mothman, mothmanOwner, targets, deaths } = harbinger;
+    
+    // IMPORTANT: Set animation-in-progress flag BEFORE clearing pendingHarbingerAnimation
+    // This prevents renderSprites from removing sprites mid-animation
+    window.harbingerAnimationInProgress = true;
     window.pendingHarbingerAnimation = null;
     
     console.log('[Harbinger Animation] Playing visuals for', targets.length, 'targets,', deaths?.length || 0, 'deaths');
@@ -4552,6 +4557,7 @@ function playHarbingerAnimation(onComplete) {
     setTimeout(() => {
         if (!deaths || deaths.length === 0) {
             // No deaths - just finish
+            window.harbingerAnimationInProgress = false;
             processPendingPromotions(() => onComplete?.(), true);
             return;
         }
@@ -4559,7 +4565,8 @@ function playHarbingerAnimation(onComplete) {
         let deathIndex = 0;
         function playNextDeath() {
             if (deathIndex >= deaths.length) {
-                // All deaths animated - process promotions
+                // All deaths animated - clear flag and process promotions
+                window.harbingerAnimationInProgress = false;
                 processPendingPromotions(() => {
                     renderAll();
                     onComplete?.();

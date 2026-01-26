@@ -732,6 +732,15 @@ export class Matchmaker {
                     this.handleAuth(tempId, ws, msg);
                 }
                 break;
+            
+            // Time sync ping/pong
+            case 'ping':
+                ws.send(JSON.stringify({
+                    type: 'pong',
+                    clientTime: msg.clientTime,
+                    serverTime: Date.now()
+                }));
+                break;
                 
             case 'findMatch':
                 const findPlayerId = this.connections.get(tempId);
@@ -915,16 +924,27 @@ export class Matchmaker {
         const room = this.gameRooms?.get(player.matchId);
         if (!room) return;
         
-        const opponentMsg = {
-            type: 'opponentAction',
+        // Server timestamp for synchronized playback
+        const serverTime = Date.now();
+        // Schedule animation to start slightly in the future (buffer for network)
+        const startAtServerMs = serverTime + 200; // 200ms buffer
+        
+        // Resolved action - broadcast to BOTH players
+        const resolvedAction = {
+            type: 'resolvedAction',
             action: msg.action,
             state: msg.state,
-            playerId: playerId
+            animationSequence: msg.animationSequence || null,
+            sourcePlayerId: playerId,
+            serverTime: serverTime,
+            startAtServerMs: startAtServerMs,
+            matchId: player.matchId
         };
         
+        // Send to ALL players in the room (including the sender!)
         for (const [pid, pws] of Object.entries(room.players)) {
-            if (pid !== playerId && pws.readyState === 1) {
-                pws.send(JSON.stringify(opponentMsg));
+            if (pws.readyState === 1) {
+                pws.send(JSON.stringify(resolvedAction));
             }
         }
         
@@ -941,14 +961,18 @@ export class Matchmaker {
         const room = this.gameRooms?.get(player.matchId);
         if (!room) return;
         
+        const serverTime = Date.now();
+        
         const syncMsg = {
             type: 'kindlingSync',
             kindling: msg.kindling,
-            playerId: playerId
+            sourcePlayerId: playerId,
+            serverTime: serverTime
         };
         
+        // Broadcast to BOTH players
         for (const [pid, pws] of Object.entries(room.players)) {
-            if (pid !== playerId && pws.readyState === 1) {
+            if (pws.readyState === 1) {
                 pws.send(JSON.stringify(syncMsg));
             }
         }

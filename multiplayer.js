@@ -59,6 +59,19 @@ window.Multiplayer = {
     reconnectAttempts: 0,
     maxReconnectAttempts: 5,
     reconnectDelay: 1000,
+    
+    // Time synchronization (for coordinated animations)
+    serverTimeOffset: 0,        // Server time - local time (in ms)
+    pingHistory: [],            // Recent ping measurements for smoothing
+    lastPingTime: 0,            // When we last sent a ping
+    pingInterval: null,         // Interval for periodic pings
+    SYNC_BUFFER_MS: 200,        // Buffer time before scheduled animations start
+    MAX_LATE_MS: 500,           // Max lateness before we skip/fast-forward animations
+    
+    // Pending action (for the new broadcast architecture)
+    pendingLocalAction: null,   // Action we sent, waiting for server relay
+    deferAnimations: false,     // When true, animations are captured but not played locally
+    deferredAnimationSequence: null, // Stored for playback when server relay arrives
 
     // ==================== CONNECTION ====================
     
@@ -168,6 +181,91 @@ window.Multiplayer = {
         setTimeout(() => {
             this.connect().catch(() => this.attemptReconnect());
         }, this.reconnectDelay * this.reconnectAttempts);
+    },
+
+    // ==================== TIME SYNCHRONIZATION ====================
+    
+    /**
+     * Start periodic time sync pings
+     * Called when entering a match
+     */
+    startTimeSync() {
+        // Initial sync
+        this.sendPing();
+        
+        // Periodic sync every 10 seconds
+        this.pingInterval = setInterval(() => {
+            this.sendPing();
+        }, 10000);
+    },
+    
+    /**
+     * Stop time sync pings
+     * Called when leaving a match
+     */
+    stopTimeSync() {
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+    },
+    
+    /**
+     * Send a ping to measure round-trip time and sync clocks
+     */
+    sendPing() {
+        this.lastPingTime = Date.now();
+        this.send({
+            type: 'ping',
+            clientTime: this.lastPingTime
+        });
+    },
+    
+    /**
+     * Handle pong response from server
+     */
+    handlePong(msg) {
+        const now = Date.now();
+        const rtt = now - this.lastPingTime;
+        const serverTime = msg.serverTime;
+        
+        // Estimate server time offset: serverTime was captured at roughly (lastPingTime + rtt/2)
+        const estimatedOffset = serverTime - (this.lastPingTime + rtt / 2);
+        
+        // Keep history for smoothing
+        this.pingHistory.push(estimatedOffset);
+        if (this.pingHistory.length > 5) {
+            this.pingHistory.shift();
+        }
+        
+        // Use median for stability
+        const sorted = [...this.pingHistory].sort((a, b) => a - b);
+        this.serverTimeOffset = sorted[Math.floor(sorted.length / 2)];
+        
+        console.log(`[MP] Time sync: RTT=${rtt}ms, offset=${this.serverTimeOffset}ms`);
+    },
+    
+    /**
+     * Convert server timestamp to local time
+     */
+    serverTimeToLocal(serverMs) {
+        return serverMs - this.serverTimeOffset;
+    },
+    
+    /**
+     * Get current server time (estimated)
+     */
+    getServerTime() {
+        return Date.now() + this.serverTimeOffset;
+    },
+    
+    /**
+     * Calculate how many ms until a server timestamp occurs locally
+     * Negative means it's already passed
+     */
+    msUntilServerTime(serverMs) {
+        const localTarget = this.serverTimeToLocal(serverMs);
+        return localTarget - Date.now();
     },
 
     // ==================== SERIALIZATION ====================
@@ -3443,9 +3541,22 @@ window.Multiplayer = {
             case 'matchFound':
                 this.onMatchFound(msg);
                 break;
+            
+            // NEW ARCHITECTURE: Server broadcasts to BOTH players
+            case 'resolvedAction':
+                this.handleResolvedAction(msg);
+                break;
+            
+            // Time sync
+            case 'pong':
+                this.handlePong(msg);
+                break;
+            
+            // LEGACY: Keep for backwards compatibility during transition
             case 'opponentAction':
                 this.handleOpponentAction(msg);
                 break;
+            
             case 'opponentDisconnected':
                 this.onOpponentDisconnected();
                 break;
@@ -3472,6 +3583,122 @@ window.Multiplayer = {
             case 'rematch_accepted':
                 this.handleRematchMessage(msg);
                 break;
+        }
+    },
+    
+    /**
+     * NEW ARCHITECTURE: Handle resolved action from server
+     * Both players (action source AND opponent) receive this same message
+     * This allows synchronized animation playback
+     */
+    handleResolvedAction(msg) {
+        const { action, state, animationSequence, sourcePlayerId, startAtServerMs, serverTime } = msg;
+        const isMyAction = sourcePlayerId === this.playerId;
+        
+        console.log(`[MP] Resolved action: ${action.type} from ${isMyAction ? 'self' : 'opponent'}`);
+        
+        // SOURCE PLAYER: They've already executed game logic and seen animations locally
+        // Just acknowledge the relay and continue
+        if (isMyAction) {
+            console.log('[MP] Own action acknowledged by server');
+            this.pendingLocalAction = null;
+            // Don't replay animations or apply state - already done locally
+            return;
+        }
+        
+        // OPPONENT: They need to see the animation and apply state
+        // Calculate when to start the animation for sync
+        const msUntilStart = this.msUntilServerTime(startAtServerMs);
+        
+        // Queue the action for synchronized playback
+        const queueEntry = {
+            action,
+            state,
+            animationSequence: animationSequence || action.animationSequence,
+            scheduledStartTime: startAtServerMs,
+            serverTime
+        };
+        
+        if (msUntilStart > 50) {
+            // We have time - schedule it for sync
+            console.log(`[MP] Scheduling opponent action in ${msUntilStart}ms`);
+            setTimeout(() => {
+                this.executeResolvedAction(queueEntry);
+            }, msUntilStart);
+        } else if (msUntilStart > -this.MAX_LATE_MS) {
+            // We're a bit late but within tolerance - execute immediately
+            console.log(`[MP] Opponent action ${-msUntilStart}ms late - executing now`);
+            this.executeResolvedAction(queueEntry);
+        } else {
+            // We're very late - skip animation, just apply state
+            console.log(`[MP] Opponent action ${-msUntilStart}ms late - skipping animation`);
+            this.applyReceivedState(state);
+            renderAll();
+            if (action.type === 'endPhase') {
+                this.onOpponentEndPhase();
+            }
+        }
+    },
+    
+    /**
+     * Execute a resolved action from opponent (play animation, then apply state)
+     */
+    executeResolvedAction(entry) {
+        const { action, state, animationSequence } = entry;
+        
+        this.processingOpponentAction = true;
+        
+        const hasAnimations = animationSequence && animationSequence.length > 0;
+        
+        // For deaths and damage, we need to animate BEFORE applying state
+        // (so the sprites still exist for the animation)
+        const hasDeaths = animationSequence?.some(c => c.type === 'death');
+        const hasDamage = animationSequence?.some(c => c.type === 'damage' || c.type === 'attackMove');
+        const shouldAnimateFirst = hasDeaths || hasDamage;
+        
+        const onComplete = () => {
+            this.applyReceivedState(state);
+            renderAll();
+            this.processingOpponentAction = false;
+            
+            // Handle turn changes for endPhase
+            if (action.type === 'endPhase') {
+                this.onOpponentEndPhase();
+            }
+        };
+        
+        if (hasAnimations && shouldAnimateFirst) {
+            // Play animation first, then apply state
+            this.playAnimationSequence(animationSequence, onComplete);
+        } else if (hasAnimations) {
+            // Apply state first (for summons etc.), then animate
+            this.applyReceivedState(state);
+            renderAll();
+            this.playAnimationSequence(animationSequence, () => {
+                this.processingOpponentAction = false;
+                if (action.type === 'endPhase') {
+                    this.onOpponentEndPhase();
+                }
+            });
+        } else {
+            // No animation - just apply state
+            onComplete();
+        }
+    },
+    
+    /**
+     * Called when opponent ends their phase (from resolved action)
+     */
+    onOpponentEndPhase() {
+        this.isMyTurn = true;
+        const g = window.game;
+        if (g) {
+            g.currentTurn = 'player';
+            g.advancePhase();
+            this.turnTimeRemaining = this.TURN_TIME;
+            this.timerWarningShown = false;
+            this.startTurnTimer(true);
+            showMessage("Your turn!");
         }
     },
 
@@ -3560,6 +3787,9 @@ window.Multiplayer = {
         this.playerTimeouts = 0;
         this.opponentTimeouts = 0;
         this.turnTimeRemaining = this.TURN_TIME;
+        
+        // Start time synchronization for coordinated animations
+        this.startTimeSync();
         
         const statusEl = document.getElementById('qp-status');
         if (statusEl) statusEl.innerHTML = '<span style="color:#80e080;">Match found!</span>';
@@ -3676,6 +3906,7 @@ window.Multiplayer = {
     onMatchEnd(msg) {
         const won = msg.winner === this.playerId;
         this.stopTurnTimer();
+        this.stopTimeSync();  // Stop time sync pings
         this.isInMatch = false;
         this.isMyTurn = false;
         
