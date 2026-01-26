@@ -3838,18 +3838,17 @@ window.Multiplayer = {
         const type = cmd.type;
         let duration = 100;
         
-        // Server already flips owner in filterAnimationsForPlayer, so we just use it directly
+        // Server already handles owner perspective in filterAnimationsForPlayer
         // 'player' = my action, 'enemy' = opponent's action
         const flipOwner = (owner) => owner;
         
-        // Helper to convert server col to client col (server: combat=0, client: combat=1)
-        const serverToClientCol = (col) => col !== undefined ? 1 - col : undefined;
+        // NEW ARCHITECTURE: Server and client use SAME column conventions
+        // No conversion needed - col values are directly usable
         
         const findSprite = (owner, col, row) => {
-            // Convert server col to client col for sprite lookup
-            const clientCol = serverToClientCol(col);
+            // Direct lookup - no column conversion needed
             return document.querySelector(
-                `.cryptid-sprite[data-owner="${owner}"][data-col="${clientCol}"][data-row="${row}"]`
+                `.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`
             );
         };
         
@@ -4366,27 +4365,28 @@ window.Multiplayer = {
     
     /**
      * Deserialize field from server format
-     * Server uses: col 0 = combat, col 1 = support
-     * Client uses: col 0 = support, col 1 = combat
-     * So we swap columns when converting
+     * NEW ARCHITECTURE: Server now uses SAME conventions as client
+     * Player: support=col 0, combat=col 1
+     * Enemy: support=col 1, combat=col 0
+     * NO column swapping needed!
      */
     deserializeField(fieldData) {
         if (!fieldData) return [[null, null, null], [null, null, null]];
         
-        // Swap columns: server col 0 -> client col 1, server col 1 -> client col 0
-        const clientCol0 = fieldData[1]?.map(cryptidData => {
+        // Direct mapping - server and client now use same column conventions
+        const col0 = fieldData[0]?.map(cryptidData => {
             const c = cryptidData ? this.deserializeCryptid(cryptidData) : null;
-            if (c) c.col = 0; // Update cryptid's col to client convention
+            if (c) c.col = 0;
             return c;
         }) || [null, null, null];
         
-        const clientCol1 = fieldData[0]?.map(cryptidData => {
+        const col1 = fieldData[1]?.map(cryptidData => {
             const c = cryptidData ? this.deserializeCryptid(cryptidData) : null;
-            if (c) c.col = 1; // Update cryptid's col to client convention
+            if (c) c.col = 1;
             return c;
         }) || [null, null, null];
         
-        return [clientCol0, clientCol1];
+        return [col0, col1];
     },
     
     /**
@@ -4535,13 +4535,12 @@ window.Multiplayer = {
     // Send forced summon (e.g., from Summon Storm card effect)
     sendForcedSummon(cardKey, col, row) {
         if (!this.isInMatch || !this.isMyTurn) return;
-        // Convert client column to server convention
-        const serverCol = 1 - col;
+        // NEW: Server and client use same column conventions - no flip needed
         this.sendGameAction('summonKindling', {
             kindlingId: cardKey, // For forced summons, we use key as ID
             cardKey: cardKey,
             cardName: cardKey,
-            col: serverCol,
+            col: col,
             row: row,
             isKindling: true,
             forced: true
@@ -4551,11 +4550,10 @@ window.Multiplayer = {
     // Action methods for backwards compatibility with ability buttons
     actionActivateAbility(abilityName, col, row, extraData) {
         if (!this.isInMatch || !this.isMyTurn || this.processingOpponentAction) return;
-        // Convert client column to server convention
-        const serverCol = 1 - col;
+        // NEW: Server and client use same column conventions - no flip needed
         this.sendGameAction('activateAbility', Object.assign({ 
             abilityName: abilityName, 
-            col: serverCol, 
+            col: col, 
             row: row 
         }, extraData || {}));
     },
@@ -4975,9 +4973,7 @@ window.multiplayerHook = {
         const combatCol = g?.getCombatCol(owner);
         const isCombatPosition = col === combatCol;
         
-        // Convert client column to server column convention
-        // Client: player combat=1, support=0 | Server: player combat=0, support=1
-        const serverCol = 1 - col;
+        // NEW: Server and client use same column conventions - no flip needed
         
         // Determine action type based on whether this is a kindling summon
         if (card.isKindling) {
@@ -4986,7 +4982,7 @@ window.multiplayerHook = {
                 kindlingId: card.id,   // Server expects kindlingId for kindling
                 cardKey: card.key,
                 cardName: card.name,
-                col: serverCol,
+                col: col,
                 row: row
             };
             console.log('[MP] Sending kindling summon:', { id: card.id, key: card.key, name: card.name, summonData });
@@ -4997,7 +4993,7 @@ window.multiplayerHook = {
                 cardId: card.id,       // Server expects cardId (unique instance ID)
                 cardKey: card.key,     // Also send key for fallback/debugging
                 cardName: card.name,
-                col: serverCol,        // Use server's column convention
+                col: col,
                 row: row
             };
             
@@ -5025,21 +5021,19 @@ window.multiplayerHook = {
     onAttack(attacker, targetOwner, targetCol, targetRow, targetKey, attackData) {
         if (!this.shouldSend() || attacker.owner !== 'player') return;
         
-        // Convert client columns to server convention (flip: server uses opposite col assignments)
-        const serverAttackerCol = 1 - attacker.col;
-        const serverTargetCol = 1 - targetCol;
+        // NEW: Server and client use same column conventions - no flip needed
         
         // Support both old format (targetDied, supportDied as booleans) and new format (attackData object)
         let data;
         if (typeof attackData === 'object' && attackData !== null) {
             // New enhanced format
             data = {
-                attackerCol: serverAttackerCol,
+                attackerCol: attacker.col,
                 attackerRow: attacker.row,
                 attackerKey: attacker.key,
                 hasDestroyer: attacker.hasDestroyer || false,
                 targetOwner: targetOwner,
-                targetCol: serverTargetCol,
+                targetCol: targetCol,
                 targetRow: targetRow,
                 targetKey: targetKey || null,
                 damage: attackData.damage || 0,
@@ -5052,12 +5046,12 @@ window.multiplayerHook = {
         } else {
             // Old format for backwards compatibility
             data = {
-                attackerCol: serverAttackerCol,
+                attackerCol: attacker.col,
                 attackerRow: attacker.row,
                 attackerKey: attacker.key,
                 hasDestroyer: attacker.hasDestroyer || false,
                 targetOwner: targetOwner,
-                targetCol: serverTargetCol,
+                targetCol: targetCol,
                 targetRow: targetRow,
                 targetKey: targetKey || null,
                 damage: 0,
@@ -5071,14 +5065,13 @@ window.multiplayerHook = {
     
     onBurst(card, targetOwner, targetCol, targetRow, effectData) {
         if (!this.shouldSend()) return;
-        // Convert client column to server convention
-        const serverTargetCol = 1 - targetCol;
+        // NEW: Server and client use same column conventions - no flip needed
         Multiplayer.sendGameAction('playBurst', {
             cardId: card.id,
             cardKey: card.key,
             cardName: card.name,
             targetOwner: targetOwner,
-            targetCol: serverTargetCol,
+            targetCol: targetCol,
             targetRow: targetRow,
             damage: effectData?.damage || 0,
             healing: effectData?.healing || 0,
@@ -5098,13 +5091,12 @@ window.multiplayerHook = {
     
     onAura(card, col, row) {
         if (!this.shouldSend()) return;
-        // Convert client column to server convention
-        const serverCol = 1 - col;
+        // NEW: Server and client use same column conventions - no flip needed
         Multiplayer.sendGameAction('playAura', {
             cardId: card.id,
             cardKey: card.key,
             cardName: card.name,
-            col: serverCol,
+            col: col,
             row: row
         });
     },
@@ -5120,13 +5112,12 @@ window.multiplayerHook = {
     
     onEvolve(card, col, row) {
         if (!this.shouldSend()) return;
-        // Convert client column to server convention
-        const serverTargetCol = 1 - col;
+        // NEW: Server and client use same column conventions - no flip needed
         Multiplayer.sendGameAction('evolve', {
             cardId: card.id,
             cardKey: card.key,
             cardName: card.name,
-            targetCol: serverTargetCol,
+            targetCol: col,
             targetRow: row
         });
     },
@@ -5138,9 +5129,8 @@ window.multiplayerHook = {
     
     onActivateAbility(abilityName, col, row, extra) {
         if (!this.shouldSend()) return;
-        // Convert client column to server convention
-        const serverCol = 1 - col;
-        Multiplayer.sendGameAction('activateAbility', Object.assign({ abilityName: abilityName, col: serverCol, row: row }, extra || {}));
+        // NEW: Server and client use same column conventions - no flip needed
+        Multiplayer.sendGameAction('activateAbility', Object.assign({ abilityName: abilityName, col: col, row: row }, extra || {}));
     },
     
     onEndPhase() {

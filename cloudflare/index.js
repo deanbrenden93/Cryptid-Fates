@@ -28,11 +28,11 @@
 
 // ==================== IMPORTS ====================
 
-import { SharedGameEngine, GameEventTypes, SeededRNG } from './shared-engine.js';
+import { SharedGameEngine, GameEventTypes, ActionTypes, SeededRNG } from './shared-game-engine.js';
 
 // ==================== CONFIGURATION ====================
 
-const SERVER_VERSION = 26; // v=26 - Fix phase sync + enhanced kindling debugging
+const SERVER_VERSION = 30; // v=30 - New architecture: SharedGameEngine for unified game logic
 
 const COOKIE_NAME = 'cf_session';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days in seconds
@@ -1246,37 +1246,32 @@ export class GameRoom {
                 connected: true, 
                 slot: 'player1', 
                 timeouts: 0,
-                deckConfig: data.player1.deckConfig || null
+                deckInitialized: false
             },
             [p2Id]: { 
                 ...data.player2, 
                 connected: true, 
                 slot: 'player2', 
                 timeouts: 0,
-                deckConfig: data.player2.deckConfig || null
+                deckInitialized: false
             }
         };
         
         // Initialize seed
         this.seed = data.seed || Date.now();
         
-        // Determine first player using RNG
-        const rng = new SeededRNG(this.seed);
-        const firstPlayerId = data.goesFirst || this.playerIds[rng.int(0, 1)];
-        const firstPlayer = firstPlayerId === p1Id ? 'player' : 'enemy';
+        // Initialize the game engine with player IDs
+        this.engine.initMatch(p1Id, p2Id, this.seed);
         
-        // Initialize the game engine
-        this.engine.initMatch({
-            seed: this.seed,
-            firstPlayer: firstPlayer
-        });
+        // Player 1 always goes first (goesFirst already handled by matchmaker)
+        // The engine initializes with currentTurn = 'player' (player1)
         
         this.startTurnTimer();
         
         return new Response(JSON.stringify({
             success: true,
             matchId: this.matchId,
-            firstPlayer: firstPlayerId,
+            firstPlayer: p1Id,
             seed: this.seed
         }), { status: 200 });
     }
@@ -1286,13 +1281,16 @@ export class GameRoom {
     async handleAction(data) {
         const { playerId, action, type, deckData } = data;
         const isPlayer1 = playerId === this.playerIds[0];
+        const player = this.players[playerId];
         
         // Initialize deck if provided (first action of match for this player)
-        if (deckData) {
-            this.engine.initializeDecksFromClient(playerId, deckData, isPlayer1);
+        if (deckData && !player.deckInitialized) {
+            console.log(`[GameRoom] Initializing deck for ${playerId}, isPlayer1: ${isPlayer1}`);
+            this.engine.initializeDecks(playerId, deckData);
+            player.deckInitialized = true;
         }
         
-        // Handle special action types
+        // Handle special action types (these don't require turn validation)
         if (type === 'forfeit') {
             return this.handleForfeit(playerId, 'forfeit');
         }
@@ -1303,34 +1301,23 @@ export class GameRoom {
             return this.handleRejoin(playerId);
         }
         
-        // Validate it's this player's turn
-        const owner = isPlayer1 ? 'player' : 'enemy';
+        // Process the action through the engine
+        // The engine validates turn ownership internally
+        const result = this.engine.processAction(playerId, action);
         
-        if (this.engine.state.currentTurn !== owner) {
+        if (!result.success) {
             return new Response(JSON.stringify({ 
                 valid: false, 
-                error: 'Not your turn' 
+                error: result.error 
             }), { status: 400 });
-        }
-        
-        // *** DELEGATE TO SHARED ENGINE ***
-        // The engine handles ALL game logic identically to the client
-        const result = this.engine.processAction(owner, action);
-        
-        if (!result.valid) {
-            return new Response(JSON.stringify(result), { status: 400 });
         }
         
         // Restart turn timer on successful action
         this.startTurnTimer();
         
-        // Get state and events for each player using engine methods
-        const player1State = this.engine.getStateForPlayer(this.playerIds[0], true);
-        const player2State = this.engine.getStateForPlayer(this.playerIds[1], false);
-        const player1Events = this.engine.filterEventsForPlayer(result.events, true);
-        const player2Events = this.engine.filterEventsForPlayer(result.events, false);
-        const player1Anims = this.engine.filterAnimationsForPlayer(result.animationSequence, true);
-        const player2Anims = this.engine.filterAnimationsForPlayer(result.animationSequence, false);
+        // Get state for each player
+        const player1State = this.engine.getStateForPlayer(this.playerIds[0]);
+        const player2State = this.engine.getStateForPlayer(this.playerIds[1]);
         
         const serverTime = Date.now();
         const startAtServerMs = serverTime + 150; // 150ms buffer for network
@@ -1342,14 +1329,12 @@ export class GameRoom {
             startAtServerMs,
             player1: {
                 playerId: this.playerIds[0],
-                events: player1Events,
-                animationSequence: player1Anims,
+                events: result.events,
                 state: player1State
             },
             player2: {
                 playerId: this.playerIds[1],
-                events: player2Events,
-                animationSequence: player2Anims,
+                events: result.events,
                 state: player2State
             }
         }), { status: 200 });
@@ -1396,8 +1381,7 @@ export class GameRoom {
         }
         
         // Force end phase using engine
-        const owner = this.engine.state.currentTurn;
-        this.engine.processAction(owner, { type: 'endPhase' });
+        this.engine.processAction(currentPlayerId, { type: ActionTypes.END_PHASE });
     }
     
     // ==================== SPECIAL HANDLERS ====================
@@ -1426,8 +1410,7 @@ export class GameRoom {
             delete this.disconnectTimers[playerId];
         }
         
-        const isPlayer1 = playerId === this.playerIds[0];
-        const state = this.engine.getStateForPlayer(playerId, isPlayer1);
+        const state = this.engine.getStateForPlayer(playerId);
         const elapsed = Math.floor((Date.now() - this.turnStartTime) / 1000);
         
         return new Response(JSON.stringify({
