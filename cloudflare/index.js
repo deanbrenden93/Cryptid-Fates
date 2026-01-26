@@ -32,7 +32,7 @@ import { SharedGameEngine, GameEventTypes, ActionTypes } from './shared-game-eng
 
 // ==================== CONFIGURATION ====================
 
-const SERVER_VERSION = 33; // v=33 - Clean rewrite with player ID-based state
+const SERVER_VERSION = 34; // v=34 - Removed strict slot validation, give starting pyre
 
 const COOKIE_NAME = 'cf_session';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days in seconds

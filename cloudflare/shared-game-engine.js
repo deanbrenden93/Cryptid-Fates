@@ -132,7 +132,11 @@ class SharedGameEngine {
             }
         };
         
-        console.log('[Engine] Match initialized. First turn:', this.state.currentTurn);
+        // Give starting pyre to first player (turn start bonus)
+        const startingPlayer = this.state.currentTurn;
+        this.state.pyre[startingPlayer] = 1;
+        
+        console.log('[Engine] Match initialized. First turn:', this.state.currentTurn, 'with 1 pyre');
         return this.state;
     }
 
@@ -297,7 +301,7 @@ class SharedGameEngine {
         const hand = this.state.hands[playerId];
         const pyre = this.state.pyre[playerId];
         
-        console.log('[Engine] handleSummon:', { playerId, cardId, col, row, handSize: hand.length });
+        console.log('[Engine] handleSummon:', { playerId, cardId, col, row, handSize: hand?.length, pyre });
         
         // Validate phase
         if (this.state.phase !== 'conjure1' && this.state.phase !== 'conjure2') {
@@ -322,15 +326,14 @@ class SharedGameEngine {
             return { success: false, error: `Not enough pyre: need ${card.cost}, have ${pyre}` };
         }
         
-        // Validate position
+        // Validate position is empty (trust client for "combat first" rule)
         if (this.getFieldCryptid(playerId, col, row)) {
             return { success: false, error: 'Position occupied' };
         }
         
-        // Validate valid slot
-        const validSlots = this.getValidSummonSlots(playerId);
-        if (!validSlots.some(s => s.col === col && s.row === row)) {
-            return { success: false, error: `Invalid position: col=${col}, row=${row}` };
+        // Validate col/row are in bounds
+        if (col < 0 || col > 1 || row < 0 || row > 2) {
+            return { success: false, error: `Position out of bounds: col=${col}, row=${row}` };
         }
         
         // Perform summon
@@ -376,9 +379,14 @@ class SharedGameEngine {
         
         const kindlingCard = kindlingPool[kindlingIndex];
         
-        // Validate position
+        // Validate position is empty
         if (this.getFieldCryptid(playerId, col, row)) {
             return { success: false, error: 'Position occupied' };
+        }
+        
+        // Validate bounds
+        if (col < 0 || col > 1 || row < 0 || row > 2) {
+            return { success: false, error: `Position out of bounds: col=${col}, row=${row}` };
         }
         
         // Perform summon
