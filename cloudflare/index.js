@@ -32,7 +32,7 @@ import { SharedGameEngine, GameEventTypes, ActionTypes, SeededRNG } from './shar
 
 // ==================== CONFIGURATION ====================
 
-const SERVER_VERSION = 30; // v=30 - New architecture: SharedGameEngine for unified game logic
+const SERVER_VERSION = 31; // v=31 - Fixed turn initialization to respect coin flip winner
 
 const COOKIE_NAME = 'cf_session';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days in seconds
@@ -1260,11 +1260,14 @@ export class GameRoom {
         // Initialize seed
         this.seed = data.seed || Date.now();
         
-        // Initialize the game engine with player IDs
-        this.engine.initMatch(p1Id, p2Id, this.seed);
+        // Determine who goes first based on matchmaker's coin flip
+        const firstPlayerId = data.goesFirst || p1Id;
+        const player1GoesFirst = (firstPlayerId === p1Id);
         
-        // Player 1 always goes first (goesFirst already handled by matchmaker)
-        // The engine initializes with currentTurn = 'player' (player1)
+        console.log('[GameRoom] Init - p1Id:', p1Id, 'p2Id:', p2Id, 'goesFirst:', firstPlayerId, 'player1GoesFirst:', player1GoesFirst);
+        
+        // Initialize the game engine with player IDs and who goes first
+        this.engine.initMatch(p1Id, p2Id, this.seed, player1GoesFirst);
         
         this.startTurnTimer();
         

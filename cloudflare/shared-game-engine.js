@@ -233,7 +233,9 @@ export class SharedGameEngine {
     }
     
     // ==================== GAME INITIALIZATION ====================
-    initMatch(player1Id, player2Id, seed = Date.now()) {
+    initMatch(player1Id, player2Id, seed = Date.now(), player1GoesFirst = true) {
+        console.log('[Engine] initMatch called with:', { player1Id, player2Id, seed, player1GoesFirst });
+        
         this.state = this.createInitialState();
         this.rng = new SeededRNG(seed);
         
@@ -241,16 +243,23 @@ export class SharedGameEngine {
         this.state.player1Id = player1Id;
         this.state.player2Id = player2Id;
         
-        // Determine who goes first (already determined by matchmaker)
-        // Player who goes first starts with 1 pyre, second player starts with 2
-        // Actually per user: players start with 0 pyre, get +1 at turn start
+        // Pyre starts at 0, +1 at each turn start
         this.state.playerPyre = 0;
         this.state.enemyPyre = 0;
         
-        this.state.currentTurn = 'player'; // Player 1 goes first
+        // Set who goes first based on matchmaker's coin flip
+        // 'player' means player1's turn, 'enemy' means player2's turn
+        this.state.currentTurn = player1GoesFirst ? 'player' : 'enemy';
         this.state.turnNumber = 0;
         
         this.eventQueue = [];
+        
+        console.log('[Engine] initMatch complete. State:', {
+            player1Id: this.state.player1Id,
+            player2Id: this.state.player2Id,
+            currentTurn: this.state.currentTurn,
+            currentTurnMeansPlayer: this.state.currentTurn === 'player' ? 'player1' : 'player2'
+        });
     }
     
     // Initialize decks from client-provided data
@@ -379,13 +388,25 @@ export class SharedGameEngine {
     
     // ==================== ACTION PROCESSING ====================
     processAction(playerId, action) {
+        // DEBUG: Log player ID matching
+        console.log('[Engine] processAction called:', {
+            playerId,
+            player1Id: this.state.player1Id,
+            player2Id: this.state.player2Id,
+            currentTurn: this.state.currentTurn,
+            actionType: action?.type
+        });
+        
         // Determine if this is player or enemy from the server's perspective
         const isPlayer1 = playerId === this.state.player1Id;
         const actorOwner = isPlayer1 ? 'player' : 'enemy';
         
+        console.log('[Engine] Turn check:', { isPlayer1, actorOwner, currentTurn: this.state.currentTurn });
+        
         // Validate it's this player's turn (except for concede)
         if (action.type !== ActionTypes.CONCEDE && this.state.currentTurn !== actorOwner) {
-            return { success: false, error: 'Not your turn' };
+            console.log('[Engine] REJECTED - not your turn');
+            return { success: false, error: `Not your turn (you are ${actorOwner}, current turn is ${this.state.currentTurn})` };
         }
         
         // Clear event queue for this action
