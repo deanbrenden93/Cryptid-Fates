@@ -2270,16 +2270,9 @@ function summonToSlot(col, row) {
                 if (typeof updateMenuButtons === 'function') updateMenuButtons();
                 console.log('[SummonKindling] After final render, showingKindling:', ui.showingKindling);
                 
-                // Check for pending Harbinger effect (Mothman entering combat)
-                if (window.pendingHarbingerEffect) {
-                    processHarbingerEffect(() => {
-                        // Send deferred summon action NOW - after all Harbinger events are captured
-                        if (window.pendingHarbingerSummonData && window.multiplayerHook?.onSummon) {
-                            const { card: summonCard, owner, col: summonCol, row: summonRow, foil } = window.pendingHarbingerSummonData;
-                            console.log('[MP] Sending deferred summon after Harbinger complete');
-                            window.multiplayerHook.onSummon(summonCard, owner, summonCol, summonRow, foil);
-                            window.pendingHarbingerSummonData = null;
-                        }
+                // Check for pending Harbinger animation (Mothman - game logic already done)
+                if (window.pendingHarbingerAnimation) {
+                    playHarbingerAnimation(() => {
                         isAnimating = false;
                         renderAll();
                         updateButtons();
@@ -2309,16 +2302,9 @@ function summonToSlot(col, row) {
                 renderAll();
                 updateButtons();
                 
-                // Check for pending Harbinger effect (Mothman entering combat)
-                if (window.pendingHarbingerEffect) {
-                    processHarbingerEffect(() => {
-                        // Send deferred summon action NOW - after all Harbinger events are captured
-                        if (window.pendingHarbingerSummonData && window.multiplayerHook?.onSummon) {
-                            const { card: summonCard, owner, col: summonCol, row: summonRow, foil } = window.pendingHarbingerSummonData;
-                            console.log('[MP] Sending deferred summon after Harbinger complete');
-                            window.multiplayerHook.onSummon(summonCard, owner, summonCol, summonRow, foil);
-                            window.pendingHarbingerSummonData = null;
-                        }
+                // Check for pending Harbinger animation (Mothman - game logic already done)
+                if (window.pendingHarbingerAnimation) {
+                    playHarbingerAnimation(() => {
                         isAnimating = false;
                         renderAll();
                         updateButtons();
@@ -3518,6 +3504,49 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
         check();
     }
     
+    // BUILD ANIMATION SEQUENCE for multiplayer sync
+    // This creates the ordered choreography that opponent will play
+    if (window.AnimationSequence?.isBuilding && game.isMultiplayer) {
+        const seq = window.AnimationSequence;
+        const target = targetBeforeAttack;
+        
+        // 1. Attack move animation (sprite lunges)
+        if (target) {
+            seq.attackMove(attacker, target);
+        }
+        
+        // 2. Damage (if not blocked)
+        if (!result.negated && result.damage > 0 && target) {
+            seq.damage(target, result.damage, { source: 'attack' });
+        }
+        
+        // 3. Status effects applied by attack
+        const targetAfter = game.getFieldCryptid(targetOwner, targetCol, targetRow);
+        if (targetAfter && targetStatusBefore) {
+            if ((targetAfter.burnTurns || 0) > targetStatusBefore.burnTurns) {
+                seq.statusApply(target, 'burn', targetAfter.burnTurns - targetStatusBefore.burnTurns);
+            }
+            if (targetAfter.paralyzed && !targetStatusBefore.paralyzed) {
+                seq.statusApply(target, 'paralyze');
+            }
+            if ((targetAfter.bleedTurns || 0) > targetStatusBefore.bleedTurns) {
+                seq.statusApply(target, 'bleed', targetAfter.bleedTurns - targetStatusBefore.bleedTurns);
+            }
+        }
+        
+        // 4. Death animation (if killed)
+        if (targetDied && target) {
+            seq.delay(100);  // Brief pause before death
+            seq.death(target, 'attack');
+        }
+        
+        // 5. Support death from destroyer/cleave
+        if (supportDied && supportBeforeAttack) {
+            seq.delay(200);  // Pause after first death
+            seq.death(supportBeforeAttack, 'destroyer');
+        }
+    }
+    
     // Build multiplayer attack data IMMEDIATELY after attack completes (before animations)
     // This allows opponent to start their animations in parallel with us
     function buildAndSendMultiplayerHook() {
@@ -4455,32 +4484,117 @@ window.processMultiTargetDamage = processMultiTargetDamage;
 
 // ==================== END UNIVERSAL MULTI-TARGET DAMAGE SYSTEM ====================
 
-// Process Mothman's Harbinger effect using universal multi-target damage system
-function processHarbingerEffect(onComplete) {
-    const harbinger = window.pendingHarbingerEffect;
+// Play Harbinger ANIMATIONS only - game logic already executed synchronously in onEnterCombat
+// This ensures multiplayer captures all events before sending, while still showing local visuals
+function playHarbingerAnimation(onComplete) {
+    const harbinger = window.pendingHarbingerAnimation;
     if (!harbinger || !harbinger.targets || harbinger.targets.length === 0) {
-        window.pendingHarbingerEffect = null;
+        window.pendingHarbingerAnimation = null;
         onComplete?.();
         return;
     }
     
-    const { mothman, mothmanOwner, targets } = harbinger;
-    window.pendingHarbingerEffect = null; // Clear pending effect
+    const { mothman, mothmanOwner, targets, deaths } = harbinger;
+    window.pendingHarbingerAnimation = null;
     
-    // Use universal multi-target damage system
-    processMultiTargetDamage({
-        source: mothman,
-        sourceOwner: mothmanOwner,
-        targets: targets,
-        message: `🦋 Harbinger: Mothman deals damage based on ailment stacks!`,
-        visualTheme: 'moth',
-        killedBy: 'harbinger',
-        damageEvent: 'onHarbingerDamage',
-        onComplete: onComplete
-    });
+    console.log('[Harbinger Animation] Playing visuals for', targets.length, 'targets,', deaths?.length || 0, 'deaths');
+    
+    // Show message
+    showMessage(`🦋 Harbinger: Mothman deals damage based on ailment stacks!`, TIMING.messageDisplay);
+    
+    // PHASE 1: Show damage numbers for all targets simultaneously
+    const themeSettings = { color: '#8844aa', flashSize: 50, flashScale: 8, sparks: 6, particles: 8 };
+    
+    for (const target of targets) {
+        // Find sprite (may already be gone if died, but try)
+        const sprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${target.owner}"][data-col="${target.col}"][data-row="${target.row}"]`
+        );
+        
+        if (sprite && window.CombatEffects) {
+            // Show damage number
+            CombatEffects.showDamageNumber(target.cryptid, target.damage, target.damage >= 5);
+            
+            // Impact effects
+            const battlefield = document.getElementById('battlefield-area');
+            if (battlefield) {
+                const rect = sprite.getBoundingClientRect();
+                const bfRect = battlefield.getBoundingClientRect();
+                const x = rect.left + rect.width/2 - bfRect.left;
+                const y = rect.top + rect.height/2 - bfRect.top;
+                
+                CombatEffects.createImpactFlash?.(x, y, themeSettings.flashSize + target.damage * themeSettings.flashScale);
+                CombatEffects.createSparks?.(x, y, themeSettings.sparks + target.damage);
+                CombatEffects.createImpactParticles?.(x, y, themeSettings.color, themeSettings.particles + target.damage);
+            }
+            
+            // Hit recoil
+            sprite.classList.add('hit-recoil');
+            setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+        }
+    }
+    
+    // Screen shake
+    if (window.CombatEffects && targets.length > 0) {
+        CombatEffects.heavyImpact?.(Math.min(targets.length * 0.5, 3));
+    }
+    
+    // PHASE 2: Play death animations sequentially (after damage numbers show)
+    setTimeout(() => {
+        if (!deaths || deaths.length === 0) {
+            // No deaths - just finish
+            processPendingPromotions(() => onComplete?.(), true);
+            return;
+        }
+        
+        let deathIndex = 0;
+        function playNextDeath() {
+            if (deathIndex >= deaths.length) {
+                // All deaths animated - process promotions
+                processPendingPromotions(() => {
+                    renderAll();
+                    onComplete?.();
+                }, true);
+                return;
+            }
+            
+            const death = deaths[deathIndex];
+            deathIndex++;
+            
+            const sprite = document.querySelector(
+                `.cryptid-sprite[data-owner="${death.owner}"][data-col="${death.col}"][data-row="${death.row}"]`
+            );
+            
+            if (sprite && window.CombatEffects?.playDramaticDeath) {
+                showMessage(`💀 ${death.cryptid.name} falls!`, TIMING.messageDisplay);
+                const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                CombatEffects.playDramaticDeath(sprite, death.owner, rarity, () => {
+                    setTimeout(playNextDeath, 200);
+                });
+            } else {
+                // Fallback - just continue
+                setTimeout(playNextDeath, 100);
+            }
+        }
+        
+        playNextDeath();
+    }, 500); // Wait for damage numbers to display
 }
 
-// Global function to check and process pending Harbinger effect
+// Global function for Harbinger animation
+window.playHarbingerAnimation = playHarbingerAnimation;
+
+// Legacy function - redirect to new one for backwards compatibility
+function processHarbingerEffect(onComplete) {
+    // Check for new animation system first
+    if (window.pendingHarbingerAnimation) {
+        playHarbingerAnimation(onComplete);
+        return;
+    }
+    // Fallback for old system (shouldn't happen but just in case)
+    window.pendingHarbingerAnimation = null;
+    onComplete?.();
+}
 window.processHarbingerEffect = processHarbingerEffect;
 
 // Process Moleman splash damage using universal multi-target damage system
@@ -4606,8 +4720,8 @@ function processPendingPromotions(onComplete, skipHarbingerCheck = false) {
     if (!window.pendingPromotions || window.pendingPromotions.length === 0) {
         // Check for Harbinger effect even when no promotions (Mothman may have triggered)
         // Skip this check if called from within Harbinger processing to prevent infinite loop
-        if (!skipHarbingerCheck && window.pendingHarbingerEffect) {
-            processHarbingerEffect(() => {
+        if (!skipHarbingerCheck && window.pendingHarbingerAnimation) {
+            playHarbingerAnimation(() => {
                 if (onComplete) onComplete();
             });
         } else {
@@ -4622,10 +4736,10 @@ function processPendingPromotions(onComplete, skipHarbingerCheck = false) {
     let index = 0;
     function processNext() {
         if (index >= promotions.length) {
-            // After all promotions, check for Harbinger effect (Mothman may have promoted)
+            // After all promotions, check for Harbinger animation (Mothman may have promoted)
             // Skip this check if called from within Harbinger processing to prevent infinite loop
-            if (!skipHarbingerCheck && window.pendingHarbingerEffect) {
-                processHarbingerEffect(() => {
+            if (!skipHarbingerCheck && window.pendingHarbingerAnimation) {
+                playHarbingerAnimation(() => {
                     if (onComplete) onComplete();
                 });
             } else {

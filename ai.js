@@ -201,13 +201,13 @@ function aiPlayCards(onComplete) {
                 if (idx > -1) game.enemyHand.splice(idx, 1);
                 window.renderAll();
                 
-                // Check for pending Harbinger effect (Mothman entering combat)
-                if (window.pendingHarbingerEffect && typeof window.processHarbingerEffect === 'function') {
-                    window.processHarbingerEffect(() => {
+                // Check for pending Harbinger animation (Mothman entering combat)
+                if (window.pendingHarbingerAnimation && typeof window.playHarbingerAnimation === 'function') {
+                    window.playHarbingerAnimation(() => {
                         window.renderAll();
                         setTimeout(() => processNextAction(index + 1), 200);
                     });
-                    return; // processHarbingerEffect will call processNextAction when done
+                    return; // playHarbingerAnimation will call processNextAction when done
                 }
             }
             setTimeout(() => processNextAction(index + 1), TIMING.summonAnim + 200);

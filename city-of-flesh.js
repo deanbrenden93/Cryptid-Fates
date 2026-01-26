@@ -941,9 +941,8 @@ CardRegistry.registerCryptid('mothman', {
     },
     
     // COMBAT: Harbinger - On entering combat, deal 1 damage per ailment stack to each enemy
-    // Order: top combatant, top support, middle combatant, middle support, bottom combatant, bottom support
-    // Damage shown simultaneously, then deaths one at a time, then promotions one at a time
-    // NOTE: This sets up pendingHarbingerEffect for the UI to process with animations
+    // ARCHITECTURE: Game logic executes SYNCHRONOUSLY, animations are handled separately by UI
+    // This ensures multiplayer captures all events before sending the action
     onEnterCombat: (cryptid, owner, game) => {
         const enemyOwner = owner === 'player' ? 'enemy' : 'player';
         const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
@@ -952,8 +951,9 @@ CardRegistry.registerCryptid('mothman', {
         
         const template = CardRegistry.getCryptid('mothman');
         const targets = [];
+        const deaths = [];
         
-        // Calculate damage for each target in order (top to bottom, combat then support)
+        // Calculate and collect all targets (top to bottom, combat then support per row)
         for (let row = 0; row < 3; row++) {
             // Combat column first
             const combatant = enemyField[enemyCombatCol]?.[row];
@@ -988,17 +988,87 @@ CardRegistry.registerCryptid('mothman', {
             }
         }
         
-        // If there are targets, set up the pending effect for the UI to process
+        if (targets.length === 0) return;
+        
+        console.log('[Mothman] Harbinger: applying damage to', targets.length, 'targets');
+        
+        // PHASE 1: Apply ALL damage synchronously and emit events
+        for (const target of targets) {
+            const hpBefore = target.cryptid.currentHp || target.cryptid.hp;
+            target.cryptid.currentHp = (target.cryptid.currentHp || target.cryptid.hp) - target.damage;
+            
+            // Emit damage event (captured for multiplayer)
+            GameEvents.emit('onDamageTaken', {
+                target: target.cryptid,
+                damage: target.damage,
+                source: cryptid,
+                sourceType: 'harbinger',
+                hpBefore,
+                hpAfter: target.cryptid.currentHp
+            });
+            
+            // Track deaths
+            if (target.cryptid.currentHp <= 0) {
+                target.cryptid.killedBy = 'harbinger';
+                target.cryptid.killedBySource = cryptid;
+                deaths.push(target);
+            }
+        }
+        
+        // PHASE 2: Process deaths synchronously (emit events, update state)
+        for (const death of deaths) {
+            // killCryptid handles: onDeath event, state removal, death counter, promotions queue
+            game.killCryptid(death.cryptid, owner, { skipPromotion: true });
+        }
+        
+        // PHASE 3: Queue promotions for any combatant deaths
+        for (const death of deaths) {
+            if (death.isCombatant) {
+                const supportCol = game.getSupportCol(death.owner);
+                const support = enemyField[supportCol]?.[death.row];
+                if (support) {
+                    if (!window.pendingPromotions) window.pendingPromotions = [];
+                    window.pendingPromotions.push({ owner: death.owner, row: death.row });
+                }
+            }
+        }
+        
+        // BUILD ANIMATION SEQUENCE for multiplayer sync
+        if (window.AnimationSequence?.isBuilding && game.isMultiplayer) {
+            const seq = window.AnimationSequence;
+            
+            // Message announcing harbinger
+            seq.message(`🦋 Harbinger: Mothman deals damage based on ailment stacks!`, 800);
+            seq.delay(200);
+            
+            // Simultaneous damage to all targets
+            seq.damageMultiple(targets, { source: 'harbinger' });
+            
+            // Deaths one at a time with pauses
+            if (deaths.length > 0) {
+                seq.delay(300);
+                seq.deathSequence(deaths, 'harbinger');
+            }
+            
+            // Promotions
+            for (const death of deaths) {
+                if (death.isCombatant) {
+                    seq.delay(200);
+                    seq.promotion(death.owner, death.row);
+                }
+            }
+        }
+        
+        // Store animation data for UI (visuals only - game state already changed)
         if (targets.length > 0) {
-            window.pendingHarbingerEffect = {
+            window.pendingHarbingerAnimation = {
                 mothman: cryptid,
                 mothmanOwner: owner,
                 targets: targets,
-                enemyOwner: enemyOwner,
-                enemyCombatCol: enemyCombatCol,
-                enemySupportCol: enemySupportCol
+                deaths: deaths,
+                enemyOwner: enemyOwner
             };
-            console.log('[Mothman] Harbinger effect queued for', targets.length, 'targets');
+            console.log('[Mothman] Harbinger complete:', targets.length, 'damaged,', deaths.length, 'killed');
         }
     },
     

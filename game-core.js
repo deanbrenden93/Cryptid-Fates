@@ -66,263 +66,352 @@ const GameEvents = {
 
 window.GameEvents = GameEvents;
 
-// ==================== ANIMATION CAPTURE SYSTEM ====================
-// Records game events during multiplayer actions for playback on opponent's screen
-// This ensures both players see identical animations without re-executing game logic
+// ==================== ANIMATION SEQUENCE SYSTEM ====================
+// Builds ordered sequences of animation commands for multiplayer sync
+// Commands are universal primitives that any card can use
+// This replaces the old event-capture approach with explicit choreography
+
+const AnimationSequence = {
+    // Current sequence being built
+    currentSequence: [],
+    isBuilding: false,
+    
+    // ==================== ANIMATION PRIMITIVE TYPES ====================
+    // These are the universal building blocks - all cards use these
+    PRIMITIVES: {
+        // Combat
+        ATTACK_MOVE: 'attackMove',       // Sprite lunges toward target and returns
+        DAMAGE: 'damage',                 // Show damage number + impact effects
+        HEAL: 'heal',                     // Show heal number + heal effect
+        DEATH: 'death',                   // Play death animation
+        
+        // Status effects (all use same visual, different colors/icons)
+        STATUS_APPLY: 'statusApply',      // Apply status effect visual
+        STATUS_TICK: 'statusTick',        // Status ticks (burn damage, calamity countdown)
+        STATUS_REMOVE: 'statusRemove',    // Status removed/expired
+        
+        // Field changes
+        SUMMON: 'summon',                 // Cryptid appears on field
+        PROMOTION: 'promotion',           // Support slides to combat position
+        EVOLUTION: 'evolution',           // Transform animation
+        
+        // Spells
+        SPELL_CAST: 'spellCast',          // Spell card effect
+        AURA_APPLY: 'auraApply',          // Aura attaches to target (gold)
+        AURA_REMOVE: 'auraRemove',        // Aura detaches
+        TRAP_TRIGGER: 'trapTrigger',      // Trap activates
+        TRAP_SET: 'trapSet',              // Trap placed (opponent sees face-down)
+        
+        // Resources
+        PYRE_CHANGE: 'pyreChange',        // Pyre gained/spent
+        CARD_DRAW: 'cardDraw',            // Card drawn
+        
+        // Special
+        MESSAGE: 'message',               // Show a message to player
+        DELAY: 'delay',                   // Pause between animations
+        PARALLEL: 'parallel',             // Group of commands to play simultaneously
+    },
+    
+    // ==================== SEQUENCE BUILDING ====================
+    
+    // Start building a new sequence
+    start() {
+        this.currentSequence = [];
+        this.isBuilding = true;
+        console.log('[AnimSeq] Started building sequence');
+    },
+    
+    // Finish and return the sequence
+    finish() {
+        this.isBuilding = false;
+        const seq = this.currentSequence;
+        this.currentSequence = [];
+        console.log('[AnimSeq] Finished with', seq.length, 'commands');
+        return seq;
+    },
+    
+    // Cancel without returning
+    cancel() {
+        this.isBuilding = false;
+        this.currentSequence = [];
+        console.log('[AnimSeq] Cancelled');
+    },
+    
+    // Add a command to the sequence
+    add(type, data) {
+        if (!this.isBuilding) return;
+        this.currentSequence.push({ type, ...data, _timestamp: performance.now() });
+    },
+    
+    // ==================== COMMAND BUILDERS ====================
+    // Convenience methods that build properly structured commands
+    
+    // Attack animation: attacker lunges at target
+    attackMove(attacker, target) {
+        this.add(this.PRIMITIVES.ATTACK_MOVE, {
+            attackerOwner: attacker.owner,
+            attackerCol: attacker.col,
+            attackerRow: attacker.row,
+            attackerKey: attacker.key,
+            targetOwner: target.owner,
+            targetCol: target.col,
+            targetRow: target.row
+        });
+    },
+    
+    // Damage: show damage number and effects on target
+    damage(target, amount, options = {}) {
+        this.add(this.PRIMITIVES.DAMAGE, {
+            targetOwner: target.owner,
+            targetCol: target.col,
+            targetRow: target.row,
+            targetName: target.name,
+            amount: amount,
+            isCrit: options.isCrit || amount >= 5,
+            source: options.source || null,  // 'attack', 'burn', 'ability', etc.
+            color: options.color || null     // Custom color for themed damage
+        });
+    },
+    
+    // Heal: show heal number on target
+    heal(target, amount, source = null) {
+        this.add(this.PRIMITIVES.HEAL, {
+            targetOwner: target.owner,
+            targetCol: target.col,
+            targetRow: target.row,
+            targetName: target.name,
+            amount: amount,
+            source: source
+        });
+    },
+    
+    // Death: play death animation
+    death(cryptid, killedBy = null) {
+        this.add(this.PRIMITIVES.DEATH, {
+            owner: cryptid.owner,
+            col: cryptid.col,
+            row: cryptid.row,
+            name: cryptid.name,
+            rarity: cryptid.rarity || 'common',
+            killedBy: killedBy
+        });
+    },
+    
+    // Status applied (burn, paralyze, bleed, etc.)
+    statusApply(target, status, stacks = 1) {
+        this.add(this.PRIMITIVES.STATUS_APPLY, {
+            targetOwner: target.owner,
+            targetCol: target.col,
+            targetRow: target.row,
+            targetName: target.name,
+            status: status,
+            stacks: stacks
+        });
+    },
+    
+    // Status tick (burn damage, calamity countdown)
+    statusTick(target, status, damage = 0, remaining = 0) {
+        this.add(this.PRIMITIVES.STATUS_TICK, {
+            targetOwner: target.owner,
+            targetCol: target.col,
+            targetRow: target.row,
+            targetName: target.name,
+            status: status,
+            damage: damage,
+            remaining: remaining
+        });
+    },
+    
+    // Status removed
+    statusRemove(target, status) {
+        this.add(this.PRIMITIVES.STATUS_REMOVE, {
+            targetOwner: target.owner,
+            targetCol: target.col,
+            targetRow: target.row,
+            status: status
+        });
+    },
+    
+    // Summon: cryptid appears
+    summon(cryptid) {
+        this.add(this.PRIMITIVES.SUMMON, {
+            owner: cryptid.owner,
+            col: cryptid.col,
+            row: cryptid.row,
+            key: cryptid.key,
+            name: cryptid.name,
+            element: cryptid.element,
+            rarity: cryptid.rarity
+        });
+    },
+    
+    // Promotion: support slides to combat
+    promotion(owner, row) {
+        this.add(this.PRIMITIVES.PROMOTION, {
+            owner: owner,
+            row: row
+        });
+    },
+    
+    // Evolution: cryptid transforms
+    evolution(baseCryptid, evolvedKey, evolvedName) {
+        this.add(this.PRIMITIVES.EVOLUTION, {
+            owner: baseCryptid.owner,
+            col: baseCryptid.col,
+            row: baseCryptid.row,
+            fromKey: baseCryptid.key,
+            toKey: evolvedKey,
+            toName: evolvedName
+        });
+    },
+    
+    // Spell cast visual
+    spellCast(card, target = null) {
+        this.add(this.PRIMITIVES.SPELL_CAST, {
+            cardName: card.name,
+            cardKey: card.key,
+            cardType: card.type,
+            targetOwner: target?.owner,
+            targetCol: target?.col,
+            targetRow: target?.row
+        });
+    },
+    
+    // Aura applied (gold effect)
+    auraApply(card, target) {
+        this.add(this.PRIMITIVES.AURA_APPLY, {
+            cardName: card.name,
+            targetOwner: target.owner,
+            targetCol: target.col,
+            targetRow: target.row
+        });
+    },
+    
+    // Trap triggered
+    trapTrigger(trap, row) {
+        this.add(this.PRIMITIVES.TRAP_TRIGGER, {
+            trapName: trap.name,
+            trapKey: trap.key,
+            owner: trap.owner,
+            row: row
+        });
+    },
+    
+    // Trap set (opponent sees face-down)
+    trapSet(owner, row) {
+        this.add(this.PRIMITIVES.TRAP_SET, {
+            owner: owner,
+            row: row
+        });
+    },
+    
+    // Pyre changed
+    pyreChange(owner, amount, source = null) {
+        this.add(this.PRIMITIVES.PYRE_CHANGE, {
+            owner: owner,
+            amount: amount,  // Positive = gained, negative = spent
+            source: source
+        });
+    },
+    
+    // Show message
+    message(text, duration = 1000) {
+        this.add(this.PRIMITIVES.MESSAGE, {
+            text: text,
+            duration: duration
+        });
+    },
+    
+    // Add delay between animations
+    delay(ms) {
+        this.add(this.PRIMITIVES.DELAY, {
+            duration: ms
+        });
+    },
+    
+    // Group commands to play simultaneously
+    parallel(commands) {
+        this.add(this.PRIMITIVES.PARALLEL, {
+            commands: commands
+        });
+    },
+    
+    // ==================== BATCH HELPERS ====================
+    // For common multi-target scenarios
+    
+    // Damage multiple targets simultaneously
+    damageMultiple(targets, options = {}) {
+        // Build parallel damage commands
+        const damageCommands = targets.map(t => ({
+            type: this.PRIMITIVES.DAMAGE,
+            targetOwner: t.cryptid?.owner || t.owner,
+            targetCol: t.cryptid?.col ?? t.col,
+            targetRow: t.cryptid?.row ?? t.row,
+            targetName: t.cryptid?.name || t.name,
+            amount: t.damage || t.amount,
+            isCrit: (t.damage || t.amount) >= 5,
+            source: options.source || null,
+            color: options.color || null
+        }));
+        
+        this.add(this.PRIMITIVES.PARALLEL, { commands: damageCommands });
+    },
+    
+    // Death sequence for multiple targets (one at a time)
+    deathSequence(deaths, killedBy = null) {
+        for (const d of deaths) {
+            const cryptid = d.cryptid || d;
+            this.death(cryptid, killedBy);
+            this.delay(200);  // Brief pause between deaths
+        }
+    }
+};
+
+window.AnimationSequence = AnimationSequence;
+
+// ==================== LEGACY COMPATIBILITY ====================
+// Keep AnimationCapture as a thin wrapper that delegates to AnimationSequence
+// This allows gradual migration without breaking existing code
 
 const AnimationCapture = {
     isCapturing: false,
     capturedEvents: [],
-    captureDepth: 0, // Prevent nested captures from interfering
     
-    // Events that have visual representation and should be captured
-    // Organized by category for maintainability - add new events here as cards are added
-    VISUAL_EVENTS: [
-        // === DAMAGE & COMBAT ===
-        'onDamageTaken',        // Damage numbers, hit effects
-        'onHit',                // Impact effects
-        'onCleaveDamage',       // Cleave hit secondary target
-        'onKuchisakeExplosion', // Explosion chain damage
-        'onDestroyerDamage',    // Destroyer overkill damage
-        'onDestroyerResidue',   // Destroyer danger zone visual
-        'onMolemanSplash',      // Moleman splash damage
-        'onMultiAttackDamage',  // Multi-attack hits
-        'onSnipeDamage',        // Snipe ability damage
-        'onBleedDamage',        // Bleed tick (bonus damage on attack)
-        'onToxicDamage',        // Toxic bonus damage
-        'onBonusVsBurning',     // Bonus damage vs burning
-        
-        // === HEALING ===
-        'onHeal',               // Heal numbers, heal effects
-        'onLifesteal',          // Lifesteal heal from damage
-        
-        // === DEATH & KILLS ===
-        'onKill',               // Kill event (for kill triggers)
-        'onDeath',              // Death animation
-        'onGargoyleSave',       // Gargoyle sacrifice to save
-        'onCombatantDeath',     // Combatant died (support may trigger)
-        'onCalamityDeath',      // Death from calamity countdown
-        
-        // === STATUS EFFECTS ===
-        'onStatusApplied',      // Burn, paralyze, bleed, calamity, curse, protection
-        'onStatusWearOff',      // Status effect expired
-        'onBurnDamage',         // Burn tick damage at turn start
-        'onCalamityTick',       // Calamity countdown tick
-        'onCleanse',            // Cleanse effect removed statuses
-        'onCurseCleanse',       // Curse tokens removed
-        'onAilmentBlocked',     // Mothman immunity blocked ailment
-        'onProtectionBlock',    // Protection absorbed hit
-        'onProtectionRemoved',  // Protection charge consumed
-        'onToxicApplied',       // Toxic applied to tile
-        'onToxicFade',          // Toxic faded from tile
-        
-        // === TRAPS ===
-        'onTrapTriggered',      // Trap activation animation
-        'onTrapSet',            // Trap placed (opponent sees face-down)
-        'onTrapDestroyed',      // Trap destroyed
-        'onTrapProtected',      // Trap blocked by protection
-        'onTerrify',            // Terrify trap special effect
-        'onHuntSteal',          // Hunt trap pyre steal
-        
-        // === SUMMONING & FIELD ===
-        'onSummon',             // Cryptid summoned animation
-        'onEnterCombat',        // Entered combat position (triggers abilities)
-        'onPromotion',          // Support promoted to combat
-        'onEvolution',          // Evolution animation
-        
-        // === AURAS & BUFFS ===
-        'onAuraApplied',        // Aura cast on target
-        'onAuraRemoved',        // Aura expired/removed
-        'onLatch',              // Latch attached to target
-        'onGremlinAtkDebuff',   // Gremlin debuffed enemy
-        'onGremlinHalfDamage',  // Gremlin reduced damage
-        'onGremlinDamageReduction', // Gremlin damage reduction
-        'onStoneBastionHalfDamage', // Stone Bastion halved damage
-        'onDamageReduced',      // Generic damage reduction
-        
-        // === PYRE ===
-        'onPyreGained',         // Pyre counter increased
-        'onPyreSpent',          // Pyre counter decreased
-        
-        // === CARD ABILITIES ===
-        'onCardCallback',       // Card ability triggered (onSummon, onCombat, onKill, etc.)
-        'onActivatedAbility',   // Manually activated ability (sacrifice, blood pact, etc.)
-        'onMylingBurn',         // Myling's burn-on-damage trigger
-        'onPackGrowth',         // Hellhound pack growth
-        'onPackLeaderBuff',     // Hellhound buffing combatant
-        'onDeathWatchDraw',     // Death Watch card draw
-        'onSkinwalkerInherit',  // Skinwalker copying abilities
-        'onInsatiableHunger',   // Wendigo attack boost
-        
-        // === ATTACK EVENTS ===
-        'onAttackDeclared',     // Attack started (for attack animation)
-        'onAttackNegated',      // Attack was blocked/negated
-        'onAttackComplete',     // Attack finished
-        
-        // === SPELLS ===
-        'onSpellCast',          // Spell was cast
-        'onBurstPlayed',        // Burst spell played
-        'onPyreCardPlayed',     // Pyre card played
-        'onTargeted',           // Something was targeted
-        
-        // === MISC ===
-        'onCardDrawn',          // Card drawn (opponent sees deck shrink)
-        'onSnipeReveal',        // Snipe revealed enemy card
-    ],
-    
-    // Start capturing events for an action
     startCapture() {
-        this.captureDepth++;
-        if (this.captureDepth === 1) {
-            this.isCapturing = true;
-            this.capturedEvents = [];
-            console.log('[AnimCapture] Started capturing');
-        }
+        this.isCapturing = true;
+        this.capturedEvents = [];
+        AnimationSequence.start();
     },
     
-    // Stop capturing and return the event list
     stopCapture() {
-        this.captureDepth--;
-        if (this.captureDepth <= 0) {
-            this.captureDepth = 0;
-            this.isCapturing = false;
-            const events = this.capturedEvents;
-            this.capturedEvents = [];
-            console.log('[AnimCapture] Stopped. Captured', events.length, 'events');
-            return events;
-        }
-        return null; // Inner capture, don't return yet
+        this.isCapturing = false;
+        const events = this.capturedEvents;
+        this.capturedEvents = [];
+        // Return both old events and new sequence for backwards compat
+        const sequence = AnimationSequence.finish();
+        return { events, sequence };
     },
     
-    // Cancel capture without returning events (for error cases)
     cancelCapture() {
-        this.captureDepth = 0;
         this.isCapturing = false;
         this.capturedEvents = [];
-        console.log('[AnimCapture] Cancelled');
+        AnimationSequence.cancel();
     },
     
-    // Record an event (called by listeners)
+    // Legacy: record event (also builds sequence command if possible)
     recordEvent(eventType, data) {
         if (!this.isCapturing) return;
-        
-        // Serialize the event data (remove circular refs, extract needed info)
-        const serialized = this.serializeEventData(eventType, data);
-        
-        this.capturedEvents.push({
-            type: eventType,
-            data: serialized,
-            timestamp: performance.now()
-        });
+        // Store in old format for backwards compat
+        this.capturedEvents.push({ type: eventType, data, timestamp: performance.now() });
     },
     
-    // Serialize event data for network transmission
-    // Extracts only what's needed for animation, handles circular references
-    serializeEventData(eventType, data) {
-        const result = {};
-        
-        // Helper to serialize a cryptid reference
-        const serializeCryptid = (cryptid) => {
-            if (!cryptid) return null;
-            return {
-                key: cryptid.key,
-                name: cryptid.name,
-                owner: cryptid.owner,
-                col: cryptid.col,
-                row: cryptid.row,
-                currentHp: cryptid.currentHp,
-                currentAtk: cryptid.currentAtk,
-                maxHp: cryptid.maxHp,
-                element: cryptid.element,
-                rarity: cryptid.rarity
-            };
-        };
-        
-        // Helper to serialize a card reference
-        const serializeCard = (card) => {
-            if (!card) return null;
-            return {
-                key: card.key,
-                name: card.name,
-                type: card.type,
-                element: card.element,
-                rarity: card.rarity
-            };
-        };
-        
-        // Helper to serialize a trap reference
-        const serializeTrap = (trap) => {
-            if (!trap) return null;
-            return {
-                key: trap.key,
-                name: trap.name,
-                owner: trap.owner,
-                row: trap.row
-            };
-        };
-        
-        // Copy simple values, serialize complex ones
-        for (const [key, value] of Object.entries(data)) {
-            if (value === null || value === undefined) {
-                result[key] = null;
-            } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-                result[key] = value;
-            } else if (key === 'cryptid' || key === 'target' || key === 'attacker' || key === 'killer' || 
-                       key === 'victim' || key === 'source' || key === 'combatant' || key === 'support' ||
-                       key === 'gremlin' || key === 'myling' || key === 'watcher' || key === 'molemanSupport' ||
-                       key === 'cleaveTarget' || key === 'splashTarget' || key === 'explosionTarget' ||
-                       key === 'swapTarget' || key === 'otherTarget' || key === 'baseCryptid' || key === 'evolved') {
-                result[key] = serializeCryptid(value);
-            } else if (key === 'card' || key === 'aura' || key === 'auraCard' || key === 'pyreCard') {
-                result[key] = serializeCard(value);
-            } else if (key === 'trap') {
-                result[key] = serializeTrap(value);
-            } else if (key === 'sourceType' || key === 'status' || key === 'ailment' || key === 'ability' ||
-                       key === 'type' || key === 'reason' || key === 'direction') {
-                result[key] = value; // String enums
-            } else if (Array.isArray(value)) {
-                // For arrays (like targets), serialize each element
-                result[key] = value.map(item => {
-                    if (item && typeof item === 'object' && item.key) {
-                        return serializeCryptid(item);
-                    }
-                    return item;
-                });
-            } else if (typeof value === 'object') {
-                // For nested objects, try to extract useful info
-                // Skip functions and complex nested objects
-                const nested = {};
-                for (const [k, v] of Object.entries(value)) {
-                    if (typeof v !== 'function' && typeof v !== 'object') {
-                        nested[k] = v;
-                    }
-                }
-                if (Object.keys(nested).length > 0) {
-                    result[key] = nested;
-                }
-            }
-        }
-        
-        return result;
-    },
-    
-    // Set up listeners for all visual events
-    // Call this once during game initialization
     setupListeners() {
-        for (const eventType of this.VISUAL_EVENTS) {
-            GameEvents.on(eventType, (data) => {
-                this.recordEvent(eventType, data);
-            });
-        }
-        console.log('[AnimCapture] Registered listeners for', this.VISUAL_EVENTS.length, 'event types');
+        // No-op - we no longer auto-capture events
+        console.log('[AnimCapture] Legacy listeners disabled - using AnimationSequence');
     }
 };
 
 window.AnimationCapture = AnimationCapture;
-
-// Initialize listeners when game loads
-// Defer to ensure GameEvents is fully ready
-setTimeout(() => AnimationCapture.setupListeners(), 0);
 
 // ==================== EFFECT STACK SYSTEM ====================
 // Unified queue for all game effects with proper resolution order
@@ -5817,6 +5906,13 @@ class Game {
         };
         field[col][row] = cryptid;
         
+        // BUILD ANIMATION SEQUENCE for multiplayer sync - add summon FIRST, before any callbacks
+        // This ensures summon animation plays before any on-enter-combat effects (like Mothman's Harbinger)
+        if (window.AnimationSequence?.isBuilding && this.isMultiplayer && owner === 'player') {
+            const seq = window.AnimationSequence;
+            seq.summon(cryptid);
+        }
+        
         if (cryptid.onSummon) {
             GameEvents.emit('onCardCallback', { type: 'onSummon', card: cryptid, owner, col, row });
             cryptid.onSummon(cryptid, owner, this);
@@ -5863,16 +5959,8 @@ class Game {
         }
         
         // Multiplayer hook - AFTER all callbacks complete so state is final
-        // SKIP if there's a pending Harbinger effect - the UI will send after Harbinger completes
-        // This ensures all damage/death events from Harbinger are captured in the animation manifest
         if (this.isMultiplayer && owner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-            if (window.pendingHarbingerEffect) {
-                console.log('[MP] Deferring summon action - pendingHarbingerEffect detected');
-                // Mark that the UI needs to send this summon action after Harbinger
-                window.pendingHarbingerSummonData = { card: cardData, owner, col, row, foil: cardData.foil || false };
-            } else {
-                window.multiplayerHook.onSummon(cardData, owner, col, row, cardData.foil || false);
-            }
+            window.multiplayerHook.onSummon(cardData, owner, col, row, cardData.foil || false);
         }
         
         return cryptid;
@@ -7117,6 +7205,13 @@ class Game {
         };
         this.setFieldCryptid(owner, col, row, cryptid);
         
+        // BUILD ANIMATION SEQUENCE for multiplayer sync - add summon FIRST, before any callbacks
+        // This ensures summon animation plays before any on-enter-combat effects
+        if (window.AnimationSequence?.isBuilding && this.isMultiplayer && owner === 'player') {
+            const seq = window.AnimationSequence;
+            seq.summon(cryptid);
+        }
+        
         if (cryptid.onSummon) {
             GameEvents.emit('onCardCallback', { type: 'onSummon', card: cryptid, owner, col, row, isKindling: true });
             cryptid.onSummon(cryptid, owner, this);
@@ -7152,15 +7247,10 @@ class Game {
         GameEvents.emit('onSummon', { owner, cryptid, col, row, isSupport: col === supportCol, isKindling: true });
         
         // Multiplayer hook - AFTER all callbacks complete so state is final
-        // SKIP if there's a pending Harbinger effect - the UI will send after Harbinger completes
-        // This ensures all damage/death events from Harbinger are captured in the animation manifest
+        // NOTE: Harbinger damage/deaths now execute synchronously in onEnterCombat,
+        // so all events are captured before this hook sends the action
         if (this.isMultiplayer && owner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-            if (window.pendingHarbingerEffect) {
-                console.log('[MP] Deferring kindling summon action - pendingHarbingerEffect detected');
-                window.pendingHarbingerSummonData = { card: kindlingCard, owner, col, row, foil: kindlingCard.foil || false };
-            } else {
-                window.multiplayerHook.onSummon(kindlingCard, owner, col, row, kindlingCard.foil || false);
-            }
+            window.multiplayerHook.onSummon(kindlingCard, owner, col, row, kindlingCard.foil || false);
         }
         
         return cryptid;

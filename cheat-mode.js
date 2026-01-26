@@ -1215,9 +1215,9 @@ window.CheatMode = {
         console.log(`Summoned ${cryptid.name} to ${owner} ${colName} row ${row}`);
         if (typeof renderAll === 'function') renderAll();
         
-        // Check for pending Harbinger effect (Mothman entering combat)
-        if (window.pendingHarbingerEffect && typeof window.processHarbingerEffect === 'function') {
-            window.processHarbingerEffect(() => {
+        // Check for pending Harbinger animation (Mothman entering combat)
+        if (window.pendingHarbingerAnimation && typeof window.playHarbingerAnimation === 'function') {
+            window.playHarbingerAnimation(() => {
                 if (typeof renderAll === 'function') renderAll();
             });
         }

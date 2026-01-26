@@ -762,8 +762,8 @@ window.Multiplayer = {
     // ==================== ACTION SENDING ====================
     
     /**
-     * Send a game action with optional animation manifest
-     * If AnimationCapture has recorded events, they're automatically included
+     * Send a game action with animation sequence
+     * AnimationSequence is built during game logic execution
      */
     sendGameAction(actionType, details = {}) {
         if (!this.isInMatch || !this.isMyTurn) {
@@ -771,8 +771,10 @@ window.Multiplayer = {
             return;
         }
         
-        // Get captured animation events if any
-        const animationEvents = window.AnimationCapture?.stopCapture?.() || null;
+        // Get captured animation data (new sequence system + legacy events)
+        const captureResult = window.AnimationCapture?.stopCapture?.() || {};
+        const animationSequence = captureResult.sequence || [];
+        const animationEvents = captureResult.events || [];  // Legacy compatibility
         
         const msg = {
             type: 'action',
@@ -781,18 +783,22 @@ window.Multiplayer = {
             action: { 
                 type: actionType, 
                 ...details,
-                // Include animation manifest if events were captured
+                // NEW: Animation sequence (ordered commands)
+                animationSequence: animationSequence,
+                // LEGACY: Animation events (for backwards compat)
                 animationEvents: animationEvents
             },
             state: this.serializeGameState()
         };
         
-        console.log('[MP] Sending:', actionType, animationEvents ? `(${animationEvents.length} events)` : '(no manifest)');
+        console.log('[MP] Sending:', actionType, 
+            animationSequence.length ? `(${animationSequence.length} seq cmds)` : '',
+            animationEvents.length ? `(${animationEvents.length} events)` : '');
         this.send(msg);
     },
     
     /**
-     * Start capturing animation events before an action
+     * Start building animation sequence before an action
      * Call this at the START of action execution
      */
     startActionCapture() {
@@ -829,7 +835,8 @@ window.Multiplayer = {
         const { action, state } = this.animationQueue.shift();
         const self = this;
         
-        // Check if we have an animation manifest (new system)
+        // Check for animation data (prefer sequence over events over legacy)
+        const hasSequence = action.animationSequence && action.animationSequence.length > 0;
         const hasManifest = action.animationEvents && action.animationEvents.length > 0;
         
         // Completion handler - called after animations finish
@@ -853,15 +860,46 @@ window.Multiplayer = {
         // Determine if we should animate before applying state
         // This is needed when sprites will be removed/changed by state application
         const hasDeaths = action.targetDied || action.supportDied || 
+                         action.animationSequence?.some(c => c.type === 'death') ||
                          action.animationEvents?.some(e => e.type === 'onDeath' || e.type === 'onKill');
-        const shouldAnimateBeforeState = hasDeaths;
         
-        if (hasManifest) {
-            // NEW SYSTEM: Use animation manifest playback
+        // Also check for damage - we want to animate BEFORE state so HP changes happen at the right time
+        const hasDamage = action.animationSequence?.some(c => c.type === 'damage' || c.type === 'attackMove') ||
+                         action.animationEvents?.some(e => e.type === 'onDamageTaken' || e.type === 'onHit');
+        
+        const shouldAnimateBeforeState = hasDeaths || hasDamage;
+        
+        if (hasSequence) {
+            // NEW: Use animation sequence playback (preferred)
+            console.log('[MP] Playing animation sequence:', action.animationSequence.length, 'commands');
+            
+            if (shouldAnimateBeforeState) {
+                // Play sequence FIRST, then apply state
+                this.playAnimationSequence(action.animationSequence, () => {
+                    if (state) {
+                        this.applyReceivedState(state);
+                    }
+                    onAnimationComplete();
+                });
+            } else {
+                // Apply state first, then play sequence
+                if (state) {
+                    this.applyReceivedState(state);
+                }
+                
+                requestAnimationFrame(() => {
+                    if (typeof renderAll === 'function') renderAll();
+                    
+                    setTimeout(() => {
+                        this.playAnimationSequence(action.animationSequence, onAnimationComplete);
+                    }, 50);
+                });
+            }
+        } else if (hasManifest) {
+            // COMPAT: Use old event-based manifest playback
             console.log('[MP] Playing animation manifest:', action.animationEvents.length, 'events');
             
             if (shouldAnimateBeforeState) {
-                // Play manifest FIRST, then apply state
                 this.playAnimationManifest(action.animationEvents, () => {
                     if (state) {
                         this.applyReceivedState(state);
@@ -869,7 +907,6 @@ window.Multiplayer = {
                     onAnimationComplete();
                 });
             } else {
-                // Apply state first, then play manifest
                 if (state) {
                     this.applyReceivedState(state);
                 }
@@ -887,7 +924,6 @@ window.Multiplayer = {
             console.log('[MP] Using legacy animation for:', action.type);
             
             if (shouldAnimateBeforeState) {
-                // Play animation FIRST on current DOM state
                 this.playAnimation(action, () => {
                     if (state) {
                         this.applyReceivedState(state);
@@ -895,7 +931,6 @@ window.Multiplayer = {
                     onAnimationComplete();
                 }, state);
             } else {
-                // For non-death actions, apply state first
                 if (state) {
                     this.applyReceivedState(state);
                 }
@@ -971,6 +1006,444 @@ window.Multiplayer = {
         
         // Start playback
         playNext();
+    },
+    
+    // ==================== ANIMATION SEQUENCE PLAYBACK ====================
+    // Plays back ordered animation commands (the new system)
+    // Each command is a universal primitive with all data needed to execute
+    
+    /**
+     * Play an animation sequence - ordered commands that choreograph the action
+     * @param {Array} sequence - Array of animation commands
+     * @param {Function} onComplete - Called when sequence finishes
+     */
+    playAnimationSequence(sequence, onComplete) {
+        const self = this;
+        
+        if (!sequence || sequence.length === 0) {
+            console.log('[MP Seq] No commands to play');
+            onComplete?.();
+            return;
+        }
+        
+        console.log('[MP Seq] Playing', sequence.length, 'commands');
+        
+        let currentIndex = 0;
+        
+        const playNextCommand = () => {
+            if (currentIndex >= sequence.length) {
+                console.log('[MP Seq] Complete');
+                onComplete?.();
+                return;
+            }
+            
+            const command = sequence[currentIndex];
+            currentIndex++;
+            
+            // Handle parallel commands (play all simultaneously)
+            if (command.type === 'parallel' && command.commands) {
+                let maxDuration = 0;
+                for (const subCmd of command.commands) {
+                    const duration = self.playSequenceCommand(subCmd);
+                    maxDuration = Math.max(maxDuration, duration);
+                }
+                setTimeout(playNextCommand, maxDuration + 20);
+            } else {
+                const duration = self.playSequenceCommand(command);
+                setTimeout(playNextCommand, duration + 20);
+            }
+        };
+        
+        // Start playback
+        playNextCommand();
+    },
+    
+    /**
+     * Execute a single animation command
+     * Returns duration in ms
+     */
+    playSequenceCommand(cmd) {
+        const type = cmd.type;
+        const g = window.game;
+        
+        // Helper to flip perspective (their player = our enemy)
+        const flipOwner = (owner) => owner === 'player' ? 'enemy' : 'player';
+        const flipCol = (col) => col !== undefined ? 1 - col : undefined;
+        
+        // Helper to find sprite by position
+        const findSprite = (owner, col, row) => {
+            const flippedOwner = flipOwner(owner);
+            const flippedCol = flipCol(col);
+            return document.querySelector(
+                `.cryptid-sprite[data-owner="${flippedOwner}"][data-col="${flippedCol}"][data-row="${row}"]`
+            );
+        };
+        
+        // Helper to find cryptid by position
+        const findCryptid = (owner, col, row) => {
+            const flippedOwner = flipOwner(owner);
+            const flippedCol = flipCol(col);
+            const field = flippedOwner === 'player' ? g?.playerField : g?.enemyField;
+            return field?.[flippedCol]?.[row];
+        };
+        
+        let duration = 100;
+        
+        switch (type) {
+            // ==================== ATTACK MOVE ====================
+            case 'attackMove': {
+                const atkSprite = findSprite(cmd.attackerOwner, cmd.attackerCol, cmd.attackerRow);
+                const tgtSprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                
+                if (atkSprite && window.CombatEffects?.playEnhancedAttack) {
+                    // Use the enhanced attack which includes lunge animation
+                    window.CombatEffects.playEnhancedAttack(
+                        atkSprite, 
+                        flipOwner(cmd.attackerOwner), 
+                        tgtSprite, 
+                        0, // damage shown by separate damage command
+                        null, // onImpact handled by damage command
+                        null  // onComplete
+                    );
+                    duration = 500; // Attack animation time
+                } else if (atkSprite) {
+                    // Fallback: just add attacking class
+                    const direction = flipOwner(cmd.attackerOwner) === 'player' ? 'right' : 'left';
+                    atkSprite.classList.add(`attacking-${direction}`);
+                    setTimeout(() => atkSprite.classList.remove(`attacking-${direction}`), 400);
+                    duration = 400;
+                }
+                break;
+            }
+            
+            // ==================== DAMAGE ====================
+            case 'damage': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                const cryptid = findCryptid(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                const amount = cmd.amount || 0;
+                
+                if (sprite && window.CombatEffects) {
+                    const battlefield = document.getElementById('battlefield-area');
+                    if (battlefield) {
+                        const rect = sprite.getBoundingClientRect();
+                        const bfRect = battlefield.getBoundingClientRect();
+                        const x = rect.left + rect.width/2 - bfRect.left;
+                        const y = rect.top + rect.height/2 - bfRect.top;
+                        
+                        // Impact effects
+                        window.CombatEffects.createImpactFlash?.(x, y, 60 + amount * 8);
+                        window.CombatEffects.createSparks?.(x, y, 6 + amount);
+                        window.CombatEffects.heavyImpact?.(Math.min(amount, 5));
+                        
+                        // Damage number
+                        if (cryptid && amount > 0) {
+                            window.CombatEffects.showDamageNumber(cryptid, amount, cmd.isCrit || amount >= 5);
+                        }
+                    }
+                    
+                    // Hit recoil
+                    sprite.classList.add('hit-recoil');
+                    setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+                }
+                
+                duration = 300;
+                break;
+            }
+            
+            // ==================== HEAL ====================
+            case 'heal': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                const cryptid = findCryptid(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                const amount = cmd.amount || 0;
+                
+                if (cryptid && amount > 0 && window.CombatEffects?.showHealNumber) {
+                    window.CombatEffects.showHealNumber(cryptid, amount);
+                }
+                
+                if (sprite) {
+                    sprite.classList.add('healing');
+                    setTimeout(() => sprite.classList.remove('healing'), 500);
+                }
+                
+                duration = 400;
+                break;
+            }
+            
+            // ==================== DEATH ====================
+            case 'death': {
+                const sprite = findSprite(cmd.owner, cmd.col, cmd.row);
+                
+                if (sprite && window.CombatEffects?.playDramaticDeath) {
+                    const flippedOwner = flipOwner(cmd.owner);
+                    const rarity = cmd.rarity || sprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                    window.CombatEffects.playDramaticDeath(sprite, flippedOwner, rarity);
+                } else if (sprite) {
+                    const direction = flipOwner(cmd.owner) === 'player' ? 'left' : 'right';
+                    sprite.classList.add(`dying-${direction}`);
+                }
+                
+                // Show death message
+                if (cmd.name) {
+                    showMessage?.(`💀 ${cmd.name} was destroyed!`, 600);
+                }
+                
+                duration = 800;
+                break;
+            }
+            
+            // ==================== STATUS APPLY ====================
+            case 'statusApply': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                const status = cmd.status || 'burn';
+                
+                if (sprite) {
+                    // Visual feedback based on status type
+                    if (status === 'burn') {
+                        sprite.classList.add('burn-applied');
+                        setTimeout(() => sprite.classList.remove('burn-applied'), 500);
+                    } else if (status === 'paralyze' || status === 'paralysis') {
+                        sprite.classList.add('paralyzed-applied');
+                        setTimeout(() => sprite.classList.remove('paralyzed-applied'), 500);
+                        if (window.CombatEffects?.playDebuffEffect) {
+                            window.CombatEffects.playDebuffEffect(sprite);
+                        }
+                    } else if (status === 'bleed') {
+                        sprite.classList.add('bleed-applied');
+                        setTimeout(() => sprite.classList.remove('bleed-applied'), 500);
+                    } else if (status === 'protection') {
+                        sprite.classList.add('protection-applied');
+                        setTimeout(() => sprite.classList.remove('protection-applied'), 500);
+                    } else {
+                        // Generic debuff animation (purple)
+                        sprite.classList.add('debuff-applied');
+                        setTimeout(() => sprite.classList.remove('debuff-applied'), 500);
+                    }
+                }
+                
+                // Show message
+                const stacks = cmd.stacks || 1;
+                const emoji = status === 'burn' ? '🔥' : status === 'bleed' ? '🩸' : status === 'paralyze' ? '⚡' : '💫';
+                showMessage?.(`${emoji} ${status} ${stacks > 1 ? `x${stacks}` : ''} applied!`, 400);
+                
+                duration = 350;
+                break;
+            }
+            
+            // ==================== STATUS TICK ====================
+            case 'statusTick': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                const cryptid = findCryptid(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                const damage = cmd.damage || 0;
+                const status = cmd.status || 'burn';
+                
+                if (sprite && damage > 0 && window.CombatEffects) {
+                    // Show damage number for tick
+                    if (cryptid) {
+                        window.CombatEffects.showDamageNumber(cryptid, damage, false);
+                    }
+                    
+                    // Visual feedback
+                    sprite.classList.add(`${status}-tick`);
+                    setTimeout(() => sprite.classList.remove(`${status}-tick`), 400);
+                }
+                
+                duration = 300;
+                break;
+            }
+            
+            // ==================== STATUS REMOVE ====================
+            case 'statusRemove': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                
+                if (sprite) {
+                    sprite.classList.add('status-removed');
+                    setTimeout(() => sprite.classList.remove('status-removed'), 400);
+                }
+                
+                showMessage?.(`✨ ${cmd.status || 'Status'} removed`, 300);
+                duration = 250;
+                break;
+            }
+            
+            // ==================== SUMMON ====================
+            case 'summon': {
+                const flippedCol = flipCol(cmd.col);
+                const flippedOwner = flipOwner(cmd.owner);
+                
+                // Find sprite (may need to wait for DOM update)
+                let attempts = 0;
+                const findAndAnimate = () => {
+                    const sprite = document.querySelector(
+                        `.cryptid-sprite[data-owner="${flippedOwner}"][data-col="${flippedCol}"][data-row="${cmd.row}"]`
+                    );
+                    
+                    if (sprite) {
+                        if (window.CombatEffects?.playSummonAnimation) {
+                            const element = cmd.element || sprite.className.match(/element-(\w+)/)?.[1] || 'steel';
+                            const rarity = cmd.rarity || sprite.className.match(/rarity-(\w+)/)?.[1] || 'common';
+                            window.CombatEffects.playSummonAnimation(sprite, element, rarity);
+                        } else {
+                            sprite.classList.add('summoning');
+                            setTimeout(() => sprite.classList.remove('summoning'), 800);
+                        }
+                    } else if (attempts < 3) {
+                        attempts++;
+                        setTimeout(findAndAnimate, 50);
+                    }
+                };
+                findAndAnimate();
+                
+                showMessage?.(`${flippedOwner === 'enemy' ? 'Opponent' : 'You'} summoned ${cmd.name || cmd.key}!`);
+                duration = 850;
+                break;
+            }
+            
+            // ==================== PROMOTION ====================
+            case 'promotion': {
+                const flippedOwner = flipOwner(cmd.owner);
+                
+                // Promotion visual is handled by render - just show message
+                showMessage?.(`⬆ Support promoted to combat!`, 400);
+                
+                // Trigger re-render to show promotion slide
+                if (typeof renderAll === 'function') renderAll();
+                
+                duration = 400;
+                break;
+            }
+            
+            // ==================== EVOLUTION ====================
+            case 'evolution': {
+                const sprite = findSprite(cmd.owner, cmd.col, cmd.row);
+                
+                if (sprite && window.CombatEffects?.playEvolutionAnimation) {
+                    const element = sprite.className.match(/element-(\w+)/)?.[1] || 'steel';
+                    const rarity = sprite.className.match(/rarity-(\w+)/)?.[1] || 'uncommon';
+                    window.CombatEffects.playEvolutionAnimation(sprite, element, rarity);
+                } else if (sprite) {
+                    sprite.classList.add('evolving');
+                    setTimeout(() => sprite.classList.remove('evolving'), 1000);
+                }
+                
+                showMessage?.(`🌟 Evolved into ${cmd.toName || cmd.toKey}!`);
+                duration = 1100;
+                break;
+            }
+            
+            // ==================== SPELL CAST ====================
+            case 'spellCast': {
+                showMessage?.(`✨ ${cmd.cardName || 'Spell'} cast!`, 600);
+                
+                if (cmd.targetCol !== undefined && cmd.targetRow !== undefined) {
+                    const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                    if (sprite) {
+                        if (window.CombatEffects?.playSpellEffect) {
+                            window.CombatEffects.playSpellEffect(sprite, cmd.cardKey);
+                        } else {
+                            sprite.classList.add('spell-target');
+                            setTimeout(() => sprite.classList.remove('spell-target'), 800);
+                        }
+                    }
+                }
+                
+                duration = 700;
+                break;
+            }
+            
+            // ==================== AURA APPLY ====================
+            case 'auraApply': {
+                const sprite = findSprite(cmd.targetOwner, cmd.targetCol, cmd.targetRow);
+                const battlefield = document.getElementById('battlefield-area');
+                
+                if (sprite && battlefield && window.CombatEffects?.playAuraEffect) {
+                    const targetRect = sprite.getBoundingClientRect();
+                    const battlefieldRect = battlefield.getBoundingClientRect();
+                    const startX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+                    const startY = 0;
+                    const targetX = startX;
+                    const targetY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+                    
+                    window.CombatEffects.playAuraEffect(startX, startY, targetX, targetY, sprite);
+                } else if (sprite) {
+                    sprite.classList.add('aura-target');
+                    setTimeout(() => sprite.classList.remove('aura-target'), 1000);
+                }
+                
+                showMessage?.(`💛 ${cmd.cardName || 'Aura'} applied!`, 600);
+                duration = 1100;
+                break;
+            }
+            
+            // ==================== TRAP TRIGGER ====================
+            case 'trapTrigger': {
+                const row = cmd.row;
+                const flippedOwner = flipOwner(cmd.owner);
+                const trapSprite = document.querySelector(`.trap-sprite[data-owner="${flippedOwner}"][data-row="${row}"]`);
+                
+                if (trapSprite) {
+                    trapSprite.classList.add('triggering');
+                    setTimeout(() => trapSprite.classList.remove('triggering'), 500);
+                }
+                
+                showMessage?.(`⚠ ${cmd.trapName || 'Trap'} triggered!`, 500);
+                duration = 500;
+                break;
+            }
+            
+            // ==================== TRAP SET ====================
+            case 'trapSet': {
+                const flippedOwner = flipOwner(cmd.owner);
+                const trapSprite = document.querySelector(`.trap-sprite[data-owner="${flippedOwner}"][data-row="${cmd.row}"]`);
+                
+                if (trapSprite) {
+                    trapSprite.classList.add('spawning');
+                    setTimeout(() => trapSprite.classList.remove('spawning'), 500);
+                }
+                
+                showMessage?.(`${flippedOwner === 'enemy' ? 'Opponent' : 'You'} set a trap!`);
+                duration = 600;
+                break;
+            }
+            
+            // ==================== PYRE CHANGE ====================
+            case 'pyreChange': {
+                const flippedOwner = flipOwner(cmd.owner);
+                const pyreDisplay = document.querySelector(`.player-info.${flippedOwner} .pyre-display`);
+                
+                if (pyreDisplay) {
+                    if (cmd.amount > 0) {
+                        pyreDisplay.classList.add('pyre-gained');
+                        setTimeout(() => pyreDisplay.classList.remove('pyre-gained'), 400);
+                    } else {
+                        pyreDisplay.classList.add('pyre-spent');
+                        setTimeout(() => pyreDisplay.classList.remove('pyre-spent'), 400);
+                    }
+                }
+                
+                duration = 200;
+                break;
+            }
+            
+            // ==================== MESSAGE ====================
+            case 'message': {
+                showMessage?.(cmd.text, cmd.duration || 1000);
+                duration = Math.min(cmd.duration || 1000, 500); // Don't wait full message time
+                break;
+            }
+            
+            // ==================== DELAY ====================
+            case 'delay': {
+                duration = cmd.duration || 100;
+                break;
+            }
+            
+            default: {
+                console.log('[MP Seq] Unknown command type:', type, cmd);
+                duration = 50;
+            }
+        }
+        
+        return duration;
     },
     
     /**
