@@ -500,13 +500,21 @@ export class SharedGameEngine {
         
         // Find kindling
         const pool = owner === 'player' ? this.state.playerKindling : this.state.enemyKindling;
+        
+        // DEBUG: Log kindling pool data
+        console.log('[SharedEngine] Kindling pool for', owner, ':', 
+            pool.map(k => ({ id: k.id, key: k.key, name: k.name })));
+        console.log('[SharedEngine] Looking for kindlingId:', kindlingId);
+        
         const kindlingIndex = pool.findIndex(k => k.id === kindlingId || k.key === kindlingId);
         
         if (kindlingIndex === -1) {
+            console.log('[SharedEngine] Kindling not found! Pool IDs:', pool.map(k => k.id));
             return { valid: false, error: 'Kindling not found' };
         }
         
         const kindling = pool[kindlingIndex];
+        console.log('[SharedEngine] Found kindling:', { id: kindling.id, key: kindling.key, name: kindling.name });
         
         // Validate slot is empty
         const field = owner === 'player' ? this.state.playerField : this.state.enemyField;
@@ -577,9 +585,7 @@ export class SharedGameEngine {
             return { valid: false, error: 'Attacker cannot attack' };
         }
         
-        if (attacker.justSummoned) {
-            return { valid: false, error: 'Cryptid was just summoned and cannot attack' };
-        }
+        // NOTE: No summoning sickness - cryptids can attack immediately after being summoned
         
         if (attacker.paralyzed) {
             return { valid: false, error: 'Attacker is paralyzed' };

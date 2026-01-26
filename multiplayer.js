@@ -947,13 +947,20 @@ window.Multiplayer = {
         const g = window.game;
         if (!g) return null;
         
+        // DEBUG: Log kindling data being sent
+        console.log('[MP] Building deck data. playerKindling:', 
+            g.playerKindling?.map(k => ({ id: k.id, key: k.key, name: k.name })) || 'none');
+        
         // Send deck, kindling, AND current hand
         // Server will use our hand directly (same IDs) instead of drawing its own
-        return {
+        const deckData = {
             mainDeck: g.deck?.map(c => this.serializeCardForServer(c)) || [],
             kindling: g.playerKindling?.map(k => this.serializeCardForServer(k)) || [],
             hand: g.playerHand?.map(c => this.serializeCardForServer(c)) || []
         };
+        
+        console.log('[MP] Deck data kindling keys:', deckData.kindling.map(k => k.key));
+        return deckData;
     },
     
     /**
@@ -4393,8 +4400,9 @@ window.Multiplayer = {
                        window.CardRegistry?.getKindling?.(data.key) ||
                        {};
         
-        // Determine if cryptid can attack (not paralyzed, not just summoned, not tapped)
-        const canAttack = !data.paralyzed && !data.justSummoned && !data.tapped;
+        // Determine if cryptid can attack (not paralyzed, not tapped, not already attacked)
+        // NOTE: No summoning sickness - cryptids can attack immediately
+        const canAttack = !data.paralyzed && !data.tapped && !data.attackedThisTurn;
         
         return {
             ...cardDef,
@@ -4976,6 +4984,7 @@ window.multiplayerHook = {
                 col: serverCol,
                 row: row
             };
+            console.log('[MP] Sending kindling summon:', { id: card.id, key: card.key, name: card.name, summonData });
             Multiplayer.sendGameAction('summonKindling', summonData);
         } else {
             // Regular cryptid summons from hand
