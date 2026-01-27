@@ -1,15 +1,15 @@
 /**
  * Cryptid Fates - City of Flesh Series
- * Card and Monster Definitions
+ * DECLARATIVE Card Definitions
  * 
- * This file defines all cryptids, instants, and kindling for the City of Flesh set.
- * Cards are registered to the global CardRegistry for use by the main game.
+ * Cards use an effects[] array that the EffectEngine processes.
+ * All game logic flows through universal triggers and actions.
  */
 
 // ==================== CARD REGISTRY ====================
 window.CardRegistry = window.CardRegistry || {
     cryptids: {},
-    bursts: {},      // Immediate effect spells
+    bursts: {},
     kindling: {},
     traps: {},
     auras: {},
@@ -23,7 +23,6 @@ window.CardRegistry = window.CardRegistry || {
         this.bursts[key] = { ...data, key, type: 'burst' };
     },
     
-    // Alias for backward compatibility
     registerInstant(key, data) {
         this.registerBurst(key, data);
     },
@@ -41,7 +40,7 @@ window.CardRegistry = window.CardRegistry || {
     },
     
     registerPyre(key, data) {
-        this.pyres[key] = { ...data, key, type: 'pyre', cost: 0 }; // Pyres are always free
+        this.pyres[key] = { ...data, key, type: 'pyre', cost: 0 };
     },
     
     getCryptid(key) {
@@ -52,7 +51,6 @@ window.CardRegistry = window.CardRegistry || {
         return this.bursts[key] ? { ...this.bursts[key] } : null;
     },
     
-    // Alias for backward compatibility
     getInstant(key) {
         return this.getBurst(key);
     },
@@ -81,7 +79,6 @@ window.CardRegistry = window.CardRegistry || {
         return Object.keys(this.bursts);
     },
     
-    // Alias for backward compatibility
     getAllInstantKeys() {
         return this.getAllBurstKeys();
     },
@@ -120,64 +117,43 @@ CardRegistry.registerKindling('hellpup', {
     supportAbility: "Combatant's attacks apply burn.",
     otherAbility: "If Hellpup would die from burn, evolve into Hellhound instead.",
     
-    // COMBAT: Guard - negate first attack each turn, burn attacker
-    onCombat: (cryptid, owner, game) => {
-        cryptid.guardAvailable = true;
-    },
-    onTurnStart: (cryptid, owner, game) => {
-        // Reset guard each turn if in combat
-        const combatCol = game.getCombatCol(owner);
-        if (cryptid.col === combatCol) {
-            cryptid.guardAvailable = true;
-        }
-    },
-    onBeforeDefend: (cryptid, attacker, game) => {
-        if (cryptid.guardAvailable) {
-            cryptid.guardAvailable = false;
-            console.log('[Hellpup Guard] Triggered! Burning attacker and negating damage');
-            // Burn the attacker
-            game.applyBurn(attacker);
-            // Negate the damage - this triggers the existing protection-block animation in game-ui.js
-            cryptid.negateIncomingAttack = true;
-            GameEvents.emit('onGuardUsed', { cryptid, attacker, owner: cryptid.owner });
-        }
-    },
+    // Flags for game-core handling
+    hasGuard: true,
     
-    // SUPPORT: Combatant's attacks apply burn
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.attacksApplyBurn = true;
-            combatant.hellpupSupport = cryptid;
+    effects: [
+        // COMBAT: Reset guard at turn start
+        {
+            trigger: "onTurnStart",
+            condition: { check: "isCombatant" },
+            action: "setFlag",
+            flag: "guardAvailable",
+            value: true
+        },
+        // COMBAT: Guard triggers on being attacked (handled via onBeforeDefend in game-core)
+        {
+            trigger: "onBeforeDefend",
+            condition: { check: "hasFlag", flag: "guardAvailable" },
+            actions: [
+                { action: "applyAilment", target: "attacker", ailmentType: "burn" },
+                { action: "setFlag", target: "self", flag: "negateIncomingAttack", value: true },
+                { action: "setFlag", target: "self", flag: "guardAvailable", value: false }
+            ]
+        },
+        // SUPPORT: Grant burn-on-attack to combatant
+        {
+            trigger: "onEnterSupport",
+            action: "grantFlag",
+            target: "myCombatant",
+            flag: "attacksApplyBurn"
+        },
+        // OTHER: If killed by burn, evolve into Hellhound
+        {
+            trigger: "onDeath",
+            condition: { check: "killedBy", value: "burn" },
+            action: "evolveFromDeathTrigger",
+            evolutionKey: "hellhound"
         }
-    },
-    
-    // OTHER: If dies from burn, evolve into Hellhound instead
-    // IMPORTANT: Only triggers if killedBy === 'burn', NOT just from having burn while dying
-    onDeath: (cryptid, game) => {
-        if (cryptid.killedBy === 'burn') {
-            const owner = cryptid.owner;
-            // Look for Hellhound in hand or deck
-            const hellhoundInHand = game.findCardInHand ? game.findCardInHand(owner, 'hellhound') : null;
-            const hellhoundInDeck = game.findCardInDeck ? game.findCardInDeck(owner, 'hellhound') : null;
-            
-            if (hellhoundInHand || hellhoundInDeck) {
-                cryptid.preventDeath = true;
-                const hellhoundCard = hellhoundInHand || hellhoundInDeck;
-                if (game.evolveInPlace) {
-                game.evolveInPlace(cryptid, hellhoundCard, owner);
-                }
-                
-                if (hellhoundInHand && game.removeFromHand) {
-                    game.removeFromHand(owner, hellhoundInHand);
-                } else if (hellhoundInDeck && game.removeFromDeck) {
-                    game.removeFromDeck(owner, hellhoundInDeck);
-                }
-                
-                GameEvents.emit('onBurnEvolution', { cryptid, evolvedInto: 'hellhound', owner });
-            }
-        }
-    }
+    ]
 });
 
 // Myling - Kindling - Common - 0 ATK / 3HP - Blood
@@ -194,41 +170,25 @@ CardRegistry.registerKindling('myling', {
     supportAbility: "When combatant takes damage from an enemy attack, burn the attacker.",
     otherAbility: "When Myling dies, burn all cryptids in the enemy row across from it.",
     
-    // COMBAT: +1 damage to burning enemies
+    // Combat bonus flag
     bonusVsBurning: 1,
-    onCombatAttack: (attacker, target, game) => {
-        if (target.burnTurns > 0) {
-            return 1; // +1 bonus damage
-        }
-        return 0;
-    },
     
-    // SUPPORT: When combatant takes damage, burn the attacker (handled by game-core)
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.mylingSupport = cryptid;
-            combatant.burnAttackersOnDamage = true;
+    effects: [
+        // SUPPORT: Grant burn-on-damaged to combatant
+        {
+            trigger: "onEnterSupport",
+            action: "grantFlag",
+            target: "myCombatant",
+            flag: "burnAttackersOnDamage"
+        },
+        // OTHER: On death, burn enemy row across
+        {
+            trigger: "onDeath",
+            action: "applyAilment",
+            target: "enemyRowAcross",
+            ailmentType: "burn"
         }
-    },
-    
-    // OTHER: When Myling dies, burn all cryptids in enemy row across
-    onDeath: (cryptid, game) => {
-        const owner = cryptid.owner;
-        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
-        const row = cryptid.row;
-        
-        // Burn both combat and support in that row
-        for (let col = 0; col < 2; col++) {
-            const enemy = enemyField[col][row];
-            if (enemy) {
-                game.applyBurn(enemy);
-            }
-        }
-        
-        GameEvents.emit('onMylingDeathBurn', { cryptid, row, owner });
-    }
+    ]
 });
 
 // Vampire Bat - Kindling - Common - 1 ATK / 2HP - Blood - Evolves into Vampire Initiate
@@ -245,17 +205,18 @@ CardRegistry.registerKindling('vampireBat', {
     combatAbility: "Lifesteal: When Vampire Bat deals damage, heal that much HP.",
     supportAbility: "When combatant deals damage, gain 1 pyre.",
     
-    // COMBAT: Lifesteal - heals for damage dealt (handled by game-core via hasLifesteal flag)
+    // Lifesteal flag
     hasLifesteal: true,
     
-    // SUPPORT: When combatant deals damage, gain 1 pyre (handled by game-core)
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.vampireBatSupport = cryptid;
-            combatant.grantPyreOnDamage = true;
+    effects: [
+        // SUPPORT: Grant pyre-on-damage to combatant
+        {
+            trigger: "onEnterSupport",
+            action: "grantFlag",
+            target: "myCombatant",
+            flag: "grantPyreOnDamage"
         }
-    }
+    ]
 });
 
 // Gremlin - Kindling - Common - 1 ATK / 2HP - Steel
@@ -268,24 +229,30 @@ CardRegistry.registerKindling('gremlin', {
     hp: 2,
     atk: 1,
     rarity: "common",
-    combatAbility: "Enemy combatant across has -1 ATK per ailment token. (Burn grants 3 tokens, paralysis grants 1, etc.)",
+    combatAbility: "Enemy combatant across has -1 ATK per ailment token.",
     supportAbility: "Ailmented enemies deal half damage when attacking combatant. Otherwise, combatant receives one fewer damage from attacks.",
     
-    // COMBAT: Enemy combatant across has -1 ATK per ailment token (visible debuff)
-    onCombat: (cryptid, owner, game) => {
-        cryptid.appliesAilmentAtkDebuff = true;
-        // Apply initial debuff to enemy across
-        game.updateGremlinDebuff(cryptid);
-    },
-    
-    // SUPPORT: Gremlin protection - half damage from ailmented, or -1 damage from non-ailmented
-    onSupport: (cryptid, owner, game) => {
-        cryptid.isGremlinSupport = true;
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.gremlinSupport = cryptid;
+    effects: [
+        // COMBAT: Apply ATK debuff based on ailment stacks (aura)
+        {
+            trigger: "whileInCombat",
+            action: "applyAilmentAtkDebuff",
+            target: "enemyCombatantAcross"
+        },
+        // SUPPORT: Grant damage reduction aura to combatant
+        {
+            trigger: "onEnterSupport",
+            action: "grantFlag",
+            target: "myCombatant",
+            flag: "hasGremlinSupport"
+        },
+        {
+            trigger: "onLeavingSupport",
+            action: "removeFlag",
+            target: "myCombatant",
+            flag: "hasGremlinSupport"
         }
-    }
+    ]
 });
 
 // Boggart - Kindling - Common - 2 ATK / 1HP - Steel - Evolves into Redcap
@@ -302,77 +269,29 @@ CardRegistry.registerKindling('boggart', {
     combatAbility: "Immune to ailments. When Boggart would gain an ailment, instead gain +1 ATK until end of your current or next turn.",
     supportAbility: "On enter: Cleanse all ailments from combatant and grant combatant +1 HP per unique ailment cleansed.",
     
-    // COMBAT: Immune to ailments, gain ATK instead
+    // Ailment immunity flag
     ailmentImmune: true,
-    onAilmentAttempt: (cryptid, ailmentType, game) => {
-        // Instead of gaining ailment, gain +1 ATK temporarily
-        cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + 1;
-        cryptid.tempAtkBonus = (cryptid.tempAtkBonus || 0) + 1;
-        cryptid.tempAtkExpiresTurn = (game.turnNumber || 0) + 1;
-        
-        GameEvents.emit('onAilmentImmunity', { 
-            cryptid, 
-            ailmentType, 
-            atkGained: 1, 
-            owner: cryptid.owner 
-        });
-        
-        return false; // Prevent ailment application
-    },
     
-    // Clear temp ATK at appropriate turn
-    onTurnStart: (cryptid, owner, game) => {
-        if (cryptid.tempAtkBonus && game.turnNumber > cryptid.tempAtkExpiresTurn) {
-            cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) - cryptid.tempAtkBonus;
-            cryptid.tempAtkBonus = 0;
+    effects: [
+        // COMBAT: Convert ailment to temp ATK (handled via ailmentImmune + onAilmentAttempt)
+        {
+            trigger: "onAilmentAttempt",
+            action: "convertAilmentToTempAtk",
+            amount: 1
+        },
+        // SUPPORT: On enter, cleanse combatant and grant HP per unique ailment
+        {
+            trigger: "onEnterSupport",
+            action: "cleanseAndBuffHp",
+            target: "myCombatant",
+            hpPerUniqueAilment: 1
         }
-    },
-    
-    // SUPPORT: On enter, cleanse combatant and grant +1 HP per unique ailment
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            let uniqueAilments = 0;
-            
-            // Check and clear each ailment type
-            if (combatant.paralyzed || combatant.paralyzeTurns > 0) {
-                combatant.paralyzed = false;
-                combatant.paralyzeTurns = 0;
-                uniqueAilments++;
-            }
-            if (combatant.burnTurns > 0) {
-                combatant.burnTurns = 0;
-                uniqueAilments++;
-            }
-            if (combatant.bleedTurns > 0) {
-                combatant.bleedTurns = 0;
-                uniqueAilments++;
-            }
-            if (combatant.calamityCounters > 0) {
-                combatant.calamityCounters = 0;
-                uniqueAilments++;
-            }
-            
-            // Grant +1 HP per unique ailment cleansed
-            if (uniqueAilments > 0) {
-                combatant.currentHp = (combatant.currentHp || combatant.hp) + uniqueAilments;
-                combatant.maxHp = (combatant.maxHp || combatant.hp) + uniqueAilments;
-                
-                GameEvents.emit('onBoggartCleanse', { 
-                    boggart: cryptid, 
-                    combatant, 
-                    ailmentsCleansed: uniqueAilments, 
-                    hpGranted: uniqueAilments,
-                    owner 
-                });
-            }
-        }
-    }
+    ]
 });
 
 // ==================== CITY OF FLESH - CRYPTIDS ====================
 
-// Rooftop Gargoyle - Steel, Common, Cost 1 (evolves into Library Gargoyle)
+// Rooftop Gargoyle - Steel, Common, Cost 1
 CardRegistry.registerCryptid('rooftopGargoyle', {
     name: "Rooftop Gargoyle",
     sprite: "sprites/rooftop-gargoyle.png",
@@ -386,7 +305,6 @@ CardRegistry.registerCryptid('rooftopGargoyle', {
     combatAbility: "Stone Skin: Take 2 less damage from ailmented enemies.",
     supportAbility: "Guardian's Sacrifice: When combatant would take lethal damage from an enemy, survive with 1 HP. If enemy has ailment, regain full HP instead. One use only.",
     
-    // Dynamic support ability text based on whether it's been used
     getSupportAbility: function(cryptid) {
         if (cryptid?.gargoyleSaveUsed) {
             return "Guardian's Sacrifice: [SPENT] - Ability has been used.";
@@ -394,42 +312,26 @@ CardRegistry.registerCryptid('rooftopGargoyle', {
         return "Guardian's Sacrifice: When combatant would take lethal damage from an enemy, survive with 1 HP. If enemy has ailment, regain full HP instead. One use only.";
     },
     
-    // COMBAT: Stone Skin - Take 2 less damage from ailmented enemies
-    onDefend: (defender, attacker, game) => {
-        if (game.hasStatusAilment(attacker)) {
-            return 2; // Reduce damage by 2
+    effects: [
+        // COMBAT: Take 2 less damage from ailmented enemies
+        {
+            trigger: "onDefend",
+            condition: { check: "attackerHasAilment" },
+            action: "reduceDamage",
+            amount: 2
+        },
+        // SUPPORT: Grant lethal protection to combatant
+        {
+            trigger: "onEnterSupport",
+            action: "grantFlag",
+            target: "myCombatant",
+            flag: "hasRooftopGargoyleSupport",
+            linkSource: true
         }
-        return 0;
-    },
-    
-    // SUPPORT: Lethal damage prevention for combatant
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant && !cryptid.gargoyleSaveUsed) {
-            combatant.hasRooftopGargoyleSupport = true;
-            combatant.rooftopGargoyleSupport = cryptid;
-        }
-    },
-    
-    // Clean up when leaving support (death or promotion)
-    onDeath: (cryptid, game) => {
-        // Clean up combatant reference if we were supporting
-            const combatant = game.getCombatant(cryptid);
-        if (combatant && combatant.rooftopGargoyleSupport === cryptid) {
-            combatant.hasRooftopGargoyleSupport = false;
-            combatant.rooftopGargoyleSupport = null;
-        }
-    },
-    
-    // When promoted to combat, clean up the support ability
-    onCombat: (cryptid, owner, game) => {
-        // If we were a support, find our old combatant (which is now dead/gone)
-        // The flag should already be cleaned up by killCryptid flow
-        cryptid.gargoyleSaveUsed = cryptid.gargoyleSaveUsed || false;
-    }
+    ]
 });
 
-// Gargoyle of the Grand Library - Uncommon - 3 ATK / 6HP - Steel - 5 Pyres - Evolves from Rooftop Gargoyle
+// Library Gargoyle - Uncommon - 3 ATK / 6HP - Steel - 5 Pyres
 CardRegistry.registerCryptid('libraryGargoyle', {
     name: "Gargoyle of the Grand Library",
     sprite: "sprites/library-gargoylealt2.png",
@@ -446,203 +348,45 @@ CardRegistry.registerCryptid('libraryGargoyle', {
     supportAbility: "On becoming support, if any enemy has an ailment, grant +3 HP to combatant. When combatant kills an ailmented enemy, draw 2 cards.",
     otherAbility: "At turn start, if 2+ enemies are ailmented, gain 1 pyre.",
     
-    // COMBAT: Stone Bastion - Take half damage from ailmented enemies
-    // Note: This returns a multiplier for damage reduction, not a flat value
-    // For "half damage rounded down", we need special handling
-    onDefend: (defender, attacker, game) => {
-        if (game.hasStatusAilment(attacker)) {
-            // Mark for half damage processing (handled in attack function)
-            defender.stoneBastion = true;
-            return 0; // Actual reduction handled via stoneBastion flag
-        }
-        return 0;
-    },
+    // Flag for half damage
+    hasStoneBastion: true,
     
-    // COMBAT: When attacked by ailmented enemy, draw a card (triggers after taking damage)
-    onDamaged: (cryptid, attacker, damage, game) => {
-        if (attacker && game.hasStatusAilment(attacker)) {
-            // Draw a card for the gargoyle's owner
-            const owner = cryptid.owner;
-            if (owner === 'player') {
-                game.drawCard('player');
-                if (typeof queueAbilityAnimation !== 'undefined') {
-                    queueAbilityAnimation({
-                        type: 'draw',
-                        target: cryptid,
-                        message: `📚 ${cryptid.name} draws from ailmented attack!`
-                    });
-                }
-            } else {
-                game.drawCard('enemy');
-            }
-            GameEvents.emit('onGargoyleDrawFromDefense', { cryptid, attacker, owner });
+    effects: [
+        // COMBAT: When attacked by ailmented, draw card
+        {
+            trigger: "onDamagedByAttack",
+            condition: { check: "attackerHasAilment" },
+            action: "drawCard",
+            amount: 1,
+            owner: "self"
+        },
+        // SUPPORT: If any enemy ailmented, grant +3 HP to combatant
+        {
+            trigger: "onEnterSupport",
+            condition: { check: "anyEnemyAilmented" },
+            action: "buffStats",
+            target: "myCombatant",
+            hp: 3,
+            permanent: true,
+            once: true
+        },
+        // SUPPORT: When combatant kills ailmented enemy, draw 2 cards
+        {
+            trigger: "onCombatantKill",
+            condition: { check: "victimHadAilment" },
+            action: "drawCard",
+            amount: 2,
+            owner: "self"
+        },
+        // OTHER: At turn start, if 2+ ailmented enemies, gain 1 pyre
+        {
+            trigger: "onTurnStart",
+            condition: { check: "ailmentedEnemyCount", min: 2 },
+            action: "gainPyre",
+            amount: 1,
+            owner: "self"
         }
-    },
-    
-    // SUPPORT: On becoming support, if any enemy has ailment, grant +3 HP to combatant.
-    // When combatant kills an ailmented enemy, draw 2 cards.
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (!combatant) return;
-        
-        // Mark support relationship
-        combatant.hasLibraryGargoyleSupport = true;
-        combatant.libraryGargoyleSupport = cryptid;
-        
-        // On becoming support: Check if any enemy has an ailment, grant +3 HP (one-time)
-        if (!combatant.libraryGargoyleHpBuff) {
-            const enemyField = owner === 'player' ? game.enemyField : game.playerField;
-            let anyEnemyAilmented = false;
-            for (let col = 0; col < 2; col++) {
-                for (let row = 0; row < 3; row++) {
-                    const enemy = enemyField[col]?.[row];
-                    if (enemy && game.hasStatusAilment(enemy)) {
-                        anyEnemyAilmented = true;
-                        break;
-                    }
-                }
-                if (anyEnemyAilmented) break;
-            }
-            
-            if (anyEnemyAilmented) {
-                combatant.currentHp = (combatant.currentHp || combatant.hp) + 3;
-                combatant.maxHp = (combatant.maxHp || combatant.hp) + 3;
-                combatant.libraryGargoyleHpBuff = true;
-                
-                if (typeof queueAbilityAnimation !== 'undefined') {
-                    queueAbilityAnimation({
-                        type: 'buff',
-                        target: combatant,
-                        message: `📚 ${cryptid.name} grants +3 HP!`
-                    });
-                }
-            }
-        }
-        
-        // Set up kill listener for drawing 2 cards (only once)
-        if (!cryptid.libraryGargoyleKillListenerSet) {
-            cryptid.libraryGargoyleKillListenerSet = true;
-            
-            const killListener = (data) => {
-                // Check if this gargoyle is still in support position
-                const myCombatant = game.getCombatant(cryptid);
-                if (!myCombatant) return;
-                
-                const currentSupport = game.getSupport(myCombatant);
-                if (currentSupport !== cryptid) return;
-                
-                // Check if the combatant (this gargoyle's combatant) made the kill
-                // Compare by position since object references can be unreliable
-                // Note: onKill uses "killer" and "victim", not "attacker" and "target"
-                const killerMatches = data.killer && 
-                    data.killer.owner === myCombatant.owner && 
-                    data.killer.col === myCombatant.col && 
-                    data.killer.row === myCombatant.row;
-                
-                if (!killerMatches) return;
-                
-                // Check if victim was ailmented
-                const victimWasAilmented = data.victim && (
-                    data.victim.burnTurns > 0 ||
-                    data.victim.paralyzed ||
-                    data.victim.bleedTurns > 0 ||
-                    data.victim.calamityCounters > 0 ||
-                    data.victim.curseTokens > 0
-                );
-                
-                if (victimWasAilmented) {
-                    // Draw 2 cards
-                    const gargoyleOwner = cryptid.owner;
-                    if (gargoyleOwner === 'player') {
-                        game.drawCard('player');
-                        game.drawCard('player');
-                        if (typeof queueAbilityAnimation !== 'undefined') {
-                            queueAbilityAnimation({
-                                type: 'draw',
-                                target: cryptid,
-                                message: `📚 ${cryptid.name} grants 2 cards for ailmented kill!`
-                            });
-                        }
-                    } else {
-                        game.drawCard('enemy');
-                        game.drawCard('enemy');
-                    }
-                    GameEvents.emit('onLibraryGargoyleSupportDraw', { support: cryptid, combatant: myCombatant, target: data.victim, owner: gargoyleOwner });
-                }
-            };
-            
-            GameEvents.on('onKill', killListener);
-            cryptid.libraryGargoyleKillListener = killListener;
-        }
-    },
-    
-    // Clean up when leaving support
-    onDeath: (cryptid, game) => {
-        // Clean up kill listener
-        if (cryptid.libraryGargoyleKillListener) {
-            GameEvents.off('onKill', cryptid.libraryGargoyleKillListener);
-            cryptid.libraryGargoyleKillListener = null;
-            cryptid.libraryGargoyleKillListenerSet = false;
-        }
-        
-        // Clean up combatant reference
-        const combatant = game.getCombatant(cryptid);
-        if (combatant && combatant.libraryGargoyleSupport === cryptid) {
-            combatant.hasLibraryGargoyleSupport = false;
-            combatant.libraryGargoyleSupport = null;
-            // Note: HP buff stays even if support dies (it was granted while condition was met)
-        }
-    },
-    
-    // OTHER: At turn start, if 2+ enemies are ailmented, gain 1 pyre
-    onTurnStart: (cryptid, owner, game) => {
-        // Only trigger on the gargoyle owner's turn
-        if (game.currentTurn !== owner) return;
-        
-        const enemyField = owner === 'player' ? game.enemyField : game.playerField;
-        let ailmentedCount = 0;
-        for (let col = 0; col < 2; col++) {
-            for (let row = 0; row < 3; row++) {
-                const enemy = enemyField[col]?.[row];
-                if (enemy && game.hasStatusAilment(enemy)) {
-                    ailmentedCount++;
-                }
-            }
-        }
-        
-        if (ailmentedCount >= 2) {
-            if (owner === 'player') {
-                game.playerPyre = (game.playerPyre || 0) + 1;
-            } else {
-                game.enemyPyre = (game.enemyPyre || 0) + 1;
-            }
-            
-            GameEvents.emit('onPyreGained', { 
-                owner, 
-                amount: 1, 
-                source: `${cryptid.name}'s ailment mastery`,
-                cryptid 
-            });
-            
-            if (typeof queueAbilityAnimation !== 'undefined') {
-                queueAbilityAnimation({
-                    type: 'pyre',
-                    target: cryptid,
-                    message: `🔥 ${cryptid.name} gains pyre from ${ailmentedCount} ailmented enemies!`
-                });
-            }
-        }
-    },
-    
-    // When promoted to combat, clean up support mechanics
-    onCombat: (cryptid, owner, game) => {
-        // Clean up kill listener from support role
-        if (cryptid.libraryGargoyleKillListener) {
-            GameEvents.off('onKill', cryptid.libraryGargoyleKillListener);
-            cryptid.libraryGargoyleKillListener = null;
-            cryptid.libraryGargoyleKillListenerSet = false;
-        }
-    }
+    ]
 });
 
 // Sewer Alligator - Uncommon - 2 ATK / 4HP - Water - 3 Pyres
@@ -657,47 +401,31 @@ CardRegistry.registerCryptid('sewerAlligator', {
     rarity: "uncommon",
     combatAbility: "+2 damage to burned/toxic enemies. On bonus damage: regen 4HP, +1 ATK permanent",
     supportAbility: "Combatant regen 2HP on rest. On combatant death, enemy slot becomes toxic",
-    // COMBAT: Extra damage to burned/toxic, regen and buff when dealing extra damage
-    onCombatAttack: (attacker, target, game) => {
-        const isBurned = target.burnTurns > 0;
-        const isInToxic = game.isInToxicTile(target);
-        
-        if (isBurned || isInToxic) {
-            // Regenerate 4HP
-            const maxHp = attacker.maxHp || attacker.hp;
-            attacker.currentHp = Math.min(maxHp, attacker.currentHp + 4);
-            
-            // Permanent +1 ATK
-            attacker.currentAtk = (attacker.currentAtk || attacker.atk) + 1;
-            attacker.baseAtk = (attacker.baseAtk || attacker.atk) + 1;
-            
-            GameEvents.emit('onSewerAlligatorBonus', { attacker, target, owner: attacker.owner });
-            
-            return 2; // +2 damage
+    
+    effects: [
+        // COMBAT: +2 damage to burned/toxic, with bonus effects
+        {
+            trigger: "onCombatAttack",
+            condition: { check: "targetBurnedOrToxic" },
+            action: "bonusDamageWithReward",
+            bonusDamage: 2,
+            healSelf: 4,
+            permanentAtk: 1
+        },
+        // SUPPORT: Combatant regen on rest
+        {
+            trigger: "onEnterSupport",
+            action: "grantFlag",
+            target: "myCombatant",
+            flag: "hasSewerAlligatorSupport"
+        },
+        // SUPPORT: On combatant death, make enemy slot toxic
+        {
+            trigger: "onCombatantDeath",
+            action: "applyToxicSlot",
+            target: "enemyCombatSlotAcross"
         }
-        return 0;
-    },
-    // SUPPORT: Combatant regen on rest, toxic slot on death
-    onSupport: (cryptid, owner, game) => {
-        cryptid.hasSewerAlligatorSupport = true;
-    },
-    // Hook into combatant resting
-    onCombatantRest: (support, combatant, game) => {
-        if (!support.hasSewerAlligatorSupport) return;
-        const maxHp = combatant.maxHp || combatant.hp;
-        combatant.currentHp = Math.min(maxHp, combatant.currentHp + 2);
-        GameEvents.emit('onHeal', { cryptid: combatant, amount: 2, source: 'Sewer Alligator', owner: support.owner });
-    },
-    // Hook into combatant death
-    onCombatantDeath: (support, combatant, game) => {
-        if (!support.hasSewerAlligatorSupport) return;
-        const owner = support.owner;
-        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        const enemyCombatCol = game.getCombatCol(enemyOwner);
-        
-        // Make enemy slot across toxic (method is applyToxic, not applyToxicToTile)
-        game.applyToxic(enemyOwner, enemyCombatCol, support.row);
-    }
+    ]
 });
 
 // Kuchisake-Onna - Blood, Rare, Mythical, Cost 4
@@ -715,99 +443,44 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
     supportAbility: "Am I Pretty?: May sacrifice combatant. If you do, Kuchisake becomes 9/7 and gains Destroyer.",
     otherAbility: "At the end of each turn, if Kuchisake has no enemy cryptids across from her, she gains Bleed.",
     
-    // COMBAT: Applies Burn when targeting (before attack)
-    onBeforeAttack: (attacker, target, game) => {
-        // Apply Burn (3 stacks - standard burn)
-        game.applyBurn(target);
-        
-        if (typeof queueAbilityAnimation !== 'undefined') {
-            queueAbilityAnimation({
-                type: 'debuff',
-                target: target,
-                message: `🔥 Slit: ${target.name} burns!`
-            });
-        }
-    },
-    
-    // Flag for explosion on killing burning enemies - handled by attack() in game-core.js
+    // Explosion flag
     hasKuchisakeExplosion: true,
     
-    // SUPPORT: Player may sacrifice combatant to become 9/7 with Destroyer
-    onSupport: (cryptid, owner, game) => {
-        cryptid.hasSacrificeAbility = true;
-        cryptid.sacrificeAbilityAvailable = true;
-    },
+    // Activatable ability
+    hasSacrificeAbility: true,
     
-    // Called when player activates the sacrifice ability
-    activateSacrifice: (cryptid, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (!combatant || !cryptid.sacrificeAbilityAvailable) return false;
-        
-        const owner = cryptid.owner;
-        
-        // Kill the combatant - this automatically promotes Kuchisake-Onna to combat
-        combatant.killedBy = 'sacrifice';
-        combatant.killedBySource = cryptid;
-        game.killCryptid(combatant, cryptid.owner);
-        
-        // Buff Kuchisake-Onna to 9/7 with Destroyer
-        cryptid.currentAtk = 9;
-        cryptid.baseAtk = 9;
-        cryptid.currentHp = 7;
-        cryptid.maxHp = 7;
-        cryptid.hasDestroyer = true;
-        cryptid.sacrificeAbilityAvailable = false;
-        cryptid.sacrificeActivated = true;
-        
-        GameEvents.emit('onSacrificeActivated', { 
-            cryptid, 
-            victim: combatant, 
-            owner: cryptid.owner,
-            atkGain: 9 - (cryptid.atk || 5),
-            hpGain: 7 - (cryptid.hp || 7)
-        });
-        
-        if (typeof queueAbilityAnimation !== 'undefined') {
-            queueAbilityAnimation({
-                type: 'buff',
-                target: cryptid,
-                message: `👩 Am I Pretty?: Kuchisake becomes 9/7 with Destroyer!`
-            });
-        }
-        
-        return true;
-    },
-    
-    // OTHER: At end of turn, if no enemy across, gain Bleed
-    onTurnEnd: (cryptid, owner, game) => {
-        // Only check on owner's turn end
-        if (game.currentTurn !== owner) return;
-        
-        // Check if in combat position
-        const combatCol = game.getCombatCol(owner);
-        if (cryptid.col !== combatCol) return;
-        
-        // Check for enemies across
-        const enemiesAcross = game.getCryptidsAcross(cryptid);
-        
-        if (enemiesAcross.length === 0) {
-            // No enemies across - Kuchisake bleeds herself
-            game.applyBleed(cryptid);
-            
-            GameEvents.emit('onKuchisakeLonely', { cryptid, owner });
-            
-            if (typeof queueAbilityAnimation !== 'undefined') {
-                queueAbilityAnimation({
-                    type: 'debuff',
-                    target: cryptid,
-                    message: `👩 Kuchisake bleeds from loneliness...`
-                });
+    effects: [
+        // COMBAT: Apply burn before attacking
+        {
+            trigger: "onBeforeAttack",
+            action: "applyAilment",
+            target: "attackTarget",
+            ailmentType: "burn"
+        },
+        // SUPPORT: Enable sacrifice ability
+        {
+            trigger: "onEnterSupport",
+            action: "enableAbility",
+            ability: "sacrifice",
+            abilityConfig: {
+                name: "Am I Pretty?",
+                sacrificeCombatant: true,
+                selfBuff: { atk: 9, hp: 7, setAbsolute: true },
+                grantKeyword: "destroyer"
             }
+        },
+        // OTHER: At turn end, if no enemy across, gain bleed
+        {
+            trigger: "onTurnEnd",
+            condition: { check: "noEnemyAcross", position: "combat" },
+            action: "applyAilment",
+            target: "self",
+            ailmentType: "bleed"
         }
-    }
+    ]
 });
 
-// Hellhound - Blood, Common, Cost 3 (evolves from Hellpup)
+// Hellhound - Blood, Common, Cost 3
 CardRegistry.registerCryptid('hellhound', {
     name: "Hellhound",
     sprite: "sprites/hellhound.png",
@@ -821,93 +494,38 @@ CardRegistry.registerCryptid('hellhound', {
     combatAbility: "When targeting an enemy to attack, burn the target. If already burning, also burn one random adjacent enemy.",
     supportAbility: "Combatant deals +2 damage to burning enemies. When combatant kills a burning enemy, spread burn to one adjacent enemy.",
     
-    // COMBAT: Before attack, burn target. If already burned, burn random adjacent enemy
-    onBeforeAttack: (attacker, target, game) => {
-        const wasAlreadyBurned = target.burnTurns > 0;
-        game.applyBurn(target);
-        
-        if (wasAlreadyBurned) {
-            // Burn random adjacent enemy (above, below, or to side/behind)
-            const adjacentTargets = game.getAdjacentCryptids(target);
-            
-            if (adjacentTargets.length > 0) {
-                const randomTarget = adjacentTargets[Math.floor(Math.random() * adjacentTargets.length)];
-                game.applyBurn(randomTarget);
-                
-                GameEvents.emit('onHellhoundSpreadBurn', { 
-                    hellhound: attacker, 
-                    originalTarget: target, 
-                    burnedTarget: randomTarget,
-                    source: 'combat',
-                    owner: attacker.owner 
-                });
-            }
+    effects: [
+        // COMBAT: Burn target before attack, spread if already burning
+        {
+            trigger: "onBeforeAttack",
+            action: "burnWithSpread",
+            spreadCondition: "alreadyBurning"
+        },
+        // SUPPORT: Grant +2 vs burning to combatant
+        {
+            trigger: "onEnterSupport",
+            action: "grantCombatBonus",
+            target: "myCombatant",
+            bonusType: "bonusVsBurning",
+            amount: 2
+        },
+        // SUPPORT: Spread burn on combatant's burning kills
+        {
+            trigger: "onCombatantKill",
+            condition: { check: "victimWasBurning" },
+            action: "applyAilment",
+            target: "randomAdjacentToVictim",
+            ailmentType: "burn"
+        },
+        // Cleanup on death/leaving support
+        {
+            trigger: "onLeavingSupport",
+            action: "removeCombatBonus",
+            target: "myCombatant",
+            bonusType: "bonusVsBurning",
+            amount: 2
         }
-    },
-    
-    // SUPPORT: Combatant deals +2 damage to burning enemies and spreads burn on kill
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.hellhoundSupport = cryptid;
-            combatant.bonusVsBurning = (combatant.bonusVsBurning || 0) + 2;
-        }
-    },
-    
-    // Set up kill listener for burn spread (persistent while on field)
-    onSummon: (cryptid, owner, game) => {
-        // Listen for kills - spread burn when combatant kills burning enemy
-        cryptid._unsubscribeKillBurnSpread = GameEvents.on('onKill', (data) => {
-            // Check if our combatant killed a burning target
-            const combatant = game.getCombatant(cryptid);
-            if (!combatant) return;
-            
-            if (data.killer === combatant && data.victim?.burnTurns > 0) {
-                console.log('[Hellhound Support] Combatant killed burning enemy - spreading burn');
-                
-                // Get adjacent enemies to the victim
-                const adjacentTargets = game.getAdjacentCryptids(data.victim);
-            
-            if (adjacentTargets.length > 0) {
-                const randomTarget = adjacentTargets[Math.floor(Math.random() * adjacentTargets.length)];
-                game.applyBurn(randomTarget);
-                    
-                    // Visual feedback
-                    if (typeof queueAbilityAnimation !== 'undefined') {
-                        queueAbilityAnimation({
-                            type: 'debuff',
-                            target: randomTarget,
-                            message: `🔥 Hellhound: Burn spreads to ${randomTarget.name}!`
-                        });
-                    }
-                    
-                    GameEvents.emit('onHellhoundSpreadBurn', { 
-                        hellhound: cryptid, 
-                        killer: combatant,
-                        originalTarget: data.victim, 
-                        burnedTarget: randomTarget,
-                        source: 'support',
-                        owner 
-                    });
-                }
-            }
-        });
-    },
-    
-    // Clean up listener on death
-    onDeath: (cryptid, game) => {
-        if (cryptid._unsubscribeKillBurnSpread) {
-            cryptid._unsubscribeKillBurnSpread();
-            cryptid._unsubscribeKillBurnSpread = null;
-        }
-        
-        // Clear support buff from combatant if we were supporting
-        const combatant = game.getCombatant(cryptid);
-        if (combatant && combatant.hellhoundSupport === cryptid) {
-            combatant.bonusVsBurning = Math.max(0, (combatant.bonusVsBurning || 0) - 2);
-            combatant.hellhoundSupport = null;
-        }
-    }
+    ]
 });
 
 // Mothman - Steel, Ultimate, Mythical, Cost 5 (FLAGSHIP)
@@ -924,249 +542,54 @@ CardRegistry.registerCryptid('mothman', {
     combatAbility: "Flight. Harbinger: On enter, deal 1 damage to each enemy per ailment stack they have.",
     supportAbility: "Extinction of the Rotted: On enter, cleanse all your combatants and grant +1/+1 per stack cleansed. While here, your combatants are immune to ailments.",
     otherAbility: "When any ailmented enemy dies, Mothman gains +1/+1 permanently.",
-    canTargetAny: true, // Flight
     
-    // Helper: Calculate total ailment stacks on a cryptid
-    // Each ailment type contributes its turn count/stack count (not just 1 if present)
-    // e.g., paralyzed + 2 burn = 3 stacks; paralyzed + 3 bleed + 1 burn = 5 stacks
-    getAilmentStacks: (target) => {
-        if (!target) return 0;
-        let stacks = 0;
-        if (target.paralyzed) stacks += 1;
-        if (target.burnTurns > 0) stacks += target.burnTurns;
-        if (target.bleedTurns > 0) stacks += target.bleedTurns;
-        if (target.calamityCounters > 0) stacks += target.calamityCounters;
-        if (target.curseTokens > 0) stacks += target.curseTokens;
-        return stacks;
-    },
+    // Flight targeting
+    canTargetAny: true,
     
-    // COMBAT: Harbinger - On entering combat, deal 1 damage per ailment stack to each enemy
-    // Order: top combatant, top support, middle combatant, middle support, bottom combatant, bottom support
-    // Damage shown simultaneously, then deaths one at a time, then promotions one at a time
-    // NOTE: This sets up pendingHarbingerEffect for the UI to process with animations
-    onEnterCombat: (cryptid, owner, game) => {
-        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
-        const enemyCombatCol = game.getCombatCol(enemyOwner);
-        const enemySupportCol = game.getSupportCol(enemyOwner);
-        
-        const template = CardRegistry.getCryptid('mothman');
-        const targets = [];
-        
-        // Calculate damage for each target in order (top to bottom, combat then support)
-        for (let row = 0; row < 3; row++) {
-            // Combat column first
-            const combatant = enemyField[enemyCombatCol]?.[row];
-            if (combatant) {
-                const stacks = template.getAilmentStacks(combatant);
-                if (stacks > 0) {
-                    targets.push({ 
-                        cryptid: combatant, 
-                        damage: stacks, 
-                        col: enemyCombatCol, 
-                        row, 
-                        owner: enemyOwner,
-                        isCombatant: true
-                    });
-                }
-            }
-            
-            // Support column second
-            const support = enemyField[enemySupportCol]?.[row];
-            if (support) {
-                const stacks = template.getAilmentStacks(support);
-                if (stacks > 0) {
-                    targets.push({ 
-                        cryptid: support, 
-                        damage: stacks, 
-                        col: enemySupportCol, 
-                        row, 
-                        owner: enemyOwner,
-                        isCombatant: false
-                    });
-                }
-            }
+    effects: [
+        // COMBAT: Harbinger - deal damage per ailment stack to all enemies
+        {
+            trigger: "onEnterCombat",
+            action: "dealDamagePerAilmentStack",
+            target: "allEnemies",
+            damagePerStack: 1,
+            damageType: "harbinger"
+        },
+        // SUPPORT: Cleanse all combatants, grant +1/+1 per stack cleansed
+        {
+            trigger: "onEnterSupport",
+            action: "cleanseAndBuff",
+            target: "allyCombatants",
+            atkPerStack: 1,
+            hpPerStack: 1,
+            permanent: true
+        },
+        // SUPPORT: While in support, combatants immune to ailments
+        {
+            trigger: "whileInSupport",
+            action: "grantAura",
+            target: "allyCombatants",
+            aura: "ailmentImmunity"
+        },
+        {
+            trigger: "onLeavingSupport",
+            action: "removeAura",
+            target: "allyCombatants",
+            aura: "ailmentImmunity"
+        },
+        // OTHER: When ailmented enemy dies, gain +1/+1 permanently
+        {
+            trigger: "onEnemyDeath",
+            condition: { check: "targetHadAilments" },
+            action: "gainPermanentStat",
+            target: "self",
+            atk: 1,
+            hp: 1
         }
-        
-        // If there are targets, set up the pending effect for the UI to process
-        if (targets.length > 0) {
-            window.pendingHarbingerEffect = {
-                mothman: cryptid,
-                mothmanOwner: owner,
-                targets: targets,
-                enemyOwner: enemyOwner,
-                enemyCombatCol: enemyCombatCol,
-                enemySupportCol: enemySupportCol
-            };
-            console.log('[Mothman] Harbinger effect queued for', targets.length, 'targets');
-        }
-    },
-    
-    // SUPPORT: Extinction of the Rotted
-    // On entering support: cleanse all your combatants, grant +1/+1 per stack cleansed
-    // While in support: your combatants are immune to ailments
-    onSupport: (cryptid, owner, game) => {
-        cryptid.grantsMothmanImmunity = true;
-        
-        const field = owner === 'player' ? game.playerField : game.enemyField;
-        const combatCol = game.getCombatCol(owner);
-        const template = CardRegistry.getCryptid('mothman');
-        
-        let totalStacksCleansed = 0;
-        
-        // Cleanse all friendly combatants and grant buffs
-        for (let row = 0; row < 3; row++) {
-            const combatant = field[combatCol]?.[row];
-            if (combatant) {
-                const stacks = template.getAilmentStacks(combatant);
-                
-                if (stacks > 0) {
-                    // Cleanse all ailments
-                    combatant.paralyzed = false;
-                    combatant.burnTurns = 0;
-                    combatant.bleedTurns = 0;
-                    combatant.calamityCounters = 0;
-                    combatant.curseTokens = 0;
-                    
-                    // Grant +1/+1 per stack
-                    combatant.currentAtk = (combatant.currentAtk || combatant.atk) + stacks;
-                    combatant.baseAtk = (combatant.baseAtk || combatant.atk) + stacks;
-                    combatant.currentHp = (combatant.currentHp || combatant.hp) + stacks;
-                    combatant.maxHp = (combatant.maxHp || combatant.hp) + stacks;
-                    
-                    totalStacksCleansed += stacks;
-                    
-                    GameEvents.emit('onExtinctionCleanse', { 
-                        mothman: cryptid, 
-                        target: combatant, 
-                        stacksCleansed: stacks,
-                        owner 
-                    });
-                }
-                
-                // Mark combatant as having Mothman immunity
-                combatant.hasMothmanAilmentImmunity = true;
-            }
-        }
-        
-        if (totalStacksCleansed > 0) {
-            if (typeof queueAbilityAnimation !== 'undefined') {
-                queueAbilityAnimation({
-                    type: 'buff',
-                    target: cryptid,
-                    message: `🦋 Extinction: Cleansed ${totalStacksCleansed} stacks!`
-                });
-            }
-        }
-    },
-    
-    // When Mothman leaves support (death or promotion), remove immunity from combatants
-    onLeavingSupport: (cryptid, owner, game) => {
-        const field = owner === 'player' ? game.playerField : game.enemyField;
-        const combatCol = game.getCombatCol(owner);
-        
-        for (let row = 0; row < 3; row++) {
-            const combatant = field[combatCol]?.[row];
-            if (combatant) {
-                combatant.hasMothmanAilmentImmunity = false;
-            }
-        }
-    },
-    
-    // Set up death listener for Other ability on summon
-    onSummon: (cryptid, owner, game) => {
-        console.log('[Mothman] Setting up ailmented enemy death listener for', cryptid.name, 'owned by', owner);
-        const template = CardRegistry.getCryptid('mothman');
-        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        
-        // Listen for any enemy death where the enemy had ailments
-        cryptid._unsubscribeAilmentedDeath = GameEvents.on('onDeath', (data) => {
-            // Check if the dead cryptid belonged to the enemy and had ailments
-            if (data.owner === enemyOwner) {
-                const deadCryptid = data.cryptid;
-                const hadAilments = template.getAilmentStacks(deadCryptid) > 0 ||
-                    deadCryptid.killedBy === 'burn' ||
-                    deadCryptid.killedBy === 'calamity' ||
-                    deadCryptid.killedBy === 'bleed' ||
-                    deadCryptid.killedBy === 'harbinger';
-                
-                if (hadAilments) {
-                    console.log('[Mothman] Ailmented enemy died! +1/+1');
-                    
-                    // Mothman gains +1/+1 permanently
-                    cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + 1;
-                    cryptid.baseAtk = (cryptid.baseAtk || cryptid.atk) + 1;
-                    cryptid.currentHp = (cryptid.currentHp || cryptid.hp) + 1;
-                    cryptid.maxHp = (cryptid.maxHp || cryptid.hp) + 1;
-                    
-                    // Show visual feedback
-                    if (typeof queueAbilityAnimation !== 'undefined') {
-                        queueAbilityAnimation({
-                            type: 'buff',
-                            target: cryptid,
-                            message: `🦋 Mothman: +1/+1 from ailmented death!`
-                        });
-                    }
-                    
-                    // Force render to show updated stats
-                    if (typeof renderSprites === 'function') {
-                        renderSprites();
-                    }
-                    
-                    GameEvents.emit('onBuffApplied', { 
-                        cryptid, 
-                        owner: cryptid.owner, 
-                        atkBonus: 1,
-                        hpBonus: 1,
-                        source: 'Mothman Ailmented Death'
-                    });
-                }
-            }
-        });
-    },
-    
-    // Clean up listener on death
-    onDeath: (cryptid, game) => {
-        if (cryptid._unsubscribeAilmentedDeath) {
-            cryptid._unsubscribeAilmentedDeath();
-            cryptid._unsubscribeAilmentedDeath = null;
-        }
-        
-        // Also clean up immunity if we were in support
-        if (cryptid.grantsMothmanImmunity) {
-            const owner = cryptid.owner;
-            const field = owner === 'player' ? game.playerField : game.enemyField;
-            const combatCol = game.getCombatCol(owner);
-            
-            for (let row = 0; row < 3; row++) {
-                const combatant = field[combatCol]?.[row];
-                if (combatant) {
-                    combatant.hasMothmanAilmentImmunity = false;
-                }
-            }
-        }
-    },
-    
-    // When promoted to combat, clean up support mechanics
-    onCombat: (cryptid, owner, game) => {
-        // Remove immunity from combatants when Mothman leaves support
-        if (cryptid.grantsMothmanImmunity) {
-            cryptid.grantsMothmanImmunity = false;
-            
-            const field = owner === 'player' ? game.playerField : game.enemyField;
-            const combatCol = game.getCombatCol(owner);
-            
-            for (let row = 0; row < 3; row++) {
-                const combatant = field[combatCol]?.[row];
-                if (combatant) {
-                    combatant.hasMothmanAilmentImmunity = false;
-                }
-            }
-        }
-    }
+    ]
 });
 
-// Bogeyman - Void, Common, Cost 2 (evolves from Shadow Person, may evolve into The Flayer)
+// Bogeyman - Void, Common, Cost 2
 CardRegistry.registerCryptid('bogeyman', {
     name: "Bogeyman",
     sprite: "👤",
@@ -1180,19 +603,25 @@ CardRegistry.registerCryptid('bogeyman', {
     evolvesInto: 'theFlayer',
     combatAbility: "Terror: Paralyze enemies across on entering combat. +3 vs paralyzed",
     supportAbility: "Nightmare: Negate enemy support abilities across",
-    // COMBAT: On entering combat, paralyze enemies across
+    
+    // Combat bonus
     bonusVsParalyzed: 3,
-    onEnterCombat: (cryptid, owner, game) => {
-        const enemiesAcross = game.getCryptidsAcross(cryptid);
-        for (const enemy of enemiesAcross) {
-            game.applyParalyze(enemy);
+    
+    // Support flag
+    negatesEnemySupport: true,
+    
+    effects: [
+        // COMBAT: Paralyze enemies across on enter
+        {
+            trigger: "onEnterCombat",
+            action: "applyAilment",
+            target: "enemiesAcross",
+            ailmentType: "paralyze"
         }
-    },
-    // SUPPORT: Negate enemy support abilities
-    negatesEnemySupport: true
+    ]
 });
 
-// The Flayer - Void, Rare, Mythical, Cost 5 (evolves from Bogeyman)
+// The Flayer - Void, Rare, Mythical, Cost 5
 CardRegistry.registerCryptid('theFlayer', {
     name: "The Flayer",
     sprite: "👁️",
@@ -1206,102 +635,46 @@ CardRegistry.registerCryptid('theFlayer', {
     evolvesFrom: 'bogeyman',
     combatAbility: "Mind Rend: Paralyze all enemy combatants on enter. Gain pyre + draw on paralyzed kill",
     supportAbility: "Psionic: Combatant gains focus, attacks cause paralysis",
-    // COMBAT: On entering combat, paralyze all enemy combatants
-    onEnterCombat: (cryptid, owner, game) => {
-        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
-        const enemyCombatCol = game.getCombatCol(enemyOwner);
-        
-        for (let r = 0; r < 3; r++) {
-            const enemy = enemyField[enemyCombatCol][r];
-            if (enemy) {
-                game.applyParalyze(enemy);
-            }
+    
+    // Support flag
+    grantsFocus: true,
+    
+    effects: [
+        // COMBAT: Paralyze all enemy combatants on enter
+        {
+            trigger: "onEnterCombat",
+            action: "applyAilment",
+            target: "enemyCombatants",
+            ailmentType: "paralyze"
+        },
+        // COMBAT: On killing paralyzed target, gain pyre + draw
+        {
+            trigger: "onKill",
+            condition: { check: "victimWasParalyzed" },
+            actions: [
+                { action: "gainPyre", amount: 1, owner: "self" },
+                { action: "drawCard", amount: 1, owner: "self" }
+            ]
+        },
+        // SUPPORT: Grant focus and paralyze-on-attack to combatant
+        {
+            trigger: "onEnterSupport",
+            actions: [
+                { action: "grantFlag", target: "myCombatant", flag: "hasFocus" },
+                { action: "grantFlag", target: "myCombatant", flag: "attacksApplyParalyze" }
+            ]
+        },
+        {
+            trigger: "onLeavingSupport",
+            actions: [
+                { action: "removeFlag", target: "myCombatant", flag: "hasFocus" },
+                { action: "removeFlag", target: "myCombatant", flag: "attacksApplyParalyze" }
+            ]
         }
-    },
-    // COMBAT: Mark paralyzed targets before attacking so we can track at death time
-    onBeforeAttack: (attacker, target, game) => {
-        // Mark that this target was paralyzed when The Flayer attacked it
-        if (target.paralyzed) {
-            target._wasParalyzedByFlayerAttack = attacker;
-        }
-    },
-    // Hook into death to grant rewards - check if target was paralyzed at death, not via prediction
-    onSummon: (cryptid, owner, game) => {
-        // Use the unsubscribe function returned by GameEvents.on() for clean cleanup
-        cryptid._unsubscribeKillReward = GameEvents.on('onDeath', (data) => {
-            // Check if The Flayer killed this cryptid AND it was paralyzed when attacked
-            const victim = data.cryptid;
-            if (victim?.killedBySource === cryptid && 
-                (victim.paralyzed || victim._wasParalyzedByFlayerAttack === cryptid)) {
-                console.log('[The Flayer] Killed paralyzed target! Granting pyre + draw');
-                
-                // Gain 1 pyre
-                if (owner === 'player') game.playerPyre++;
-                else game.enemyPyre++;
-                
-                // Play pyre gain animation from the VICTIM's position (where pyre is extracted from)
-                // The victim sprite still exists during the death animation
-                // Use skipBurningEffect to avoid interfering with death animation
-                const victimSprite = document.querySelector(
-                    `.cryptid-sprite[data-owner="${data.owner}"][data-col="${data.col}"][data-row="${data.row}"]`
-                );
-                if (window.CombatEffects?.playPyreBurn) {
-                    window.CombatEffects.playPyreBurn(victimSprite, 1, { skipBurningEffect: true });
-                }
-                
-                // Draw a card (will fail silently if hand is full, but pyre still granted)
-                // The onCardDrawn event will trigger the card reveal animation automatically
-                game.drawCard(owner, 'flayerKill');
-                
-                // Emit the event for logging/tracking
-                GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'The Flayer', sourceCryptid: victim });
-                
-                // Queue ability text notification
-                if (typeof queueAbilityAnimation !== 'undefined') {
-                    queueAbilityAnimation({
-                        type: 'buff',
-                        target: cryptid,
-                        message: `👁️ The Flayer: +1 Pyre, Draw!`
-                    });
-                }
-            }
-        });
-        
-        // If summoned as support, immediately apply focus to combatant
-        const supportCol = game.getSupportCol(owner);
-        if (cryptid.col === supportCol) {
-            const combatant = game.getCombatant(cryptid);
-            if (combatant) {
-                combatant.hasFocus = true;
-                combatant.attacksApplyParalyze = true;
-            }
-        }
-    },
-    onDeath: (cryptid, game) => {
-        if (cryptid._unsubscribeKillReward) {
-            cryptid._unsubscribeKillReward();
-            cryptid._unsubscribeKillReward = null;
-        }
-        // Clear focus from combatant when Flayer dies
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.hasFocus = false;
-            combatant.attacksApplyParalyze = false;
-        }
-    },
-    // SUPPORT: Combatant gains focus and attacks cause paralysis (refreshed each turn)
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.hasFocus = true;
-            combatant.attacksApplyParalyze = true;
-        }
-    },
-    grantsFocus: true
+    ]
 });
 
-// Decay Rat - Steel, Uncommon, Cost 3 (Replaced Mutated Rat)
+// Decay Rat - Steel, Uncommon, Cost 3
 CardRegistry.registerCryptid('decayRat', {
     name: "Decay Rat",
     sprite: "🐀",
@@ -1314,200 +687,42 @@ CardRegistry.registerCryptid('decayRat', {
     combatAbility: "Pestilence: When Decay Rat deals damage to an ailmented enemy, add 1 turn to each of their ailments.",
     supportAbility: "Once per turn, choose an ailmented enemy. It gets -1/-1 per ailment stack until end of turn.",
     
-    // COMBAT: Pestilence - extend ailment durations when dealing damage to ailmented enemies
-    onCombatAttack: (attacker, target, game) => {
-        // Only trigger if target has at least one ailment
-        if (!game.hasStatusAilment(target)) return 0;
-        
-        let ailmentsExtended = 0;
-        
-        // Extend burn duration
-        if (target.burnTurns > 0) {
-            target.burnTurns += 1;
-            ailmentsExtended++;
-        }
-        
-        // Extend bleed duration
-        if (target.bleedTurns > 0) {
-            target.bleedTurns += 1;
-            ailmentsExtended++;
-        }
-        
-        // Extend paralyze duration
-        if (target.paralyzeTurns > 0) {
-            target.paralyzeTurns += 1;
-            ailmentsExtended++;
-        }
-        
-        // Calamity doesn't have turns - add 1 counter instead
-        if (target.calamityCounters > 0) {
-            target.calamityCounters += 1;
-            ailmentsExtended++;
-        }
-        
-        // Curse tokens - add 1
-        if (target.curseTokens > 0) {
-            target.curseTokens += 1;
-            ailmentsExtended++;
-        }
-        
-        if (ailmentsExtended > 0) {
-            GameEvents.emit('onPestilenceExtend', { 
-                source: attacker, 
-                target, 
-                ailmentsExtended,
-                owner: attacker.owner 
-            });
-            
-            if (typeof queueAbilityAnimation !== 'undefined') {
-                queueAbilityAnimation({
-                    type: 'debuff',
-                    target: target,
-                    message: `🦠 Pestilence: +1 to ${ailmentsExtended} ailment(s)!`
-                });
+    // Activatable ability
+    hasDecayRatAbility: true,
+    
+    effects: [
+        // COMBAT: Extend ailments on damage to ailmented targets
+        {
+            trigger: "onCombatAttack",
+            condition: { check: "targetHasAilment" },
+            action: "extendAilments",
+            target: "attackTarget",
+            amount: 1
+        },
+        // SUPPORT: Enable decay debuff ability
+        {
+            trigger: "onEnterSupport",
+            action: "enableAbility",
+            ability: "decayDebuff",
+            abilityConfig: {
+                name: "Decay",
+                targetType: "ailmentedEnemy",
+                debuffPerStack: { atk: 1, hp: 1 },
+                temporary: true,
+                oncePerTurn: true
             }
+        },
+        // Reset ability each turn
+        {
+            trigger: "onTurnStart",
+            condition: { check: "isSupport" },
+            action: "resetAbility",
+            ability: "decayDebuff"
         }
-        
-        return 0;
-    },
-    
-    // SUPPORT: Setup for activatable ability
-    onSupport: (cryptid, owner, game) => {
-        cryptid.hasDecayRatAbility = true;
-        cryptid.decayRatDebuffAvailable = true;
-    },
-    
-    // Reset ability availability each turn
-    onTurnStart: (cryptid, owner, game) => {
-        const supportCol = game.getSupportCol(owner);
-        if (cryptid.col === supportCol && cryptid.hasDecayRatAbility) {
-            cryptid.decayRatDebuffAvailable = true;
-        }
-        
-        // Clean up expired debuffs from previous turn
-        // (the actual cleanup happens in endTurn, but this is a safety check)
-    },
-    
-    // Called when player activates the decay ability
-    // targetCol and targetRow specify which enemy to target (can be any ailmented enemy)
-    activateDecayDebuff: (cryptid, game, targetCol, targetRow) => {
-        if (!cryptid.decayRatDebuffAvailable) return false;
-        
-        const owner = cryptid.owner;
-        
-        // Find enemy cryptid at target position
-        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
-        const targetEnemy = enemyField[targetCol]?.[targetRow];
-        
-        if (!targetEnemy) return false;
-        
-        // Check if target has any ailments
-        if (!game.hasStatusAilment(targetEnemy)) return false;
-        
-        // Count ailment stacks
-        let ailmentStacks = 0;
-        if (targetEnemy.burnTurns > 0) ailmentStacks += targetEnemy.burnTurns;
-        if (targetEnemy.bleedTurns > 0) ailmentStacks += targetEnemy.bleedTurns;
-        if (targetEnemy.paralyzeTurns > 0) ailmentStacks += targetEnemy.paralyzeTurns;
-        if (targetEnemy.calamityCounters > 0) ailmentStacks += targetEnemy.calamityCounters;
-        if (targetEnemy.curseTokens > 0) ailmentStacks += targetEnemy.curseTokens;
-        
-        if (ailmentStacks <= 0) return false;
-        
-        // Mark ability as used
-        cryptid.decayRatDebuffAvailable = false;
-        
-        // Apply -1/-1 per ailment stack (temporary until end of turn)
-        targetEnemy.decayRatAtkDebuff = (targetEnemy.decayRatAtkDebuff || 0) + ailmentStacks;
-        targetEnemy.decayRatHpDebuff = (targetEnemy.decayRatHpDebuff || 0) + ailmentStacks;
-        
-        const hpBefore = targetEnemy.currentHp || targetEnemy.hp;
-        targetEnemy.currentHp = hpBefore - ailmentStacks;
-        
-        // Track that this is a temporary debuff (for end of turn cleanup)
-        targetEnemy.hasDecayRatDebuff = true;
-        targetEnemy.decayRatDebuffOwner = owner;
-        
-        GameEvents.emit('onDecayRatDebuff', { 
-            source: cryptid, 
-            target: targetEnemy, 
-            debuffAmount: ailmentStacks,
-            owner 
-        });
-        
-        if (typeof queueAbilityAnimation !== 'undefined') {
-            queueAbilityAnimation({
-                type: 'debuff',
-                target: targetEnemy,
-                message: `🦠 Decay: -${ailmentStacks}/-${ailmentStacks}!`
-            });
-        }
-        
-        // Check if target dies from the HP reduction
-        if (targetEnemy.currentHp <= 0) {
-            GameEvents.emit('onKill', { 
-                killer: cryptid, 
-                victim: targetEnemy, 
-                killerOwner: owner,
-                victimOwner: enemyOwner,
-                source: 'decayRatAbility'
-            });
-            
-            GameEvents.emit('onDeath', { 
-                cryptid: targetEnemy, 
-                owner: enemyOwner, 
-                killer: cryptid,
-                killerOwner: owner,
-                source: 'decayRatAbility'
-            });
-            
-            // Remove from field
-            enemyField[targetCol][targetRow] = null;
-            
-            if (typeof queueAbilityAnimation !== 'undefined') {
-                queueAbilityAnimation({
-                    type: 'death',
-                    target: targetEnemy,
-                    message: `💀 ${targetEnemy.name} decayed to death!`
-                });
-            }
-        }
-        
-        return true;
-    },
-    
-    // Clean up debuffs at end of turn
-    onTurnEnd: (cryptid, owner, game) => {
-        // Find all cryptids with decay rat debuffs and clean them up
-        const cleanupDebuffs = (field) => {
-            for (let col = 0; col < 2; col++) {
-                for (let row = 0; row < 3; row++) {
-                    const c = field[col]?.[row];
-                    if (c && c.hasDecayRatDebuff && c.decayRatDebuffOwner === owner) {
-                        // Restore HP (but don't exceed max)
-                        const hpToRestore = c.decayRatHpDebuff || 0;
-                        c.currentHp = Math.min(
-                            (c.maxHp || c.hp),
-                            (c.currentHp || c.hp) + hpToRestore
-                        );
-                        
-                        // Clear debuff tracking
-                        c.decayRatAtkDebuff = 0;
-                        c.decayRatHpDebuff = 0;
-                        c.hasDecayRatDebuff = false;
-                        c.decayRatDebuffOwner = null;
-                    }
-                }
-            }
-        };
-        
-        cleanupDebuffs(game.playerField);
-        cleanupDebuffs(game.enemyField);
-    }
+    ]
 });
 
-// Moleman - Steel, Common, Cost 2 (Cryptid #14)
+// Moleman - Steel, Common, Cost 2
 CardRegistry.registerCryptid('moleman', {
     name: "Moleman",
     sprite: "🦡",
@@ -1520,38 +735,30 @@ CardRegistry.registerCryptid('moleman', {
     combatAbility: "Burrow: May only attack combatant in Moleman's row, or any enemy support. +2 damage to ailmented targets.",
     supportAbility: "Combatant's attacks against enemy supports also deal half damage rounded down to the supports above and below the target.",
     
-    // COMBAT: Custom targeting - Burrow restricts targets to same-row combatant OR any support
-    // This is handled via the hasBurrowTargeting flag checked in getValidAttackTargets
+    // Custom targeting
     hasBurrowTargeting: true,
     
-    // COMBAT: +2 damage to ailmented targets
+    // Combat bonus
     bonusVsAilment: 2,
     
-    // SUPPORT: Combatant's attacks vs supports splash damage to adjacent supports
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.molemanSupport = cryptid;
-            combatant.hasMolemanSplash = true;
+    effects: [
+        // SUPPORT: Grant splash damage to combatant
+        {
+            trigger: "onEnterSupport",
+            action: "grantFlag",
+            target: "myCombatant",
+            flag: "hasMolemanSplash"
+        },
+        {
+            trigger: "onLeavingSupport",
+            action: "removeFlag",
+            target: "myCombatant",
+            flag: "hasMolemanSplash"
         }
-    },
-    
-    // Clean up support reference on death
-    onDeath: (cryptid, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant && combatant.molemanSupport === cryptid) {
-            combatant.molemanSupport = null;
-            combatant.hasMolemanSplash = false;
-        }
-    },
-    
-    // When promoted to combat, clean up support ability
-    onCombat: (cryptid, owner, game) => {
-        // No special combat enter effect needed beyond targeting
-    }
+    ]
 });
 
-// Vampire Initiate - Blood, Common, Cost 2 (evolves from Vampire Bat, into Vampire Lord)
+// Vampire Initiate - Blood, Common, Cost 2
 CardRegistry.registerCryptid('vampireInitiate', {
     name: "Vampire Initiate",
     sprite: "sprites/vampire-initiate.png",
@@ -1567,108 +774,43 @@ CardRegistry.registerCryptid('vampireInitiate', {
     combatAbility: "Siphon: Lifesteal. On attack, gain 1 pyre.",
     supportAbility: "Blood Pact: Once per turn, you may deal 1 damage to combatant to gain 1 pyre.",
     
-    // COMBAT: Lifesteal + gain 1 pyre on attack
+    // Lifesteal flag
     hasLifesteal: true,
-    onCombatAttack: (attacker, target, game) => {
-        // Gain 1 pyre on attack
-        if (attacker.owner === 'player') game.playerPyre++;
-        else game.enemyPyre++;
-        
-        // Play pyre gain animation from attacker sprite (skipBurningEffect prevents sprite from fading)
-        const vampSprite = document.querySelector(
-            `.cryptid-sprite[data-owner="${attacker.owner}"][data-col="${attacker.col}"][data-row="${attacker.row}"]`
-        );
-        if (window.CombatEffects?.playPyreBurn) {
-            window.CombatEffects.playPyreBurn(vampSprite, 1, { skipBurningEffect: true });
-        }
-        
-        GameEvents.emit('onPyreGained', { owner: attacker.owner, amount: 1, source: 'Vampire Initiate', sourceCryptid: attacker });
-        return 0; // No bonus damage
-    },
     
-    // SUPPORT: Activatable ability - deal 1 damage to combatant for 2 pyre
-    onSupport: (cryptid, owner, game) => {
-        cryptid.hasBloodPactAbility = true;
-        cryptid.bloodPactAvailable = true;
-    },
+    // Activatable ability
+    hasBloodPactAbility: true,
     
-    // Reset Blood Pact availability each turn
-    onTurnStart: (cryptid, owner, game) => {
-        // Only reset if in support position
-        const supportCol = game.getSupportCol(owner);
-        if (cryptid.col === supportCol && cryptid.hasBloodPactAbility) {
-            cryptid.bloodPactAvailable = true;
-        }
-    },
-    
-    // Called when player activates the blood pact ability
-    activateBloodPact: (cryptid, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (!combatant || !cryptid.bloodPactAvailable) return false;
-        
-        const owner = cryptid.owner;
-        const row = cryptid.row;
-        const combatCol = game.getCombatCol(owner);
-        
-        // Mark ability as used immediately
-        cryptid.bloodPactAvailable = false;
-        
-        // Deal 1 damage to combatant
-        combatant.currentHp -= 1;
-        
-        // Gain 1 pyre
-        if (owner === 'player') game.playerPyre += 1;
-        else game.enemyPyre += 1;
-        
-        // Play pyre gain animation from Vampire Initiate sprite (skipBurningEffect prevents sprite from fading)
-        const vampSprite = document.querySelector(
-            `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
-        );
-        if (window.CombatEffects?.playPyreBurn) {
-            window.CombatEffects.playPyreBurn(vampSprite, 1, { skipBurningEffect: true });
-        }
-        
-        GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'Blood Pact', sourceCryptid: cryptid });
-        GameEvents.emit('onBloodPactActivated', { 
-            cryptid, 
-            victim: combatant, 
-            pyreGained: 1,
-            owner
-        });
-        
-        // Check if combatant died using EFFECTIVE HP (includes support HP)
-        const effectiveHp = game.getEffectiveHp(combatant);
-        if (effectiveHp <= 0) {
-            // Get the combatant sprite and add death animation
-            const combatantSprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${row}"]`);
-            if (combatantSprite) {
-                combatantSprite.classList.add('dying-left');
+    effects: [
+        // COMBAT: Gain 1 pyre on attack
+        {
+            trigger: "onCombatAttack",
+            action: "gainPyre",
+            amount: 1,
+            owner: "self"
+        },
+        // SUPPORT: Enable blood pact ability
+        {
+            trigger: "onEnterSupport",
+            action: "enableAbility",
+            ability: "bloodPact",
+            abilityConfig: {
+                name: "Blood Pact",
+                damageCombatant: 1,
+                gainPyre: 1,
+                oncePerTurn: true
             }
-            
-            // After death animation, kill combatant, promote, and animate promotion
-            const TIMING = window.TIMING || { deathAnim: 400, promoteAnim: 600 };
-            setTimeout(() => {
-                combatant.killedBy = 'bloodPact';
-                combatant.killedBySource = cryptid;
-                game.killCryptid(combatant, owner);
-                
-                // Promote Vampire Initiate to combat position
-                const promoted = game.promoteSupport(owner, row);
-                
-                // Trigger promotion animation
-                if (promoted && typeof window.animateSupportPromotion === 'function') {
-                    window.animateSupportPromotion(owner, row);
-                }
-            }, TIMING.deathAnim);
-            
-            return 'killed'; // Signal that death occurred
+        },
+        // Reset ability each turn
+        {
+            trigger: "onTurnStart",
+            condition: { check: "isSupport" },
+            action: "resetAbility",
+            ability: "bloodPact"
         }
-        
-        return true;
-    }
+    ]
 });
 
-// Redcap - Blood, Uncommon, Cost 3 (Cryptid #15, evolves from Boggart)
+// Redcap - Blood, Uncommon, Cost 3
 CardRegistry.registerCryptid('redcap', {
     name: "Redcap",
     sprite: "🧢",
@@ -1683,188 +825,60 @@ CardRegistry.registerCryptid('redcap', {
     supportAbility: "When combatant kills an enemy, grant combatant and Redcap +1 ATK. If the enemy was ailmented, also grant both +1 HP.",
     otherAbility: "If Redcap does not kill an enemy cryptid by the end of your turn, it has 1HP.",
     
-    // COMBAT: Lifesteal
+    // Lifesteal flag
     hasLifesteal: true,
     
-    // COMBAT: Bloodlust - +1 ATK per ailmented enemy on field (calculated dynamically)
-    getBloodlustBonus: function(game, owner) {
-        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
-        
-        let ailmentedCount = 0;
-        for (let col = 0; col < 2; col++) {
-            for (let row = 0; row < 3; row++) {
-                const enemy = enemyField[col]?.[row];
-                if (enemy && game.hasStatusAilment(enemy)) {
-                    ailmentedCount++;
-                }
-            }
+    effects: [
+        // COMBAT: Bloodlust - +1 damage per ailmented enemy
+        {
+            trigger: "onCombatAttack",
+            action: "bonusDamagePerAilmentedEnemy",
+            damagePerEnemy: 1
+        },
+        // SUPPORT: On combatant kill, grant +1 ATK (+ HP if ailmented)
+        {
+            trigger: "onCombatantKill",
+            actions: [
+                { action: "buffStats", target: "myCombatant", atk: 1, permanent: true },
+                { action: "buffStats", target: "self", atk: 1, permanent: true }
+            ]
+        },
+        {
+            trigger: "onCombatantKill",
+            condition: { check: "victimHadAilment" },
+            actions: [
+                { action: "buffStats", target: "myCombatant", hp: 1, permanent: true },
+                { action: "buffStats", target: "self", hp: 1, permanent: true }
+            ]
+        },
+        // Track kills for "hunger" ability
+        {
+            trigger: "onKill",
+            action: "setFlag",
+            target: "self",
+            flag: "gotKillThisTurn",
+            value: true
+        },
+        // Reset kill tracking at turn start
+        {
+            trigger: "onTurnStart",
+            action: "setFlag",
+            target: "self",
+            flag: "gotKillThisTurn",
+            value: false
+        },
+        // OTHER: If no kill by turn end (in combat), set HP to 1
+        {
+            trigger: "onTurnEnd",
+            condition: { check: "isCombatantAndNoKill" },
+            action: "setHp",
+            target: "self",
+            hp: 1
         }
-        return ailmentedCount;
-    },
-    
-    // Bonus damage based on ailmented enemies
-    onCombatAttack: (attacker, target, game) => {
-        const template = CardRegistry.getCryptid('redcap');
-        const bonus = template.getBloodlustBonus(game, attacker.owner);
-        
-        if (bonus > 0) {
-            if (typeof queueAbilityAnimation !== 'undefined') {
-                queueAbilityAnimation({
-                    type: 'buff',
-                    target: attacker,
-                    message: `🧢 Bloodlust: +${bonus} ATK!`
-                });
-            }
-        }
-        
-        return bonus;
-    },
-    
-    // SUPPORT: When combatant kills, grant buffs
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.redcapSupport = cryptid;
-        }
-    },
-    
-    // Set up kill listener for support buff
-    onSummon: (cryptid, owner, game) => {
-        // Track if Redcap got a kill this turn (for OTHER ability)
-        cryptid.gotKillThisTurn = false;
-        
-        // Listen for kills
-        cryptid._unsubscribeRedcapKill = GameEvents.on('onKill', (data) => {
-            // Check if Redcap made the kill (for OTHER ability tracking)
-            if (data.killer === cryptid) {
-                cryptid.gotKillThisTurn = true;
-            }
-            
-            // Check if we're in support position and our combatant made the kill
-            const supportCol = game.getSupportCol(owner);
-            if (cryptid.col !== supportCol) return;
-            
-            const combatant = game.getCombatant(cryptid);
-            if (!combatant) return;
-            
-            if (data.killer === combatant) {
-                console.log('[Redcap Support] Combatant killed enemy - granting buffs');
-                
-                // Grant +1 ATK to both
-                combatant.currentAtk = (combatant.currentAtk || combatant.atk) + 1;
-                combatant.baseAtk = (combatant.baseAtk || combatant.atk) + 1;
-                
-                cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + 1;
-                cryptid.baseAtk = (cryptid.baseAtk || cryptid.atk) + 1;
-                
-                // Check if enemy was ailmented
-                const victimWasAilmented = data.victim && (
-                    data.victim.burnTurns > 0 ||
-                    data.victim.paralyzed ||
-                    data.victim.bleedTurns > 0 ||
-                    data.victim.calamityCounters > 0 ||
-                    data.victim.curseTokens > 0
-                );
-                
-                if (victimWasAilmented) {
-                    // Also grant +1 HP to both
-                    combatant.currentHp = (combatant.currentHp || combatant.hp) + 1;
-                    combatant.maxHp = (combatant.maxHp || combatant.hp) + 1;
-                    
-                    cryptid.currentHp = (cryptid.currentHp || cryptid.hp) + 1;
-                    cryptid.maxHp = (cryptid.maxHp || cryptid.hp) + 1;
-                    
-                    if (typeof queueAbilityAnimation !== 'undefined') {
-                        queueAbilityAnimation({
-                            type: 'buff',
-                            target: cryptid,
-                            message: `🧢 Redcap: +1/+1 to both!`
-                        });
-                    }
-                } else {
-                    if (typeof queueAbilityAnimation !== 'undefined') {
-                        queueAbilityAnimation({
-                            type: 'buff',
-                            target: cryptid,
-                            message: `🧢 Redcap: +1 ATK to both!`
-                        });
-                    }
-                }
-                
-                GameEvents.emit('onRedcapSupportBuff', { 
-                    redcap: cryptid, 
-                    combatant, 
-                    victim: data.victim,
-                    ailmented: victimWasAilmented,
-                    owner 
-                });
-                
-                // Force render to show updated stats
-                if (typeof renderSprites === 'function') {
-                    renderSprites();
-                }
-            }
-        });
-    },
-    
-    // Reset kill tracking at turn start
-    onTurnStart: (cryptid, owner, game) => {
-        if (game.currentTurn === owner) {
-            cryptid.gotKillThisTurn = false;
-        }
-    },
-    
-    // OTHER: If Redcap didn't kill by end of turn, set HP to 1
-    onTurnEnd: (cryptid, owner, game) => {
-        // Only trigger on owner's turn end
-        if (game.currentTurn !== owner) return;
-        
-        // Check if in combat position
-        const combatCol = game.getCombatCol(owner);
-        if (cryptid.col !== combatCol) return;
-        
-        // If Redcap didn't get a kill this turn, set HP to 1
-        if (!cryptid.gotKillThisTurn) {
-            const hpBefore = cryptid.currentHp || cryptid.hp;
-            
-            if (hpBefore > 1) {
-                cryptid.currentHp = 1;
-                
-                GameEvents.emit('onRedcapHunger', { cryptid, hpLost: hpBefore - 1, owner });
-                
-                if (typeof queueAbilityAnimation !== 'undefined') {
-                    queueAbilityAnimation({
-                        type: 'debuff',
-                        target: cryptid,
-                        message: `🧢 Redcap's hunger: HP reduced to 1!`
-                    });
-                }
-                
-                // Force render
-                if (typeof renderSprites === 'function') {
-                    renderSprites();
-                }
-            }
-        }
-    },
-    
-    // Clean up listener on death
-    onDeath: (cryptid, game) => {
-        if (cryptid._unsubscribeRedcapKill) {
-            cryptid._unsubscribeRedcapKill();
-            cryptid._unsubscribeRedcapKill = null;
-        }
-        
-        // Clear support reference from combatant if we were supporting
-        const combatant = game.getCombatant(cryptid);
-        if (combatant && combatant.redcapSupport === cryptid) {
-            combatant.redcapSupport = null;
-        }
-    }
+    ]
 });
 
-// Vampire Lord - Blood, Rare, Cost 4 (evolves from Vampire Initiate)
+// Vampire Lord - Blood, Rare, Cost 4
 CardRegistry.registerCryptid('vampireLord', {
     name: "Vampire Lord",
     sprite: "sprites/vampire-lord.png",
@@ -1880,109 +894,44 @@ CardRegistry.registerCryptid('vampireLord', {
     combatAbility: "Lifesteal. +3 damage to burning enemies. When Vampire Lord kills a burning enemy, gain pyre equal to their base cost.",
     supportAbility: "Combatant has Lifesteal and +2 damage to burning enemies. When combatant kills a burning enemy, draw a card.",
     
-    // COMBAT: Lifesteal + bonus vs burning + pyre on burning kill
+    // Flags
     hasLifesteal: true,
     bonusVsBurning: 3,
     
-    // Track kills of burning enemies for pyre gain
-    onKill: (cryptid, victim, game) => {
-        // Only trigger if victim was burning
-        if (victim.burnTurns > 0) {
-            const pyreGain = victim.cost || 0;
-            if (pyreGain > 0) {
-                const owner = cryptid.owner;
-                if (owner === 'player') game.playerPyre += pyreGain;
-                else game.enemyPyre += pyreGain;
-                
-                // Play pyre gain animation (skipBurningEffect prevents sprite from fading)
-                const vampSprite = document.querySelector(
-                    `.cryptid-sprite[data-owner="${cryptid.owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`
-                );
-                if (window.CombatEffects?.playPyreBurn) {
-                    window.CombatEffects.playPyreBurn(vampSprite, pyreGain, { skipBurningEffect: true });
-                }
-                
-                // Visual feedback
-                if (typeof queueAbilityAnimation !== 'undefined') {
-                    queueAbilityAnimation({
-                        type: 'buff',
-                        target: cryptid,
-                        message: `🧛 Vampire Lord drains ${pyreGain} pyre from ${victim.name}!`
-                    });
-                }
-                
-                GameEvents.emit('onPyreGained', { 
-                    owner, 
-                    amount: pyreGain, 
-                    source: 'Vampire Lord', 
-                    sourceCryptid: cryptid,
-                    victim: victim
-                });
-            }
+    effects: [
+        // COMBAT: On killing burning enemy, gain pyre equal to cost
+        {
+            trigger: "onKill",
+            condition: { check: "victimWasBurning" },
+            action: "gainPyre",
+            amount: { calc: "victimCost" },
+            owner: "self"
+        },
+        // SUPPORT: Grant lifesteal and bonus vs burning to combatant
+        {
+            trigger: "onEnterSupport",
+            actions: [
+                { action: "grantFlag", target: "myCombatant", flag: "hasLifesteal" },
+                { action: "grantCombatBonus", target: "myCombatant", bonusType: "bonusVsBurning", amount: 2 }
+            ]
+        },
+        // SUPPORT: On combatant killing burning enemy, draw card
+        {
+            trigger: "onCombatantKill",
+            condition: { check: "victimWasBurning" },
+            action: "drawCard",
+            amount: 1,
+            owner: "self"
+        },
+        // Cleanup on leaving support
+        {
+            trigger: "onLeavingSupport",
+            actions: [
+                { action: "removeFlag", target: "myCombatant", flag: "hasLifesteal" },
+                { action: "removeCombatBonus", target: "myCombatant", bonusType: "bonusVsBurning", amount: 2 }
+            ]
         }
-    },
-    
-    // SUPPORT: Grant combatant lifesteal + bonus vs burning + draw on burning kill
-    onSupport: (cryptid, owner, game) => {
-        const combatant = game.getCombatant(cryptid);
-        if (combatant) {
-            combatant.vampireLordSupport = cryptid;
-            combatant.hasLifesteal = true;
-            combatant.bonusVsBurning = (combatant.bonusVsBurning || 0) + 2;
-        }
-    },
-    
-    // Set up kill listener for draw on burning kill (persistent while on field)
-    onSummon: (cryptid, owner, game) => {
-        cryptid._unsubscribeVampireLordKill = GameEvents.on('onKill', (data) => {
-            // Check if we're in support position
-            const supportCol = game.getSupportCol(owner);
-            if (cryptid.col !== supportCol) return;
-            
-            // Check if our combatant killed a burning target
-            const combatant = game.getCombatant(cryptid);
-            if (!combatant) return;
-            
-            if (data.killer === combatant && data.victim?.burnTurns > 0) {
-                console.log('[Vampire Lord Support] Combatant killed burning enemy - drawing card');
-                
-                // Draw a card
-                game.drawCard(owner, 'Vampire Lord');
-                
-                // Visual feedback
-                if (typeof queueAbilityAnimation !== 'undefined') {
-                    queueAbilityAnimation({
-                        type: 'buff',
-                        target: cryptid,
-                        message: `🧛 Vampire Lord: Draw a card!`
-                    });
-                }
-                
-                GameEvents.emit('onVampireLordDraw', { 
-                    vampireLord: cryptid, 
-                    killer: combatant,
-                    victim: data.victim, 
-                    owner 
-                });
-            }
-        });
-    },
-    
-    // Clean up listener on death
-    onDeath: (cryptid, game) => {
-        if (cryptid._unsubscribeVampireLordKill) {
-            cryptid._unsubscribeVampireLordKill();
-            cryptid._unsubscribeVampireLordKill = null;
-        }
-        
-        // Clear support buffs from combatant if we were supporting
-        const combatant = game.getCombatant(cryptid);
-        if (combatant && combatant.vampireLordSupport === cryptid) {
-            combatant.hasLifesteal = false;
-            combatant.bonusVsBurning = Math.max(0, (combatant.bonusVsBurning || 0) - 2);
-            combatant.vampireLordSupport = null;
-        }
-    }
+    ]
 });
 
 // ==================== CITY OF FLESH - TRAPS ====================
@@ -1996,43 +945,35 @@ CardRegistry.registerTrap('crossroads', {
     description: "Stop lethal attack, rest attacker, draw 2 cards (+1 if evolution)",
     triggerDescription: "Triggers: When enemy attack would kill your cryptid",
     triggerEvent: 'onAttackDeclared',
+    
     triggerCondition: (trap, owner, eventData, game) => {
-        // Only trigger if we're the defender and attack would kill
         if (eventData.attackerOwner === owner) return false;
         const target = eventData.target;
         if (!target || target.owner !== owner) return false;
-        
-        // Check if attack would kill
         const damage = game.calculateAttackDamage(eventData.attacker);
         const effectiveHp = game.getEffectiveHp(target);
         return effectiveHp <= damage;
     },
-    effect: (game, owner, row, eventData) => {
-        const attacker = eventData.attacker;
-        
-        // Rest the attacker without its attack going off
-        attacker.tapped = true;
-        attacker.canAttack = false;
-        GameEvents.emit('onForceRest', { cryptid: attacker, owner: attacker.owner });
-        
-        // Cancel the attack
-        eventData.cancelled = true;
-        
-        // Draw 2 cards
-        game.drawCard(owner, 'crossroads');
-        game.drawCard(owner, 'crossroads');
-        
-        // Check if either drawn card is a cryptid with evolution
-        const hand = owner === 'player' ? game.playerHand : game.enemyHand;
-        const lastTwo = hand.slice(-2);
-        const hasEvolution = lastTwo.some(card => 
-            card && (card.evolvesFrom || card.evolvesInto)
-        );
-        
-        if (hasEvolution) {
-            game.drawCard(owner, 'crossroads bonus');
+    
+    effects: [
+        {
+            action: "forceRest",
+            target: "attacker"
+        },
+        {
+            action: "cancelAttack"
+        },
+        {
+            action: "drawCard",
+            amount: 2,
+            owner: "trapOwner"
+        },
+        {
+            action: "drawCardIfEvolution",
+            amount: 1,
+            owner: "trapOwner"
         }
-    }
+    ]
 });
 
 // Blood Covenant - Rare, 2 Pyre
@@ -2044,64 +985,21 @@ CardRegistry.registerTrap('bloodCovenant', {
     description: "Kill the attacker that killed your cryptid",
     triggerDescription: "Triggers: When your cryptid dies from enemy attack",
     triggerEvent: 'onDeath',
+    
     triggerCondition: (trap, owner, eventData, game) => {
-        // Get killedBySource from either explicit event data or from cryptid object
         const killedBySource = eventData.killedBySource || eventData.cryptid?.killedBySource;
-        
-        console.log('[Blood Covenant] Checking condition:', {
-            trapOwner: owner,
-            eventOwner: eventData.owner,
-            cryptidName: eventData.cryptid?.name,
-            killedBy: eventData.cryptid?.killedBy,
-            killedBySource: killedBySource?.name || 'none',
-            killedBySourceOwner: killedBySource?.owner || 'none'
-        });
-        // Check if it's our cryptid that died (trap owner matches dead cryptid owner)
-        if (eventData.owner !== owner) {
-            console.log('[Blood Covenant] FAILED: Dead cryptid owner', eventData.owner, '!== trap owner', owner);
-            return false;
-        }
-        // Check if it was killed by an attacker (not burn, calamity, etc.)
-        if (!killedBySource) {
-            console.log('[Blood Covenant] FAILED: No killedBySource - cryptid was killed by burn/calamity/other');
-            return false;
-        }
-        // The killer must belong to the enemy (not self-inflicted)
-        const result = killedBySource.owner !== owner;
-        console.log('[Blood Covenant] Final check: killer.owner', killedBySource.owner, '!== owner', owner, '=', result);
-        return result;
+        if (eventData.owner !== owner) return false;
+        if (!killedBySource) return false;
+        return killedBySource.owner !== owner;
     },
-    effect: (game, owner, row, eventData) => {
-        // Get killedBySource from either explicit event data or from cryptid object
-        const killer = eventData.killedBySource || eventData.cryptid?.killedBySource;
-        if (killer && killer.currentHp > 0) {
-            // Store killer info before it's removed from game state
-            const killerOwner = killer.owner;
-            const killerCol = killer.col;
-            const killerRow = killer.row;
-            
-            // STEP 1: Prepare death animation BEFORE killing (captures sprite while still in DOM)
-            const deathData = window.CombatEffects?.prepareInstantKillDeath?.(killerOwner, killerCol, killerRow);
-            
-            // Kill immediately (removes from game state) 
-            killer.killedBy = 'bloodCovenant';
-            game.killCryptid(killer, owner);
-            
-            // STEP 2: Play lightning strike effect, then the prepared death animation
-            if (window.CombatEffects?.strikeCryptid) {
-                const targetPos = { owner: killerOwner, col: killerCol, row: killerRow };
-                window.CombatEffects.strikeCryptid(targetPos, () => {
-                    // After lightning: play the prepared death animation
-                    window.CombatEffects.playPreparedDeath(deathData);
-                });
-            } else {
-                // Fallback - just play death animation
-                window.CombatEffects?.playPreparedDeath?.(deathData);
-            }
-        } else if (killer) {
-            console.log('[Blood Covenant] Killer already dead (HP:', killer.currentHp, ')');
+    
+    effects: [
+        {
+            action: "killKiller",
+            killedBy: "bloodCovenant",
+            withAnimation: "lightning"
         }
-    }
+    ]
 });
 
 // Turn to Stone - Common, 1 Pyre
@@ -2113,25 +1011,26 @@ CardRegistry.registerTrap('turnToStone', {
     description: "Stop attack, rest and paralyze attacker",
     triggerDescription: "Triggers: When your cryptid is targeted for attack",
     triggerEvent: 'onAttackDeclared',
+    
     triggerCondition: (trap, owner, eventData, game) => {
-        // Only trigger if we're the defender
         return eventData.attackerOwner !== owner && 
                eventData.target?.owner === owner;
     },
-    effect: (game, owner, row, eventData) => {
-        const attacker = eventData.attacker;
-        
-        // Rest the attacker
-        attacker.tapped = true;
-        attacker.canAttack = false;
-        GameEvents.emit('onForceRest', { cryptid: attacker, owner: attacker.owner });
-        
-        // Paralyze the attacker
-        game.applyParalyze(attacker);
-        
-        // Cancel the attack
-        eventData.cancelled = true;
-    }
+    
+    effects: [
+        {
+            action: "forceRest",
+            target: "attacker"
+        },
+        {
+            action: "applyAilment",
+            target: "attacker",
+            ailmentType: "paralyze"
+        },
+        {
+            action: "cancelAttack"
+        }
+    ]
 });
 
 // ==================== CITY OF FLESH - BURSTS ====================
@@ -2144,19 +1043,19 @@ CardRegistry.registerBurst('wakingNightmare', {
     rarity: "common",
     description: "Untap ally OR tap enemy",
     targetType: 'any',
-    effect: (game, owner, target) => {
-        if (target.owner === owner) {
-            // Untap ally
-            target.tapped = false;
-            target.canAttack = true;
-            GameEvents.emit('onUntap', { cryptid: target, owner: target.owner, reason: 'wakingNightmare' });
-        } else {
-            // Tap enemy
-            target.tapped = true;
-            target.canAttack = false;
-            GameEvents.emit('onForceRest', { cryptid: target, owner: target.owner });
+    
+    effects: [
+        {
+            condition: { check: "targetIsAlly" },
+            action: "untap",
+            target: "spellTarget"
+        },
+        {
+            condition: { check: "targetIsEnemy" },
+            action: "forceRest",
+            target: "spellTarget"
         }
-    }
+    ]
 });
 
 // Face-Off - Common, 1 Pyre
@@ -2167,50 +1066,14 @@ CardRegistry.registerBurst('faceOff', {
     rarity: "common",
     description: "Force target cryptid to attack the enemy combatant across from it",
     targetType: 'any',
-    requiresEnemyAcross: true, // Must have enemy combatant across to target
-    effect: (game, owner, target) => {
-        const targetOwner = target.owner;
-        const enemyOwner = targetOwner === 'player' ? 'enemy' : 'player';
-        const enemyCombatCol = game.getCombatCol(enemyOwner);
-        const enemyField = enemyOwner === 'player' ? game.playerField : game.enemyField;
-        
-        // Find enemy combatant across (always attacks the combatant, not support)
-        const enemyAcross = enemyField[enemyCombatCol][target.row];
-        
-        if (enemyAcross) {
-            // Force attack regardless of tap state
-            target.tapped = false;
-            target.canAttack = true;
-            
-            const targetRarity = enemyAcross.rarity || 'common';
-            
-            // Queue attack animation BEFORE attack executes (sprites auto-captured at queue time)
-            if (typeof queueAbilityAnimation !== 'undefined') {
-                queueAbilityAnimation({
-                    type: 'attack',
-                    source: target,
-                    target: enemyAcross,
-                    targetRarity: targetRarity,
-                    message: `⚔️ ${target.name} faces off against ${enemyAcross.name}!`,
-                    // These will be filled in after attack executes
-                    _pendingAttack: { attacker: target, enemyOwner, enemyCombatCol, row: target.row }
-                });
-            }
-            
-            // Execute attack - result updates the queued animation
-            const result = game.attack(target, enemyOwner, enemyCombatCol, target.row);
-            
-            // Update the queued animation with attack results
-            if (window.abilityAnimationQueue?.length > 0) {
-                const lastEffect = window.abilityAnimationQueue[window.abilityAnimationQueue.length - 1];
-                if (lastEffect._pendingAttack) {
-                    lastEffect.damage = result.damage || 0;
-                    lastEffect.killed = result.killed || false;
-                    delete lastEffect._pendingAttack;
-                }
-            }
+    requiresEnemyAcross: true,
+    
+    effects: [
+        {
+            action: "forceAttackAcross",
+            target: "spellTarget"
         }
-    }
+    ]
 });
 
 // ==================== CITY OF FLESH - AURAS ====================
@@ -2222,51 +1085,49 @@ CardRegistry.registerAura('antiVampiricBlade', {
     cost: 3,
     rarity: "common",
     description: "+2 ATK, regen 2HP/turn, focus. +2 ATK if enemy diagonal/across has ailment",
+    
+    // Static bonuses
     atkBonus: 2,
     hpBonus: 0,
     grantsFocus: true,
     grantsRegeneration: 2,
-    onApply: (aura, cryptid, game) => {
-        // Grant focus
-        cryptid.hasFocus = true;
-        
-        // Grant regeneration
-        cryptid.regeneration = (cryptid.regeneration || 0) + 2;
-        
-        // Check for diagonal/across enemies with ailments for bonus ATK
-        const owner = cryptid.owner;
-        const enemyOwner = owner === 'player' ? 'enemy' : 'player';
-        
-        // Get enemies diagonal and across
-        const diagonals = game.getDiagonalEnemies(cryptid);
-        const across = game.getCryptidsAcross(cryptid);
-        const nearbyEnemies = [...diagonals, ...across];
-        
-        const hasAilmentedEnemy = nearbyEnemies.some(e => game.hasStatusAilment(e));
-        
-        if (hasAilmentedEnemy) {
-            cryptid.currentAtk += 2;
-            aura.bonusAtkApplied = 2;
+    
+    effects: [
+        {
+            trigger: "onApply",
+            actions: [
+                { action: "grantFlag", target: "auraTarget", flag: "hasFocus" },
+                { action: "grantRegeneration", target: "auraTarget", amount: 2 }
+            ]
+        },
+        {
+            trigger: "onApply",
+            condition: { check: "nearbyEnemyHasAilment" },
+            action: "buffStats",
+            target: "auraTarget",
+            atk: 2
         }
-    }
+    ]
 });
 
 // ==================== CITY OF FLESH - PYRES ====================
 
-// Pyre - Common (basic pyre card)
+// Basic Pyre - Common
 CardRegistry.registerPyre('pyre', {
     name: "Basic",
     sprite: "🔥",
     rarity: "common",
     description: "Gain 1 pyre",
     pyreGain: 1,
-    infinite: true, // Always available, can't be incinerated, no copy limit
-    effect: (game, owner) => {
-        if (owner === 'player') game.playerPyre++;
-        else game.enemyPyre++;
-        GameEvents.emit('onPyreGained', { owner, amount: 1, source: 'Pyre card' });
-        return { pyreGained: 1 };
-    }
+    infinite: true,
+    
+    effects: [
+        {
+            action: "gainPyre",
+            amount: 1,
+            owner: "cardOwner"
+        }
+    ]
 });
 
 // Fresh Kill - Uncommon
@@ -2276,30 +1137,21 @@ CardRegistry.registerPyre('freshKill', {
     rarity: "uncommon",
     description: "+1 pyre, +1 per Vampire on field (max +3 extra)",
     pyreGain: 1,
-    effect: (game, owner) => {
-        const field = owner === 'player' ? game.playerField : game.enemyField;
-        let vampireCount = 0;
-        
-        // Count vampires on field
-        for (let c = 0; c < 2; c++) {
-            for (let r = 0; r < 3; r++) {
-                const cryptid = field[c][r];
-                if (cryptid && cryptid.name && cryptid.name.toLowerCase().includes('vampire')) {
-                    vampireCount++;
-                }
-            }
+    
+    effects: [
+        {
+            action: "gainPyre",
+            amount: 1,
+            owner: "cardOwner"
+        },
+        {
+            action: "gainPyrePerNameMatch",
+            match: "vampire",
+            amountPer: 1,
+            max: 3,
+            owner: "cardOwner"
         }
-        
-        // Cap at 3 extra
-        const bonusPyre = Math.min(vampireCount, 3);
-        const totalPyre = 1 + bonusPyre;
-        
-        if (owner === 'player') game.playerPyre += totalPyre;
-        else game.enemyPyre += totalPyre;
-        
-        GameEvents.emit('onPyreGained', { owner, amount: totalPyre, source: 'Fresh Kill', vampireCount });
-        return { pyreGained: totalPyre, vampireCount };
-    }
+    ]
 });
 
 // Rat King - Ultimate
@@ -2309,22 +1161,26 @@ CardRegistry.registerPyre('ratKing', {
     rarity: "ultimate",
     description: "+1 pyre and draw 1 for each ally death last enemy turn (max 3)",
     pyreGain: 1,
-    effect: (game, owner) => {
-        // Count deaths from last enemy turn
-        const deathCount = Math.min(game.deathsLastEnemyTurn?.[owner] || 0, 3);
-        const totalPyre = 1 + deathCount;
-        
-        if (owner === 'player') game.playerPyre += totalPyre;
-        else game.enemyPyre += totalPyre;
-        
-        // Draw cards for each death
-        for (let i = 0; i < deathCount; i++) {
-            game.drawCard(owner, 'ratKing');
+    
+    effects: [
+        {
+            action: "gainPyre",
+            amount: 1,
+            owner: "cardOwner"
+        },
+        {
+            action: "gainPyrePerDeathLastTurn",
+            amountPer: 1,
+            max: 3,
+            owner: "cardOwner"
+        },
+        {
+            action: "drawCardPerDeathLastTurn",
+            amountPer: 1,
+            max: 3,
+            owner: "cardOwner"
         }
-        
-        GameEvents.emit('onPyreGained', { owner, amount: totalPyre, source: 'Rat King', deathCount });
-        return { pyreGained: totalPyre, deathCount };
-    }
+    ]
 });
 
 // Nightfall - Uncommon
@@ -2334,47 +1190,31 @@ CardRegistry.registerPyre('nightfall', {
     rarity: "uncommon",
     description: "+1 pyre, +1 per Gargoyle on field (max +3 extra)",
     pyreGain: 1,
-    effect: (game, owner) => {
-        const field = owner === 'player' ? game.playerField : game.enemyField;
-        let gargoyleCount = 0;
-        
-        // Count gargoyles on field
-        for (let c = 0; c < 2; c++) {
-            for (let r = 0; r < 3; r++) {
-                const cryptid = field[c][r];
-                if (cryptid && cryptid.name && cryptid.name.toLowerCase().includes('gargoyle')) {
-                    gargoyleCount++;
-                }
-            }
+    
+    effects: [
+        {
+            action: "gainPyre",
+            amount: 1,
+            owner: "cardOwner"
+        },
+        {
+            action: "gainPyrePerNameMatch",
+            match: "gargoyle",
+            amountPer: 1,
+            max: 3,
+            owner: "cardOwner"
         }
-        
-        // Cap at 3 extra
-        const bonusPyre = Math.min(gargoyleCount, 3);
-        const totalPyre = 1 + bonusPyre;
-        
-        if (owner === 'player') game.playerPyre += totalPyre;
-        else game.enemyPyre += totalPyre;
-        
-        GameEvents.emit('onPyreGained', { owner, amount: totalPyre, source: 'Nightfall', gargoyleCount });
-        return { pyreGained: totalPyre, gargoyleCount };
-    }
+    ]
 });
 
 // ==================== DECK BUILDING HELPERS ====================
 
-/**
- * Creates a shuffled deck from card keys
- * @param {Object} config - Deck configuration
- * @returns {Array} Shuffled deck of card objects
- */
 window.DeckBuilder = {
-    // Default deck composition - 45 cards in deck + 10 kindling in separate pool = 55 total
     defaultDeckConfig: {
         cryptidCount: 15,
         basicPyreCount: 15,
         rarePyreCount: 5,
-        otherInstanceCount: 10, // Split among bursts, traps, auras
-        // Weights for rarity (higher = more common in deck)
+        otherInstanceCount: 10,
         rarityWeights: {
             common: 4,
             uncommon: 3,
@@ -2383,20 +1223,10 @@ window.DeckBuilder = {
         }
     },
     
-    /**
-     * Build a random deck using registered cards
-     * Test deck: 45 cards in main deck
-     * - 15 cryptids
-     * - 15 basic pyres
-     * - 5 rare pyres
-     * - 10 other instances (bursts, traps, auras)
-     * (Kindling are in separate pool, not main deck)
-     */
     buildRandomDeck(config = {}) {
         const settings = { ...this.defaultDeckConfig, ...config };
         const deck = [];
         
-        // Get all cryptid keys by rarity
         const cryptidsByRarity = { common: [], uncommon: [], rare: [], ultimate: [] };
         for (const key of CardRegistry.getAllCryptidKeys()) {
             const card = CardRegistry.getCryptid(key);
@@ -2407,7 +1237,6 @@ window.DeckBuilder = {
             }
         }
         
-        // Build weighted pool for cryptids
         const weightedPool = [];
         for (const [rarity, keys] of Object.entries(cryptidsByRarity)) {
             const weight = settings.rarityWeights[rarity] || 1;
@@ -2418,20 +1247,15 @@ window.DeckBuilder = {
             }
         }
         
-        // Add cryptids (15)
         for (let i = 0; i < settings.cryptidCount; i++) {
             const key = weightedPool[Math.floor(Math.random() * weightedPool.length)];
             deck.push(CardRegistry.getCryptid(key));
         }
         
-        // Note: Kindling are NOT added to main deck - they go in the separate kindling pool
-        
-        // Add basic pyres (15)
         for (let i = 0; i < settings.basicPyreCount; i++) {
             deck.push(CardRegistry.getPyre('pyre'));
         }
         
-        // Add rare pyres (5) - any pyre that isn't basic pyre
         const pyreKeys = CardRegistry.getAllPyreKeys();
         const rarePyreKeys = pyreKeys.filter(k => k !== 'pyre');
         if (rarePyreKeys.length > 0) {
@@ -2440,21 +1264,18 @@ window.DeckBuilder = {
                 deck.push(CardRegistry.getPyre(key));
             }
         } else {
-            // Fallback to basic if no rare pyres exist
             for (let i = 0; i < settings.rarePyreCount; i++) {
                 deck.push(CardRegistry.getPyre('pyre'));
             }
         }
         
-        // Add other instances (10) - split among bursts, traps, auras
         const burstKeys = CardRegistry.getAllBurstKeys();
         const trapKeys = CardRegistry.getAllTrapKeys();
         const auraKeys = CardRegistry.getAllAuraKeys();
         
-        // Distribute roughly evenly, with slight preference for bursts
-        const burstCount = Math.ceil(settings.otherInstanceCount * 0.4); // 4
-        const trapCount = Math.floor(settings.otherInstanceCount * 0.3); // 3
-        const auraCount = settings.otherInstanceCount - burstCount - trapCount; // 3
+        const burstCount = Math.ceil(settings.otherInstanceCount * 0.4);
+        const trapCount = Math.floor(settings.otherInstanceCount * 0.3);
+        const auraCount = settings.otherInstanceCount - burstCount - trapCount;
         
         for (let i = 0; i < burstCount && burstKeys.length > 0; i++) {
             const key = burstKeys[Math.floor(Math.random() * burstKeys.length)];
@@ -2471,7 +1292,6 @@ window.DeckBuilder = {
             deck.push(CardRegistry.getAura(key));
         }
         
-        // Shuffle
         for (let i = deck.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -2490,15 +1310,10 @@ window.DeckBuilder = {
         return deck;
     },
     
-    /**
-     * Build the kindling pool for a player
-     * @returns {Array} Array of kindling cards
-     */
     buildKindlingPool(deckCards = null) {
         const pool = [];
         let id = 1000;
         
-        // If deckCards provided, extract kindling from it
         if (deckCards && Array.isArray(deckCards)) {
             for (const entry of deckCards) {
                 const cardKey = entry.cardKey || entry.key;
@@ -2513,12 +1328,10 @@ window.DeckBuilder = {
             }
         }
         
-        // Default: Include ALL registered kindling (2 copies each)
         const allKindlingKeys = CardRegistry.getAllKindlingKeys();
         for (const key of allKindlingKeys) {
             const template = CardRegistry.getKindling(key);
             if (template) {
-                // 2 copies of each
                 pool.push({ ...template, id: id++, isKindling: true });
                 pool.push({ ...template, id: id++, isKindling: true });
             }
@@ -2529,7 +1342,7 @@ window.DeckBuilder = {
     }
 };
 
-console.log('City of Flesh Series loaded:', {
+console.log('City of Flesh Series (DECLARATIVE) loaded:', {
     cryptids: CardRegistry.getAllCryptidKeys().length,
     bursts: CardRegistry.getAllBurstKeys().length,
     traps: CardRegistry.getAllTrapKeys().length,
@@ -2538,7 +1351,6 @@ console.log('City of Flesh Series loaded:', {
     kindling: CardRegistry.getAllKindlingKeys().length
 });
 
-// Signal that cards are ready
 if (typeof window.onCardsReady === 'function') {
     window.onCardsReady();
 } else {

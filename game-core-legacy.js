@@ -5431,80 +5431,9 @@ class Game {
         if (!this.canPlayPyreCard(owner)) return false;
         if (owner === 'player') this.playerPyreCardPlayedThisTurn = true;
         else this.enemyPyreCardPlayedThisTurn = true;
-        
-        let result = { pyreGained: 0 };
-        
-        // Handle legacy function-based effect
-        if (typeof pyreCard.effect === 'function') {
-            result = pyreCard.effect(this, owner);
-        } 
-        // Handle new declarative effects array
-        else if (pyreCard.effects && Array.isArray(pyreCard.effects)) {
-            result = this.executePyreEffects(owner, pyreCard);
-        }
-        // Fallback: just grant base pyreGain if defined
-        else if (pyreCard.pyreGain) {
-            const pyre = pyreCard.pyreGain;
-            if (owner === 'player') this.playerPyre += pyre;
-            else this.enemyPyre += pyre;
-            result = { pyreGained: pyre };
-        }
-        
+        const result = pyreCard.effect(this, owner);
         GameEvents.emit('onPyreCardPlayed', { owner, card: pyreCard, pyreGained: result?.pyreGained || 0, details: result });
         return result;
-    }
-    
-    /**
-     * Execute declarative pyre card effects
-     */
-    executePyreEffects(owner, pyreCard) {
-        let totalPyreGained = 0;
-        const field = owner === 'player' ? this.playerField : this.enemyField;
-        
-        for (const effect of pyreCard.effects) {
-            switch (effect.action) {
-                case 'gainPyre':
-                    const amount = effect.amount || 1;
-                    if (owner === 'player') this.playerPyre += amount;
-                    else this.enemyPyre += amount;
-                    totalPyreGained += amount;
-                    break;
-                    
-                case 'gainPyrePerNameMatch':
-                    // Count cryptids matching name on field
-                    let count = 0;
-                    for (let c = 0; c < 2; c++) {
-                        for (let r = 0; r < 3; r++) {
-                            const cryptid = field[c][r];
-                            if (cryptid && cryptid.name && cryptid.name.toLowerCase().includes(effect.match)) {
-                                count++;
-                            }
-                        }
-                    }
-                    const bonus = Math.min(count, effect.max || 999) * (effect.amountPer || 1);
-                    if (owner === 'player') this.playerPyre += bonus;
-                    else this.enemyPyre += bonus;
-                    totalPyreGained += bonus;
-                    break;
-                    
-                case 'gainPyrePerDeathLastTurn':
-                    const deaths = Math.min(this.deathsLastEnemyTurn?.[owner] || 0, effect.max || 999);
-                    const deathPyre = deaths * (effect.amountPer || 1);
-                    if (owner === 'player') this.playerPyre += deathPyre;
-                    else this.enemyPyre += deathPyre;
-                    totalPyreGained += deathPyre;
-                    break;
-                    
-                case 'drawCardPerDeathLastTurn':
-                    const deathCount = Math.min(this.deathsLastEnemyTurn?.[owner] || 0, effect.max || 999);
-                    for (let i = 0; i < deathCount; i++) {
-                        this.drawCard(owner, pyreCard.name);
-                    }
-                    break;
-            }
-        }
-        
-        return { pyreGained: totalPyreGained };
     }
 
     drawCard(owner, source = 'normal') {
@@ -5628,12 +5557,6 @@ class Game {
         };
         field[col][row] = cryptid;
         
-        // Register with EffectEngine if card has declarative effects
-        if (cryptid.effects && typeof EffectEngine !== 'undefined') {
-            EffectEngine.registerCryptid(cryptid, owner, this);
-        }
-        
-        // Legacy imperative callbacks (for backwards compatibility)
         if (cryptid.onSummon) {
             GameEvents.emit('onCardCallback', { type: 'onSummon', card: cryptid, owner, col, row });
             cryptid.onSummon(cryptid, owner, this);
@@ -6515,11 +6438,6 @@ class Game {
             return null;
         }
         cryptid._alreadyKilled = true;
-        
-        // Unregister from EffectEngine if it has declarative effects
-        if (cryptid.effects && typeof EffectEngine !== 'undefined') {
-            EffectEngine.unregisterCryptid(cryptid);
-        }
         
         // Options:
         // - skipPromotion: If true, don't auto-promote support (caller handles it manually)

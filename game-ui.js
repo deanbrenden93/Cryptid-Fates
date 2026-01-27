@@ -2960,7 +2960,16 @@ function executePyreCardWithAnimation(card, dropX, dropY) {
     // Animate card out of hand
     animateCardRemoval(card.id, 'playing');
     
-    const result = game.playPyreCard('player', card);
+    let result;
+    try {
+        result = game.playPyreCard('player', card);
+    } catch (err) {
+        console.error('[executePyreCardWithAnimation] Error playing pyre card:', err);
+        isAnimating = false;
+        renderAll();
+        updateButtons();
+        return;
+    }
     
     // Remove from hand immediately
     const idx = game.playerHand.findIndex(c => c.id === card.id);

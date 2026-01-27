@@ -777,6 +777,8 @@ window.PlayerData = {
         
         // Check if collection is empty (new player or old data)
         const hasCards = Object.keys(this.collection).length > 0;
+        // Also check if player has any decks - if not, they need to pick a starter
+        const hasDecks = this.decks && this.decks.length > 0;
         
         if (!loaded || !hasCards) {
             // New player or needs starter collection
@@ -787,6 +789,10 @@ window.PlayerData = {
             console.log('Starter collection initialized');
             
             // Flag for welcome screen
+            this.showWelcome = true;
+        } else if (!hasDecks) {
+            // Player has collection but no decks - need to select starter deck
+            console.log('Player has collection but no decks - showing deck selection');
             this.showWelcome = true;
         } else {
             // Existing player - check if their starter deck needs fixing
