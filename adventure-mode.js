@@ -279,122 +279,141 @@ window.FloorMapGenerator = {
         boss: { name: 'Floor Guardian', color: '#4a1a1a', icon: '👁️' }
     },
     
-    // Generate a complete floor map
+    // Rooms needed before boss appears
+    roomsUntilBoss: 8,
+    
+    // Initialize a new floor with just the start room
     generateFloor(floorNum) {
-        const roomsPerRow = 3;
-        const totalRows = 4; // 4 rows of rooms plus boss
         const rooms = {};
-        const connections = {};
         
-        // Create start room
-        rooms['start'] = {
-            id: 'start',
+        // Create start room at origin
+        rooms['0,0'] = {
+            id: '0,0',
             type: 'start',
-            x: 1, // Middle column
+            x: 0,
             y: 0,
-            cleared: false,
-            exits: { north: [], south: [], east: [], west: [] }
+            cleared: true, // Start is always cleared
+            exits: {},
+            exitsGenerated: false
         };
         
-        // Generate room grid
-        for (let row = 1; row <= totalRows; row++) {
-            for (let col = 0; col < roomsPerRow; col++) {
-                const roomId = `r${row}_${col}`;
-                const type = this.pickRoomType(row, totalRows, floorNum);
-                
-                rooms[roomId] = {
-                    id: roomId,
-                    type: type,
-                    x: col,
-                    y: row,
-                    cleared: false,
-                    exits: { north: [], south: [], east: [], west: [] }
-                };
-            }
-        }
-        
-        // Add boss room
-        rooms['boss'] = {
-            id: 'boss',
-            type: 'boss',
-            x: 1,
-            y: totalRows + 1,
-            cleared: false,
-            exits: { north: [], south: [], east: [], west: [] }
-        };
-        
-        // Generate connections
-        // Start connects to all rooms in row 1
-        for (let col = 0; col < roomsPerRow; col++) {
-            const targetId = `r1_${col}`;
-            rooms['start'].exits.north.push(targetId);
-            rooms[targetId].exits.south.push('start');
-        }
-        
-        // Connect rows
-        for (let row = 1; row < totalRows; row++) {
-            for (let col = 0; col < roomsPerRow; col++) {
-                const currentId = `r${row}_${col}`;
-                const current = rooms[currentId];
-                
-                // Connect to next row (each room connects to 1-2 rooms ahead)
-                const nextRow = row + 1;
-                const possibleTargets = [];
-                
-                // Can connect to same column or adjacent
-                for (let targetCol = Math.max(0, col - 1); targetCol <= Math.min(roomsPerRow - 1, col + 1); targetCol++) {
-                    possibleTargets.push(`r${nextRow}_${targetCol}`);
-                }
-                
-                // Randomly connect to 1-2 targets
-                const numConnections = Math.random() < 0.6 ? 2 : 1;
-                const shuffled = possibleTargets.sort(() => Math.random() - 0.5);
-                const targets = shuffled.slice(0, numConnections);
-                
-                for (const targetId of targets) {
-                    current.exits.north.push(targetId);
-                    rooms[targetId].exits.south.push(currentId);
-                }
-                
-                // Connect horizontally within row (optional)
-                if (col < roomsPerRow - 1 && Math.random() < 0.3) {
-                    const rightId = `r${row}_${col + 1}`;
-                    current.exits.east.push(rightId);
-                    rooms[rightId].exits.west.push(currentId);
-                }
-            }
-        }
-        
-        // Last row connects to boss
-        for (let col = 0; col < roomsPerRow; col++) {
-            const roomId = `r${totalRows}_${col}`;
-            rooms[roomId].exits.north.push('boss');
-            rooms['boss'].exits.south.push(roomId);
-        }
-        
-        return {
+        return { 
+            rooms, 
+            startRoom: '0,0', 
             floorNum,
-            rooms,
-            totalRooms: Object.keys(rooms).length
+            roomsCleared: 0,
+            bossAvailable: false
         };
     },
     
-    pickRoomType(row, totalRows, floorNum) {
-        // Last row before boss has higher elite chance
-        if (row === totalRows) {
+    // Generate exits for a room when player enters it
+    generateExitsForRoom(roomId) {
+        const room = AdventureState.floorMap.rooms[roomId];
+        if (!room || room.exitsGenerated) return;
+        
+        room.exitsGenerated = true;
+        room.exits = {};
+        
+        const [x, y] = roomId.split(',').map(Number);
+        const roomsCleared = AdventureState.floorMap.roomsCleared;
+        const isBossTime = roomsCleared >= this.roomsUntilBoss;
+        
+        // Boss room has no exits
+        if (room.type === 'boss') {
+            return;
+        }
+        
+        // If boss time, only offer one path to boss
+        if (isBossTime && !AdventureState.floorMap.bossAvailable) {
+            AdventureState.floorMap.bossAvailable = true;
+            const bossDir = this.pickRandomDirections(1)[0];
+            const bossCoords = this.getAdjacentCoords(x, y, bossDir);
+            const bossId = `${bossCoords.x},${bossCoords.y}`;
+            
+            // Create boss room
+            AdventureState.floorMap.rooms[bossId] = {
+                id: bossId,
+                type: 'boss',
+                x: bossCoords.x,
+                y: bossCoords.y,
+                cleared: false,
+                exits: {},
+                exitsGenerated: true
+            };
+            
+            room.exits[bossDir] = bossId;
+            return;
+        }
+        
+        // Pick 2-3 random directions (north, east, west - not south/back)
+        const numExits = Math.random() < 0.4 ? 2 : 3;
+        const directions = this.pickRandomDirections(numExits);
+        
+        for (const dir of directions) {
+            const coords = this.getAdjacentCoords(x, y, dir);
+            const targetId = `${coords.x},${coords.y}`;
+            
+            // Check if room already exists at those coordinates
+            if (!AdventureState.floorMap.rooms[targetId]) {
+                // Generate a new room
+                const type = this.pickRoomType(roomsCleared, this.roomsUntilBoss, AdventureState.currentFloor);
+                AdventureState.floorMap.rooms[targetId] = {
+                    id: targetId,
+                    type: type,
+                    x: coords.x,
+                    y: coords.y,
+                    cleared: false,
+                    exits: {},
+                    exitsGenerated: false
+                };
+            }
+            
+            room.exits[dir] = targetId;
+        }
+    },
+    
+    // Pick random directions excluding south (backward)
+    pickRandomDirections(count) {
+        const available = ['north', 'east', 'west'];
+        const shuffled = [...available].sort(() => Math.random() - 0.5);
+        return shuffled.slice(0, Math.min(count, available.length));
+    },
+    
+    // Get coordinates for adjacent room
+    getAdjacentCoords(x, y, direction) {
+        switch(direction) {
+            case 'north': return { x: x, y: y - 1 };
+            case 'south': return { x: x, y: y + 1 };
+            case 'east': return { x: x + 1, y: y };
+            case 'west': return { x: x - 1, y: y };
+            default: return { x, y };
+        }
+    },
+    
+    // Get opposite direction
+    getOppositeDirection(dir) {
+        const opposites = { north: 'south', south: 'north', east: 'west', west: 'east' };
+        return opposites[dir];
+    },
+    
+    pickRoomType(roomsCleared, roomsUntilBoss, floorNum) {
+        // Closer to boss = higher elite chance
+        const progress = roomsCleared / roomsUntilBoss;
+        
+        if (progress > 0.7) {
             const roll = Math.random();
-            if (roll < 0.4) return 'elite';
-            if (roll < 0.6) return 'battle';
-            if (roll < 0.8) return 'rest';
+            if (roll < 0.3) return 'elite';
+            if (roll < 0.5) return 'battle';
+            if (roll < 0.7) return 'rest';
             return 'treasure';
         }
         
         // Normal distribution
         const roll = Math.random();
-        if (roll < 0.35) return 'battle';
-        if (roll < 0.50) return 'event';
-        if (roll < 0.65) return 'treasure';
-        if (roll < 0.78) return 'shop';
+        if (roll < 0.30) return 'battle';
+        if (roll < 0.45) return 'event';
+        if (roll < 0.60) return 'treasure';
+        if (roll < 0.75) return 'shop';
         if (roll < 0.88) return 'rest';
         if (roll < 0.95) return 'elite';
         return 'battle';
@@ -551,7 +570,10 @@ window.IsometricEngine = {
     
     handleKeyDown(e) {
         if (!this.isRunning) return;
-        if (AdventureState.phase === 'dialogue') return;
+        
+        // Block all gameplay input during dialogue or non-interactive phases
+        const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
+        if (blockedPhases.includes(AdventureState.phase)) return;
         
         switch(e.key.toLowerCase()) {
             case 'w': case 'arrowup': this.keys.up = true; break;
@@ -577,7 +599,10 @@ window.IsometricEngine = {
     
     handlePointerDown(e) {
         if (!this.isRunning) return;
-        if (AdventureState.phase === 'dialogue') return;
+        
+        // Block during dialogue or non-interactive phases
+        const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
+        if (blockedPhases.includes(AdventureState.phase)) return;
         if (e.target.closest('.adventure-ui')) return;
         
         const tile = this.screenToTile(e.clientX, e.clientY);
@@ -589,6 +614,10 @@ window.IsometricEngine = {
     
     handleTouchStart(e) {
         if (!this.isRunning) return;
+        
+        // Block during dialogue or non-interactive phases
+        const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
+        if (blockedPhases.includes(AdventureState.phase)) return;
         if (e.target.closest('.adventure-ui')) return;
         
         const touch = e.touches[0];
@@ -622,8 +651,9 @@ window.IsometricEngine = {
         this.keys.left = false;
         this.keys.right = false;
         
-        // Tap to interact
-        if (e.changedTouches.length > 0 && this.nearbyInteractable) {
+        // Tap to interact - only if in interactive phase
+        const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
+        if (!blockedPhases.includes(AdventureState.phase) && e.changedTouches.length > 0 && this.nearbyInteractable) {
             this.tryInteract();
         }
     },
@@ -635,6 +665,10 @@ window.IsometricEngine = {
     // ==================== INTERACTION ====================
     
     tryInteract() {
+        // Block interaction during dialogue or non-interactive phases
+        const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
+        if (blockedPhases.includes(AdventureState.phase)) return;
+        
         if (this.nearbyInteractable) {
             const obj = this.nearbyInteractable;
             if (obj.onInteract) {
@@ -721,8 +755,12 @@ window.IsometricEngine = {
     update(dt) {
         const p = this.player;
         
-        // Grid-based movement (Pokemon style) - only accept input when not moving
-        if (p.canMove && (this.keys.up || this.keys.down || this.keys.left || this.keys.right)) {
+        // Block movement during dialogue or non-interactive phases
+        const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
+        const canAcceptInput = !blockedPhases.includes(AdventureState.phase);
+        
+        // Grid-based movement (Pokemon style) - only accept input when not moving and in interactive phase
+        if (canAcceptInput && p.canMove && (this.keys.up || this.keys.down || this.keys.left || this.keys.right)) {
             let dx = 0, dy = 0;
             
             // Isometric direction mapping (visual up = tile northwest, etc.)
@@ -853,8 +891,7 @@ window.IsometricEngine = {
             this.renderInteractionPrompt();
         }
         
-        // Debug: Draw frame indicator
-        const p = this.player;
+        // Debug: Draw frame indicator (p already defined above)
         ctx.fillStyle = 'rgba(255, 255, 0, 0.7)';
         ctx.font = '11px monospace';
         ctx.fillText(`Tile: ${p.tileX},${p.tileY} | Phase: ${AdventureState.phase}`, 10, h - 10);
@@ -919,36 +956,25 @@ window.IsometricEngine = {
         const p = this.player;
         const pos = this.tileToScreen(p.visualX, p.visualY);
         
-        // Shadow on the floor
+        // Shadow centered perfectly on tile center
         ctx.beginPath();
-        ctx.ellipse(pos.x, pos.y + this.tileDepth + 2, 14, 7, 0, 0, Math.PI * 2);
+        ctx.ellipse(pos.x, pos.y + 2, 10, 5, 0, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
         ctx.fill();
         
-        // Player sprite (raised above tile)
-        ctx.font = '42px sans-serif';
+        // Player sprite - perfectly centered on tile
+        const spriteSize = 32;
+        ctx.font = `${spriteSize}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
         // Bob when moving
-        const bobOffset = p.isMoving ? Math.sin(performance.now() * 0.015) * 3 : 0;
+        const bobOffset = p.isMoving ? Math.sin(performance.now() * 0.012) * 2 : 0;
         
-        // Draw player above the tile
-        const playerY = pos.y - 8 + bobOffset;
-        ctx.fillText(p.sprite, pos.x, playerY);
-        
-        // Direction indicator (subtle glow in facing direction)
-        if (!p.isMoving) {
-            ctx.fillStyle = 'rgba(126, 184, 158, 0.3)';
-            ctx.beginPath();
-            let indicatorX = pos.x, indicatorY = pos.y;
-            if (p.facing === 'north') { indicatorX -= 8; indicatorY -= 20; }
-            else if (p.facing === 'south') { indicatorX += 8; indicatorY += 8; }
-            else if (p.facing === 'west') { indicatorX -= 16; indicatorY -= 6; }
-            else if (p.facing === 'east') { indicatorX += 16; indicatorY -= 6; }
-            ctx.arc(indicatorX, indicatorY, 5, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        // Draw player exactly at tile center, raised slightly above the surface
+        // pos is the center of the diamond top, sprite should be at that exact X
+        // Y is raised by half sprite height to sit "on" the tile
+        ctx.fillText(p.sprite, pos.x, pos.y - spriteSize/2 + 4 + bobOffset);
     },
     
     renderObject(obj) {
@@ -1124,58 +1150,52 @@ window.IsometricEngine = {
     setupRoomContent(roomData) {
         const info = FloorMapGenerator.getRoomInfo(roomData.type);
         
-        // Add exit portals based on room connections (adjusted for 11x11 room)
+        // Generate exits for this room if not already done
+        FloorMapGenerator.generateExitsForRoom(roomData.id);
+        
+        // Add exit portals on different edges based on direction
         if (roomData.exits) {
-            if (roomData.exits.north?.length > 0) {
+            // Door positions for each edge of the room
+            const doorPositions = {
+                north: { x: 5, y: 1 },   // Top edge (center)
+                east: { x: 9, y: 5 },    // Right edge (center)
+                west: { x: 1, y: 5 },    // Left edge (center)
+                south: { x: 5, y: 9 }    // Bottom edge (not used normally)
+            };
+            
+            // Direction labels
+            const dirLabels = {
+                north: 'North',
+                east: 'East',
+                west: 'West',
+                south: 'South'
+            };
+            
+            for (const [direction, targetRoomId] of Object.entries(roomData.exits)) {
+                const pos = doorPositions[direction];
+                if (!pos) continue;
+                
+                const targetRoom = AdventureState.floorMap?.rooms?.[targetRoomId];
+                const targetInfo = targetRoom ? FloorMapGenerator.getRoomInfo(targetRoom.type) : null;
+                
+                // Show room type if revealed
+                const isRevealed = AdventureState.revealedRooms?.has(targetRoomId);
+                const dirLabel = dirLabels[direction] || 'Unknown';
+                const roomLabel = isRevealed && targetInfo 
+                    ? `${dirLabel} (${targetInfo.name})` 
+                    : `${dirLabel} Path`;
+                
                 this.exits.push({
-                    x: 5, y: 0,
+                    x: pos.x, 
+                    y: pos.y,
                     sprite: '🚪',
-                    label: 'Continue Forward',
+                    label: roomLabel,
                     promptText: '[E] Enter',
                     glow: true,
-                    glowColor: '#7eb89e',
-                    direction: 'north',
-                    targetRooms: roomData.exits.north,
-                    onInteract: (obj) => AdventureUI.showExitChoice(obj)
-                });
-            }
-            if (roomData.exits.south?.length > 0 && roomData.type !== 'start') {
-                this.exits.push({
-                    x: 5, y: 10,
-                    sprite: '🚪',
-                    label: 'Go Back',
-                    promptText: '[E] Return',
-                    glow: true,
-                    glowColor: '#6b8fa3',
-                    direction: 'south',
-                    targetRooms: roomData.exits.south,
-                    onInteract: (obj) => AdventureUI.showExitChoice(obj)
-                });
-            }
-            if (roomData.exits.east?.length > 0) {
-                this.exits.push({
-                    x: 10, y: 5,
-                    sprite: '🚪',
-                    label: 'East Passage',
-                    promptText: '[E] Enter',
-                    glow: true,
-                    glowColor: '#a080d0',
-                    direction: 'east',
-                    targetRooms: roomData.exits.east,
-                    onInteract: (obj) => AdventureUI.showExitChoice(obj)
-                });
-            }
-            if (roomData.exits.west?.length > 0) {
-                this.exits.push({
-                    x: 0, y: 5,
-                    sprite: '🚪',
-                    label: 'West Passage',
-                    promptText: '[E] Enter',
-                    glow: true,
-                    glowColor: '#d08080',
-                    direction: 'west',
-                    targetRooms: roomData.exits.west,
-                    onInteract: (obj) => AdventureUI.showExitChoice(obj)
+                    glowColor: isRevealed && targetInfo ? targetInfo.color : '#7eb89e',
+                    targetRoomId: targetRoomId,
+                    direction: direction,
+                    onInteract: () => AdventureUI.moveToRoom(targetRoomId, direction)
                 });
             }
         }
@@ -1482,7 +1502,7 @@ window.DialogueSystem = {
     processQueue() {
         if (this.queue.length === 0) {
             this.isActive = false;
-            // Restore previous phase if we stored one
+            // Restore previous phase
             if (this.previousPhase) {
                 AdventureState.phase = this.previousPhase;
                 this.previousPhase = null;
@@ -1491,11 +1511,12 @@ window.DialogueSystem = {
         }
         
         this.isActive = true;
-        // Store the current phase before switching to dialogue (only once per sequence)
+        // Store phase before switching to dialogue
         if (AdventureState.phase !== 'dialogue' && !this.previousPhase) {
             this.previousPhase = AdventureState.phase;
         }
         AdventureState.phase = 'dialogue';
+        
         const message = this.queue.shift();
         this.displayMessage(message);
     },
@@ -1534,6 +1555,10 @@ window.DialogueSystem = {
                 }
             });
         } else {
+            // No typewriter - text is immediately complete
+            this.typewriterTimeout = null;
+            this.isTypingComplete = true;
+            this.currentFullText = message.text;
             textEl.textContent = message.text;
             continueEl.style.opacity = '1';
             if (message.autoClose > 0) {
@@ -1543,9 +1568,10 @@ window.DialogueSystem = {
     },
     
     typewriterEffect(element, text, onComplete) {
-        // Store full text for skip functionality
-        this.currentFullText = text.replace(/\*/g, ''); // Remove formatting markers
+        // Store clean text and reset typing state
+        this.currentFullText = text.replace(/\*/g, '');
         this.isTypingComplete = false;
+        this.typewriterTimeout = null;
         
         let index = 0;
         let displayText = '';
@@ -1576,8 +1602,10 @@ window.DialogueSystem = {
                 
                 this.typewriterTimeout = setTimeout(type, delay);
             } else {
-                element.textContent = this.currentFullText;
+                // Typing complete - clear timeout and mark as complete
+                this.typewriterTimeout = null;
                 this.isTypingComplete = true;
+                element.textContent = this.currentFullText;
                 onComplete?.();
             }
         };
@@ -1586,28 +1614,32 @@ window.DialogueSystem = {
     },
     
     advance() {
-        // If still typing, complete immediately
+        // Stop any typing animation
         if (this.typewriterTimeout) {
             clearTimeout(this.typewriterTimeout);
             this.typewriterTimeout = null;
         }
         
+        // Hide dialogue
         const overlay = document.getElementById('dialogue-overlay');
         overlay.classList.remove('active');
         
-        // Callback
+        // Resolve the Promise for this message
         if (this.currentCallback) {
-            this.currentCallback();
+            const cb = this.currentCallback;
             this.currentCallback = null;
+            cb();
         }
         
-        // Process next in queue
-        setTimeout(() => this.processQueue(), 200);
+        // Process next message in queue after brief delay
+        setTimeout(() => this.processQueue(), 150);
     },
     
-    // Handle click/tap - complete text first, then advance
+    // Handle click/tap - two stage: complete text first, then advance
     skip() {
-        // If still typing, complete the text immediately
+        if (!this.isActive) return;
+        
+        // Stage 1: If still typing, complete the text immediately but don't advance yet
         if (this.typewriterTimeout) {
             clearTimeout(this.typewriterTimeout);
             this.typewriterTimeout = null;
@@ -1619,8 +1651,11 @@ window.DialogueSystem = {
             }
             this.isTypingComplete = true;
             document.getElementById('dialogue-continue').style.opacity = '1';
-        } else if (this.isTypingComplete) {
-            // Text is complete, advance to next message
+            return; // Don't advance yet - wait for another click
+        }
+        
+        // Stage 2: Text is complete, advance to next message
+        if (this.isTypingComplete) {
             this.advance();
         }
     }
@@ -1817,6 +1852,15 @@ window.AdventureUI = {
                 text-align: center;
             }
             
+            .minimap-progress {
+                font-family: 'Cinzel', serif;
+                font-size: 9px;
+                color: #605040;
+                text-align: center;
+                margin-top: 8px;
+                letter-spacing: 1px;
+            }
+            
             .minimap-grid {
                 display: flex;
                 flex-direction: column;
@@ -1838,6 +1882,11 @@ window.AdventureUI = {
                 justify-content: center;
                 font-size: 10px;
                 transition: all 0.3s ease;
+            }
+            
+            .minimap-room.empty {
+                background: transparent;
+                border: 1px dashed rgba(100, 80, 120, 0.2);
             }
             
             .minimap-room.hidden {
@@ -2273,6 +2322,7 @@ window.AdventureUI = {
                     <div class="minimap-container" id="minimap-container">
                         <div class="minimap-title">Floor Map</div>
                         <div class="minimap-grid" id="minimap-grid"></div>
+                        <div class="minimap-progress" id="minimap-progress">0/8 rooms</div>
                     </div>
                 </div>
             </div>
@@ -2530,33 +2580,29 @@ window.AdventureUI = {
             
             // Generate floor and start exploring
             this.startFloor(1);
+        } else {
+            console.warn('[Acquire] No matching condition! previewType:', this.previewType, 'phase:', AdventureState.phase);
         }
     },
     
     startFloor(floorNum) {
         console.log(`[Adventure] Starting floor ${floorNum}`);
         
-        // Generate floor map
+        // Generate floor map (starts with just the start room at 0,0)
         AdventureState.floorMap = FloorMapGenerator.generateFloor(floorNum);
         AdventureState.currentFloor = floorNum;
-        AdventureState.currentRoomId = 'start';
-        AdventureState.visitedRooms = new Set(['start']);
-        AdventureState.revealedRooms = new Set(['start']);
         
-        // Check for scout's map relic
-        const hasScoutMap = AdventureState.relics.some(r => r.effect?.revealMap);
-        if (hasScoutMap) {
-            for (const roomId of Object.keys(AdventureState.floorMap.rooms)) {
-                AdventureState.revealedRooms.add(roomId);
-            }
-        } else {
-            // Reveal adjacent rooms
-            this.revealAdjacentRooms('start');
-        }
+        const startRoomId = AdventureState.floorMap.startRoom; // '0,0'
+        AdventureState.currentRoomId = startRoomId;
+        AdventureState.visitedRooms = new Set([startRoomId]);
+        AdventureState.revealedRooms = new Set([startRoomId]);
         
-        // Setup start room
-        const startRoom = AdventureState.floorMap.rooms['start'];
+        // Setup start room (this will generate its exits)
+        const startRoom = AdventureState.floorMap.rooms[startRoomId];
         IsometricEngine.setupRoom(startRoom);
+        
+        // Reveal adjacent rooms after exits are generated
+        this.revealAdjacentRooms(startRoomId);
         
         // Update UI
         AdventureState.phase = 'exploring';
@@ -2567,13 +2613,12 @@ window.AdventureUI = {
     
     revealAdjacentRooms(roomId) {
         const room = AdventureState.floorMap.rooms[roomId];
-        if (!room) return;
+        if (!room || !room.exits) return;
         
-        for (const dir of ['north', 'south', 'east', 'west']) {
-            if (room.exits[dir]) {
-                for (const targetId of room.exits[dir]) {
-                    AdventureState.revealedRooms.add(targetId);
-                }
+        // New format: exits is an object { direction: targetRoomId }
+        for (const [dir, targetId] of Object.entries(room.exits)) {
+            if (targetId) {
+                AdventureState.revealedRooms.add(targetId);
             }
         }
     },
@@ -2612,14 +2657,30 @@ window.AdventureUI = {
         overlay.classList.add('active');
     },
     
-    moveToRoom(roomId) {
-        console.log(`[Adventure] Moving to room: ${roomId}`);
+    moveToRoom(roomId, fromDirection) {
+        console.log(`[Adventure] Moving to room: ${roomId} from ${fromDirection || 'unknown'}`);
+        
+        const room = AdventureState.floorMap.rooms[roomId];
+        if (!room) {
+            console.error('[Adventure] Room not found:', roomId);
+            return;
+        }
+        
+        // Track if this is a new room (not visited before)
+        const isNewRoom = !AdventureState.visitedRooms.has(roomId);
         
         AdventureState.currentRoomId = roomId;
         AdventureState.visitedRooms.add(roomId);
+        
+        // Increment rooms cleared if it's a new non-start room
+        if (isNewRoom && room.type !== 'start') {
+            AdventureState.floorMap.roomsCleared++;
+            console.log(`[Adventure] Rooms cleared: ${AdventureState.floorMap.roomsCleared}/${FloorMapGenerator.roomsUntilBoss}`);
+        }
+        
+        // Reveal adjacent rooms after entering
         this.revealAdjacentRooms(roomId);
         
-        const room = AdventureState.floorMap.rooms[roomId];
         IsometricEngine.setupRoom(room);
         
         this.updateMinimap();
@@ -2742,27 +2803,31 @@ window.AdventureUI = {
         grid.innerHTML = '';
         
         const rooms = AdventureState.floorMap.rooms;
+        const roomList = Object.values(rooms);
         
-        // Find grid bounds
-        let maxY = 0;
-        for (const room of Object.values(rooms)) {
+        // Find grid bounds (including negative coordinates)
+        let minX = 0, maxX = 0, minY = 0, maxY = 0;
+        for (const room of roomList) {
+            if (room.x < minX) minX = room.x;
+            if (room.x > maxX) maxX = room.x;
+            if (room.y < minY) minY = room.y;
             if (room.y > maxY) maxY = room.y;
         }
         
-        // Create rows
-        for (let y = 0; y <= maxY; y++) {
+        // Create a lookup map for quick room finding
+        const roomMap = {};
+        for (const room of roomList) {
+            roomMap[`${room.x},${room.y}`] = room;
+        }
+        
+        // Create rows (from minY to maxY, which may include negative y values)
+        // Note: y decreases going "north", so we render from minY (top) to maxY (bottom)
+        for (let y = minY; y <= maxY; y++) {
             const row = document.createElement('div');
             row.className = 'minimap-row';
             
-            // Find rooms in this row
-            const rowRooms = Object.values(rooms).filter(r => r.y === y);
-            rowRooms.sort((a, b) => a.x - b.x);
-            
-            // Pad with empty cells
-            for (let x = 0; x < 3; x++) {
-                const room = rowRooms.find(r => r.x === x) || 
-                            (y === 0 && x === 1 ? rooms['start'] : null) ||
-                            (y === maxY && x === 1 ? rooms['boss'] : null);
+            for (let x = minX; x <= maxX; x++) {
+                const room = roomMap[`${x},${y}`];
                 
                 const cell = document.createElement('div');
                 cell.className = 'minimap-room';
@@ -2788,13 +2853,21 @@ window.AdventureUI = {
                         cell.style.color = info.color;
                     }
                 } else {
-                    cell.style.visibility = 'hidden';
+                    cell.classList.add('empty');
                 }
                 
                 row.appendChild(cell);
             }
             
             grid.appendChild(row);
+        }
+        
+        // Show progress toward boss
+        const progress = AdventureState.floorMap.roomsCleared || 0;
+        const needed = FloorMapGenerator.roomsUntilBoss;
+        const progressText = document.getElementById('minimap-progress');
+        if (progressText) {
+            progressText.textContent = `${progress}/${needed} rooms`;
         }
     },
     
