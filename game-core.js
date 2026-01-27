@@ -7859,8 +7859,21 @@ class Game {
     }
 
     checkGameOver() {
-        if (this.playerDeaths >= 10) this.endGame('enemy');
-        else if (this.enemyDeaths >= 10) this.endGame('player');
+        // Determine kill threshold based on adventure mode battle type
+        let killsToWin = 10; // Default for regular battles
+        
+        if (window.adventureBattleType) {
+            if (window.adventureBattleType === 'battle') {
+                killsToWin = 3; // Normal adventure battles
+            } else if (window.adventureBattleType === 'elite') {
+                killsToWin = 5; // Elite adventure battles
+            } else if (window.adventureBattleType === 'boss') {
+                killsToWin = 7; // Boss battles
+            }
+        }
+        
+        if (this.playerDeaths >= killsToWin) this.endGame('enemy');
+        else if (this.enemyDeaths >= killsToWin) this.endGame('player');
     }
 
     endGame(winner) {

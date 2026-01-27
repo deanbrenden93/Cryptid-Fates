@@ -41,15 +41,35 @@ window.AdventureState = {
     embers: 0,                // Currency earned this run
     xpEarned: 0,
     
-    // Floor map
+    // Floor map (branching paths system)
     rooms: [],
     currentRoomData: null,
+    currentRoomId: null,      // ID in the map system
+    floorMap: null,           // The full map object with paths
+    visitedRooms: [],         // Track which rooms player has visited
     
     // Stats
     battlesWon: 0,
     battlesLost: 0,
     itemsFound: 0,
     floorsCompleted: 0,
+    
+    // Get room by ID from current floor map
+    getRoomById(roomId) {
+        if (this.floorMap && this.floorMap.rooms) {
+            return this.floorMap.rooms[roomId] || null;
+        }
+        return null;
+    },
+    
+    // Get connected rooms for current room
+    getConnections(roomId = null) {
+        const id = roomId || this.currentRoomId;
+        if (this.floorMap && this.floorMap.paths && this.floorMap.paths[id]) {
+            return this.floorMap.paths[id];
+        }
+        return { left: null, right: null, door: null, platform: null };
+    },
     
     // Reset for new run
     reset() {
@@ -67,6 +87,9 @@ window.AdventureState = {
         this.xpEarned = 0;
         this.rooms = [];
         this.currentRoomData = null;
+        this.currentRoomId = null;
+        this.floorMap = null;
+        this.visitedRooms = [];
         this.battlesWon = 0;
         this.battlesLost = 0;
         this.itemsFound = 0;
@@ -296,29 +319,34 @@ window.RoomGenerator = {
         }
     },
     
-    // Generate a floor's worth of rooms
+    // Generate a floor with branching paths
     generateFloor(floorNumber) {
-        const rooms = [];
-        const roomCount = 10;
+        const map = {
+            rooms: {},    // Room data by ID
+            paths: {},    // Connections between rooms
+            mainPath: [], // Main path room IDs
+            branches: []  // Branch path arrays
+        };
         
-        // First room is always entrance (except floor 1 which starts at entrance)
-        rooms.push(this.createRoom('entrance', 0, floorNumber));
-        
-        // Track recent rooms to avoid repetition
+        // === MAIN PATH (always exists) ===
+        const mainRoomCount = 8;
         let recentTypes = [];
         let battleCount = 0;
         let shopPlaced = false;
         let restPlaced = false;
         
-        // Generate middle rooms (1-8)
-        for (let i = 1; i < roomCount - 1; i++) {
+        // Entrance room
+        const entranceId = `f${floorNumber}_main_0`;
+        map.rooms[entranceId] = this.createRoom('entrance', 0, floorNumber, entranceId);
+        map.mainPath.push(entranceId);
+        
+        // Generate main path rooms
+        for (let i = 1; i < mainRoomCount - 1; i++) {
+            const roomId = `f${floorNumber}_main_${i}`;
             let roomType = this.selectRoomType(recentTypes, i, floorNumber, {
-                battleCount,
-                shopPlaced,
-                restPlaced
+                battleCount, shopPlaced, restPlaced
             });
             
-            // Track for rules
             if (roomType === 'battle' || roomType === 'battle_hard') battleCount++;
             if (roomType === 'shop') shopPlaced = true;
             if (roomType === 'rest') restPlaced = true;
@@ -326,16 +354,102 @@ window.RoomGenerator = {
             recentTypes.push(roomType);
             if (recentTypes.length > 3) recentTypes.shift();
             
-            rooms.push(this.createRoom(roomType, i, floorNumber));
+            const room = this.createRoom(roomType, i, floorNumber, roomId);
+            
+            // Add a door to some rooms (30% chance) for secret branches
+            if (i >= 2 && i <= 5 && Math.random() < 0.3 && !room.hasDoor) {
+                room.hasDoor = true;
+                room.doorTarget = `f${floorNumber}_branch_${i}`;
+            }
+            
+            map.rooms[roomId] = room;
+            map.mainPath.push(roomId);
         }
         
-        // Last room before boss is always rest (to prepare)
-        rooms.push(this.createRoom('rest', roomCount - 1, floorNumber));
+        // Rest before boss
+        const restId = `f${floorNumber}_main_${mainRoomCount - 1}`;
+        map.rooms[restId] = this.createRoom('rest', mainRoomCount - 1, floorNumber, restId);
+        map.mainPath.push(restId);
         
         // Boss room
-        rooms.push(this.createRoom('boss', roomCount, floorNumber));
+        const bossId = `f${floorNumber}_boss`;
+        map.rooms[bossId] = this.createRoom('boss', mainRoomCount, floorNumber, bossId);
+        map.mainPath.push(bossId);
         
-        return rooms;
+        // Connect main path rooms
+        for (let i = 0; i < map.mainPath.length - 1; i++) {
+            const roomId = map.mainPath[i];
+            const nextId = map.mainPath[i + 1];
+            map.paths[roomId] = map.paths[roomId] || { left: null, right: null, door: null, platform: null };
+            map.paths[nextId] = map.paths[nextId] || { left: null, right: null, door: null, platform: null };
+            map.paths[roomId].right = nextId;
+            map.paths[nextId].left = roomId;
+        }
+        
+        // === BRANCH PATHS (secret areas) ===
+        for (const [roomId, room] of Object.entries(map.rooms)) {
+            if (room.hasDoor && room.doorTarget) {
+                // Create a small branch (2-3 rooms)
+                const branchLength = 2 + Math.floor(Math.random() * 2);
+                const branch = [];
+                
+                for (let b = 0; b < branchLength; b++) {
+                    const branchRoomId = `${room.doorTarget}_${b}`;
+                    const branchType = b === branchLength - 1 ? 'treasure' : 
+                                       (Math.random() < 0.5 ? 'battle' : 'event');
+                    
+                    const branchRoom = this.createRoom(branchType, b, floorNumber, branchRoomId);
+                    branchRoom.isBranch = true;
+                    branchRoom.branchReturn = b === 0 ? roomId : null;
+                    map.rooms[branchRoomId] = branchRoom;
+                    branch.push(branchRoomId);
+                }
+                
+                // Connect branch rooms
+                map.paths[roomId].door = branch[0];
+                map.paths[branch[0]] = { left: null, right: null, door: roomId, platform: null }; // Door returns
+                
+                for (let b = 0; b < branch.length - 1; b++) {
+                    map.paths[branch[b]] = map.paths[branch[b]] || { left: null, right: null, door: null, platform: null };
+                    map.paths[branch[b]].right = branch[b + 1];
+                    map.paths[branch[b + 1]] = { left: branch[b], right: null, door: null, platform: null };
+                }
+                
+                // Last room in branch has door back to main path
+                const lastBranch = branch[branch.length - 1];
+                map.paths[lastBranch].door = roomId;
+                
+                map.branches.push(branch);
+            }
+        }
+        
+        // === PLATFORM PATHS (vertical shortcuts) ===
+        // Add occasional platform exits that skip ahead or lead to treasures
+        const platformRooms = map.mainPath.filter((id, idx) => idx >= 2 && idx <= 5 && Math.random() < 0.25);
+        for (const roomId of platformRooms) {
+            const room = map.rooms[roomId];
+            if (!room.hasDoor) {  // Don't double up on branching
+                room.hasPlatform = true;
+                room.platformPosition = Math.random() < 0.5 ? 'left' : 'right';
+                // Platform leads to a secret treasure room
+                const platformRoomId = `${roomId}_plat`;
+                const platformRoom = this.createRoom('treasure', 0, floorNumber, platformRoomId);
+                platformRoom.isPlatformRoom = true;
+                platformRoom.platformReturn = roomId;
+                map.rooms[platformRoomId] = platformRoom;
+                map.paths[roomId].platform = platformRoomId;
+                map.paths[platformRoomId] = { left: null, right: null, door: null, platform: roomId };
+            }
+        }
+        
+        // Store the map structure
+        map.currentRoomId = entranceId;
+        
+        // Return as array for backwards compatibility, but attach map data
+        const roomArray = map.mainPath.map(id => map.rooms[id]);
+        roomArray._floorMap = map;
+        
+        return roomArray;
     },
     
     selectRoomType(recentTypes, roomIndex, floor, stats) {
@@ -393,7 +507,7 @@ window.RoomGenerator = {
         return 'battle'; // Fallback
     },
     
-    createRoom(type, index, floor) {
+    createRoom(type, index, floor, roomId = null) {
         const template = this.roomTypes[type] || this.roomTypes['battle'];
         
         // Entrance rooms start cleared (no encounter needed to proceed)
@@ -401,13 +515,17 @@ window.RoomGenerator = {
         
         return {
             ...template,
-            id: `floor${floor}_room${index}`,
+            id: roomId || `floor${floor}_room${index}`,
             index,
             floor,
             cleared: startsCleared,
             visited: startsCleared,
             interactables: this.generateInteractables(type, floor),
-            rewards: this.generateRewards(type, floor)
+            rewards: this.generateRewards(type, floor),
+            hasDoor: false,
+            doorTarget: null,
+            hasPlatform: false,
+            platformPosition: null
         };
     },
     
@@ -611,30 +729,25 @@ window.AdventureEngine = {
     },
     
     resizeCanvas() {
-        // Get available space (leave room for HUD)
-        const maxWidth = Math.min(window.innerWidth - 40, 1400);
-        const maxHeight = Math.min(window.innerHeight - 100, 800);
+        // Fill the entire viewport
+        const width = window.innerWidth;
+        const height = window.innerHeight;
         
-        // Maintain aspect ratio (roughly 2:1)
-        const aspectRatio = 2;
-        let width = maxWidth;
-        let height = width / aspectRatio;
-        
-        if (height > maxHeight) {
-            height = maxHeight;
-            width = height * aspectRatio;
-        }
-        
-        // Update canvas size
+        // Update canvas size to fill screen
         this.canvas.width = width;
         this.canvas.height = height;
         
         // Update room dimensions to match
         this.room.width = width;
         this.room.height = height;
-        this.room.groundY = height - 80; // Ground near bottom
+        // Ground at 25% from bottom (75% down from top)
+        this.room.groundY = Math.floor(height * 0.75);
         
-        console.log('[Adventure] Canvas resized to', width, 'x', height);
+        // Update player size relative to screen
+        this.player.width = Math.max(50, Math.floor(width * 0.04));
+        this.player.height = Math.max(80, Math.floor(width * 0.065));
+        
+        console.log('[Adventure] Canvas resized to', width, 'x', height, 'Ground at', this.room.groundY);
     },
     
     bindControls() {
@@ -697,53 +810,40 @@ window.AdventureEngine = {
                 position: fixed;
                 inset: 0;
                 z-index: 15000;
-                background: linear-gradient(180deg, #0d0a08 0%, #0a0806 50%, #080604 100%);
+                background: #0a0806;
                 display: none;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
                 font-family: 'Cinzel', serif;
-                padding: 20px;
-                box-sizing: border-box;
             }
             
             #adventure-screen.open {
-                display: flex;
+                display: block;
             }
             
-            /* Canvas Container */
+            /* Canvas Container - fullscreen */
             .adventure-viewport {
-                position: relative;
-                border: 3px solid rgba(232, 169, 62, 0.5);
-                border-radius: 12px;
+                position: absolute;
+                inset: 0;
                 overflow: hidden;
-                box-shadow: 
-                    0 0 60px rgba(0, 0, 0, 0.9),
-                    0 0 120px rgba(232, 169, 62, 0.1),
-                    inset 0 0 80px rgba(0, 0, 0, 0.6);
-                max-width: 100%;
-                max-height: calc(100vh - 40px);
             }
             
             #adventure-canvas {
                 display: block;
-                image-rendering: auto;
-                max-width: 100%;
-                height: auto;
+                width: 100%;
+                height: 100%;
             }
             
             /* HUD Overlay */
             .adventure-hud {
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                padding: 16px 24px;
+                position: fixed;
+                top: 20px;
+                left: 25px;
+                right: 25px;
+                padding: 0;
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
                 pointer-events: none;
-                background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
+                z-index: 15001;
             }
             
             .adventure-hud > * {
@@ -753,24 +853,26 @@ window.AdventureEngine = {
             .hud-left, .hud-right {
                 display: flex;
                 flex-direction: column;
-                gap: 10px;
+                gap: 12px;
             }
             
             .hud-stat {
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                font-size: 18px;
+                gap: 10px;
+                font-size: 20px;
                 color: #e8e0d5;
-                text-shadow: 0 2px 6px rgba(0,0,0,0.9);
-                background: rgba(0,0,0,0.4);
-                padding: 6px 14px;
-                border-radius: 20px;
-                border: 1px solid rgba(232, 169, 62, 0.3);
+                text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+                background: linear-gradient(135deg, rgba(10,8,6,0.92), rgba(20,15,10,0.92));
+                padding: 10px 20px;
+                border-radius: 25px;
+                border: 2px solid rgba(232, 169, 62, 0.4);
+                backdrop-filter: blur(8px);
+                box-shadow: 0 4px 20px rgba(0,0,0,0.6);
             }
             
             .hud-stat .icon {
-                font-size: 20px;
+                font-size: 24px;
             }
             
             .hud-stat.deaths .value {
@@ -795,31 +897,36 @@ window.AdventureEngine = {
             
             /* Room info bar */
             .room-info-bar {
-                position: absolute;
-                bottom: 0;
-                left: 0;
-                right: 0;
-                padding: 16px 24px;
-                background: linear-gradient(0deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 60%, transparent 100%);
+                position: fixed;
+                bottom: 20px;
+                left: 25px;
+                right: 25px;
+                padding: 16px 28px;
+                background: linear-gradient(135deg, rgba(10,8,6,0.92), rgba(20,15,10,0.92));
+                border: 2px solid rgba(232, 169, 62, 0.4);
+                border-radius: 15px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
+                backdrop-filter: blur(8px);
+                box-shadow: 0 4px 30px rgba(0,0,0,0.6);
+                z-index: 15001;
             }
             
             .room-name {
-                font-size: 22px;
+                font-size: 24px;
                 color: #e8a93e;
-                text-shadow: 0 2px 8px rgba(0,0,0,0.9), 0 0 20px rgba(232, 169, 62, 0.3);
+                text-shadow: 0 2px 10px rgba(0,0,0,0.9), 0 0 25px rgba(232, 169, 62, 0.4);
                 text-transform: uppercase;
-                letter-spacing: 3px;
+                letter-spacing: 4px;
                 font-weight: bold;
             }
             
             .room-hint {
-                font-size: 14px;
-                color: #b8a888;
-                background: rgba(0,0,0,0.4);
-                padding: 8px 16px;
+                font-size: 15px;
+                color: #c8b898;
+                background: rgba(0,0,0,0.5);
+                padding: 10px 20px;
                 border-radius: 20px;
                 border: 1px solid rgba(232, 169, 62, 0.2);
             }
@@ -1719,15 +1826,77 @@ window.AdventureEngine = {
         if (!AdventureState.currentRoomData) return;
         
         this.player.interactTarget = null;
-        const interactables = AdventureState.currentRoomData.interactables || [];
+        const room = AdventureState.currentRoomData;
+        const interactables = room.interactables || [];
+        const playerCenterX = this.player.x + this.player.width / 2;
         
+        // Check regular interactables
         for (const item of interactables) {
             if (item.collected || item.triggered) continue;
             
-            const dx = Math.abs((this.player.x + this.player.width / 2) - item.x);
+            const dx = Math.abs(playerCenterX - item.x);
             if (dx < 50) {
                 this.player.interactTarget = item;
                 break;
+            }
+        }
+        
+        // Check for room door (branching path)
+        if (!this.player.interactTarget && room.hasDoor && room.doorTarget) {
+            const doorX = this.room.width / 2; // Door in center of room
+            const dx = Math.abs(playerCenterX - doorX);
+            if (dx < 60) {
+                this.player.interactTarget = {
+                    type: 'room_door',
+                    targetRoom: room.doorTarget,
+                    x: doorX
+                };
+            }
+        }
+        
+        // Check for platform (elevated secret area)
+        if (!this.player.interactTarget && room.hasPlatform) {
+            const platX = room.platformPosition === 'left' ? 150 : this.room.width - 150;
+            const dx = Math.abs(playerCenterX - platX);
+            if (dx < 60) {
+                const connections = AdventureState.getConnections();
+                if (connections.platform) {
+                    this.player.interactTarget = {
+                        type: 'platform',
+                        targetRoom: connections.platform,
+                        x: platX,
+                        side: room.platformPosition
+                    };
+                }
+            }
+        }
+        
+        // Check for platform return (in platform rooms)
+        if (!this.player.interactTarget && room.isPlatformRoom && room.platformReturn) {
+            const returnX = this.room.width / 2;
+            const dx = Math.abs(playerCenterX - returnX);
+            if (dx < 60) {
+                this.player.interactTarget = {
+                    type: 'platform_return',
+                    targetRoom: room.platformReturn,
+                    x: returnX
+                };
+            }
+        }
+        
+        // Check for branch return (door back)
+        if (!this.player.interactTarget && room.isBranch) {
+            const connections = AdventureState.getConnections();
+            if (connections.door) {
+                const doorX = this.room.width / 2;
+                const dx = Math.abs(playerCenterX - doorX);
+                if (dx < 60) {
+                    this.player.interactTarget = {
+                        type: 'branch_door',
+                        targetRoom: connections.door,
+                        x: doorX
+                    };
+                }
             }
         }
         
@@ -1754,13 +1923,25 @@ window.AdventureEngine = {
                 case 'door':
                     text += 'Enter';
                     break;
+                case 'room_door':
+                    text += '🚪 Enter Secret Path';
+                    break;
+                case 'platform':
+                    text += '⬆ Climb to Hidden Area';
+                    break;
+                case 'platform_return':
+                    text += '⬇ Return to Path';
+                    break;
+                case 'branch_door':
+                    text += '🚪 Exit';
+                    break;
                 default:
                     text += 'Interact';
             }
             
             prompt.textContent = text;
             prompt.style.left = `${item.x}px`;
-            prompt.style.bottom = '100px';
+            prompt.style.bottom = '120px';
             prompt.classList.add('show');
         } else {
             prompt.classList.remove('show');
@@ -1783,6 +1964,26 @@ window.AdventureEngine = {
                 break;
             case 'trap':
                 this.handleTrap(target);
+                break;
+            case 'room_door':
+            case 'branch_door':
+                // Enter a branching path via door
+                if (this.transitionLock) return;
+                this.transitionLock = true;
+                AdventureUI.showMessage('Entering secret passage...');
+                setTimeout(() => {
+                    this.transitionToRoomById(target.targetRoom, 'door');
+                }, 300);
+                break;
+            case 'platform':
+            case 'platform_return':
+                // Climb to hidden area or return
+                if (this.transitionLock) return;
+                this.transitionLock = true;
+                AdventureUI.showMessage(target.type === 'platform' ? 'Climbing up...' : 'Descending...');
+                setTimeout(() => {
+                    this.transitionToRoomById(target.targetRoom, 'platform');
+                }, 300);
                 break;
         }
     },
@@ -1885,13 +2086,24 @@ window.AdventureEngine = {
     },
     
     tryExitLeft() {
-        // Can't go back in adventure mode - just block movement
-        this.player.x = 10;
-        // Only show message once
-        if (!this._leftBlockedMessageShown) {
-            AdventureUI.showMessage("The path behind has collapsed...");
-            this._leftBlockedMessageShown = true;
-            setTimeout(() => { this._leftBlockedMessageShown = false; }, 3000);
+        // Check for left connection in the map
+        const connections = AdventureState.getConnections();
+        
+        if (connections.left) {
+            // Can go back - transition to left room
+            if (this.transitionLock) return;
+            this.transitionLock = true;
+            
+            console.log('[Adventure] Going left to:', connections.left);
+            this.transitionToRoomById(connections.left, 'left');
+        } else {
+            // No left connection - block movement
+            this.player.x = 10;
+            if (!this._leftBlockedMessageShown) {
+                AdventureUI.showMessage("The path behind has collapsed...");
+                this._leftBlockedMessageShown = true;
+                setTimeout(() => { this._leftBlockedMessageShown = false; }, 3000);
+            }
         }
     },
     
@@ -1902,10 +2114,21 @@ window.AdventureEngine = {
         }
         
         const room = AdventureState.currentRoomData;
+        const connections = AdventureState.getConnections();
+        
         if (!room) {
-            console.log('[Adventure] No room data, advancing anyway');
-            this.transitionLock = true;
-            this.advanceRoom();
+            console.log('[Adventure] No room data');
+            return;
+        }
+        
+        // Check if there's a right connection
+        if (!connections.right) {
+            this.player.x = this.room.width - this.player.width - 20;
+            if (!this._rightBlockedMessageShown) {
+                AdventureUI.showMessage("Dead end... look for another path.");
+                this._rightBlockedMessageShown = true;
+                setTimeout(() => { this._rightBlockedMessageShown = false; }, 3000);
+            }
             return;
         }
         
@@ -1925,7 +2148,7 @@ window.AdventureEngine = {
         }
         
         // Advance to next room
-        console.log('[Adventure] Advancing to next room...');
+        console.log('[Adventure] Advancing to:', connections.right);
         this.transitionLock = true;
         this.advanceRoom();
     },
@@ -2103,32 +2326,66 @@ window.AdventureEngine = {
     },
     
     advanceRoom() {
-        const nextRoomIndex = AdventureState.currentRoom + 1;
+        const connections = AdventureState.getConnections();
+        const nextRoomId = connections.right;
         
-        if (nextRoomIndex >= AdventureState.rooms.length) {
-            // Floor complete!
-            this.completeFloor();
+        if (!nextRoomId) {
+            // No right exit - check if boss defeated (floor complete)
+            const room = AdventureState.currentRoomData;
+            if (room && room.type === 'boss' && room.cleared) {
+                this.completeFloor();
+            }
             return;
         }
         
-        // Transition to next room
-        this.transitionToRoom(nextRoomIndex);
+        // Transition to next room by ID
+        this.transitionToRoomById(nextRoomId, 'right');
     },
     
-    transitionToRoom(roomIndex) {
+    transitionToRoomById(roomId, direction = 'right') {
         const transition = document.querySelector('.room-transition');
         if (transition) {
             transition.classList.add('active');
         }
         
         setTimeout(() => {
-            AdventureState.currentRoom = roomIndex;
-            AdventureState.currentRoomData = AdventureState.rooms[roomIndex];
-            AdventureState.currentRoomData.visited = true;
-            AdventureState.totalRoomsCleared++;
+            // Get room from map
+            const targetRoom = AdventureState.getRoomById(roomId);
+            if (!targetRoom) {
+                console.error('[Adventure] Room not found:', roomId);
+                this.transitionLock = false;
+                return;
+            }
             
-            // Reset player position to left side
-            this.player.x = 100;
+            AdventureState.currentRoomId = roomId;
+            AdventureState.currentRoomData = targetRoom;
+            targetRoom.visited = true;
+            
+            // Track visited rooms
+            if (!AdventureState.visitedRooms.includes(roomId)) {
+                AdventureState.visitedRooms.push(roomId);
+                AdventureState.totalRoomsCleared++;
+            }
+            
+            // Update room index for main path display
+            if (AdventureState.floorMap) {
+                const mainPathIndex = AdventureState.floorMap.mainPath.indexOf(roomId);
+                if (mainPathIndex !== -1) {
+                    AdventureState.currentRoom = mainPathIndex;
+                }
+            }
+            
+            // Reset player position based on entry direction
+            if (direction === 'right') {
+                // Entering from left side
+                this.player.x = 100;
+            } else if (direction === 'left') {
+                // Entering from right side
+                this.player.x = this.room.width - this.player.width - 100;
+            } else if (direction === 'door' || direction === 'platform') {
+                // Entering from door/platform - center position
+                this.player.x = this.room.width / 2 - this.player.width / 2;
+            }
             this.player.y = this.room.groundY - this.player.height;
             
             // Update UI
@@ -2149,6 +2406,15 @@ window.AdventureEngine = {
                 }
             }, 300);
         }, 300);
+    },
+    
+    // Legacy function for backwards compatibility
+    transitionToRoom(roomIndex) {
+        // Map to the new system
+        const roomId = AdventureState.floorMap?.mainPath?.[roomIndex];
+        if (roomId) {
+            this.transitionToRoomById(roomId, 'right');
+        }
     },
     
     handleRoomEntry() {
@@ -2223,10 +2489,13 @@ window.AdventureEngine = {
             AdventureState.currentFloor++;
             AdventureState.currentRoom = 0;
             AdventureState.rooms = RoomGenerator.generateFloor(AdventureState.currentFloor);
-            AdventureState.currentRoomData = AdventureState.rooms[0];
+            AdventureState.floorMap = AdventureState.rooms._floorMap;
+            AdventureState.currentRoomId = AdventureState.floorMap.currentRoomId;
+            AdventureState.currentRoomData = AdventureState.floorMap.rooms[AdventureState.currentRoomId];
+            AdventureState.visitedRooms = [AdventureState.currentRoomId];
             
             AdventureUI.showMessage(`Floor ${AdventureState.currentFloor} begins!`);
-            this.player.x = 50;
+            this.player.x = 100;
             AdventureUI.updateHUD();
             AdventureUI.updateRoomInfo();
         }
@@ -2382,14 +2651,144 @@ window.AdventureEngine = {
     drawInteractables() {
         const ctx = this.ctx;
         const room = AdventureState.currentRoomData;
-        if (!room?.interactables) return;
+        if (!room) return;
         
-        for (const item of room.interactables) {
+        const y = this.room.groundY;
+        const time = Date.now();
+        
+        // Draw door (for branching paths)
+        if (room.hasDoor && room.doorTarget) {
+            const doorX = this.room.width / 2;
+            const doorTarget = this.player.interactTarget;
+            const isNear = doorTarget?.type === 'room_door';
+            
+            ctx.save();
+            if (isNear) {
+                ctx.shadowColor = '#e8a93e';
+                ctx.shadowBlur = 25;
+            }
+            
+            // Door frame
+            const doorH = 120;
+            const doorW = 60;
+            ctx.fillStyle = '#3a2a1a';
+            ctx.fillRect(doorX - doorW/2 - 10, y - doorH - 20, doorW + 20, doorH + 20);
+            
+            // Door
+            ctx.fillStyle = isNear ? '#5a4030' : '#4a3020';
+            ctx.fillRect(doorX - doorW/2, y - doorH - 10, doorW, doorH + 10);
+            
+            // Handle
+            ctx.fillStyle = '#e8a93e';
+            ctx.beginPath();
+            ctx.arc(doorX + 15, y - doorH/2, 5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Mysterious glow
+            const glowIntensity = 0.3 + Math.sin(time / 500) * 0.1;
+            ctx.fillStyle = `rgba(232, 169, 62, ${glowIntensity})`;
+            ctx.fillRect(doorX - doorW/2 + 5, y - doorH, doorW - 10, 5);
+            
+            ctx.restore();
+        }
+        
+        // Draw branch door (in branch rooms) - back to main path
+        if (room.isBranch) {
+            const connections = AdventureState.getConnections();
+            if (connections.door) {
+                const doorX = this.room.width / 2;
+                const doorTarget = this.player.interactTarget;
+                const isNear = doorTarget?.type === 'branch_door';
+                
+                ctx.save();
+                if (isNear) {
+                    ctx.shadowColor = '#4ade80';
+                    ctx.shadowBlur = 25;
+                }
+                
+                const doorH = 100;
+                const doorW = 50;
+                ctx.fillStyle = '#2a3a2a';
+                ctx.fillRect(doorX - doorW/2 - 8, y - doorH - 15, doorW + 16, doorH + 15);
+                
+                ctx.fillStyle = isNear ? '#3a5a3a' : '#2a4a2a';
+                ctx.fillRect(doorX - doorW/2, y - doorH - 5, doorW, doorH + 5);
+                
+                ctx.fillStyle = '#4ade80';
+                ctx.font = '24px serif';
+                ctx.fillText('↩', doorX - 10, y - doorH/2);
+                
+                ctx.restore();
+            }
+        }
+        
+        // Draw platform (for vertical paths)
+        if (room.hasPlatform) {
+            const platX = room.platformPosition === 'left' ? 150 : this.room.width - 150;
+            const platTarget = this.player.interactTarget;
+            const isNear = platTarget?.type === 'platform';
+            
+            ctx.save();
+            if (isNear) {
+                ctx.shadowColor = '#60a5fa';
+                ctx.shadowBlur = 20;
+            }
+            
+            // Platform base
+            const platW = 100;
+            const platH = 150;
+            ctx.fillStyle = '#2a2a3a';
+            ctx.fillRect(platX - platW/2, y - platH, platW, platH);
+            
+            // Ladder
+            ctx.strokeStyle = '#8a7a5a';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(platX - 15, y);
+            ctx.lineTo(platX - 15, y - platH + 20);
+            ctx.moveTo(platX + 15, y);
+            ctx.lineTo(platX + 15, y - platH + 20);
+            for (let ry = y - 20; ry > y - platH; ry -= 25) {
+                ctx.moveTo(platX - 15, ry);
+                ctx.lineTo(platX + 15, ry);
+            }
+            ctx.stroke();
+            
+            // Glow arrow
+            ctx.fillStyle = `rgba(96, 165, 250, ${0.5 + Math.sin(time / 400) * 0.3})`;
+            ctx.font = '30px serif';
+            ctx.fillText('⬆', platX - 12, y - platH - 10);
+            
+            ctx.restore();
+        }
+        
+        // Draw platform return (in hidden areas)
+        if (room.isPlatformRoom && room.platformReturn) {
+            const returnX = this.room.width / 2;
+            const returnTarget = this.player.interactTarget;
+            const isNear = returnTarget?.type === 'platform_return';
+            
+            ctx.save();
+            if (isNear) {
+                ctx.shadowColor = '#60a5fa';
+                ctx.shadowBlur = 20;
+            }
+            
+            ctx.fillStyle = `rgba(96, 165, 250, ${0.5 + Math.sin(time / 400) * 0.3})`;
+            ctx.font = '30px serif';
+            ctx.fillText('⬇', returnX - 12, y - 30);
+            
+            ctx.restore();
+        }
+        
+        // Draw regular interactables
+        const interactables = room.interactables || [];
+        for (const item of interactables) {
             if (item.collected || item.triggered) continue;
             
             ctx.save();
             
-            const y = this.room.groundY - 30;
+            const itemY = y - 30;
             const isNear = this.player.interactTarget === item;
             
             // Glow if near
@@ -2402,21 +2801,21 @@ window.AdventureEngine = {
                 case 'dig_spot':
                     ctx.fillStyle = 'rgba(139, 90, 43, 0.6)';
                     ctx.beginPath();
-                    ctx.ellipse(item.x, y + 15, 25, 10, 0, 0, Math.PI * 2);
+                    ctx.ellipse(item.x, itemY + 15, 25, 10, 0, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.fillStyle = '#8B5A2B';
                     ctx.font = '16px serif';
-                    ctx.fillText('⛏', item.x - 8, y + 5);
+                    ctx.fillText('⛏', item.x - 8, itemY + 5);
                     break;
                     
                 case 'chest':
                     ctx.fillStyle = item.locked ? '#8B4513' : '#CD853F';
-                    ctx.fillRect(item.x - 20, y - 15, 40, 30);
+                    ctx.fillRect(item.x - 20, itemY - 15, 40, 30);
                     ctx.fillStyle = '#e8a93e';
-                    ctx.fillRect(item.x - 5, y - 5, 10, 10);
+                    ctx.fillRect(item.x - 5, itemY - 5, 10, 10);
                     if (item.locked) {
                         ctx.fillStyle = '#444';
-                        ctx.fillRect(item.x - 3, y - 3, 6, 6);
+                        ctx.fillRect(item.x - 3, itemY - 3, 6, 6);
                     }
                     break;
                     
@@ -2425,9 +2824,9 @@ window.AdventureEngine = {
                     if (!item.revealed) break;
                     ctx.fillStyle = 'rgba(200, 50, 50, 0.5)';
                     ctx.beginPath();
-                    ctx.moveTo(item.x, y - 20);
-                    ctx.lineTo(item.x - 15, y + 10);
-                    ctx.lineTo(item.x + 15, y + 10);
+                    ctx.moveTo(item.x, itemY - 20);
+                    ctx.lineTo(item.x - 15, itemY + 10);
+                    ctx.lineTo(item.x + 15, itemY + 10);
                     ctx.closePath();
                     ctx.fill();
                     break;
@@ -2551,50 +2950,79 @@ window.AdventureEngine = {
     drawExitIndicators() {
         const ctx = this.ctx;
         const room = AdventureState.currentRoomData;
+        const connections = AdventureState.getConnections();
         
-        // Right exit (forward) - large glowing arrow
-        const rightX = this.room.width - 60;
-        const arrowY = this.room.groundY - 80;
-        
-        // Pulsing glow
         const pulse = (Math.sin(Date.now() / 300) + 1) / 2;
         const glowAlpha = 0.3 + pulse * 0.3;
+        const arrowY = this.room.groundY - 100;
         
-        // Arrow glow
-        ctx.shadowColor = room?.cleared ? '#4ade80' : '#e8a93e';
-        ctx.shadowBlur = 20 + pulse * 10;
+        // RIGHT EXIT
+        if (connections.right) {
+            const rightX = this.room.width - 80;
+            
+            ctx.shadowColor = room?.cleared ? '#4ade80' : '#e8a93e';
+            ctx.shadowBlur = 20 + pulse * 10;
+            
+            ctx.fillStyle = room?.cleared 
+                ? `rgba(74, 222, 128, ${glowAlpha})` 
+                : `rgba(232, 169, 62, ${glowAlpha})`;
+            
+            // Draw arrow pointing right
+            ctx.beginPath();
+            ctx.moveTo(rightX, arrowY - 40);
+            ctx.lineTo(rightX + 55, arrowY);
+            ctx.lineTo(rightX, arrowY + 40);
+            ctx.lineTo(rightX + 20, arrowY);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.strokeStyle = room?.cleared ? '#4ade80' : '#e8a93e';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+            
+            ctx.fillStyle = room?.cleared ? '#4ade80' : '#e8a93e';
+            ctx.font = 'bold 14px "Cinzel", serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(room?.cleared ? 'GO →' : '⚔ →', rightX + 20, arrowY + 65);
+        }
         
-        ctx.fillStyle = room?.cleared 
-            ? `rgba(74, 222, 128, ${glowAlpha})` 
-            : `rgba(232, 169, 62, ${glowAlpha})`;
-        
-        // Draw arrow
-        ctx.beginPath();
-        ctx.moveTo(rightX, arrowY - 40);
-        ctx.lineTo(rightX + 50, arrowY);
-        ctx.lineTo(rightX, arrowY + 40);
-        ctx.lineTo(rightX + 15, arrowY);
-        ctx.closePath();
-        ctx.fill();
-        
-        // Arrow outline
-        ctx.strokeStyle = room?.cleared ? '#4ade80' : '#e8a93e';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        
-        ctx.shadowBlur = 0;
-        
-        // "NEXT" text
-        ctx.fillStyle = room?.cleared ? '#4ade80' : '#e8a93e';
-        ctx.font = 'bold 12px "Cinzel", serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(room?.cleared ? 'NEXT →' : 'GO →', rightX + 10, arrowY + 60);
-        
-        // Left exit indicator (blocked) - X mark
-        ctx.fillStyle = 'rgba(150, 80, 80, 0.5)';
-        ctx.font = 'bold 32px serif';
-        ctx.textAlign = 'left';
-        ctx.fillText('✕', 15, this.room.groundY - 50);
+        // LEFT EXIT (if available)
+        if (connections.left) {
+            const leftX = 80;
+            
+            ctx.shadowColor = '#60a5fa';
+            ctx.shadowBlur = 15 + pulse * 8;
+            
+            ctx.fillStyle = `rgba(96, 165, 250, ${glowAlpha * 0.8})`;
+            
+            // Draw arrow pointing left
+            ctx.beginPath();
+            ctx.moveTo(leftX, arrowY - 35);
+            ctx.lineTo(leftX - 50, arrowY);
+            ctx.lineTo(leftX, arrowY + 35);
+            ctx.lineTo(leftX - 18, arrowY);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.strokeStyle = '#60a5fa';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+            
+            ctx.fillStyle = '#60a5fa';
+            ctx.font = 'bold 14px "Cinzel", serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('← BACK', leftX - 18, arrowY + 60);
+        } else {
+            // Blocked left
+            ctx.fillStyle = 'rgba(100, 60, 60, 0.4)';
+            ctx.font = 'bold 40px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('✕', 40, arrowY + 15);
+        }
         
         ctx.textAlign = 'left'; // Reset
     }
@@ -2935,10 +3363,13 @@ window.AdventureUI = {
             AdventureState.relics.push(relic);
         }
         
-        // Generate first floor
+        // Generate first floor with branching paths
         AdventureState.rooms = RoomGenerator.generateFloor(1);
-        AdventureState.currentRoomData = AdventureState.rooms[0];
+        AdventureState.floorMap = AdventureState.rooms._floorMap;
+        AdventureState.currentRoomId = AdventureState.floorMap.currentRoomId;
+        AdventureState.currentRoomData = AdventureState.floorMap.rooms[AdventureState.currentRoomId];
         AdventureState.currentRoomData.visited = true;
+        AdventureState.visitedRooms = [AdventureState.currentRoomId];
         
         // Show adventure screen
         document.getElementById('adventure-screen').classList.add('open');
@@ -2965,17 +3396,40 @@ window.AdventureUI = {
         const room = AdventureState.currentRoomData;
         if (!room) return;
         
-        document.getElementById('adv-room-name').textContent = room.name;
+        // Room name with branch indicator
+        let roomName = room.name;
+        if (room.isBranch) {
+            roomName = '🔮 ' + roomName + ' (Secret)';
+        } else if (room.isPlatformRoom) {
+            roomName = '⬆ ' + roomName + ' (Hidden)';
+        }
+        document.getElementById('adv-room-name').textContent = roomName;
         
-        let hint = '→ Move right to continue';
+        // Build hint based on room type and available exits
+        const connections = AdventureState.getConnections();
+        let hint = '';
+        
         if (room.encounter && !room.cleared) {
             hint = '⚔ Battle awaits...';
-        } else if (room.type === 'shop') {
+        } else if (room.type === 'shop' && !room.shopVisited) {
             hint = '💰 Browse the wares';
         } else if (room.type === 'rest') {
             hint = '🏕️ Rest and recover';
         } else if (room.type === 'treasure') {
             hint = '✨ Search for treasure';
+        } else if (room.type === 'event' && !room.cleared) {
+            hint = '❓ Something unusual awaits...';
+        } else {
+            // Show available paths
+            const paths = [];
+            if (connections.left) paths.push('← Back');
+            if (connections.right) paths.push('→ Forward');
+            if (room.hasDoor) paths.push('[E] Door');
+            if (room.hasPlatform) paths.push('[E] Climb');
+            if (room.isBranch && connections.door) paths.push('[E] Exit');
+            if (room.isPlatformRoom) paths.push('[E] Descend');
+            
+            hint = paths.length > 0 ? paths.join(' • ') : '→ Continue';
         }
         
         document.getElementById('adv-room-hint').textContent = hint;
