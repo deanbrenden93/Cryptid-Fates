@@ -264,12 +264,13 @@ window.StarterDecks = {
     }
 };
 
-// ==================== FLOOR MAP GENERATOR ====================
+// ==================== CORRIDOR MAP GENERATOR ====================
 
 window.FloorMapGenerator = {
-    // Room types and their properties
-    roomTypes: {
-        start: { name: 'Awakening Chamber', color: '#4a3a6a', icon: '🌀' },
+    // Point of interest types
+    poiTypes: {
+        empty: { name: 'Path', color: '#4a4a5a', icon: '' },
+        start: { name: 'Awakening', color: '#4a3a6a', icon: '🌀' },
         battle: { name: 'Combat', color: '#6b1c1c', icon: '⚔️' },
         elite: { name: 'Elite Battle', color: '#8b2c2c', icon: '💀' },
         treasure: { name: 'Treasure', color: '#8b7d3a', icon: '✨' },
@@ -279,133 +280,208 @@ window.FloorMapGenerator = {
         boss: { name: 'Floor Guardian', color: '#4a1a1a', icon: '👁️' }
     },
     
-    // Rooms needed before boss appears
-    roomsUntilBoss: 8,
+    // Map settings
+    corridorWidth: 5,
+    mapLength: 80,      // Length of main path in tiles
+    mapPadding: 10,     // Extra space around corridors
     
-    // Initialize a new floor with just the start room
+    // Tile states
+    TILE_VOID: 0,       // Not part of the path (always wall)
+    TILE_FLOOR: 1,      // Walkable floor
+    TILE_RISING: 2,     // Currently animating upward
+    TILE_RISEN: 3,      // Fully risen wall
+    
+    // Generate a corridor-based map
     generateFloor(floorNum) {
-        const rooms = {};
+        // Calculate map dimensions based on corridor path
+        const width = this.corridorWidth + this.mapPadding * 2 + 20; // Extra width for turns
+        const height = this.mapLength + this.mapPadding * 2;
         
-        // Create start room at origin
-        rooms['0,0'] = {
-            id: '0,0',
-            type: 'start',
-            x: 0,
-            y: 0,
-            cleared: true, // Start is always cleared
-            exits: {},
-            exitsGenerated: false
-        };
-        
-        return { 
-            rooms, 
-            startRoom: '0,0', 
-            floorNum,
-            roomsCleared: 0,
-            bossAvailable: false
-        };
-    },
-    
-    // Generate exits for a room when player enters it
-    generateExitsForRoom(roomId) {
-        const room = AdventureState.floorMap.rooms[roomId];
-        if (!room || room.exitsGenerated) return;
-        
-        room.exitsGenerated = true;
-        room.exits = {};
-        
-        const [x, y] = roomId.split(',').map(Number);
-        const roomsCleared = AdventureState.floorMap.roomsCleared;
-        const isBossTime = roomsCleared >= this.roomsUntilBoss;
-        
-        // Boss room has no exits
-        if (room.type === 'boss') {
-            return;
-        }
-        
-        // If boss time, only offer one path to boss
-        if (isBossTime && !AdventureState.floorMap.bossAvailable) {
-            AdventureState.floorMap.bossAvailable = true;
-            const bossDir = this.pickRandomDirections(1)[0];
-            const bossCoords = this.getAdjacentCoords(x, y, bossDir);
-            const bossId = `${bossCoords.x},${bossCoords.y}`;
-            
-            // Create boss room
-            AdventureState.floorMap.rooms[bossId] = {
-                id: bossId,
-                type: 'boss',
-                x: bossCoords.x,
-                y: bossCoords.y,
-                cleared: false,
-                exits: {},
-                exitsGenerated: true
-            };
-            
-            room.exits[bossDir] = bossId;
-            return;
-        }
-        
-        // Pick 2-3 random directions (north, east, west - not south/back)
-        const numExits = Math.random() < 0.4 ? 2 : 3;
-        const directions = this.pickRandomDirections(numExits);
-        
-        for (const dir of directions) {
-            const coords = this.getAdjacentCoords(x, y, dir);
-            const targetId = `${coords.x},${coords.y}`;
-            
-            // Check if room already exists at those coordinates
-            if (!AdventureState.floorMap.rooms[targetId]) {
-                // Generate a new room
-                const type = this.pickRoomType(roomsCleared, this.roomsUntilBoss, AdventureState.currentFloor);
-                AdventureState.floorMap.rooms[targetId] = {
-                    id: targetId,
-                    type: type,
-                    x: coords.x,
-                    y: coords.y,
-                    cleared: false,
-                    exits: {},
-                    exitsGenerated: false
+        // Initialize tile grid (all void)
+        const tiles = [];
+        for (let y = 0; y < height; y++) {
+            tiles[y] = [];
+            for (let x = 0; x < width; x++) {
+                tiles[y][x] = {
+                    state: this.TILE_VOID,
+                    riseProgress: 0,      // 0 to 1 for animation
+                    visitedOrder: -1,     // When player visited (-1 = never)
+                    poi: null             // Point of interest on this tile
                 };
             }
-            
-            room.exits[dir] = targetId;
         }
-    },
-    
-    // Pick random directions excluding south (backward)
-    pickRandomDirections(count) {
-        const available = ['north', 'east', 'west'];
-        const shuffled = [...available].sort(() => Math.random() - 0.5);
-        return shuffled.slice(0, Math.min(count, available.length));
-    },
-    
-    // Get coordinates for adjacent room
-    getAdjacentCoords(x, y, direction) {
-        switch(direction) {
-            case 'north': return { x: x, y: y - 1 };
-            case 'south': return { x: x, y: y + 1 };
-            case 'east': return { x: x + 1, y: y };
-            case 'west': return { x: x - 1, y: y };
-            default: return { x, y };
-        }
-    },
-    
-    // Get opposite direction
-    getOppositeDirection(dir) {
-        const opposites = { north: 'south', south: 'north', east: 'west', west: 'east' };
-        return opposites[dir];
-    },
-    
-    pickRoomType(roomsCleared, roomsUntilBoss, floorNum) {
-        // Closer to boss = higher elite chance
-        const progress = roomsCleared / roomsUntilBoss;
         
-        if (progress > 0.7) {
+        // Generate the winding corridor path
+        const path = this.generateCorridorPath(width, height);
+        
+        // Carve the corridor into the tile grid
+        this.carveCorridorPath(tiles, path, width, height);
+        
+        // Place points of interest along the path
+        const pois = this.placePointsOfInterest(tiles, path, floorNum);
+        
+        // Find start and boss positions
+        const startPos = { x: path[0].x, y: path[0].y };
+        const bossPos = { x: path[path.length - 1].x, y: path[path.length - 1].y };
+        
+        return {
+            tiles,
+            width,
+            height,
+            path,
+            pois,
+            startPos,
+            bossPos,
+            floorNum,
+            visitCounter: 0
+        };
+    },
+    
+    // Generate the main corridor path (series of waypoints)
+    generateCorridorPath(mapWidth, mapHeight) {
+        const path = [];
+        const centerX = Math.floor(mapWidth / 2);
+        
+        // Start at bottom center
+        let x = centerX;
+        let y = mapHeight - this.mapPadding - 3;
+        path.push({ x, y });
+        
+        // Wind upward with occasional turns
+        const targetY = this.mapPadding + 3;
+        
+        while (y > targetY) {
+            // Decide next segment: mostly forward, sometimes turn
+            const segmentLength = 8 + Math.floor(Math.random() * 12);
+            const turnDirection = Math.random() < 0.5 ? -1 : 1;
+            const turnAmount = Math.random() < 0.3 ? (3 + Math.floor(Math.random() * 5)) * turnDirection : 0;
+            
+            // Move forward
+            y = Math.max(targetY, y - segmentLength);
+            path.push({ x, y });
+            
+            // Turn if we decided to and have room
+            if (turnAmount !== 0) {
+                const newX = Math.max(this.mapPadding + 3, Math.min(mapWidth - this.mapPadding - 3, x + turnAmount));
+                if (newX !== x) {
+                    x = newX;
+                    path.push({ x, y });
+                }
+            }
+        }
+        
+        // Ensure we end at the top
+        if (y !== targetY) {
+            path.push({ x, y: targetY });
+        }
+        
+        return path;
+    },
+    
+    // Carve the corridor path into tiles
+    carveCorridorPath(tiles, path, mapWidth, mapHeight) {
+        const halfWidth = Math.floor(this.corridorWidth / 2);
+        
+        // For each segment between waypoints, carve a corridor
+        for (let i = 0; i < path.length - 1; i++) {
+            const from = path[i];
+            const to = path[i + 1];
+            
+            // Carve from 'from' to 'to'
+            const dx = Math.sign(to.x - from.x);
+            const dy = Math.sign(to.y - from.y);
+            
+            let cx = from.x;
+            let cy = from.y;
+            
+            while (cx !== to.x || cy !== to.y) {
+                // Carve a corridor-width area centered on (cx, cy)
+                for (let ox = -halfWidth; ox <= halfWidth; ox++) {
+                    for (let oy = -halfWidth; oy <= halfWidth; oy++) {
+                        const tx = cx + ox;
+                        const ty = cy + oy;
+                        if (tx >= 0 && tx < mapWidth && ty >= 0 && ty < mapHeight) {
+                            tiles[ty][tx].state = this.TILE_FLOOR;
+                        }
+                    }
+                }
+                
+                // Move toward target
+                if (cx !== to.x) cx += dx;
+                else if (cy !== to.y) cy += dy;
+            }
+        }
+        
+        // Carve the final waypoint
+        const last = path[path.length - 1];
+        for (let ox = -halfWidth; ox <= halfWidth; ox++) {
+            for (let oy = -halfWidth; oy <= halfWidth; oy++) {
+                const tx = last.x + ox;
+                const ty = last.y + oy;
+                if (tx >= 0 && tx < mapWidth && ty >= 0 && ty < mapHeight) {
+                    tiles[ty][tx].state = this.TILE_FLOOR;
+                }
+            }
+        }
+    },
+    
+    // Place points of interest along the path
+    placePointsOfInterest(tiles, path, floorNum) {
+        const pois = [];
+        const pathLength = path.length;
+        
+        // Start position (first waypoint)
+        const startPos = path[0];
+        tiles[startPos.y][startPos.x].poi = { type: 'start', id: 'start', cleared: true };
+        pois.push({ x: startPos.x, y: startPos.y, type: 'start', id: 'start', cleared: true });
+        
+        // Boss position (last waypoint)
+        const bossPos = path[pathLength - 1];
+        tiles[bossPos.y][bossPos.x].poi = { type: 'boss', id: 'boss', cleared: false };
+        pois.push({ x: bossPos.x, y: bossPos.y, type: 'boss', id: 'boss', cleared: false });
+        
+        // Distribute encounters along the path
+        const numEncounters = 6 + Math.floor(Math.random() * 4); // 6-9 encounters
+        const spacing = Math.floor((pathLength - 2) / (numEncounters + 1));
+        
+        for (let i = 1; i <= numEncounters; i++) {
+            const pathIndex = Math.min(pathLength - 2, i * spacing);
+            const waypoint = path[pathIndex];
+            
+            // Offset slightly from center of corridor
+            const offsetX = Math.floor(Math.random() * 3) - 1;
+            const offsetY = Math.floor(Math.random() * 3) - 1;
+            const poiX = waypoint.x + offsetX;
+            const poiY = waypoint.y + offsetY;
+            
+            // Make sure it's on a floor tile
+            if (tiles[poiY] && tiles[poiY][poiX] && tiles[poiY][poiX].state === this.TILE_FLOOR) {
+                const type = this.pickPOIType(i, numEncounters, floorNum);
+                const poi = { 
+                    type, 
+                    id: `poi_${i}`, 
+                    cleared: false,
+                    x: poiX,
+                    y: poiY
+                };
+                tiles[poiY][poiX].poi = poi;
+                pois.push(poi);
+            }
+        }
+        
+        return pois;
+    },
+    
+    // Pick a POI type based on progress
+    pickPOIType(index, total, floorNum) {
+        const progress = index / total;
+        
+        // Later in the path = harder encounters
+        if (progress > 0.8) {
             const roll = Math.random();
-            if (roll < 0.3) return 'elite';
-            if (roll < 0.5) return 'battle';
-            if (roll < 0.7) return 'rest';
-            return 'treasure';
+            if (roll < 0.4) return 'elite';
+            if (roll < 0.6) return 'battle';
+            return 'rest';
         }
         
         // Normal distribution
@@ -414,13 +490,12 @@ window.FloorMapGenerator = {
         if (roll < 0.45) return 'event';
         if (roll < 0.60) return 'treasure';
         if (roll < 0.75) return 'shop';
-        if (roll < 0.88) return 'rest';
-        if (roll < 0.95) return 'elite';
-        return 'battle';
+        if (roll < 0.90) return 'rest';
+        return 'elite';
     },
     
-    getRoomInfo(type) {
-        return this.roomTypes[type] || this.roomTypes.battle;
+    getPOIInfo(type) {
+        return this.poiTypes[type] || this.poiTypes.empty;
     }
 };
 
@@ -436,9 +511,8 @@ window.IsometricEngine = {
     // Isometric settings
     tileWidth: 64,
     tileHeight: 32,
-    tileDepth: 12,  // Height of tile sides for 3D effect
-    roomWidth: 11,  // tiles (smaller for better visibility)
-    roomHeight: 11, // tiles
+    tileDepth: 12,      // Height of normal tile sides
+    maxWallHeight: 48,  // Height of fully risen walls
     
     // Camera
     camera: {
@@ -451,31 +525,38 @@ window.IsometricEngine = {
     
     // Player (grid-based movement like Pokemon)
     player: {
-        tileX: 5,      // Current tile position (integer)
+        tileX: 5,
         tileY: 5,
-        visualX: 5,    // Visual position for smooth animation
+        visualX: 5,
         visualY: 5,
         targetTileX: 5,
         targetTileY: 5,
-        moveProgress: 1, // 0 to 1, 1 = arrived
-        moveSpeed: 5,    // Tiles per second
-        facing: 'south',
+        moveProgress: 1,
+        moveSpeed: 5,
+        facing: 'north',
         isMoving: false,
-        canMove: true,   // False while moving between tiles
-        sprite: '🚶'
+        canMove: true,
+        sprite: '🚶',
+        worldX: 0,
+        worldY: 0
     },
     
-    // Interactables in current room
+    // Trail tracking for rising walls
+    playerTrail: [],           // Array of {x, y, time} visited tiles
+    wallRiseDistance: 8,       // How many tiles behind player before walls rise
+    wallRiseSpeed: 2.0,        // Rise animation speed (progress per second)
+    
+    // Dust particles for rising walls
+    dustParticles: [],
+    
+    // Interactables (POIs on the map)
     interactables: [],
     nearbyInteractable: null,
     
     // Lighting
     lights: [],
-    ambientLight: 0.6,  // Very generous ambient light for visibility
+    ambientLight: 0.6,
     playerLightRadius: 350,
-    
-    // Room exits (directions player can leave)
-    exits: [],
     
     // Input state
     keys: {
@@ -528,8 +609,9 @@ window.IsometricEngine = {
     },
     
     centerCamera() {
-        const centerTile = Math.floor(this.roomWidth / 2);
-        const pos = this.tileToScreen(centerTile, centerTile);
+        // Center on player's current position
+        const p = this.player;
+        const pos = this.tileToScreen(p.visualX, p.visualY);
         this.camera.x = pos.x - window.innerWidth / 2;
         this.camera.y = pos.y - window.innerHeight / 2 + 50;
         this.camera.targetX = this.camera.x;
@@ -658,14 +740,132 @@ window.IsometricEngine = {
         }
     },
     
-    isValidTile(x, y) {
-        return x >= 0 && x < this.roomWidth && y >= 0 && y < this.roomHeight;
+    // Check if a tile is walkable (floor and not risen)
+    isWalkableTile(x, y) {
+        const map = AdventureState.floorMap;
+        
+        // If no corridor map (deck/relic selection), use simple room bounds
+        if (!map || !map.tiles) {
+            return x >= 0 && x < 11 && y >= 0 && y < 11;
+        }
+        
+        if (y < 0 || y >= map.height || x < 0 || x >= map.width) return false;
+        
+        const tile = map.tiles[y][x];
+        // Can walk on FLOOR tiles, not VOID, RISING, or RISEN
+        return tile.state === FloorMapGenerator.TILE_FLOOR;
+    },
+    
+    // Add tile to player trail for wall rising
+    addToTrail(x, y) {
+        const map = AdventureState.floorMap;
+        if (!map || !map.tiles) return;
+        
+        // Mark this tile as visited
+        map.visitCounter++;
+        map.tiles[y][x].visitedOrder = map.visitCounter;
+        
+        // Add to trail array
+        this.playerTrail.push({ x, y, order: map.visitCounter });
+        
+        // Trigger walls to rise for tiles far enough behind
+        this.triggerWallRising();
+    },
+    
+    // Start rising walls for tiles far behind the player
+    triggerWallRising() {
+        const map = AdventureState.floorMap;
+        if (!map) return;
+        
+        const trailLength = this.playerTrail.length;
+        
+        // Tiles more than wallRiseDistance steps behind start rising
+        for (let i = 0; i < trailLength - this.wallRiseDistance; i++) {
+            const trailTile = this.playerTrail[i];
+            const tile = map.tiles[trailTile.y]?.[trailTile.x];
+            
+            if (tile && tile.state === FloorMapGenerator.TILE_FLOOR) {
+                tile.state = FloorMapGenerator.TILE_RISING;
+                tile.riseProgress = 0;
+                
+                // Spawn dust particles
+                this.spawnDustParticles(trailTile.x, trailTile.y);
+            }
+        }
+    },
+    
+    // Update tiles that are rising
+    updateRisingWalls(dt) {
+        const map = AdventureState.floorMap;
+        if (!map || !map.tiles) return;
+        
+        for (let y = 0; y < map.height; y++) {
+            for (let x = 0; x < map.width; x++) {
+                const tile = map.tiles[y][x];
+                
+                if (tile.state === FloorMapGenerator.TILE_RISING) {
+                    tile.riseProgress += this.wallRiseSpeed * dt;
+                    
+                    if (tile.riseProgress >= 1) {
+                        tile.riseProgress = 1;
+                        tile.state = FloorMapGenerator.TILE_RISEN;
+                    }
+                }
+            }
+        }
+    },
+    
+    // Spawn dust particles when a wall starts rising
+    spawnDustParticles(tileX, tileY) {
+        const screenPos = this.tileToScreen(tileX, tileY);
+        const numParticles = 5 + Math.floor(Math.random() * 5);
+        
+        for (let i = 0; i < numParticles; i++) {
+            this.dustParticles.push({
+                x: screenPos.x + (Math.random() - 0.5) * this.tileWidth,
+                y: screenPos.y + (Math.random() - 0.5) * this.tileHeight,
+                vx: (Math.random() - 0.5) * 30,
+                vy: -20 - Math.random() * 40,
+                life: 1.0,
+                size: 2 + Math.random() * 4
+            });
+        }
+    },
+    
+    // Update dust particles
+    updateDustParticles(dt) {
+        for (let i = this.dustParticles.length - 1; i >= 0; i--) {
+            const p = this.dustParticles[i];
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vy += 50 * dt; // Gravity
+            p.life -= dt * 0.8;
+            
+            if (p.life <= 0) {
+                this.dustParticles.splice(i, 1);
+            }
+        }
+    },
+    
+    // Check if player stepped on a POI
+    checkPOIInteraction(x, y) {
+        const map = AdventureState.floorMap;
+        if (!map || !map.tiles) return;
+        
+        const tile = map.tiles[y]?.[x];
+        if (tile && tile.poi && !tile.poi.cleared) {
+            // Found a POI - trigger interaction
+            const poi = tile.poi;
+            console.log(`[Adventure] Reached POI: ${poi.type}`);
+            
+            // Handle different POI types
+            AdventureUI.handlePOIEncounter(poi);
+        }
     },
     
     // ==================== INTERACTION ====================
     
     tryInteract() {
-        // Block interaction during dialogue or non-interactive phases
         const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
         if (blockedPhases.includes(AdventureState.phase)) return;
         
@@ -680,10 +880,21 @@ window.IsometricEngine = {
     checkNearbyInteractables() {
         const px = this.player.tileX;
         const py = this.player.tileY;
+        const map = AdventureState.floorMap;
         
         let closest = null;
         let closestDist = 2.0; // Interaction range in tiles
         
+        // Corridor mode - check POIs on tiles
+        if (map && map.tiles) {
+            const tile = map.tiles[py]?.[px];
+            if (tile && tile.poi && !tile.poi.cleared) {
+                this.nearbyInteractable = tile.poi;
+                return;
+            }
+        }
+        
+        // Check interactables array (for deck/relic selection, doors, etc.)
         for (const obj of this.interactables) {
             const dx = obj.x - px;
             const dy = obj.y - py;
@@ -719,7 +930,14 @@ window.IsometricEngine = {
         }
         console.log('[Isometric] Starting engine...');
         console.log('[Isometric] Canvas:', this.canvas?.width, 'x', this.canvas?.height);
-        console.log('[Isometric] Player at:', this.player.x, this.player.y);
+        
+        // Ensure world position is computed before first render
+        const p = this.player;
+        const worldPos = this.tileToScreen(p.visualX, p.visualY);
+        p.worldX = worldPos.x;
+        p.worldY = worldPos.y;
+        
+        console.log('[Isometric] Player at tile:', p.tileX, p.tileY, 'world:', p.worldX, p.worldY);
         console.log('[Isometric] Interactables:', this.interactables.length);
         console.log('[Isometric] Camera:', this.camera.x, this.camera.y);
         
@@ -754,28 +972,28 @@ window.IsometricEngine = {
     
     update(dt) {
         const p = this.player;
+        const map = AdventureState.floorMap;
         
         // Block movement during dialogue or non-interactive phases
         const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
         const canAcceptInput = !blockedPhases.includes(AdventureState.phase);
         
-        // Grid-based movement (Pokemon style) - only accept input when not moving and in interactive phase
+        // Grid-based movement (Pokemon style)
         if (canAcceptInput && p.canMove && (this.keys.up || this.keys.down || this.keys.left || this.keys.right)) {
             let dx = 0, dy = 0;
             
-            // Isometric direction mapping (visual up = tile northwest, etc.)
+            // Isometric direction mapping
             if (this.keys.up) { dx = -1; dy = -1; p.facing = 'north'; }
             else if (this.keys.down) { dx = 1; dy = 1; p.facing = 'south'; }
             else if (this.keys.left) { dx = -1; dy = 1; p.facing = 'west'; }
             else if (this.keys.right) { dx = 1; dy = -1; p.facing = 'east'; }
             
-            // Only move one direction at a time (no diagonals in Pokemon style)
             if (dx !== 0 || dy !== 0) {
                 const newX = p.tileX + dx;
                 const newY = p.tileY + dy;
                 
-                // Check bounds
-                if (this.isValidTile(newX, newY)) {
+                // Check if tile is walkable (floor, not risen)
+                if (this.isWalkableTile(newX, newY)) {
                     p.targetTileX = newX;
                     p.targetTileY = newY;
                     p.moveProgress = 0;
@@ -799,11 +1017,26 @@ window.IsometricEngine = {
                 p.visualY = p.tileY;
                 p.isMoving = false;
                 p.canMove = true;
+                
+                // Only do corridor stuff if we have a corridor map
+                if (map && map.tiles) {
+                    // Add to player trail for wall rising
+                    this.addToTrail(p.tileX, p.tileY);
+                    
+                    // Check for POI interaction
+                    this.checkPOIInteraction(p.tileX, p.tileY);
+                }
             } else {
                 // Lerp visual position
                 p.visualX = p.tileX + (p.targetTileX - p.tileX) * p.moveProgress;
                 p.visualY = p.tileY + (p.targetTileY - p.tileY) * p.moveProgress;
             }
+        }
+        
+        // Update rising walls and dust particles (only in corridor mode)
+        if (map && map.tiles) {
+            this.updateRisingWalls(dt);
+            this.updateDustParticles(dt);
         }
         
         // Update world position from visual tile position
@@ -881,6 +1114,9 @@ window.IsometricEngine = {
             }
         }
         
+        // Draw dust particles
+        this.renderDustParticles();
+        
         ctx.restore();
         
         // Apply lighting overlay
@@ -894,26 +1130,85 @@ window.IsometricEngine = {
         // Debug: Draw frame indicator (p already defined above)
         ctx.fillStyle = 'rgba(255, 255, 0, 0.7)';
         ctx.font = '11px monospace';
-        ctx.fillText(`Tile: ${p.tileX},${p.tileY} | Phase: ${AdventureState.phase}`, 10, h - 10);
+        ctx.fillText(`Tile: ${p.tileX},${p.tileY} | Phase: ${AdventureState.phase} | Interactables: ${this.interactables.length} | Near: ${this.nearbyInteractable ? 'YES' : 'NO'}`, 10, h - 10);
     },
     
     renderFloor() {
         const ctx = this.ctx;
-        const depth = this.tileDepth;
+        const map = AdventureState.floorMap;
+        
+        // If no corridor map, render simple room (for deck/relic selection)
+        if (!map || !map.tiles) {
+            this.renderSimpleRoom();
+            return;
+        }
+        
+        const baseDepth = this.tileDepth;
+        const maxHeight = this.maxWallHeight;
+        
+        // Calculate visible tile range based on camera
+        const screenCenterX = this.camera.x + window.innerWidth / 2;
+        const screenCenterY = this.camera.y + window.innerHeight / 2;
         
         // Draw tiles back to front for proper depth sorting
-        for (let y = 0; y < this.roomHeight; y++) {
-            for (let x = 0; x < this.roomWidth; x++) {
+        for (let y = 0; y < map.height; y++) {
+            for (let x = 0; x < map.width; x++) {
+                const tile = map.tiles[y][x];
                 const pos = this.tileToScreen(x, y);
                 
-                // Color variations for checkerboard
-                const isLight = (x + y) % 2 === 0;
-                const topColor = isLight ? '#3a3a4d' : '#2d2d3d';
-                const leftColor = isLight ? '#252535' : '#1e1e2a';
-                const rightColor = isLight ? '#2f2f42' : '#252532';
-                const borderColor = '#4a4a5d';
+                // Skip if tile is too far from camera (culling)
+                if (Math.abs(pos.x - screenCenterX) > window.innerWidth && 
+                    Math.abs(pos.y - screenCenterY) > window.innerHeight) {
+                    continue;
+                }
                 
-                // Draw left side face (visible from our view angle)
+                // Determine tile appearance based on state
+                let depth = baseDepth;
+                let topColor, leftColor, rightColor, borderColor;
+                const isLight = (x + y) % 2 === 0;
+                
+                switch (tile.state) {
+                    case FloorMapGenerator.TILE_VOID:
+                        // Void tiles are tall dark walls
+                        depth = maxHeight;
+                        topColor = '#15151d';
+                        leftColor = '#0a0a10';
+                        rightColor = '#101018';
+                        borderColor = '#1a1a24';
+                        break;
+                        
+                    case FloorMapGenerator.TILE_FLOOR:
+                        // Normal walkable floor
+                        topColor = isLight ? '#3a3a4d' : '#2d2d3d';
+                        leftColor = isLight ? '#252535' : '#1e1e2a';
+                        rightColor = isLight ? '#2f2f42' : '#252532';
+                        borderColor = '#4a4a5d';
+                        break;
+                        
+                    case FloorMapGenerator.TILE_RISING:
+                        // Animating upward
+                        depth = baseDepth + (maxHeight - baseDepth) * tile.riseProgress;
+                        const riseFactor = tile.riseProgress;
+                        topColor = this.lerpColor('#3a3a4d', '#15151d', riseFactor);
+                        leftColor = this.lerpColor('#252535', '#0a0a10', riseFactor);
+                        rightColor = this.lerpColor('#2f2f42', '#101018', riseFactor);
+                        borderColor = this.lerpColor('#4a4a5d', '#1a1a24', riseFactor);
+                        break;
+                        
+                    case FloorMapGenerator.TILE_RISEN:
+                        // Fully risen wall
+                        depth = maxHeight;
+                        topColor = '#15151d';
+                        leftColor = '#0a0a10';
+                        rightColor = '#101018';
+                        borderColor = '#1a1a24';
+                        break;
+                        
+                    default:
+                        continue;
+                }
+                
+                // Draw left side face
                 ctx.beginPath();
                 ctx.moveTo(pos.x - this.tileWidth / 2, pos.y);
                 ctx.lineTo(pos.x, pos.y + this.tileHeight / 2);
@@ -933,7 +1228,91 @@ window.IsometricEngine = {
                 ctx.fillStyle = rightColor;
                 ctx.fill();
                 
-                // Draw top face (diamond)
+                // Draw top face (diamond) - offset by height
+                const topY = pos.y - depth + baseDepth;
+                ctx.beginPath();
+                ctx.moveTo(pos.x, topY - this.tileHeight / 2);
+                ctx.lineTo(pos.x + this.tileWidth / 2, topY);
+                ctx.lineTo(pos.x, topY + this.tileHeight / 2);
+                ctx.lineTo(pos.x - this.tileWidth / 2, topY);
+                ctx.closePath();
+                ctx.fillStyle = topColor;
+                ctx.fill();
+                
+                ctx.strokeStyle = borderColor;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Draw POI icon if present
+                if (tile.poi && tile.state === FloorMapGenerator.TILE_FLOOR) {
+                    const poiInfo = FloorMapGenerator.getPOIInfo(tile.poi.type);
+                    if (poiInfo.icon && !tile.poi.cleared) {
+                        ctx.font = '24px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(poiInfo.icon, pos.x, topY - 10);
+                    }
+                }
+            }
+        }
+    },
+    
+    // Lerp between two hex colors
+    lerpColor(color1, color2, t) {
+        const c1 = this.hexToRgb(color1);
+        const c2 = this.hexToRgb(color2);
+        const r = Math.round(c1.r + (c2.r - c1.r) * t);
+        const g = Math.round(c1.g + (c2.g - c1.g) * t);
+        const b = Math.round(c1.b + (c2.b - c1.b) * t);
+        return `rgb(${r},${g},${b})`;
+    },
+    
+    hexToRgb(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : { r: 0, g: 0, b: 0 };
+    },
+    
+    // Render a simple 11x11 room for deck/relic selection
+    renderSimpleRoom() {
+        const ctx = this.ctx;
+        const depth = this.tileDepth;
+        const roomSize = 11;
+        
+        for (let y = 0; y < roomSize; y++) {
+            for (let x = 0; x < roomSize; x++) {
+                const pos = this.tileToScreen(x, y);
+                
+                const isLight = (x + y) % 2 === 0;
+                const topColor = isLight ? '#3a3a4d' : '#2d2d3d';
+                const leftColor = isLight ? '#252535' : '#1e1e2a';
+                const rightColor = isLight ? '#2f2f42' : '#252532';
+                const borderColor = '#4a4a5d';
+                
+                // Left side face
+                ctx.beginPath();
+                ctx.moveTo(pos.x - this.tileWidth / 2, pos.y);
+                ctx.lineTo(pos.x, pos.y + this.tileHeight / 2);
+                ctx.lineTo(pos.x, pos.y + this.tileHeight / 2 + depth);
+                ctx.lineTo(pos.x - this.tileWidth / 2, pos.y + depth);
+                ctx.closePath();
+                ctx.fillStyle = leftColor;
+                ctx.fill();
+                
+                // Right side face
+                ctx.beginPath();
+                ctx.moveTo(pos.x + this.tileWidth / 2, pos.y);
+                ctx.lineTo(pos.x, pos.y + this.tileHeight / 2);
+                ctx.lineTo(pos.x, pos.y + this.tileHeight / 2 + depth);
+                ctx.lineTo(pos.x + this.tileWidth / 2, pos.y + depth);
+                ctx.closePath();
+                ctx.fillStyle = rightColor;
+                ctx.fill();
+                
+                // Top face
                 ctx.beginPath();
                 ctx.moveTo(pos.x, pos.y - this.tileHeight / 2);
                 ctx.lineTo(pos.x + this.tileWidth / 2, pos.y);
@@ -943,7 +1322,6 @@ window.IsometricEngine = {
                 ctx.fillStyle = topColor;
                 ctx.fill();
                 
-                // Subtle edge highlight on top
                 ctx.strokeStyle = borderColor;
                 ctx.lineWidth = 1;
                 ctx.stroke();
@@ -975,6 +1353,18 @@ window.IsometricEngine = {
         // pos is the center of the diamond top, sprite should be at that exact X
         // Y is raised by half sprite height to sit "on" the tile
         ctx.fillText(p.sprite, pos.x, pos.y - spriteSize/2 + 4 + bobOffset);
+    },
+    
+    renderDustParticles() {
+        const ctx = this.ctx;
+        
+        for (const p of this.dustParticles) {
+            const alpha = p.life * 0.6;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(80, 70, 60, ${alpha})`;
+            ctx.fill();
+        }
     },
     
     renderObject(obj) {
@@ -1016,6 +1406,12 @@ window.IsometricEngine = {
         const ctx = this.ctx;
         const w = this.canvas.width;
         const h = this.canvas.height;
+        
+        // Skip if player position not initialized
+        if (typeof this.player.worldX !== 'number' || isNaN(this.player.worldX) ||
+            typeof this.player.worldY !== 'number' || isNaN(this.player.worldY)) {
+            return;
+        }
         
         // Create lighting canvas
         const lightCanvas = document.createElement('canvas');
@@ -1115,8 +1511,43 @@ window.IsometricEngine = {
         ctx.fillText(text, screenPos.x, screenPos.y);
     },
     
-    // ==================== ROOM SETUP ====================
+    // ==================== MAP SETUP ====================
     
+    // Setup for corridor exploration mode
+    setupCorridorMap(startPos) {
+        console.log('[Isometric] Setting up corridor map at', startPos);
+        
+        this.interactables = [];
+        this.lights = [];
+        this.playerTrail = [];
+        this.dustParticles = [];
+        
+        // Position player at start
+        const p = this.player;
+        p.tileX = startPos.x;
+        p.tileY = startPos.y;
+        p.visualX = startPos.x;
+        p.visualY = startPos.y;
+        p.targetTileX = startPos.x;
+        p.targetTileY = startPos.y;
+        p.moveProgress = 1;
+        p.isMoving = false;
+        p.canMove = true;
+        p.facing = 'north';
+        
+        // Initialize world position
+        const worldPos = this.tileToScreen(p.tileX, p.tileY);
+        p.worldX = worldPos.x;
+        p.worldY = worldPos.y;
+        
+        // Add starting tile to trail
+        this.addToTrail(p.tileX, p.tileY);
+        
+        // Center camera on player
+        this.centerCamera();
+    },
+    
+    // Legacy room setup (for deck/relic selection area)
     setupRoom(roomData) {
         this.interactables = [];
         this.lights = [];
@@ -2588,21 +3019,13 @@ window.AdventureUI = {
     startFloor(floorNum) {
         console.log(`[Adventure] Starting floor ${floorNum}`);
         
-        // Generate floor map (starts with just the start room at 0,0)
+        // Generate corridor map
         AdventureState.floorMap = FloorMapGenerator.generateFloor(floorNum);
         AdventureState.currentFloor = floorNum;
         
-        const startRoomId = AdventureState.floorMap.startRoom; // '0,0'
-        AdventureState.currentRoomId = startRoomId;
-        AdventureState.visitedRooms = new Set([startRoomId]);
-        AdventureState.revealedRooms = new Set([startRoomId]);
-        
-        // Setup start room (this will generate its exits)
-        const startRoom = AdventureState.floorMap.rooms[startRoomId];
-        IsometricEngine.setupRoom(startRoom);
-        
-        // Reveal adjacent rooms after exits are generated
-        this.revealAdjacentRooms(startRoomId);
+        // Setup player at start position
+        const startPos = AdventureState.floorMap.startPos;
+        IsometricEngine.setupCorridorMap(startPos);
         
         // Update UI
         AdventureState.phase = 'exploring';
@@ -2686,8 +3109,120 @@ window.AdventureUI = {
         this.updateMinimap();
     },
     
-    // ==================== ROOM INTERACTIONS ====================
+    // ==================== POI / ROOM INTERACTIONS ====================
     
+    // Handle walking into a POI in corridor mode
+    handlePOIEncounter(poi) {
+        console.log('[Adventure] POI Encounter:', poi.type);
+        
+        switch (poi.type) {
+            case 'start':
+                // Already cleared
+                break;
+                
+            case 'battle':
+            case 'elite':
+                this.startPOIBattle(poi);
+                break;
+                
+            case 'boss':
+                this.startBossBattle(poi);
+                break;
+                
+            case 'treasure':
+                this.openPOITreasure(poi);
+                break;
+                
+            case 'shop':
+                DialogueSystem.show("The merchant's wares are not yet available...");
+                break;
+                
+            case 'rest':
+                this.usePOIRest(poi);
+                break;
+                
+            case 'event':
+                this.triggerPOIEvent(poi);
+                break;
+        }
+    },
+    
+    startPOIBattle(poi) {
+        console.log('[Adventure] Starting POI battle...');
+        const isElite = poi.type === 'elite';
+        
+        // TODO: Integrate with battle system
+        // For now, simulate victory
+        setTimeout(() => {
+            poi.cleared = true;
+            // Mark tile as cleared
+            const map = AdventureState.floorMap;
+            if (map && map.tiles[poi.y]?.[poi.x]) {
+                map.tiles[poi.y][poi.x].poi.cleared = true;
+            }
+            AdventureState.battlesWon++;
+            AdventureState.embers += isElite ? 100 : 50;
+            this.updateHUD();
+            DialogueSystem.show(isElite ? "The elite creature falls. You press onward." : "Victory. Continue your journey.");
+        }, 500);
+    },
+    
+    openPOITreasure(poi) {
+        console.log('[Adventure] Opening POI treasure...');
+        poi.cleared = true;
+        const map = AdventureState.floorMap;
+        if (map && map.tiles[poi.y]?.[poi.x]) {
+            map.tiles[poi.y][poi.x].poi.cleared = true;
+        }
+        AdventureState.embers += 100;
+        AdventureState.itemsFound++;
+        this.updateHUD();
+        DialogueSystem.show("You found 100 embers!");
+    },
+    
+    usePOIRest(poi) {
+        console.log('[Adventure] Using POI rest site...');
+        poi.cleared = true;
+        const map = AdventureState.floorMap;
+        if (map && map.tiles[poi.y]?.[poi.x]) {
+            map.tiles[poi.y][poi.x].poi.cleared = true;
+        }
+        
+        let healAmount = 2;
+        for (const relic of AdventureState.relics) {
+            if (relic.effect?.restBonus) {
+                healAmount += relic.effect.restBonus;
+            }
+        }
+        
+        AdventureState.healDeaths(healAmount);
+        this.updateHUD();
+        DialogueSystem.show(`The sanctuary's light soothes your wounds. ${healAmount} deaths restored.`);
+    },
+    
+    triggerPOIEvent(poi) {
+        console.log('[Adventure] Triggering POI event...');
+        poi.cleared = true;
+        const map = AdventureState.floorMap;
+        if (map && map.tiles[poi.y]?.[poi.x]) {
+            map.tiles[poi.y][poi.x].poi.cleared = true;
+        }
+        
+        const roll = Math.random();
+        if (roll < 0.5) {
+            AdventureState.embers += 75;
+            this.updateHUD();
+            DialogueSystem.show("In the shadows, you find forgotten treasures. +75 embers.");
+        } else if (roll < 0.8) {
+            DialogueSystem.show("The mystery yields nothing of value. Continue on...");
+        } else {
+            AdventureState.addDeaths(1);
+            this.updateHUD();
+            DialogueSystem.show("A trap! One of your monsters perishes...");
+        }
+    },
+    
+    // Legacy room-based battle (for backwards compatibility)
     startBattle(roomData) {
         console.log('[Adventure] Starting battle...');
         // TODO: Integrate with existing battle system
@@ -2701,11 +3236,15 @@ window.AdventureUI = {
         }, 1000);
     },
     
-    startBossBattle(roomData) {
+    startBossBattle(poi) {
         console.log('[Adventure] Starting boss battle...');
         // TODO: Integrate with existing battle system
         setTimeout(() => {
-            roomData.cleared = true;
+            poi.cleared = true;
+            const map = AdventureState.floorMap;
+            if (map && map.tiles[poi.y]?.[poi.x]) {
+                map.tiles[poi.y][poi.x].poi.cleared = true;
+            }
             AdventureState.floorsCompleted++;
             AdventureState.embers += 200;
             this.updateHUD();
@@ -2798,76 +3337,58 @@ window.AdventureUI = {
     
     updateMinimap() {
         const grid = document.getElementById('minimap-grid');
-        if (!AdventureState.floorMap) return;
+        const map = AdventureState.floorMap;
+        if (!map) return;
         
         grid.innerHTML = '';
         
-        const rooms = AdventureState.floorMap.rooms;
-        const roomList = Object.values(rooms);
-        
-        // Find grid bounds (including negative coordinates)
-        let minX = 0, maxX = 0, minY = 0, maxY = 0;
-        for (const room of roomList) {
-            if (room.x < minX) minX = room.x;
-            if (room.x > maxX) maxX = room.x;
-            if (room.y < minY) minY = room.y;
-            if (room.y > maxY) maxY = room.y;
-        }
-        
-        // Create a lookup map for quick room finding
-        const roomMap = {};
-        for (const room of roomList) {
-            roomMap[`${room.x},${room.y}`] = room;
-        }
-        
-        // Create rows (from minY to maxY, which may include negative y values)
-        // Note: y decreases going "north", so we render from minY (top) to maxY (bottom)
-        for (let y = minY; y <= maxY; y++) {
-            const row = document.createElement('div');
-            row.className = 'minimap-row';
+        // Corridor mode - show POI list as progress
+        if (map.pois) {
+            const poiList = map.pois;
             
-            for (let x = minX; x <= maxX; x++) {
-                const room = roomMap[`${x},${y}`];
+            // Create a row for each POI
+            for (const poi of poiList) {
+                const row = document.createElement('div');
+                row.className = 'minimap-row';
                 
                 const cell = document.createElement('div');
                 cell.className = 'minimap-room';
                 
-                if (room) {
-                    const isVisited = AdventureState.visitedRooms.has(room.id);
-                    const isRevealed = AdventureState.revealedRooms.has(room.id);
-                    const isCurrent = room.id === AdventureState.currentRoomId;
-                    
-                    if (isCurrent) {
-                        cell.classList.add('current');
-                    } else if (isVisited) {
-                        cell.classList.add('visited');
-                    } else if (isRevealed) {
-                        cell.classList.add('revealed');
-                    } else {
-                        cell.classList.add('hidden');
-                    }
-                    
-                    if (isRevealed || isVisited) {
-                        const info = FloorMapGenerator.getRoomInfo(room.type);
-                        cell.textContent = info.icon;
-                        cell.style.color = info.color;
-                    }
+                const poiInfo = FloorMapGenerator.getPOIInfo(poi.type);
+                
+                // Check if player has reached this POI
+                const playerX = IsometricEngine.player.tileX;
+                const playerY = IsometricEngine.player.tileY;
+                const distance = Math.abs(poi.x - playerX) + Math.abs(poi.y - playerY);
+                const isNearby = distance < 5;
+                const isCurrent = distance < 2;
+                
+                if (poi.cleared) {
+                    cell.classList.add('visited');
+                    cell.style.opacity = '0.5';
+                } else if (isCurrent) {
+                    cell.classList.add('current');
+                } else if (isNearby) {
+                    cell.classList.add('revealed');
                 } else {
-                    cell.classList.add('empty');
+                    cell.classList.add('hidden');
                 }
                 
+                cell.textContent = poiInfo.icon || '•';
+                cell.style.color = poiInfo.color;
+                cell.title = poiInfo.name;
+                
                 row.appendChild(cell);
+                grid.appendChild(row);
             }
-            
-            grid.appendChild(row);
         }
         
-        // Show progress toward boss
-        const progress = AdventureState.floorMap.roomsCleared || 0;
-        const needed = FloorMapGenerator.roomsUntilBoss;
+        // Show progress info
         const progressText = document.getElementById('minimap-progress');
-        if (progressText) {
-            progressText.textContent = `${progress}/${needed} rooms`;
+        if (progressText && map.pois) {
+            const cleared = map.pois.filter(p => p.cleared).length;
+            const total = map.pois.length;
+            progressText.textContent = `${cleared}/${total} cleared`;
         }
     },
     
