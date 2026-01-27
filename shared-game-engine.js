@@ -13,7 +13,10 @@
  */
 
 // Get ability system from browser global (loaded via ability-system.js script tag)
-const { AbilityExecutor, Triggers, EffectTypes, TargetTypes, ConditionTypes, CalcTypes, Flags } = window.AbilitySystem;
+// NOTE: ability-system.js declares these at top level, so we just reference them directly
+// They're already available as globals: Triggers, EffectTypes, TargetTypes, etc.
+// We only need a local reference to AbilityExecutor to avoid the conflict
+const _AbilityExecutor = window.AbilitySystem.AbilityExecutor;
 
 class SharedGameEngine {
     constructor(initialState = null) {
@@ -21,7 +24,7 @@ class SharedGameEngine {
         this.state = initialState || this.createInitialState();
         
         // Create ability executor
-        this.executor = new AbilityExecutor(this.state);
+        this.executor = new _AbilityExecutor(this.state);
         
         // Override executor methods to use our game methods
         this.bindExecutorMethods();

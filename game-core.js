@@ -65,6 +65,18 @@ const GameEvents = {
 
 window.GameEvents = GameEvents;
 
+// ==================== UTILITY FUNCTIONS ====================
+
+function debounce(fn, delay) {
+    let timer;
+    return function(...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+}
+
+window.debounce = debounce;
+
 // ==================== ANIMATION SEQUENCE SYSTEM ====================
 const AnimationSequence = {
     currentSequence: [],
