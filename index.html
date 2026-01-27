@@ -325,6 +325,21 @@
         </div>
     </div>
 
+    <!-- ==================== SCRIPT LOAD ORDER ==================== -->
+    <!-- 
+        IMPORTANT: Load order matters!
+        1. Asset Preloader (caching)
+        2. Transition Engine (UI effects)
+        3. Auth system
+        4. NEW: Ability System (schema + executor) - MUST load before cards
+        5. NEW: Card Data (data-driven cards) - replaces old city-of-flesh.js
+        6. NEW: Shared Game Engine v2 (uses ability system)
+        7. Other card sets (still using old format until converted)
+        8. Combat Effects (visual only)
+        9. Game Core (legacy - being phased out)
+        10. UI and other systems
+    -->
+    
     <!-- Asset Preloader (load first for caching) -->
     <script src="asset-preloader.js"></script>
     
@@ -335,28 +350,77 @@
     <script src="auth.js"></script>
     <script src="login-screen.js"></script>
     
-    <script src="city-of-flesh.js?v=6"></script>
+    <!-- ==================== NEW DATA-DRIVEN ABILITY SYSTEM ==================== -->
+    <!-- Load order: ability-system.js → card data → shared engine -->
+    
+    <!-- 1. Ability System: Schema definitions and AbilityExecutor -->
+    <script src="ability-system.js?v=1"></script>
+    
+    <!-- 2. Card Data: City of Flesh (data-driven format) -->
+    <script src="city-of-flesh-cards.js?v=2"></script>
+    
+    <!-- 3. Shared Game Engine v2: Uses ability system, runs on client AND server -->
+    <script src="shared-game-engine-v2.js?v=1"></script>
+    
+    <!-- ==================== OTHER CARD SETS (legacy format) ==================== -->
+    <!-- These still use the old function-based format -->
+    <!-- TODO: Convert these to data-driven format -->
     <script src="forests-of-fear.js"></script>
     <script src="abhorrent-armory.js"></script>
     <script src="putrid-swamp.js"></script>
+    
+    <!-- ==================== GAME SYSTEMS ==================== -->
+    <!-- Combat Effects (visual animations only) -->
     <script src="combat-effects.js"></script>
+    
+    <!-- Game Core (legacy - will be replaced by SharedGameEngine integration) -->
+    <!-- Still needed for UI integration and helper functions -->
     <script src="game-core.js?v=7"></script>
+    
+    <!-- UI System -->
     <script src="game-ui.js?v=12"></script>
+    
+    <!-- AI System -->
     <script src="ai.js?v=5"></script>
+    
+    <!-- Progression & Collection -->
     <script src="progression.js"></script>
     <script src="deckbuilder.js"></script>
     <script src="collection.js"></script>
     <script src="shop.js"></script>
     <script src="win-screen.js"></script>
-    <script src="multiplayer.js?v=34"></script>
+    
+    <!-- Multiplayer -->
+    <script src="multiplayer.js?v=38"></script>
+    
+    <!-- Tutorial & Menus -->
     <script src="tutorial.js"></script>
     <script src="home-screen.js"></script>
     <script src="main-menu.js"></script>
+    
+    <!-- Dev Tools -->
     <script src="cheat-mode.js?v=5"></script>
     <script src="card-detail.js"></script>
     
     <!-- Initialize game flow on page load -->
     <script>
+        // Log that new ability system is loaded
+        console.log('=== Cryptid Fates: Data-Driven Ability System ===');
+        console.log('AbilitySystem loaded:', typeof window.AbilitySystem !== 'undefined');
+        console.log('CardRegistry loaded:', typeof window.CardRegistry !== 'undefined');
+        console.log('SharedGameEngine loaded:', typeof window.SharedGameEngine !== 'undefined');
+        
+        if (window.CardRegistry) {
+            console.log('Cards registered:', {
+                cryptids: window.CardRegistry.getAllCryptidKeys().length,
+                kindling: window.CardRegistry.getAllKindlingKeys().length,
+                bursts: window.CardRegistry.getAllBurstKeys().length,
+                traps: window.CardRegistry.getAllTrapKeys().length,
+                auras: window.CardRegistry.getAllAuraKeys().length,
+                pyres: window.CardRegistry.getAllPyreKeys().length
+            });
+        }
+        
         // Start the game flow (handles auth, username, tutorial, then game)
         document.addEventListener('DOMContentLoaded', () => {
             GameFlow.start();

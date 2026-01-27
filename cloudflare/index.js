@@ -1,7 +1,7 @@
 ﻿/**
  * Cryptid Fates - Cloudflare Worker Game Server with Authentication
  * 
- * ARCHITECTURE: Uses SharedGameEngine for all game logic.
+ * ARCHITECTURE: Uses SharedGameEngine v2 (data-driven abilities)
  * The server validates actions and delegates to the engine.
  * 
  * wrangler.toml additions needed:
@@ -28,18 +28,18 @@
 
 // ==================== IMPORTS ====================
 
-import { SharedGameEngine, GameEventTypes, ActionTypes } from './shared-game-engine.js';
+// Import the new data-driven game engine
+import { SharedGameEngine, Triggers } from './shared-game-engine.js';
 
 // ==================== CONFIGURATION ====================
 
-const SERVER_VERSION = 34; // v=34 - Removed strict slot validation, give starting pyre
+const SERVER_VERSION = 38; // v=38 - Fixed getStateForPlayer perspective (no double flip)
 
 const COOKIE_NAME = 'cf_session';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days in seconds
 const CSRF_COOKIE = 'cf_csrf';
 
 // Frontend URL - where to redirect after login
-// Change this to your actual domain when ready (e.g., https://cryptid.game)
 const FRONTEND_URL = 'https://2633929.playcode.io';
 
 // OAuth endpoints
@@ -60,19 +60,16 @@ const OAUTH_CONFIG = {
 
 // ==================== UTILITY FUNCTIONS ====================
 
-// Generate cryptographically secure random string
 function generateSecureToken(length = 32) {
     const array = new Uint8Array(length);
     crypto.getRandomValues(array);
     return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-// Generate UUID v4
 function generateUUID() {
     return crypto.randomUUID();
 }
 
-// Parse cookies from request
 function parseCookies(request) {
     const cookieHeader = request.headers.get('Cookie') || '';
     const cookies = {};
@@ -83,7 +80,6 @@ function parseCookies(request) {
     return cookies;
 }
 
-// Create Set-Cookie header
 function createCookie(name, value, options = {}) {
     const parts = [`${name}=${value}`];
     
@@ -97,7 +93,6 @@ function createCookie(name, value, options = {}) {
     return parts.join('; ');
 }
 
-// Create session cookie
 function createSessionCookie(sessionId, env) {
     const isProduction = !env.BASE_URL?.includes('localhost');
     return createCookie(COOKIE_NAME, sessionId, {
@@ -109,7 +104,6 @@ function createSessionCookie(sessionId, env) {
     });
 }
 
-// Delete session cookie
 function deleteSessionCookie(env) {
     const isProduction = !env.BASE_URL?.includes('localhost');
     return createCookie(COOKIE_NAME, '', {
@@ -121,11 +115,10 @@ function deleteSessionCookie(env) {
     });
 }
 
-// Create CSRF cookie
 function createCsrfCookie(state, env) {
     const isProduction = !env.BASE_URL?.includes('localhost');
     return createCookie(CSRF_COOKIE, state, {
-        maxAge: 600, // 10 minutes
+        maxAge: 600,
         path: '/',
         httpOnly: true,
         secure: isProduction,
@@ -133,7 +126,6 @@ function createCsrfCookie(state, env) {
     });
 }
 
-// JSON response helper
 function jsonResponse(data, status = 200, headers = {}) {
     return new Response(JSON.stringify(data), {
         status,
@@ -144,7 +136,6 @@ function jsonResponse(data, status = 200, headers = {}) {
     });
 }
 
-// Redirect helper
 function redirect(url, headers = {}) {
     return new Response(null, {
         status: 302,
@@ -158,231 +149,141 @@ function redirect(url, headers = {}) {
 // ==================== SESSION MANAGEMENT ====================
 
 async function createSession(env, userId, userData) {
-    const sessionId = generateSecureToken(48);
+    const sessionId = generateSecureToken();
     const sessionData = {
         userId,
         ...userData,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        expiresAt: Date.now() + (SESSION_TTL * 1000)
     };
     
-    // Store in KV with TTL
-    await env.SESSIONS.put(
-        `session:${sessionId}`,
-        JSON.stringify(sessionData),
-        { expirationTtl: SESSION_TTL }
-    );
+    await env.SESSIONS.put(sessionId, JSON.stringify(sessionData), {
+        expirationTtl: SESSION_TTL
+    });
     
     return sessionId;
 }
 
 async function getSession(env, request) {
-    let sessionId = null;
-    
-    // Try cookie first
     const cookies = parseCookies(request);
-    sessionId = cookies[COOKIE_NAME];
-    
-    // Try Authorization header (Bearer token)
-    if (!sessionId) {
-        const authHeader = request.headers.get('Authorization');
-        if (authHeader?.startsWith('Bearer ')) {
-            sessionId = authHeader.slice(7);
-        }
-    }
-    
-    // Try query parameter (for cross-domain)
-    if (!sessionId) {
-        const url = new URL(request.url);
-        sessionId = url.searchParams.get('token');
-    }
+    const sessionId = cookies[COOKIE_NAME];
     
     if (!sessionId) return null;
     
-    const sessionData = await env.SESSIONS.get(`session:${sessionId}`);
+    const sessionData = await env.SESSIONS.get(sessionId);
     if (!sessionData) return null;
     
-    try {
-        return JSON.parse(sessionData);
-    } catch {
+    const session = JSON.parse(sessionData);
+    
+    if (Date.now() > session.expiresAt) {
+        await env.SESSIONS.delete(sessionId);
         return null;
     }
+    
+    return session;
 }
 
 async function deleteSession(env, request) {
-    let sessionId = null;
-    
-    // Try cookie
     const cookies = parseCookies(request);
-    sessionId = cookies[COOKIE_NAME];
-    
-    // Try Authorization header
-    if (!sessionId) {
-        const authHeader = request.headers.get('Authorization');
-        if (authHeader?.startsWith('Bearer ')) {
-            sessionId = authHeader.slice(7);
-        }
-    }
+    const sessionId = cookies[COOKIE_NAME];
     
     if (sessionId) {
-        await env.SESSIONS.delete(`session:${sessionId}`);
+        await env.SESSIONS.delete(sessionId);
     }
 }
 
-// ==================== USER DATABASE OPERATIONS ====================
+// ==================== DATABASE HELPERS ====================
 
-async function findUserByProviderId(env, provider, providerId) {
-    const column = provider === 'google' ? 'google_id' : 'discord_id';
-    const result = await env.DB.prepare(
-        `SELECT * FROM users WHERE ${column} = ?`
-    ).bind(providerId).first();
+async function findOrCreateUser(env, provider, providerUserId, email, displayName) {
+    let user = await env.DB.prepare(
+        'SELECT * FROM users WHERE provider = ? AND provider_user_id = ?'
+    ).bind(provider, providerUserId).first();
     
-    return result;
-}
-
-async function findUserById(env, userId) {
-    return await env.DB.prepare(
-        'SELECT * FROM users WHERE id = ?'
-    ).bind(userId).first();
-}
-
-async function createUser(env, userData) {
-    const id = generateUUID();
-    const now = Date.now();
+    if (!user) {
+        const userId = generateUUID();
+        const now = new Date().toISOString();
     
     await env.DB.prepare(`
-        INSERT INTO users (id, display_name, avatar_url, email, google_id, discord_id, created_at, last_login)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-        id,
-        userData.displayName,
-        userData.avatarUrl || null,
-        userData.email || null,
-        userData.googleId || null,
-        userData.discordId || null,
-        now,
-        now
-    ).run();
-    
-    return { id, ...userData, created_at: now, last_login: now, wins: 0, losses: 0, elo_rating: 1000 };
-}
-
-async function updateUserLogin(env, userId, updates = {}) {
-    const setClauses = ['last_login = ?'];
-    const values = [Date.now()];
-    
-    if (updates.avatarUrl !== undefined) {
-        setClauses.push('avatar_url = ?');
-        values.push(updates.avatarUrl);
-    }
-    if (updates.displayName !== undefined) {
-        setClauses.push('display_name = ?');
-        values.push(updates.displayName);
-    }
-    if (updates.googleId !== undefined) {
-        setClauses.push('google_id = ?');
-        values.push(updates.googleId);
-    }
-    if (updates.discordId !== undefined) {
-        setClauses.push('discord_id = ?');
-        values.push(updates.discordId);
+            INSERT INTO users (id, email, display_name, provider, provider_user_id, created_at, last_login)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).bind(userId, email, displayName, provider, providerUserId, now, now).run();
+        
+        user = {
+            id: userId,
+            email,
+            display_name: displayName,
+            provider,
+            provider_user_id: providerUserId,
+            created_at: now,
+            last_login: now,
+            stats: null
+        };
+    } else {
+        await env.DB.prepare(
+            'UPDATE users SET last_login = ? WHERE id = ?'
+        ).bind(new Date().toISOString(), user.id).run();
     }
     
-    values.push(userId);
-    
-    await env.DB.prepare(`
-        UPDATE users SET ${setClauses.join(', ')} WHERE id = ?
-    `).bind(...values).run();
-}
-
-async function linkProviderToUser(env, userId, provider, providerId) {
-    const column = provider === 'google' ? 'google_id' : 'discord_id';
-    await env.DB.prepare(`
-        UPDATE users SET ${column} = ? WHERE id = ?
-    `).bind(providerId, userId).run();
+    return user;
 }
 
 // ==================== OAUTH HANDLERS ====================
 
-// Start OAuth flow - redirect to provider
 async function handleOAuthStart(provider, env, request) {
     const config = OAUTH_CONFIG[provider];
     if (!config) {
-        return jsonResponse({ error: 'Invalid provider' }, 400);
+        return jsonResponse({ error: 'Unknown provider' }, 400);
     }
     
+    const state = generateSecureToken();
     const clientId = provider === 'google' ? env.GOOGLE_CLIENT_ID : env.DISCORD_CLIENT_ID;
-    const redirectUri = `${env.BASE_URL}/auth/${provider}/callback`;
     
-    // Generate CSRF state token
-    const state = generateSecureToken(32);
-    
-    // Build authorization URL
     const params = new URLSearchParams({
         client_id: clientId,
-        redirect_uri: redirectUri,
+        redirect_uri: `${env.BASE_URL}/auth/${provider}/callback`,
         response_type: 'code',
         scope: config.scopes.join(' '),
-        state: state
+        state
     });
     
-    // Discord requires specific prompt parameter
-    if (provider === 'discord') {
+    if (provider === 'google') {
+        params.set('access_type', 'offline');
         params.set('prompt', 'consent');
     }
     
-    // Google-specific params for better UX
-    if (provider === 'google') {
-        params.set('access_type', 'offline');
-        params.set('prompt', 'select_account');
-    }
-    
-    const authUrl = `${config.authUrl}?${params.toString()}`;
-    
-    // Set CSRF cookie and redirect
-    return redirect(authUrl, {
+    return redirect(`${config.authUrl}?${params.toString()}`, {
         'Set-Cookie': createCsrfCookie(state, env)
     });
 }
 
-// Handle OAuth callback
 async function handleOAuthCallback(provider, env, request) {
     const url = new URL(request.url);
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
     const error = url.searchParams.get('error');
     
-    // Check for OAuth errors
     if (error) {
-        console.error(`OAuth error from ${provider}:`, error);
-        return redirect(`${FRONTEND_URL}/?error=oauth_denied`);
+        return redirect(`${FRONTEND_URL}?error=${encodeURIComponent(error)}`);
     }
     
-    if (!code) {
-        return redirect(`${FRONTEND_URL}/?error=no_code`);
-    }
-    
-    // Verify CSRF state
     const cookies = parseCookies(request);
-    const storedState = cookies[CSRF_COOKIE];
+    const savedState = cookies[CSRF_COOKIE];
     
-    if (!storedState || storedState !== state) {
-        console.error('CSRF state mismatch');
-        return redirect(`${FRONTEND_URL}/?error=invalid_state`);
+    if (!code || !state || state !== savedState) {
+        return redirect(`${FRONTEND_URL}?error=invalid_state`);
     }
     
+    try {
     const config = OAUTH_CONFIG[provider];
     const clientId = provider === 'google' ? env.GOOGLE_CLIENT_ID : env.DISCORD_CLIENT_ID;
     const clientSecret = provider === 'google' ? env.GOOGLE_CLIENT_SECRET : env.DISCORD_CLIENT_SECRET;
-    const redirectUri = `${env.BASE_URL}/auth/${provider}/callback`;
     
-    try {
-        // Exchange code for tokens
-        const tokenBody = new URLSearchParams({
+        const tokenParams = new URLSearchParams({
             client_id: clientId,
             client_secret: clientSecret,
-            code: code,
-            redirect_uri: redirectUri,
-            grant_type: 'authorization_code'
+            code,
+            grant_type: 'authorization_code',
+            redirect_uri: `${env.BASE_URL}/auth/${provider}/callback`
         });
         
         const tokenResponse = await fetch(config.tokenUrl, {
@@ -391,137 +292,86 @@ async function handleOAuthCallback(provider, env, request) {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'Accept': 'application/json'
             },
-            body: tokenBody.toString()
+            body: tokenParams.toString()
         });
-        
-        if (!tokenResponse.ok) {
-            const errorText = await tokenResponse.text();
-            console.error(`Token exchange failed for ${provider}:`, errorText);
-            return redirect(`${FRONTEND_URL}/?error=token_exchange_failed`);
-        }
         
         const tokens = await tokenResponse.json();
         
-        // Fetch user info
-        const userInfoResponse = await fetch(config.userInfoUrl, {
+        if (!tokens.access_token) {
+            console.error('Token error:', tokens);
+            return redirect(`${FRONTEND_URL}?error=token_exchange_failed`);
+        }
+        
+        const userResponse = await fetch(config.userInfoUrl, {
             headers: {
                 'Authorization': `Bearer ${tokens.access_token}`,
                 'Accept': 'application/json'
             }
         });
         
-        if (!userInfoResponse.ok) {
-            console.error(`Failed to fetch user info from ${provider}`);
-            return redirect(`${FRONTEND_URL}/?error=user_info_failed`);
-        }
+        const userInfo = await userResponse.json();
         
-        const providerUser = await userInfoResponse.json();
+        let providerUserId, email, displayName;
         
-        // Normalize user data across providers
-        let userData;
         if (provider === 'google') {
-            userData = {
-                providerId: providerUser.id,
-                email: providerUser.email,
-                displayName: providerUser.name || providerUser.email?.split('@')[0] || 'Summoner',
-                avatarUrl: providerUser.picture,
-                googleId: providerUser.id
-            };
-        } else if (provider === 'discord') {
-            const avatarUrl = providerUser.avatar 
-                ? `https://cdn.discordapp.com/avatars/${providerUser.id}/${providerUser.avatar}.png`
-                : `https://cdn.discordapp.com/embed/avatars/${parseInt(providerUser.discriminator || '0') % 5}.png`;
-            
-            userData = {
-                providerId: providerUser.id,
-                email: providerUser.email,
-                displayName: providerUser.global_name || providerUser.username || 'Summoner',
-                avatarUrl: avatarUrl,
-                discordId: providerUser.id
-            };
-        }
-        
-        // Check if user exists
-        let user = await findUserByProviderId(env, provider, userData.providerId);
-        
-        if (user) {
-            // Update last login and potentially avatar/name
-            await updateUserLogin(env, user.id, {
-                avatarUrl: userData.avatarUrl,
-                displayName: userData.displayName
-            });
+            providerUserId = userInfo.id;
+            email = userInfo.email;
+            displayName = userInfo.name || email.split('@')[0];
         } else {
-            // Check if we have an existing session (linking accounts)
-            const existingSession = await getSession(env, request);
-            
-            if (existingSession) {
-                // Link this provider to existing account
-                await linkProviderToUser(env, existingSession.userId, provider, userData.providerId);
-                user = await findUserById(env, existingSession.userId);
-            } else {
-                // Create new user
-                user = await createUser(env, userData);
-            }
+            providerUserId = userInfo.id;
+            email = userInfo.email;
+            displayName = userInfo.global_name || userInfo.username;
         }
         
-        // Check if user is banned
-        if (user.is_banned) {
-            return redirect(`${FRONTEND_URL}/?error=account_banned&reason=${encodeURIComponent(user.ban_reason || '')}`);
-        }
-        
-        // Create session
+        const user = await findOrCreateUser(env, provider, providerUserId, email, displayName);
         const sessionId = await createSession(env, user.id, {
+            email: user.email,
             displayName: user.display_name,
-            avatarUrl: user.avatar_url,
-            email: user.email
+            provider
         });
         
-        // Redirect to frontend with session token in URL
-        // Also set cookie for same-domain requests (when frontend moves to same domain)
-        return redirect(`${FRONTEND_URL}/?token=${sessionId}`, {
+        return redirect(FRONTEND_URL, {
             'Set-Cookie': createSessionCookie(sessionId, env)
         });
         
     } catch (err) {
-        console.error(`OAuth callback error for ${provider}:`, err);
-        return redirect(`${FRONTEND_URL}/?error=auth_failed`);
+        console.error('OAuth callback error:', err);
+        return redirect(`${FRONTEND_URL}?error=auth_failed`);
     }
 }
 
-// ==================== AUTH API ENDPOINTS ====================
-
-// Get current user
 async function handleGetUser(env, request) {
     const session = await getSession(env, request);
     
     if (!session) {
-        return jsonResponse({ authenticated: false }, 200);
+        return jsonResponse({ authenticated: false });
     }
     
-    const user = await findUserById(env, session.userId);
+    try {
+        const user = await env.DB.prepare(
+            'SELECT id, email, display_name, created_at, stats FROM users WHERE id = ?'
+        ).bind(session.userId).first();
     
     if (!user) {
-        return jsonResponse({ authenticated: false }, 200);
+            return jsonResponse({ authenticated: false });
     }
     
     return jsonResponse({
         authenticated: true,
         user: {
             id: user.id,
-            displayName: user.display_name,
-            avatarUrl: user.avatar_url,
             email: user.email,
-            wins: user.wins,
-            losses: user.losses,
-            eloRating: user.elo_rating,
-            hasGoogle: !!user.google_id,
-            hasDiscord: !!user.discord_id,
-            createdAt: user.created_at
-        }
-    });
+                displayName: user.display_name,
+                createdAt: user.created_at,
+                stats: user.stats ? JSON.parse(user.stats) : null
+            }
+        });
+    } catch (err) {
+        console.error('Get user error:', err);
+        return jsonResponse({ authenticated: false, error: 'Database error' });
+    }
 }
 
-// Logout
 async function handleLogout(env, request) {
     await deleteSession(env, request);
     
@@ -530,7 +380,6 @@ async function handleLogout(env, request) {
     });
 }
 
-// Update display name
 async function handleUpdateProfile(env, request) {
     const session = await getSession(env, request);
     
@@ -542,82 +391,61 @@ async function handleUpdateProfile(env, request) {
         const body = await request.json();
         const { displayName } = body;
         
-        if (!displayName || displayName.length < 2 || displayName.length > 24) {
-            return jsonResponse({ error: 'Display name must be 2-24 characters' }, 400);
-        }
-        
-        // Basic profanity/invalid char filter
-        const sanitized = displayName.trim().replace(/[<>'"&]/g, '');
-        
+        if (displayName) {
         await env.DB.prepare(
             'UPDATE users SET display_name = ? WHERE id = ?'
-        ).bind(sanitized, session.userId).run();
+            ).bind(displayName, session.userId).run();
+        }
         
-        return jsonResponse({ success: true, displayName: sanitized });
+        return jsonResponse({ success: true });
     } catch (err) {
-        return jsonResponse({ error: 'Invalid request' }, 400);
+        console.error('Update profile error:', err);
+        return jsonResponse({ error: 'Failed to update profile' }, 500);
     }
 }
 
-// ==================== MAIN ROUTER ====================
+// ==================== MAIN WORKER ====================
 
 export default {
-    async fetch(request, env) {
+    async fetch(request, env, ctx) {
         const url = new URL(request.url);
         
-        // CORS headers for API requests (allow cross-domain during testing)
         const corsHeaders = {
             'Access-Control-Allow-Origin': FRONTEND_URL,
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Headers': 'Content-Type',
             'Access-Control-Allow-Credentials': 'true'
         };
         
-        // Handle preflight
         if (request.method === 'OPTIONS') {
-            return new Response(null, { headers: corsHeaders });
+            return new Response(null, { status: 204, headers: corsHeaders });
         }
         
-        // ==================== AUTH ROUTES ====================
-        
-        // Start Google OAuth
+        // Auth routes
         if (url.pathname === '/auth/google') {
             return handleOAuthStart('google', env, request);
         }
-        
-        // Start Discord OAuth
         if (url.pathname === '/auth/discord') {
             return handleOAuthStart('discord', env, request);
         }
-        
-        // Google OAuth callback
         if (url.pathname === '/auth/google/callback') {
             return handleOAuthCallback('google', env, request);
         }
-        
-        // Discord OAuth callback
         if (url.pathname === '/auth/discord/callback') {
             return handleOAuthCallback('discord', env, request);
         }
-        
-        // Get current user
         if (url.pathname === '/auth/user' && request.method === 'GET') {
             const response = await handleGetUser(env, request);
-            // Add CORS headers
             const newHeaders = new Headers(response.headers);
             Object.entries(corsHeaders).forEach(([k, v]) => newHeaders.set(k, v));
             return new Response(response.body, { status: response.status, headers: newHeaders });
         }
-        
-        // Logout
         if (url.pathname === '/auth/logout' && request.method === 'POST') {
             const response = await handleLogout(env, request);
             const newHeaders = new Headers(response.headers);
             Object.entries(corsHeaders).forEach(([k, v]) => newHeaders.set(k, v));
             return new Response(response.body, { status: response.status, headers: newHeaders });
         }
-        
-        // Update profile
         if (url.pathname === '/auth/profile' && request.method === 'POST') {
             const response = await handleUpdateProfile(env, request);
             const newHeaders = new Headers(response.headers);
@@ -625,24 +453,18 @@ export default {
             return new Response(response.body, { status: response.status, headers: newHeaders });
         }
         
-        // ==================== GAME ROUTES ====================
-        
         // WebSocket upgrade for multiplayer
         if (request.headers.get('Upgrade') === 'websocket') {
-            // Try to get session (optional - allow unauthenticated for legacy/guest support)
             const session = await getSession(env, request);
             
-            // Pass to matchmaker
             const matchmakerId = env.MATCHMAKER.idFromName('global');
             const matchmaker = env.MATCHMAKER.get(matchmakerId);
             
-            // Add user info to request headers for the matchmaker (if authenticated)
             const newHeaders = new Headers(request.headers);
             if (session) {
                 newHeaders.set('X-User-Id', session.userId);
                 newHeaders.set('X-User-Name', session.displayName || 'Player');
             }
-            // If no session, Matchmaker will handle via legacy 'auth' message
             
             const newRequest = new Request(request.url, {
                 method: request.method,
@@ -658,13 +480,16 @@ export default {
             return new Response('OK', { status: 200 });
         }
         
-        // Default response
+        // Version check
+        if (url.pathname === '/version') {
+            return jsonResponse({ version: SERVER_VERSION });
+        }
+        
         return new Response('Cryptid Fates Game Server', { status: 200 });
     }
 };
 
 // ==================== MATCHMAKER DURABLE OBJECT ====================
-// (Keep your existing Matchmaker class but modify handleAuth to use verified user)
 
 export class Matchmaker {
     constructor(state, env) {
@@ -686,11 +511,9 @@ export class Matchmaker {
         
         const tempId = crypto.randomUUID();
         
-        // Get verified user info from headers (set by main worker)
         const userId = request.headers.get('X-User-Id');
         const userName = request.headers.get('X-User-Name');
         
-        // If we have verified user info, pre-authenticate
         if (userId) {
             this.connections.set(tempId, userId);
             this.players.set(userId, {
@@ -703,7 +526,6 @@ export class Matchmaker {
                 matchId: null
             });
             
-            // Send authenticated message
             server.send(JSON.stringify({
                 type: 'authenticated',
                 playerId: userId,
@@ -735,14 +557,11 @@ export class Matchmaker {
     async handleMessage(tempId, ws, msg) {
         switch (msg.type) {
             case 'auth':
-                // Legacy auth - still allow for backwards compatibility
-                // but prefer pre-authenticated sessions
                 if (!this.connections.has(tempId)) {
                     this.handleAuth(tempId, ws, msg);
                 }
                 break;
             
-            // Time sync ping/pong
             case 'ping':
                 ws.send(JSON.stringify({
                     type: 'pong',
@@ -778,10 +597,6 @@ export class Matchmaker {
             case 'concede':
                 await this.handleForfeit(tempId, msg);
                 break;
-                
-            case 'rejoin':
-                await this.forwardToGameRoom(msg);
-                break;
             
             case 'rematch_request':
                 await this.handleRematchRequest(tempId, msg);
@@ -797,17 +612,15 @@ export class Matchmaker {
         }
     }
     
-    // ... (rest of Matchmaker methods remain the same as your existing code)
-    
     handleAuth(tempId, ws, msg) {
-        const playerId = msg.playerId || tempId;
+        const playerId = msg.playerId || crypto.randomUUID();
+        const playerName = msg.playerName || 'Summoner';
         
         this.connections.set(tempId, playerId);
-        
         this.players.set(playerId, {
             ws,
             tempId,
-            name: msg.playerName || 'Summoner',
+            name: playerName,
             searching: false,
             mode: null,
             deckId: null,
@@ -816,41 +629,29 @@ export class Matchmaker {
         
         ws.send(JSON.stringify({
             type: 'authenticated',
-            playerId
+            playerId,
+            playerName
         }));
     }
     
     handleFindMatch(playerId, msg) {
-        console.log('[Matchmaker] findMatch request from:', playerId, 'mode:', msg.mode);
-        
         const player = this.players.get(playerId);
-        if (!player) {
-            console.log('[Matchmaker] Player not found:', playerId);
-            return;
-        }
+        if (!player) return;
         
+        const mode = msg.mode || 'bo1';
         player.searching = true;
-        player.mode = msg.mode;
+        player.mode = mode;
         player.deckId = msg.deckId;
         
-        const queue = this.queues[msg.mode];
-        console.log('[Matchmaker] Queue length:', queue.length, 'for mode:', msg.mode);
+        const queue = this.queues[mode] || this.queues.bo1;
         
-        if (queue.length > 0) {
-            const opponentId = queue.shift();
-            const opponent = this.players.get(opponentId);
-            
-            console.log('[Matchmaker] Found opponent in queue:', opponentId, 'searching:', opponent?.searching);
-            
-            if (opponent && opponent.searching) {
-                console.log('[Matchmaker] Creating match between', playerId, 'and', opponentId);
-                this.createMatch(playerId, opponentId, msg.mode);
-                return;
-            }
+        if (!queue.includes(playerId)) {
+            queue.push(playerId);
         }
         
-        queue.push(playerId);
-        console.log('[Matchmaker] Added to queue, new length:', queue.length);
+        player.ws.send(JSON.stringify({ type: 'searching' }));
+        
+        this.tryMatchPlayers(mode);
     }
     
     handleCancelMatch(playerId) {
@@ -860,67 +661,96 @@ export class Matchmaker {
         player.searching = false;
         
         for (const mode of ['bo1', 'bo3']) {
-            const idx = this.queues[mode].indexOf(playerId);
-            if (idx > -1) this.queues[mode].splice(idx, 1);
+            const queue = this.queues[mode];
+            const index = queue.indexOf(playerId);
+            if (index !== -1) {
+                queue.splice(index, 1);
+            }
         }
+        
+        player.ws.send(JSON.stringify({ type: 'searchCancelled' }));
     }
     
-    async createMatch(player1Id, player2Id, mode) {
+    tryMatchPlayers(mode) {
+        const queue = this.queues[mode];
+        
+        while (queue.length >= 2) {
+            const player1Id = queue.shift();
+            const player2Id = queue.shift();
+            
         const player1 = this.players.get(player1Id);
         const player2 = this.players.get(player2Id);
         
-        if (!player1 || !player2) return;
-        
+            if (!player1 || !player2) {
+                if (player1 && !player2) queue.unshift(player1Id);
+                if (player2 && !player1) queue.unshift(player2Id);
+                continue;
+            }
+            
+            this.createMatch(player1Id, player2Id, mode);
+        }
+    }
+    
+    createMatch(player1Id, player2Id, mode) {
         const matchId = crypto.randomUUID();
-        const gameRoomId = this.env.GAME_ROOM.idFromName(matchId);
-        const gameRoom = this.env.GAME_ROOM.get(gameRoomId);
+        const goesFirst = Math.random() < 0.5 ? player1Id : player2Id;
+        const seed = Date.now();
         
-        const coinFlip = Math.random();
-        const goesFirst = coinFlip < 0.5 ? player1Id : player2Id;
-        console.log(`[Matchmaker] Coin flip: ${coinFlip.toFixed(4)} - ${goesFirst === player1Id ? player1.name : player2.name} goes first`);
-        
-        await gameRoom.fetch(new Request('http://internal/init', {
-            method: 'POST',
-            body: JSON.stringify({
-                matchId,
-                mode,
-                player1: { id: player1Id, name: player1.name, deckId: player1.deckId },
-                player2: { id: player2Id, name: player2.name, deckId: player2.deckId },
-                goesFirst
-            })
-        }));
+        const player1 = this.players.get(player1Id);
+        const player2 = this.players.get(player2Id);
         
         player1.searching = false;
-        player1.matchId = matchId;
         player2.searching = false;
+        player1.matchId = matchId;
         player2.matchId = matchId;
         
-        const matchFoundMsg1 = {
-            type: 'matchFound',
-            matchId,
-            opponentId: player2Id,
-            opponentName: player2.name,
-            goesFirst: goesFirst === player1Id
-        };
-        
-        const matchFoundMsg2 = {
-            type: 'matchFound',
-            matchId,
-            opponentId: player1Id,
-            opponentName: player1.name,
-            goesFirst: goesFirst === player2Id
-        };
-        
-        player1.ws.send(JSON.stringify(matchFoundMsg1));
-        player2.ws.send(JSON.stringify(matchFoundMsg2));
+        // Create game room
+        const roomId = this.env.GAME_ROOM.idFromName(matchId);
+        const gameRoom = this.env.GAME_ROOM.get(roomId);
         
         this.gameRooms.set(matchId, {
             matchId,
             mode,
-            players: { [player1Id]: player1.ws, [player2Id]: player2.ws },
-            gameRoom,
-            rematchRequests: {}
+            players: {
+                [player1Id]: player1.ws,
+                [player2Id]: player2.ws
+            },
+            gameRoom
         });
+        
+        // Initialize game room
+        gameRoom.fetch(new Request('http://internal/init', {
+            method: 'POST',
+            body: JSON.stringify({
+                matchId,
+                mode,
+                player1: { id: player1Id, name: player1.name },
+                player2: { id: player2Id, name: player2.name },
+                goesFirst,
+                seed
+            })
+        }));
+        
+        // Notify players
+        player1.ws.send(JSON.stringify({
+            type: 'matchFound',
+            matchId,
+            opponentId: player2Id,
+            opponentName: player2.name,
+            goesFirst: goesFirst === player1Id,
+            mode,
+            seed
+        }));
+        
+        player2.ws.send(JSON.stringify({
+            type: 'matchFound',
+            matchId,
+            opponentId: player1Id,
+            opponentName: player1.name,
+            goesFirst: goesFirst === player2Id,
+            mode,
+            seed
+        }));
     }
     
     async handleGameAction(tempId, msg) {
@@ -933,20 +763,19 @@ export class Matchmaker {
         const room = this.gameRooms?.get(player.matchId);
         if (!room) return;
         
-        // Forward action to GameRoom for authoritative processing
+        // Forward to game room
         const response = await room.gameRoom.fetch(new Request('http://internal/action', {
             method: 'POST',
             body: JSON.stringify({
-                playerId: playerId,
+                playerId,
                 action: msg.action,
-                deckData: msg.deckData // For initial deck setup
+                deckData: msg.deckData
             })
         }));
         
         const result = await response.json();
         
         if (!result.valid) {
-            // Send error back to sender only
             const senderWs = room.players[playerId];
             if (senderWs?.readyState === 1) {
                 senderWs.send(JSON.stringify({
@@ -957,17 +786,13 @@ export class Matchmaker {
             return;
         }
         
-        // Server timestamp for synchronized playback
+        // Send state to each player
         const serverTime = result.serverTime || Date.now();
-        const startAtServerMs = serverTime + 150; // 150ms buffer for network
+        const startAtServerMs = serverTime + 150;
         
-        // Send personalized state and events to each player
-        // Match player by the playerId in the result, not by Object.keys order
         for (const [pid, pws] of Object.entries(room.players)) {
             if (pws.readyState !== 1) continue;
             
-            // Determine which data to send based on playerId match
-            // This ensures correct state goes to correct player regardless of object key order
             const playerData = (result.player1?.playerId === pid) ? result.player1 : result.player2;
             
             if (!playerData) continue;
@@ -976,12 +801,11 @@ export class Matchmaker {
                 type: 'resolvedAction',
                 action: msg.action,
                 events: playerData.events,
-                animationSequence: playerData.animationSequence || [],
                 state: playerData.state,
                 sourcePlayerId: playerId,
                 isMyAction: pid === playerId,
-                serverTime: result.serverTime || serverTime,
-                startAtServerMs: result.startAtServerMs || startAtServerMs,
+                serverTime,
+                startAtServerMs,
                 matchId: player.matchId
             };
             
@@ -999,16 +823,13 @@ export class Matchmaker {
         const room = this.gameRooms?.get(player.matchId);
         if (!room) return;
         
-        const serverTime = Date.now();
-        
         const syncMsg = {
             type: 'kindlingSync',
             kindling: msg.kindling,
             sourcePlayerId: playerId,
-            serverTime: serverTime
+            serverTime: Date.now()
         };
         
-        // Broadcast to BOTH players
         for (const [pid, pws] of Object.entries(room.players)) {
             if (pws.readyState === 1) {
                 pws.send(JSON.stringify(syncMsg));
@@ -1137,16 +958,6 @@ export class Matchmaker {
         }
     }
     
-    async forwardToGameRoom(msg) {
-        const room = this.gameRooms?.get(msg.matchId);
-        if (!room) return;
-        
-        await room.gameRoom.fetch(new Request('http://internal/action', {
-            method: 'POST',
-            body: JSON.stringify(msg)
-        }));
-    }
-    
     handleDisconnect(tempId) {
         const playerId = this.connections.get(tempId);
         if (!playerId) return;
@@ -1171,12 +982,8 @@ export class Matchmaker {
     }
 }
 
-// ==================== GAME ENGINE ====================
-// GameEventTypes and SeededRNG are now imported from shared-engine.js
-// This ensures server and client use IDENTICAL game logic
-
 // ==================== GAME ROOM DURABLE OBJECT ====================
-// Authoritative game server - uses SharedGameEngine for all game logic
+// Uses SharedGameEngine v2 with data-driven abilities
 
 export class GameRoom {
     constructor(state, env) {
@@ -1186,26 +993,20 @@ export class GameRoom {
         // Match metadata
         this.matchId = null;
         this.mode = null;
-        this.players = {};    // playerId -> { slot, name, connected, timeouts, deckConfig }
+        this.players = {};    // playerId -> { slot, name, connected, timeouts }
         this.playerIds = [];  // [player1Id, player2Id]
         
         // Timer settings
         this.TURN_TIME = 150;
-        this.WARNING_TIME = 30;
         this.DISCONNECT_GRACE = 60000;
         this.TIMEOUT_FORFEIT = 3;
         
         this.turnStartTime = null;
         this.turnTimer = null;
-        this.warningSent = false;
         
-        // *** SHARED GAME ENGINE - Single source of truth ***
-        this.engine = new SharedGameEngine();
-        this.seed = null;
-        
-        // BO3 tracking
-        this.scores = { player1: 0, player2: 0 };
-        this.currentGame = 1;
+        // *** SHARED GAME ENGINE v2 - Data-driven abilities ***
+        this.engine = null;
+        this.eventLog = [];
         
         this.disconnectTimers = {};
     }
@@ -1235,7 +1036,6 @@ export class GameRoom {
         this.matchId = data.matchId;
         this.mode = data.mode;
         
-        // Store player info
         const p1Id = data.player1.id;
         const p2Id = data.player2.id;
         this.playerIds = [p1Id, p2Id];
@@ -1244,68 +1044,98 @@ export class GameRoom {
             [p1Id]: { 
                 ...data.player1, 
                 connected: true, 
-                slot: 'player1', 
+                slot: 'player',  // p1 is always 'player' in engine terms
                 timeouts: 0,
                 deckInitialized: false
             },
             [p2Id]: { 
                 ...data.player2, 
                 connected: true, 
-                slot: 'player2', 
+                slot: 'enemy',   // p2 is always 'enemy' in engine terms
                 timeouts: 0,
                 deckInitialized: false
             }
         };
         
-        // Initialize seed
-        this.seed = data.seed || Date.now();
+        // Create the game engine
+        this.engine = new SharedGameEngine();
         
-        // Determine who goes first based on matchmaker's coin flip
-        const firstPlayerId = data.goesFirst || p1Id;
+        // Set initial turn based on who goes first
+        // p1Id = 'player', p2Id = 'enemy' in engine terms
+        const goesFirstOwner = data.goesFirst === p1Id ? 'player' : 'enemy';
+        this.engine.state.currentTurn = goesFirstOwner;
         
-        console.log('[GameRoom] Init - p1Id:', p1Id, 'p2Id:', p2Id, 'firstPlayerId:', firstPlayerId);
+        // Give starting pyre to first player
+        if (goesFirstOwner === 'player') {
+            this.engine.state.playerPyre = 1;
+        } else {
+            this.engine.state.enemyPyre = 1;
+        }
         
-        // Initialize the game engine with player IDs and who goes first
-        this.engine.initMatch(p1Id, p2Id, this.seed, firstPlayerId);
+        console.log('[GameRoom] Init:', { p1Id, p2Id, goesFirst: goesFirstOwner });
+        
+        // Set up event logging
+        this.engine.on('onSummon', (data) => this.logEvent('onSummon', data));
+        this.engine.on('onDamageTaken', (data) => this.logEvent('onDamageTaken', data));
+        this.engine.on('onDeath', (data) => this.logEvent('onDeath', data));
+        this.engine.on('onPyreGained', (data) => this.logEvent('onPyreGained', data));
         
         this.startTurnTimer();
         
         return new Response(JSON.stringify({
             success: true,
             matchId: this.matchId,
-            firstPlayer: p1Id,
-            seed: this.seed
+            firstPlayer: data.goesFirst,
+            seed: data.seed
         }), { status: 200 });
+    }
+    
+    logEvent(type, data) {
+        this.eventLog.push({ type, data, timestamp: Date.now() });
     }
     
     // ==================== ACTION PROCESSING ====================
     
     async handleAction(data) {
-        const { playerId, action, type, deckData } = data;
-        const isPlayer1 = playerId === this.playerIds[0];
+        const { playerId, action, deckData } = data;
         const player = this.players[playerId];
         
-        // Initialize deck if provided (first action of match for this player)
+        if (!player) {
+            return new Response(JSON.stringify({ 
+                valid: false, 
+                error: 'Player not in game' 
+            }), { status: 400 });
+        }
+        
+        // Determine owner ('player' or 'enemy')
+        const owner = player.slot; // 'player' or 'enemy'
+        
+        // Initialize deck if provided
         if (deckData && !player.deckInitialized) {
-            console.log(`[GameRoom] Initializing deck for ${playerId}`);
-            this.engine.initPlayerDeck(playerId, deckData);
+            console.log(`[GameRoom] Initializing deck for ${playerId} (${owner})`);
+            this.initializeDeck(owner, deckData);
             player.deckInitialized = true;
         }
         
-        // Handle special action types (these don't require turn validation)
-        if (type === 'forfeit') {
-            return this.handleForfeit(playerId, 'forfeit');
-        }
-        if (type === 'concede') {
-            return this.handleForfeit(playerId, 'concede');
-        }
-        if (type === 'rejoin') {
-            return this.handleRejoin(playerId);
+        // Clear event log for this action
+        this.eventLog = [];
+        if (this.engine.executor) {
+            this.engine.executor.eventQueue = [];
         }
         
-        // Process the action through the engine
-        // The engine validates turn ownership internally
-        const result = this.engine.processAction(playerId, action);
+        // Basic turn validation (unless it's a sync action)
+        const noTurnCheckActions = ['turnStartSync', 'kindlingSync'];
+        if (!noTurnCheckActions.includes(action.type)) {
+            if (this.engine.state.currentTurn !== owner) {
+                return new Response(JSON.stringify({ 
+                    valid: false, 
+                    error: 'Not your turn' 
+                }), { status: 400 });
+            }
+        }
+        
+        // Execute the action (validation happens in execute methods)
+        const result = this.executeAction(owner, action);
         
         if (!result.success) {
             return new Response(JSON.stringify({ 
@@ -1314,41 +1144,571 @@ export class GameRoom {
             }), { status: 400 });
         }
         
-        // Restart turn timer on successful action
+        // Restart turn timer
         this.startTurnTimer();
         
+        // Get events from executor
+        const events = [...this.engine.executor.eventQueue, ...this.eventLog];
+        
         // Get state for each player
-        const player1State = this.engine.getStateForPlayer(this.playerIds[0]);
-        const player2State = this.engine.getStateForPlayer(this.playerIds[1]);
+        const p1State = this.getStateForPlayer(this.playerIds[0]);
+        const p2State = this.getStateForPlayer(this.playerIds[1]);
         
         const serverTime = Date.now();
-        const startAtServerMs = serverTime + 150; // 150ms buffer for network
         
         return new Response(JSON.stringify({
             valid: true,
             sourcePlayerId: playerId,
             serverTime,
-            startAtServerMs,
+            startAtServerMs: serverTime + 150,
             player1: {
                 playerId: this.playerIds[0],
-                events: result.events,
-                state: player1State
+                events,
+                state: p1State
             },
             player2: {
                 playerId: this.playerIds[1],
-                events: result.events,
-                state: player2State
+                events,
+                state: p2State
             }
         }), { status: 200 });
     }
     
-
+    initializeDeck(owner, deckData) {
+        const hand = owner === 'player' ? this.engine.state.playerHand : this.engine.state.enemyHand;
+        const kindling = owner === 'player' ? this.engine.state.playerKindling : this.engine.state.enemyKindling;
+        const deck = owner === 'player' ? this.engine.state.playerDeck : this.engine.state.enemyDeck;
+        
+        // Add cards to hand
+        if (deckData.hand) {
+            for (const card of deckData.hand) {
+                hand.push({ ...card, id: card.id || `${owner}-hand-${Date.now()}-${Math.random()}` });
+            }
+        }
+        
+        // Add kindling
+        if (deckData.kindling) {
+            for (const card of deckData.kindling) {
+                kindling.push({ ...card, id: card.id || `${owner}-kindling-${Date.now()}-${Math.random()}` });
+            }
+        }
+        
+        // Add deck (client sends as mainDeck)
+        if (deckData.mainDeck) {
+            deck.push(...deckData.mainDeck);
+        } else if (deckData.deck) {
+            deck.push(...deckData.deck);
+        }
+    }
+    
+    executeAction(owner, action) {
+        switch (action.type) {
+            case 'summon':
+                return this.executeSummon(owner, action);
+            case 'summonKindling':
+                return this.executeSummonKindling(owner, action);
+            case 'attack':
+                return this.executeAttack(owner, action);
+            case 'rest':
+                return this.executeRest(owner, action);
+            case 'playPyre':
+                return this.executePlayPyre(owner, action);
+            case 'playBurst':
+                return this.executePlayBurst(owner, action);
+            case 'playTrap':
+                return this.executePlayTrap(owner, action);
+            case 'playAura':
+                return this.executePlayAura(owner, action);
+            case 'evolve':
+                return this.executeEvolve(owner, action);
+            case 'activateAbility':
+                return this.executeActivateAbility(owner, action);
+            case 'endPhase':
+                return this.executeEndPhase(owner);
+            case 'endTurn':
+                return this.executeEndTurn(owner);
+            case 'turnStartSync':
+                // Client sync message - acknowledge but don't process
+                return { success: true };
+            default:
+                console.log(`[GameRoom] Unknown action type: ${action.type}`);
+                return { success: false, error: `Unknown action: ${action.type}` };
+        }
+    }
+    
+    executeSummon(owner, action) {
+        const { cardId, cardIndex, col, row } = action;
+        const hand = owner === 'player' ? this.engine.state.playerHand : this.engine.state.enemyHand;
+        
+        // Find card
+        let idx = cardIndex;
+        if (cardId !== undefined) {
+            idx = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        }
+        
+        if (idx < 0 || idx >= hand.length) {
+            return { success: false, error: 'Card not in hand' };
+        }
+        
+        const card = hand.splice(idx, 1)[0];
+        
+        const result = this.engine.summon(owner, card, col, row);
+        if (!result.success) {
+            // Put card back
+            hand.splice(idx, 0, card);
+        }
+        
+        return result;
+    }
+    
+    executeSummonKindling(owner, action) {
+        const { kindlingId, kindlingIndex, col, row } = action;
+        const kindling = owner === 'player' ? this.engine.state.playerKindling : this.engine.state.enemyKindling;
+        
+        // Find kindling
+        let idx = kindlingIndex;
+        if (kindlingId !== undefined) {
+            idx = kindling.findIndex(k => k.id === kindlingId || k.id == kindlingId);
+        }
+        
+        if (idx < 0 || idx >= kindling.length) {
+            return { success: false, error: 'Kindling not found' };
+        }
+        
+        const card = kindling.splice(idx, 1)[0];
+        
+        const result = this.engine.summon(owner, card, col, row);
+        if (!result.success) {
+            kindling.splice(idx, 0, card);
+        }
+        
+        return result;
+    }
+    
+    executeAttack(owner, action) {
+        const { attackerCol, attackerRow, targetCol, targetRow } = action;
+        
+        const attacker = this.engine.getCryptidAt(owner, attackerCol, attackerRow);
+        if (!attacker) {
+            return { success: false, error: 'No attacker at position' };
+        }
+        
+        const targetOwner = owner === 'player' ? 'enemy' : 'player';
+        
+        return this.engine.attack(attacker, targetOwner, targetCol, targetRow);
+    }
+    
+    executeRest(owner, action) {
+        const { col, row } = action;
+        
+        const cryptid = this.engine.getCryptidAt(owner, col, row);
+        if (!cryptid) {
+            return { success: false, error: 'No cryptid at position' };
+        }
+        
+        this.engine.rest(cryptid);
+        return { success: true };
+    }
+    
+    executePlayPyre(owner, action) {
+        const { cardId, cardIndex } = action;
+        const hand = owner === 'player' ? this.engine.state.playerHand : this.engine.state.enemyHand;
+        
+        let idx = cardIndex;
+        if (cardId !== undefined) {
+            idx = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        }
+        
+        if (idx < 0 || idx >= hand.length) {
+            return { success: false, error: 'Card not in hand' };
+        }
+        
+        const card = hand[idx];
+        if (card.type !== 'pyre') {
+            return { success: false, error: 'Not a pyre card' };
+        }
+        
+        // Remove card and gain pyre
+        hand.splice(idx, 1);
+        this.engine.gainPyre(owner, card.pyreValue || 1, card.name);
+        
+        return { success: true };
+    }
+    
+    executePlayBurst(owner, action) {
+        const { cardId, cardIndex, targetCol, targetRow, targetOwner } = action;
+        const hand = owner === 'player' ? this.engine.state.playerHand : this.engine.state.enemyHand;
+        const pyre = owner === 'player' ? this.engine.state.playerPyre : this.engine.state.enemyPyre;
+        
+        let idx = cardIndex;
+        if (cardId !== undefined) {
+            idx = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        }
+        
+        if (idx < 0 || idx >= hand.length) {
+            return { success: false, error: 'Card not in hand' };
+        }
+        
+        const card = hand[idx];
+        if (card.type !== 'burst') {
+            return { success: false, error: 'Not a burst card' };
+        }
+        
+        if (card.cost > pyre) {
+            return { success: false, error: 'Not enough pyre' };
+        }
+        
+        // Deduct pyre
+        if (owner === 'player') {
+            this.engine.state.playerPyre -= card.cost;
+        } else {
+            this.engine.state.enemyPyre -= card.cost;
+        }
+        
+        // Remove from hand
+        hand.splice(idx, 1);
+        
+        // Execute burst effects using ability executor
+        if (card.effects && this.engine.executor) {
+            const resolvedTargetOwner = targetOwner === 'enemy' ? (owner === 'player' ? 'enemy' : 'player') : owner;
+            const target = targetCol !== undefined && targetRow !== undefined 
+                ? this.engine.getCryptidAt(resolvedTargetOwner, targetCol, targetRow)
+                : null;
+            
+            this.engine.executor.context = {
+                self: card,
+                owner,
+                target,
+                eventData: { targetCol, targetRow, targetOwner: resolvedTargetOwner }
+            };
+            
+            for (const effect of card.effects) {
+                this.engine.executeEffect(effect);
+            }
+        }
+        
+        this.engine.emit('onBurstPlayed', { card, owner, targetCol, targetRow });
+        
+        return { success: true };
+    }
+    
+    executePlayTrap(owner, action) {
+        const { cardId, cardIndex, row } = action;
+        const hand = owner === 'player' ? this.engine.state.playerHand : this.engine.state.enemyHand;
+        const traps = owner === 'player' ? this.engine.state.playerTraps : this.engine.state.enemyTraps;
+        const pyre = owner === 'player' ? this.engine.state.playerPyre : this.engine.state.enemyPyre;
+        
+        let idx = cardIndex;
+        if (cardId !== undefined) {
+            idx = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        }
+        
+        if (idx < 0 || idx >= hand.length) {
+            return { success: false, error: 'Card not in hand' };
+        }
+        
+        const card = hand[idx];
+        if (card.type !== 'trap') {
+            return { success: false, error: 'Not a trap card' };
+        }
+        
+        if (card.cost > pyre) {
+            return { success: false, error: 'Not enough pyre' };
+        }
+        
+        const trapRow = row !== undefined ? row : 0;
+        if (traps[trapRow]) {
+            return { success: false, error: 'Trap slot occupied' };
+        }
+        
+        // Deduct pyre
+        if (owner === 'player') {
+            this.engine.state.playerPyre -= card.cost;
+        } else {
+            this.engine.state.enemyPyre -= card.cost;
+        }
+        
+        // Remove from hand and set trap
+        hand.splice(idx, 1);
+        traps[trapRow] = { ...card, row: trapRow };
+        
+        this.engine.emit('onTrapSet', { card, owner, row: trapRow });
+        
+        return { success: true };
+    }
+    
+    executePlayAura(owner, action) {
+        const { cardId, cardIndex, targetCol, targetRow } = action;
+        const hand = owner === 'player' ? this.engine.state.playerHand : this.engine.state.enemyHand;
+        const pyre = owner === 'player' ? this.engine.state.playerPyre : this.engine.state.enemyPyre;
+        
+        let idx = cardIndex;
+        if (cardId !== undefined) {
+            idx = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        }
+        
+        if (idx < 0 || idx >= hand.length) {
+            return { success: false, error: 'Card not in hand' };
+        }
+        
+        const card = hand[idx];
+        if (card.type !== 'aura') {
+            return { success: false, error: 'Not an aura card' };
+        }
+        
+        if (card.cost > pyre) {
+            return { success: false, error: 'Not enough pyre' };
+        }
+        
+        const target = this.engine.getCryptidAt(owner, targetCol, targetRow);
+        if (!target) {
+            return { success: false, error: 'No target for aura' };
+        }
+        
+        // Deduct pyre
+        if (owner === 'player') {
+            this.engine.state.playerPyre -= card.cost;
+        } else {
+            this.engine.state.enemyPyre -= card.cost;
+        }
+        
+        // Remove from hand
+        hand.splice(idx, 1);
+        
+        // Apply aura to target
+        target.auras = target.auras || [];
+        target.auras.push({ key: card.key, name: card.name });
+        
+        // Apply aura bonuses
+        if (card.atkBonus) target.currentAtk = (target.currentAtk || target.atk) + card.atkBonus;
+        if (card.hpBonus) target.currentHp = (target.currentHp || target.hp) + card.hpBonus;
+        if (card.grantsFlags) {
+            for (const flag of card.grantsFlags) {
+                target[flag] = true;
+            }
+        }
+        if (card.grantsRegeneration) {
+            target.regeneration = (target.regeneration || 0) + card.grantsRegeneration;
+        }
+        
+        this.engine.emit('onAuraApplied', { card, target, owner });
+        
+        return { success: true };
+    }
+    
+    executeEvolve(owner, action) {
+        const { cardId, cardIndex, targetCol, targetRow } = action;
+        const hand = owner === 'player' ? this.engine.state.playerHand : this.engine.state.enemyHand;
+        const pyre = owner === 'player' ? this.engine.state.playerPyre : this.engine.state.enemyPyre;
+        
+        let idx = cardIndex;
+        if (cardId !== undefined) {
+            idx = hand.findIndex(c => c.id === cardId || c.id == cardId);
+        }
+        
+        if (idx < 0 || idx >= hand.length) {
+            return { success: false, error: 'Card not in hand' };
+        }
+        
+        const card = hand[idx];
+        const target = this.engine.getCryptidAt(owner, targetCol, targetRow);
+        
+        if (!target) {
+            return { success: false, error: 'No target for evolution' };
+        }
+        
+        // Check evolution is valid
+        if (target.key !== card.evolvesFrom && target.evolvesInto !== card.key) {
+            return { success: false, error: 'Invalid evolution target' };
+        }
+        
+        if (card.cost > pyre) {
+            return { success: false, error: 'Not enough pyre' };
+        }
+        
+        // Deduct pyre
+        if (owner === 'player') {
+            this.engine.state.playerPyre -= card.cost;
+        } else {
+            this.engine.state.enemyPyre -= card.cost;
+        }
+        
+        // Remove card from hand
+        hand.splice(idx, 1);
+        
+        // Evolve the cryptid: replace with new card, preserve position state
+        const evolved = this.engine.createCryptidInstance(card, owner, target.col, target.row);
+        evolved.tapped = target.tapped;
+        evolved.canAttack = target.canAttack;
+        
+        const field = this.engine.getField(owner);
+        field[target.col][target.row] = evolved;
+        
+        this.engine.emit('onEvolve', { from: target, to: evolved, owner });
+        
+        return { success: true };
+    }
+    
+    executeActivateAbility(owner, action) {
+        const { abilityName, col, row, targetCol, targetRow, targetOwner } = action;
+        
+        const cryptid = this.engine.getCryptidAt(owner, col, row);
+        if (!cryptid) {
+            return { success: false, error: 'No cryptid at position' };
+        }
+        
+        // Find the activatable ability
+        const ability = cryptid.abilities?.find(a => 
+            a.trigger === 'activatable' && a.id === abilityName
+        );
+        
+        if (!ability) {
+            return { success: false, error: `Ability ${abilityName} not found` };
+        }
+        
+        // Check condition
+        if (ability.condition && !this.engine.executor.checkCondition(ability.condition)) {
+            return { success: false, error: 'Ability condition not met' };
+        }
+        
+        // Execute ability effects
+        const resolvedTargetOwner = targetOwner === 'enemy' ? (owner === 'player' ? 'enemy' : 'player') : owner;
+        const target = targetCol !== undefined && targetRow !== undefined 
+            ? this.engine.getCryptidAt(resolvedTargetOwner, targetCol, targetRow)
+            : null;
+        
+        this.engine.executor.context = {
+            self: cryptid,
+            owner,
+            target,
+            eventData: { abilityName, targetCol, targetRow, targetOwner: resolvedTargetOwner }
+        };
+        
+        this.engine.executor.executeEffects(ability.effects || [], ability.target);
+        
+        this.engine.emit('onAbilityActivated', { cryptid, abilityName, owner });
+        
+        return { success: true };
+    }
+    
+    executeEndPhase(owner) {
+        // Just end the current turn (phase management happens client-side)
+        return this.executeEndTurn(owner);
+    }
+    
+    executeEndTurn(owner) {
+        // End current turn
+        this.engine.endTurn(owner);
+        
+        // Start next turn
+        const nextOwner = owner === 'player' ? 'enemy' : 'player';
+        this.engine.startTurn(nextOwner);
+        
+        // Give pyre to new player
+        this.engine.gainPyre(nextOwner, 1, 'turnStart');
+        
+        return { success: true };
+    }
+    
+    getStateForPlayer(playerId) {
+        // NEW ARCHITECTURE: Send state from PLAYER's OWN perspective
+        // No flipping - client's applyServerState expects:
+        // - state.playerField = player's own field
+        // - state.enemyField = opponent's field
+        
+        const player = this.players[playerId];
+        if (!player) return null;
+        
+        const isPlayer1 = player.slot === 'player';
+        const state = this.engine.state;
+        
+        if (isPlayer1) {
+            // Player 1: their field is playerField, opponent is enemyField
+            return {
+                playerField: this.serializeField(state.playerField),
+                enemyField: this.serializeField(state.enemyField),
+                playerPyre: state.playerPyre,
+                enemyPyre: state.enemyPyre,
+                playerDeaths: state.playerDeaths,
+                enemyDeaths: state.enemyDeaths,
+                hand: state.playerHand,
+                kindling: state.playerKindling,
+                currentTurn: state.currentTurn,
+                phase: state.phase,
+                turnNumber: state.turnNumber,
+                isMyTurn: state.currentTurn === 'player',
+                gameOver: state.gameOver,
+                winner: state.winner
+            };
+        } else {
+            // Player 2: their field is enemyField, opponent is playerField
+            // Send from P2's perspective where they see themselves as "player"
+            return {
+                playerField: this.serializeField(state.enemyField),   // P2's field
+                enemyField: this.serializeField(state.playerField),   // P1's field (enemy to P2)
+                playerPyre: state.enemyPyre,
+                enemyPyre: state.playerPyre,
+                playerDeaths: state.enemyDeaths,
+                enemyDeaths: state.playerDeaths,
+                hand: state.enemyHand,
+                kindling: state.enemyKindling,
+                // From P2's perspective: if currentTurn is 'enemy', it's P2's turn (their turn)
+                currentTurn: state.currentTurn === 'enemy' ? 'player' : 'enemy',
+                phase: state.phase,
+                turnNumber: state.turnNumber,
+                isMyTurn: state.currentTurn === 'enemy',
+                gameOver: state.gameOver,
+                winner: state.winner === 'player' ? 'enemy' : state.winner === 'enemy' ? 'player' : state.winner
+            };
+        }
+    }
+    
+    serializeField(field) {
+        return field.map(col => col.map(cryptid => {
+            if (!cryptid) return null;
+            return this.serializeCryptid(cryptid);
+        }));
+    }
+    
+    serializeCryptid(cryptid) {
+        if (!cryptid) return null;
+        
+        // Return a clean copy without function references
+        return {
+            id: cryptid.id,
+            key: cryptid.key,
+            name: cryptid.name,
+            owner: cryptid.owner,
+            col: cryptid.col,
+            row: cryptid.row,
+            type: cryptid.type,
+            cost: cryptid.cost,
+            atk: cryptid.atk,
+            hp: cryptid.hp,
+            currentHp: cryptid.currentHp,
+            maxHp: cryptid.maxHp,
+            currentAtk: cryptid.currentAtk,
+            baseAtk: cryptid.baseAtk,
+            tapped: cryptid.tapped,
+            canAttack: cryptid.canAttack,
+            isKindling: cryptid.isKindling,
+            element: cryptid.element,
+            rarity: cryptid.rarity,
+            // Status effects
+            burnTurns: cryptid.burnTurns,
+            bleedTurns: cryptid.bleedTurns,
+            paralyzed: cryptid.paralyzed,
+            paralyzeTurns: cryptid.paralyzeTurns,
+            calamityCounters: cryptid.calamityCounters,
+            curseTokens: cryptid.curseTokens
+        };
+    }
+    
     // ==================== TIMER MANAGEMENT ====================
     
     startTurnTimer() {
         this.stopTurnTimer();
         this.turnStartTime = Date.now();
-        this.warningSent = false;
         
         this.turnTimer = setInterval(() => {
             const elapsed = Math.floor((Date.now() - this.turnStartTime) / 1000);
@@ -1370,8 +1730,8 @@ export class GameRoom {
     handleTurnTimeout() {
         this.stopTurnTimer();
         
-        // currentTurn is now the player ID directly
-        const currentPlayerId = this.engine.state.currentTurn;
+        const currentOwner = this.engine.state.currentTurn;
+        const currentPlayerId = currentOwner === 'player' ? this.playerIds[0] : this.playerIds[1];
         const player = this.players[currentPlayerId];
         
         if (player) {
@@ -1383,45 +1743,21 @@ export class GameRoom {
             }
         }
         
-        // Force end phase using engine
-        this.engine.processAction(currentPlayerId, { type: ActionTypes.END_PHASE });
+        // Force end turn
+        this.executeEndTurn(currentOwner);
     }
-    
-    // ==================== SPECIAL HANDLERS ====================
     
     handleForfeit(playerId, reason) {
         this.stopTurnTimer();
         const winnerId = this.playerIds.find(id => id !== playerId);
         
+        this.engine.state.gameOver = true;
+        this.engine.state.winner = this.players[winnerId]?.slot || 'player';
+        
         return new Response(JSON.stringify({
             type: 'matchEnd',
             winner: winnerId,
             reason
-        }), { status: 200 });
-    }
-    
-    handleRejoin(playerId) {
-        const player = this.players[playerId];
-        if (!player) {
-            return new Response(JSON.stringify({ error: 'Player not in match' }), { status: 400 });
-        }
-        
-        player.connected = true;
-        
-        if (this.disconnectTimers[playerId]) {
-            clearTimeout(this.disconnectTimers[playerId]);
-            delete this.disconnectTimers[playerId];
-        }
-        
-        const state = this.engine.getStateForPlayer(playerId);
-        const elapsed = Math.floor((Date.now() - this.turnStartTime) / 1000);
-        
-        return new Response(JSON.stringify({
-            type: 'rejoinState',
-            state,
-            timeRemaining: Math.max(0, this.TURN_TIME - elapsed),
-            phase: this.engine.state.phase,
-            turnNumber: this.engine.state.turnNumber
         }), { status: 200 });
     }
     
@@ -1434,9 +1770,8 @@ export class GameRoom {
             
             this.disconnectTimers[playerId] = setTimeout(() => {
                 const winnerId = this.playerIds.find(id => id !== playerId);
-                // Mark match as ended due to disconnect using engine
                 this.engine.state.gameOver = true;
-                this.engine.state.winner = winnerId;
+                this.engine.state.winner = this.players[winnerId]?.slot || 'player';
             }, this.DISCONNECT_GRACE);
         }
         

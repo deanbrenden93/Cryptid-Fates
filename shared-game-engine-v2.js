@@ -1,5 +1,5 @@
 /**
- * Cryptid Fates - Shared Game Engine v2
+ * Cryptid Fates - Shared Game Engine v2 (Browser Version)
  * 
  * This engine runs identically on client and server.
  * It uses the data-driven ability system to execute all game logic.
@@ -10,9 +10,8 @@
  * - Events are emitted for animations (client) and validation (server)
  */
 
-// Import ability system
-// ES6 import for Cloudflare Workers / ES modules
-import { AbilityExecutor, Triggers, EffectTypes, TargetTypes, ConditionTypes, CalcTypes, Flags } from './ability-system.js';
+// Get ability system from browser global (loaded via ability-system.js script tag)
+const { AbilityExecutor, Triggers, EffectTypes, TargetTypes, ConditionTypes, CalcTypes, Flags } = window.AbilitySystem;
 
 class SharedGameEngine {
     constructor(initialState = null) {
@@ -1273,23 +1272,14 @@ class SharedGameEngine {
     }
 }
 
-// ==================== EXPORTS ====================
+// ==================== BROWSER GLOBAL ====================
+window.SharedGameEngine = SharedGameEngine;
+window.Triggers = Triggers;
+window.EffectTypes = EffectTypes;
+window.TargetTypes = TargetTypes;
+window.ConditionTypes = ConditionTypes;
+window.CalcTypes = CalcTypes;
+window.Flags = Flags;
 
-// ES6 exports for Cloudflare Workers
-export { SharedGameEngine, Triggers, EffectTypes, TargetTypes, ConditionTypes, CalcTypes, Flags };
+console.log('[SharedGameEngine v2] Loaded successfully');
 
-// CommonJS for Node.js
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { SharedGameEngine, Triggers, EffectTypes, TargetTypes, ConditionTypes, CalcTypes, Flags };
-}
-
-// Browser global
-if (typeof window !== 'undefined') {
-    window.SharedGameEngine = SharedGameEngine;
-    window.Triggers = Triggers;
-    window.EffectTypes = EffectTypes;
-    window.TargetTypes = TargetTypes;
-    window.ConditionTypes = ConditionTypes;
-    window.CalcTypes = CalcTypes;
-    window.Flags = Flags;
-}
