@@ -517,30 +517,65 @@ window.HomeScreen = {
         this.closeQuickPlay();
         this.close();
         
-        // Open adventure setup screen
+        // Check if AdventureUI is loaded
+        if (typeof AdventureUI === 'undefined') {
+            console.warn('[QuickPlay] AdventureUI not defined, checking globals...');
+            console.log('[QuickPlay] window.AdventureUI:', typeof window.AdventureUI);
+            console.log('[QuickPlay] window.AdventureEngine:', typeof window.AdventureEngine);
+            console.log('[QuickPlay] window.AdventureState:', typeof window.AdventureState);
+        }
+        
+        // Try to open adventure setup screen
         if (typeof AdventureUI !== 'undefined' && AdventureUI.openSetup) {
-            AdventureUI.openSetup();
+            try {
+                AdventureUI.openSetup();
+            } catch (e) {
+                console.error('[QuickPlay] Error opening Adventure Mode:', e);
+                this.showAdventureError(e.message);
+            }
+        } else if (typeof window.AdventureUI !== 'undefined' && window.AdventureUI.openSetup) {
+            // Try explicit window reference
+            try {
+                window.AdventureUI.openSetup();
+            } catch (e) {
+                console.error('[QuickPlay] Error opening Adventure Mode (window):', e);
+                this.showAdventureError(e.message);
+            }
         } else {
             console.error('[QuickPlay] Adventure Mode not loaded. AdventureUI:', typeof AdventureUI);
-            // Show error message without using blocked alert()
-            const msg = document.createElement('div');
-            msg.style.cssText = `
-                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                background: rgba(0,0,0,0.95); border: 2px solid #e57373; padding: 30px 50px;
-                border-radius: 12px; color: #e8e0d5; font-family: 'Cinzel', serif;
-                font-size: 16px; z-index: 99999; text-align: center;
-            `;
-            msg.innerHTML = `
-                <div style="color: #e57373; font-size: 20px; margin-bottom: 15px;">⚠️ Error</div>
-                <div>Adventure Mode failed to load.</div>
-                <div style="font-size: 12px; color: #888; margin-top: 10px;">Try refreshing the page (Ctrl+Shift+R)</div>
-                <button onclick="this.parentElement.remove(); HomeScreen.open();" style="
-                    margin-top: 20px; padding: 10px 30px; background: #e57373; border: none;
-                    color: white; cursor: pointer; border-radius: 6px; font-family: inherit;
-                ">OK</button>
-            `;
-            document.body.appendChild(msg);
+            this.showAdventureError('Adventure Mode module failed to load. This may be caused by corrupted save data.');
         }
+    },
+    
+    showAdventureError(details) {
+        const msg = document.createElement('div');
+        msg.style.cssText = `
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95); border: 2px solid #e57373; padding: 30px 50px;
+            border-radius: 12px; color: #e8e0d5; font-family: 'Cinzel', serif;
+            font-size: 16px; z-index: 99999; text-align: center; max-width: 450px;
+        `;
+        msg.innerHTML = `
+            <div style="color: #e57373; font-size: 20px; margin-bottom: 15px;">⚠️ Adventure Mode Error</div>
+            <div>Adventure Mode failed to load.</div>
+            <div style="font-size: 12px; color: #888; margin-top: 10px; margin-bottom: 15px;">${details || 'Unknown error'}</div>
+            <div style="font-size: 11px; color: #666; margin-bottom: 15px;">
+                If this persists, try clearing your save data below.
+            </div>
+            <button onclick="localStorage.removeItem('cryptidFates_playerData'); location.reload();" style="
+                margin: 5px; padding: 10px 20px; background: #c9302c; border: none;
+                color: white; cursor: pointer; border-radius: 6px; font-family: inherit;
+            ">Reset Save & Reload</button>
+            <button onclick="location.reload();" style="
+                margin: 5px; padding: 10px 20px; background: #5cb85c; border: none;
+                color: white; cursor: pointer; border-radius: 6px; font-family: inherit;
+            ">Just Reload</button>
+            <button onclick="this.parentElement.remove(); HomeScreen.open();" style="
+                margin: 5px; padding: 10px 20px; background: #666; border: none;
+                color: white; cursor: pointer; border-radius: 6px; font-family: inherit;
+            ">Cancel</button>
+        `;
+        document.body.appendChild(msg);
     },
     
     toggleFullscreen() {

@@ -1,3 +1,4 @@
+console.log('[Adventure Mode] SCRIPT FILE REACHED - Line 1');
 /**
  * Cryptid Fates - Adventure Mode (Roguelite Sidescroller)
  * A survival horror themed exploration between card battles
@@ -6,9 +7,15 @@
  * - 2D sidescroller room-based exploration
  * - Persistent death counter across battles
  * - Relic system with passive effects
- * - 3 floors × 10 rooms + boss per floor
+ * - 3 floors x 10 rooms + boss per floor
  * - Card discovery during runs
  */
+
+// Early debug to confirm script is executing
+console.log('[Adventure Mode] Script execution starting...');
+
+// Wrap everything in a try-catch to catch any parsing/execution errors
+try {
 
 // ==================== ADVENTURE STATE ====================
 
@@ -389,13 +396,16 @@ window.RoomGenerator = {
     createRoom(type, index, floor) {
         const template = this.roomTypes[type] || this.roomTypes['battle'];
         
+        // Entrance rooms start cleared (no encounter needed to proceed)
+        const startsCleared = (type === 'entrance');
+        
         return {
             ...template,
             id: `floor${floor}_room${index}`,
             index,
             floor,
-            cleared: false,
-            visited: false,
+            cleared: startsCleared,
+            visited: startsCleared,
             interactables: this.generateInteractables(type, floor),
             rewards: this.generateRewards(type, floor)
         };
@@ -537,19 +547,19 @@ window.AdventureEngine = {
         y: 0,
         vx: 0,
         vy: 0,
-        width: 40,
-        height: 60,
+        width: 50,
+        height: 80,
         grounded: true,
         facing: 1, // 1 = right, -1 = left
-        state: 'idle', // idle, walking, interacting
+        state: 'idle', // idle, walking, jumping, interacting
         interactTarget: null
     },
     
-    // Room dimensions
+    // Room dimensions - will be set dynamically based on viewport
     room: {
-        width: 700,
-        height: 400,
-        groundY: 320
+        width: 1200,
+        height: 600,
+        groundY: 520
     },
     
     // Controls
@@ -562,10 +572,10 @@ window.AdventureEngine = {
     
     // Movement settings
     physics: {
-        moveSpeed: 4,
-        gravity: 0.8,
-        jumpForce: -12,
-        friction: 0.85
+        moveSpeed: 6,
+        gravity: 0.6,
+        jumpForce: -14,
+        friction: 0.88
     },
     
     // Visual settings
@@ -588,9 +598,40 @@ window.AdventureEngine = {
         
         this.canvas = document.createElement('canvas');
         this.canvas.id = 'adventure-canvas';
-        this.canvas.width = this.room.width;
-        this.canvas.height = this.room.height;
         this.ctx = this.canvas.getContext('2d');
+        
+        // Size canvas to fit viewport
+        this.resizeCanvas();
+        
+        // Listen for resize
+        window.addEventListener('resize', () => this.resizeCanvas());
+    },
+    
+    resizeCanvas() {
+        // Get available space (leave room for HUD)
+        const maxWidth = Math.min(window.innerWidth - 40, 1400);
+        const maxHeight = Math.min(window.innerHeight - 100, 800);
+        
+        // Maintain aspect ratio (roughly 2:1)
+        const aspectRatio = 2;
+        let width = maxWidth;
+        let height = width / aspectRatio;
+        
+        if (height > maxHeight) {
+            height = maxHeight;
+            width = height * aspectRatio;
+        }
+        
+        // Update canvas size
+        this.canvas.width = width;
+        this.canvas.height = height;
+        
+        // Update room dimensions to match
+        this.room.width = width;
+        this.room.height = height;
+        this.room.groundY = height - 80; // Ground near bottom
+        
+        console.log('[Adventure] Canvas resized to', width, 'x', height);
     },
     
     bindControls() {
@@ -653,12 +694,14 @@ window.AdventureEngine = {
                 position: fixed;
                 inset: 0;
                 z-index: 15000;
-                background: #0a0806;
+                background: linear-gradient(180deg, #0d0a08 0%, #0a0806 50%, #080604 100%);
                 display: none;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 font-family: 'Cinzel', serif;
+                padding: 20px;
+                box-sizing: border-box;
             }
             
             #adventure-screen.open {
@@ -668,17 +711,22 @@ window.AdventureEngine = {
             /* Canvas Container */
             .adventure-viewport {
                 position: relative;
-                border: 3px solid rgba(232, 169, 62, 0.4);
-                border-radius: 8px;
+                border: 3px solid rgba(232, 169, 62, 0.5);
+                border-radius: 12px;
                 overflow: hidden;
                 box-shadow: 
-                    0 0 40px rgba(0, 0, 0, 0.8),
-                    inset 0 0 60px rgba(0, 0, 0, 0.5);
+                    0 0 60px rgba(0, 0, 0, 0.9),
+                    0 0 120px rgba(232, 169, 62, 0.1),
+                    inset 0 0 80px rgba(0, 0, 0, 0.6);
+                max-width: 100%;
+                max-height: calc(100vh - 40px);
             }
             
             #adventure-canvas {
                 display: block;
-                image-rendering: pixelated;
+                image-rendering: auto;
+                max-width: 100%;
+                height: auto;
             }
             
             /* HUD Overlay */
@@ -687,12 +735,12 @@ window.AdventureEngine = {
                 top: 0;
                 left: 0;
                 right: 0;
-                padding: 10px 15px;
+                padding: 16px 24px;
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
                 pointer-events: none;
-                background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%);
+                background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
             }
             
             .adventure-hud > * {
@@ -702,34 +750,44 @@ window.AdventureEngine = {
             .hud-left, .hud-right {
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: 10px;
             }
             
             .hud-stat {
                 display: flex;
                 align-items: center;
-                gap: 6px;
-                font-size: 14px;
+                gap: 8px;
+                font-size: 18px;
                 color: #e8e0d5;
-                text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+                text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+                background: rgba(0,0,0,0.4);
+                padding: 6px 14px;
+                border-radius: 20px;
+                border: 1px solid rgba(232, 169, 62, 0.3);
             }
             
             .hud-stat .icon {
-                font-size: 16px;
+                font-size: 20px;
             }
             
             .hud-stat.deaths .value {
-                color: #e57373;
+                color: #ff6b6b;
+                font-weight: bold;
             }
             
             .hud-stat.embers .value {
-                color: #e8a93e;
+                color: #ffc107;
+                font-weight: bold;
             }
             
             .floor-indicator {
-                font-size: 12px;
-                color: #a89070;
+                font-size: 14px;
+                color: #c9b896;
                 letter-spacing: 2px;
+                text-transform: uppercase;
+                padding: 4px 12px;
+                background: rgba(0,0,0,0.3);
+                border-radius: 4px;
             }
             
             /* Room info bar */
@@ -738,22 +796,29 @@ window.AdventureEngine = {
                 bottom: 0;
                 left: 0;
                 right: 0;
-                padding: 10px 15px;
-                background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+                padding: 16px 24px;
+                background: linear-gradient(0deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 60%, transparent 100%);
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
             }
             
             .room-name {
-                font-size: 16px;
+                font-size: 22px;
                 color: #e8a93e;
-                text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+                text-shadow: 0 2px 8px rgba(0,0,0,0.9), 0 0 20px rgba(232, 169, 62, 0.3);
+                text-transform: uppercase;
+                letter-spacing: 3px;
+                font-weight: bold;
             }
             
             .room-hint {
-                font-size: 12px;
-                color: #a89070;
+                font-size: 14px;
+                color: #b8a888;
+                background: rgba(0,0,0,0.4);
+                padding: 8px 16px;
+                border-radius: 20px;
+                border: 1px solid rgba(232, 169, 62, 0.2);
             }
             
             /* Relics display */
@@ -1160,10 +1225,19 @@ window.AdventureEngine = {
         if (this.isRunning) return;
         this.isRunning = true;
         this.lastTime = performance.now();
+        
+        // Make sure canvas is sized
+        this.resizeCanvas();
+        
+        // Position player on ground
         this.player.x = 100;
         this.player.y = this.room.groundY - this.player.height;
         this.player.vx = 0;
         this.player.vy = 0;
+        this.player.grounded = true;
+        this.player.state = 'idle';
+        
+        console.log('[Adventure] Starting game loop. Ground at', this.room.groundY, 'Player at', this.player.y);
         this.gameLoop();
     },
     
@@ -1207,27 +1281,53 @@ window.AdventureEngine = {
             this.player.vx *= this.physics.friction;
             if (Math.abs(this.player.vx) < 0.1) {
                 this.player.vx = 0;
-                this.player.state = 'idle';
+                if (this.player.grounded) {
+                    this.player.state = 'idle';
+                }
             }
+        }
+        
+        // Jumping - only when grounded and up key pressed
+        if (this.keys.up && this.player.grounded) {
+            this.player.vy = this.physics.jumpForce;
+            this.player.grounded = false;
+            this.player.state = 'jumping';
+            console.log('[Adventure] Jump!');
+        }
+        
+        // Apply gravity
+        if (!this.player.grounded) {
+            this.player.vy += this.physics.gravity * dt;
         }
         
         // Apply velocity
         this.player.x += this.player.vx * dt;
+        this.player.y += this.player.vy * dt;
+        
+        // Ground collision
+        const groundLevel = this.room.groundY - this.player.height;
+        if (this.player.y >= groundLevel) {
+            this.player.y = groundLevel;
+            this.player.vy = 0;
+            this.player.grounded = true;
+            if (this.player.state === 'jumping') {
+                this.player.state = 'idle';
+            }
+        } else {
+            this.player.grounded = false;
+        }
         
         // Boundary checks / room transitions
-        if (this.player.x < -20) {
+        if (this.player.x < -30) {
             // Exit left - go back (if allowed)
             this.tryExitLeft();
-        } else if (this.player.x > this.room.width - this.player.width + 20) {
-            // Exit right - advance
+        } else if (this.player.x > this.room.width - this.player.width - 30) {
+            // Exit right - advance to next room
             this.tryExitRight();
         }
         
-        // Clamp position
-        this.player.x = Math.max(0, Math.min(this.room.width - this.player.width, this.player.x));
-        
-        // Ground collision
-        this.player.y = this.room.groundY - this.player.height;
+        // Clamp position (but allow slight overshoot for transition feel)
+        this.player.x = Math.max(-10, Math.min(this.room.width - this.player.width + 10, this.player.x));
         
         // Check for nearby interactables
         this.updateInteractables();
@@ -1413,15 +1513,28 @@ window.AdventureEngine = {
     
     tryExitRight() {
         const room = AdventureState.currentRoomData;
-        if (!room) return;
+        if (!room) {
+            console.log('[Adventure] No room data, advancing anyway');
+            this.advanceRoom();
+            return;
+        }
         
-        // If room has an encounter that hasn't been cleared
+        console.log('[Adventure] Trying to exit right. Room:', room.name, 'Encounter:', room.encounter, 'Cleared:', room.cleared);
+        
+        // If room has an encounter that hasn't been cleared, trigger it
         if (room.encounter && !room.cleared) {
+            console.log('[Adventure] Entering encounter...');
             this.enterEncounter(room);
             return;
         }
         
+        // For non-combat rooms without encounters, mark as cleared
+        if (!room.encounter && !room.cleared) {
+            room.cleared = true;
+        }
+        
         // Advance to next room
+        console.log('[Adventure] Advancing to next room...');
         this.advanceRoom();
     },
     
@@ -1900,46 +2013,72 @@ window.AdventureEngine = {
         
         ctx.save();
         
-        // Shadow
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        // Calculate animation values
+        const time = Date.now();
+        const walkBob = p.state === 'walking' ? Math.sin(time / 80) * 3 : 0;
+        const jumpSquash = p.state === 'jumping' ? (p.vy < 0 ? 0.9 : 1.1) : 1;
+        
+        // Shadow (smaller when jumping)
+        const shadowScale = p.grounded ? 1 : 0.5;
+        ctx.fillStyle = `rgba(0, 0, 0, ${p.grounded ? 0.4 : 0.2})`;
         ctx.beginPath();
-        ctx.ellipse(p.x + p.width / 2, this.room.groundY + 5, p.width / 2, 8, 0, 0, Math.PI * 2);
+        ctx.ellipse(p.x + p.width / 2, this.room.groundY + 5, (p.width / 2) * shadowScale, 10 * shadowScale, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // Body (simple shape for now)
-        ctx.fillStyle = '#2a2520';
-        ctx.fillRect(p.x + 5, p.y + 15, p.width - 10, p.height - 15);
+        // Apply transformations
+        ctx.translate(p.x + p.width / 2, p.y + p.height / 2);
+        ctx.scale(p.facing, jumpSquash);
+        ctx.translate(0, walkBob);
         
-        // Cloak
-        ctx.fillStyle = '#1a1510';
+        // Body glow
+        ctx.shadowColor = '#e8a93e';
+        ctx.shadowBlur = 15;
+        
+        // Cloak (main body)
+        const gradient = ctx.createLinearGradient(0, -p.height/2, 0, p.height/2);
+        gradient.addColorStop(0, '#3a3530');
+        gradient.addColorStop(0.3, '#2a2520');
+        gradient.addColorStop(1, '#1a1510');
+        ctx.fillStyle = gradient;
+        
         ctx.beginPath();
-        ctx.moveTo(p.x, p.y + 20);
-        ctx.lineTo(p.x + p.width / 2, p.y + 10);
-        ctx.lineTo(p.x + p.width, p.y + 20);
-        ctx.lineTo(p.x + p.width - 5, p.y + p.height);
-        ctx.lineTo(p.x + 5, p.y + p.height);
+        ctx.moveTo(0, -p.height/2 + 10); // Top of head
+        ctx.lineTo(p.width/2 - 5, -p.height/2 + 25); // Right shoulder
+        ctx.lineTo(p.width/2 - 8, p.height/2 - 5); // Right foot
+        ctx.lineTo(-p.width/2 + 8, p.height/2 - 5); // Left foot
+        ctx.lineTo(-p.width/2 + 5, -p.height/2 + 25); // Left shoulder
         ctx.closePath();
         ctx.fill();
         
-        // Head
-        ctx.fillStyle = '#3a3530';
+        ctx.shadowBlur = 0;
+        
+        // Hood
+        ctx.fillStyle = '#1a1510';
         ctx.beginPath();
-        ctx.arc(p.x + p.width / 2, p.y + 15, 12, 0, Math.PI * 2);
+        ctx.arc(0, -p.height/2 + 20, 18, 0, Math.PI * 2);
         ctx.fill();
         
-        // Eyes (ember glow)
+        // Face area (darker)
+        ctx.fillStyle = '#0a0806';
+        ctx.beginPath();
+        ctx.arc(3, -p.height/2 + 22, 12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Eyes (glowing embers)
+        ctx.shadowColor = '#ff6b00';
+        ctx.shadowBlur = 10;
         ctx.fillStyle = '#e8a93e';
-        const eyeOffset = p.facing > 0 ? 3 : -3;
         ctx.beginPath();
-        ctx.arc(p.x + p.width / 2 + eyeOffset - 4, p.y + 13, 2, 0, Math.PI * 2);
-        ctx.arc(p.x + p.width / 2 + eyeOffset + 4, p.y + 13, 2, 0, Math.PI * 2);
+        ctx.arc(-2, -p.height/2 + 20, 3, 0, Math.PI * 2);
+        ctx.arc(8, -p.height/2 + 20, 3, 0, Math.PI * 2);
         ctx.fill();
         
-        // Walking animation - bob
-        if (p.state === 'walking') {
-            const bob = Math.sin(Date.now() / 100) * 2;
-            ctx.translate(0, bob);
-        }
+        // Eye glow cores
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(-2, -p.height/2 + 20, 1.5, 0, Math.PI * 2);
+        ctx.arc(8, -p.height/2 + 20, 1.5, 0, Math.PI * 2);
+        ctx.fill();
         
         ctx.restore();
     },
@@ -1983,19 +2122,51 @@ window.AdventureEngine = {
         const ctx = this.ctx;
         const room = AdventureState.currentRoomData;
         
-        // Right exit (forward)
-        ctx.fillStyle = room?.cleared ? 'rgba(100, 200, 100, 0.5)' : 'rgba(232, 169, 62, 0.3)';
+        // Right exit (forward) - large glowing arrow
+        const rightX = this.room.width - 60;
+        const arrowY = this.room.groundY - 80;
+        
+        // Pulsing glow
+        const pulse = (Math.sin(Date.now() / 300) + 1) / 2;
+        const glowAlpha = 0.3 + pulse * 0.3;
+        
+        // Arrow glow
+        ctx.shadowColor = room?.cleared ? '#4ade80' : '#e8a93e';
+        ctx.shadowBlur = 20 + pulse * 10;
+        
+        ctx.fillStyle = room?.cleared 
+            ? `rgba(74, 222, 128, ${glowAlpha})` 
+            : `rgba(232, 169, 62, ${glowAlpha})`;
+        
+        // Draw arrow
         ctx.beginPath();
-        ctx.moveTo(this.room.width - 20, this.room.groundY - 60);
-        ctx.lineTo(this.room.width, this.room.groundY - 40);
-        ctx.lineTo(this.room.width - 20, this.room.groundY - 20);
+        ctx.moveTo(rightX, arrowY - 40);
+        ctx.lineTo(rightX + 50, arrowY);
+        ctx.lineTo(rightX, arrowY + 40);
+        ctx.lineTo(rightX + 15, arrowY);
         ctx.closePath();
         ctx.fill();
         
-        // Left exit indicator (blocked)
-        ctx.fillStyle = 'rgba(100, 50, 50, 0.3)';
-        ctx.font = '20px serif';
-        ctx.fillText('✕', 5, this.room.groundY - 35);
+        // Arrow outline
+        ctx.strokeStyle = room?.cleared ? '#4ade80' : '#e8a93e';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        ctx.shadowBlur = 0;
+        
+        // "NEXT" text
+        ctx.fillStyle = room?.cleared ? '#4ade80' : '#e8a93e';
+        ctx.font = 'bold 12px "Cinzel", serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(room?.cleared ? 'NEXT →' : 'GO →', rightX + 10, arrowY + 60);
+        
+        // Left exit indicator (blocked) - X mark
+        ctx.fillStyle = 'rgba(150, 80, 80, 0.5)';
+        ctx.font = 'bold 32px serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('✕', 15, this.room.groundY - 50);
+        
+        ctx.textAlign = 'left'; // Reset
     }
 };
 
@@ -2012,52 +2183,62 @@ window.AdventureUI = {
     },
     
     createScreens() {
+        console.log('[AdventureUI] createScreens called');
+        
         // Main adventure screen
         if (!document.getElementById('adventure-screen')) {
-            const screen = document.createElement('div');
-            screen.id = 'adventure-screen';
-            screen.innerHTML = `
-                <div class="adventure-viewport">
-                    <div class="adventure-hud">
-                        <div class="hud-left">
-                            <div class="hud-stat deaths">
-                                <span class="icon">☠</span>
-                                <span class="value" id="adv-deaths">0</span>/<span id="adv-max-deaths">10</span>
+            try {
+                const screen = document.createElement('div');
+                screen.id = 'adventure-screen';
+                screen.innerHTML = `
+                    <div class="adventure-viewport">
+                        <div class="adventure-hud">
+                            <div class="hud-left">
+                                <div class="hud-stat deaths">
+                                    <span class="icon">☠</span>
+                                    <span class="value" id="adv-deaths">0</span>/<span id="adv-max-deaths">10</span>
+                                </div>
+                                <div class="floor-indicator">
+                                    Floor <span id="adv-floor">1</span> • Room <span id="adv-room">1</span>/10
+                                </div>
                             </div>
-                            <div class="floor-indicator">
-                                Floor <span id="adv-floor">1</span> • Room <span id="adv-room">1</span>/10
+                            <div class="hud-right">
+                                <div class="hud-stat embers">
+                                    <span class="icon">🔥</span>
+                                    <span class="value" id="adv-embers">0</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="hud-right">
-                            <div class="hud-stat embers">
-                                <span class="icon">🔥</span>
-                                <span class="value" id="adv-embers">0</span>
+                        <div class="relics-bar" id="adv-relics"></div>
+                        <div class="interact-prompt"></div>
+                        <div class="room-transition"></div>
+                        <div class="room-info-bar">
+                            <div class="room-name" id="adv-room-name">Entrance</div>
+                            <div class="room-hint" id="adv-room-hint">→ Move right to continue</div>
+                        </div>
+                        <div class="touch-controls">
+                            <div class="touch-dpad">
+                                <button class="touch-btn" id="touch-left">←</button>
+                            </div>
+                            <button class="touch-btn" id="touch-interact">E</button>
+                            <div class="touch-dpad">
+                                <button class="touch-btn" id="touch-right">→</button>
                             </div>
                         </div>
                     </div>
-                    <div class="relics-bar" id="adv-relics"></div>
-                    <div class="interact-prompt"></div>
-                    <div class="room-transition"></div>
-                    <div class="room-info-bar">
-                        <div class="room-name" id="adv-room-name">Entrance</div>
-                        <div class="room-hint" id="adv-room-hint">→ Move right to continue</div>
-                    </div>
-                    <div class="touch-controls">
-                        <div class="touch-dpad">
-                            <button class="touch-btn" id="touch-left">←</button>
-                        </div>
-                        <button class="touch-btn" id="touch-interact">E</button>
-                        <div class="touch-dpad">
-                            <button class="touch-btn" id="touch-right">→</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(screen);
-            
-            // Insert canvas
-            const viewport = screen.querySelector('.adventure-viewport');
-            viewport.insertBefore(AdventureEngine.canvas, viewport.firstChild);
+                `;
+                document.body.appendChild(screen);
+                
+                // Insert canvas (with null checks)
+                const viewport = screen.querySelector('.adventure-viewport');
+                if (viewport && AdventureEngine.canvas) {
+                    viewport.insertBefore(AdventureEngine.canvas, viewport.firstChild);
+                } else {
+                    console.warn('[AdventureUI] Could not insert canvas - viewport:', !!viewport, 'canvas:', !!AdventureEngine.canvas);
+                }
+            } catch (e) {
+                console.error('[AdventureUI] Error creating adventure screen:', e);
+            }
         }
         
         // Setup screen
@@ -2141,29 +2322,73 @@ window.AdventureUI = {
     initialized: false,
     
     openSetup() {
-        // Ensure initialization has completed
-        if (!this.initialized) {
-            console.log('[AdventureUI] Late initialization triggered');
-            this.init();
+        console.log('[AdventureUI] openSetup called, initialized:', this.initialized);
+        
+        try {
+            // Ensure initialization has completed
+            if (!this.initialized) {
+                console.log('[AdventureUI] Late initialization triggered');
+                this.init();
+            }
+            
+            // Also ensure engine is initialized
+            if (!AdventureEngine.canvas) {
+                console.log('[AdventureUI] Late engine init triggered');
+                AdventureEngine.init();
+            }
+            
+            this.setupStep = 'deck';
+            this.selectedDeck = null;
+            this.selectedRelic = null;
+            this.relicChoices = RelicRegistry.getRandomStarterRelics(3);
+            
+            this.renderDeckOptions();
+            
+            const deckStep = document.getElementById('deck-selection-step');
+            const relicStep = document.getElementById('relic-selection-step');
+            const continueBtn = document.getElementById('adv-continue-btn');
+            const setupScreen = document.getElementById('adventure-setup');
+            
+            if (!deckStep || !relicStep || !continueBtn || !setupScreen) {
+                console.error('[AdventureUI] Missing DOM elements, recreating screens...');
+                this.createScreens();
+                this.bindEvents();
+            }
+            
+            document.getElementById('deck-selection-step').style.display = 'block';
+            document.getElementById('relic-selection-step').style.display = 'none';
+            document.getElementById('adv-continue-btn').disabled = true;
+            document.getElementById('adv-continue-btn').textContent = 'Select a Deck';
+            
+            document.getElementById('adventure-setup').classList.add('open');
+            console.log('[AdventureUI] Setup screen opened');
+        } catch (e) {
+            console.error('[AdventureUI] openSetup error:', e);
+            console.error('[AdventureUI] Stack:', e.stack);
+            
+            // Show error to user
+            const msg = document.createElement('div');
+            msg.style.cssText = `
+                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                background: rgba(0,0,0,0.95); border: 2px solid #e57373; padding: 30px 50px;
+                border-radius: 12px; color: #e8e0d5; font-family: 'Cinzel', serif;
+                font-size: 16px; z-index: 99999; text-align: center; max-width: 400px;
+            `;
+            msg.innerHTML = `
+                <div style="color: #e57373; font-size: 20px; margin-bottom: 15px;">⚠️ Adventure Mode Error</div>
+                <div style="margin-bottom: 10px;">Failed to open Adventure Mode.</div>
+                <div style="font-size: 12px; color: #888; margin-bottom: 15px;">${e.message}</div>
+                <button onclick="localStorage.removeItem('cryptidFates_playerData'); location.reload();" style="
+                    margin: 5px; padding: 10px 20px; background: #e57373; border: none;
+                    color: white; cursor: pointer; border-radius: 6px; font-family: inherit;
+                ">Reset Save Data</button>
+                <button onclick="this.parentElement.remove(); HomeScreen.open();" style="
+                    margin: 5px; padding: 10px 20px; background: #666; border: none;
+                    color: white; cursor: pointer; border-radius: 6px; font-family: inherit;
+                ">Cancel</button>
+            `;
+            document.body.appendChild(msg);
         }
-        
-        // Also ensure engine is initialized
-        if (!AdventureEngine.canvas) {
-            AdventureEngine.init();
-        }
-        
-        this.setupStep = 'deck';
-        this.selectedDeck = null;
-        this.selectedRelic = null;
-        this.relicChoices = RelicRegistry.getRandomStarterRelics(3);
-        
-        this.renderDeckOptions();
-        document.getElementById('deck-selection-step').style.display = 'block';
-        document.getElementById('relic-selection-step').style.display = 'none';
-        document.getElementById('adv-continue-btn').disabled = true;
-        document.getElementById('adv-continue-btn').textContent = 'Select a Deck';
-        
-        document.getElementById('adventure-setup').classList.add('open');
     },
     
     closeSetup() {
@@ -2538,46 +2763,126 @@ window.AdventureUI = {
 
 // ==================== BATTLE INTEGRATION ====================
 
-// Override win screen to handle adventure mode
-const originalWinScreenShow = window.WinScreen?.show;
-if (originalWinScreenShow) {
-    window.WinScreen.show = function(data) {
-        if (window.isAdventureBattle) {
-            // Adventure battle ended
-            const isWin = data.isWin;
-            const playerDeaths = data.stats?.playerDeaths || 0;
-            
-            // Hide game container
-            document.getElementById('game-container').style.display = 'none';
-            
-            // Return to adventure
-            AdventureEngine.onBattleEnd(isWin, playerDeaths);
-        } else {
-            // Normal battle - use original
-            originalWinScreenShow.call(this, data);
-        }
-    };
+// Override win screen to handle adventure mode - wrapped in try-catch to prevent script failure
+try {
+    const originalWinScreenShow = window.WinScreen?.show;
+    if (originalWinScreenShow) {
+        window.WinScreen.show = function(data) {
+            if (window.isAdventureBattle) {
+                // Adventure battle ended
+                const isWin = data.isWin;
+                const playerDeaths = data.stats?.playerDeaths || 0;
+                
+                // Hide game container
+                document.getElementById('game-container').style.display = 'none';
+                
+                // Return to adventure
+                AdventureEngine.onBattleEnd(isWin, playerDeaths);
+            } else {
+                // Normal battle - use original
+                originalWinScreenShow.call(this, data);
+            }
+        };
+    }
+} catch (e) {
+    console.error('[Adventure Mode] Failed to override WinScreen:', e);
 }
 
 // ==================== INITIALIZATION ====================
 
-// Initialize on load
+// Initialize on load - with defensive setup
 function initAdventureMode() {
     try {
         console.log('[Adventure Mode] Initializing...');
+        
+        // Make sure global objects exist
+        if (typeof AdventureEngine === 'undefined') {
+            console.error('[Adventure Mode] AdventureEngine not defined!');
+            return;
+        }
+        if (typeof AdventureUI === 'undefined') {
+            console.error('[Adventure Mode] AdventureUI not defined!');
+            return;
+        }
+        
         AdventureEngine.init();
         AdventureUI.init();
         console.log('[Adventure Mode] Initialized successfully');
     } catch (e) {
         console.error('[Adventure Mode] Init error:', e);
+        console.error('[Adventure Mode] Stack:', e.stack);
     }
 }
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initAdventureMode);
-} else {
-    initAdventureMode();
+// Ensure initialization happens - try multiple times if needed
+function safeInitAdventureMode() {
+    try {
+        initAdventureMode();
+    } catch (e) {
+        console.error('[Adventure Mode] Safe init failed:', e);
+    }
 }
 
+// Schedule initialization
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', safeInitAdventureMode);
+} else {
+    // Document already loaded - init now, but also schedule a fallback
+    safeInitAdventureMode();
+}
+
+// Fallback: also try to init after a short delay in case of race conditions
+setTimeout(() => {
+    if (typeof AdventureUI !== 'undefined' && !AdventureUI.initialized) {
+        console.log('[Adventure Mode] Late initialization attempt...');
+        safeInitAdventureMode();
+    }
+}, 500);
+
 console.log('[Adventure Mode] Script loaded');
+
+} catch (adventureModeError) {
+    // Catch any errors during script execution
+    console.error('[Adventure Mode] CRITICAL: Script failed to load!', adventureModeError);
+    console.error('[Adventure Mode] Stack:', adventureModeError.stack);
+    
+    // Create minimal stub objects so the game doesn't crash when trying to access them
+    if (typeof window.AdventureState === 'undefined') {
+        window.AdventureState = { isActive: false, reset: function(){} };
+    }
+    if (typeof window.AdventureUI === 'undefined') {
+        window.AdventureUI = {
+            initialized: false,
+            init: function() { console.error('[AdventureUI] Module failed to load'); },
+            openSetup: function() { 
+                console.error('[AdventureUI] Module failed to load');
+                // Show error
+                const msg = document.createElement('div');
+                msg.style.cssText = `
+                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                    background: rgba(0,0,0,0.95); border: 2px solid #e57373; padding: 30px;
+                    border-radius: 12px; color: #e8e0d5; font-family: 'Cinzel', serif;
+                    z-index: 99999; text-align: center; max-width: 400px;
+                `;
+                msg.innerHTML = `
+                    <div style="color: #e57373; font-size: 18px; margin-bottom: 15px;">⚠️ Adventure Mode Error</div>
+                    <div style="font-size: 14px;">The Adventure Mode module failed to initialize.</div>
+                    <div style="font-size: 12px; color: #888; margin: 10px 0;">This is usually caused by corrupted save data from an older version.</div>
+                    <button onclick="localStorage.removeItem('cryptidFates_playerData'); location.reload();" style="
+                        margin: 10px 5px; padding: 12px 20px; background: #c9302c; border: none;
+                        color: white; cursor: pointer; border-radius: 6px; font-family: inherit; font-size: 14px;
+                    ">Clear Save Data & Reload</button>
+                    <button onclick="this.parentElement.remove(); if(HomeScreen)HomeScreen.open();" style="
+                        margin: 10px 5px; padding: 12px 20px; background: #555; border: none;
+                        color: white; cursor: pointer; border-radius: 6px; font-family: inherit; font-size: 14px;
+                    ">Go Back</button>
+                `;
+                document.body.appendChild(msg);
+            }
+        };
+    }
+    if (typeof window.AdventureEngine === 'undefined') {
+        window.AdventureEngine = { init: function(){}, start: function(){}, stop: function(){} };
+    }
+}
 
