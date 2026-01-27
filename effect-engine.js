@@ -1339,6 +1339,7 @@ window.EffectEngine = {
     /**
      * Play hit effect directly on a sprite element
      * Can be called from anywhere (game-core, etc.)
+     * IMPORTANT: Sprite has CSS base transform of translate(-50%, -50%), must preserve it!
      */
     playHitEffectOnSprite(sprite, target, options = {}) {
         if (!sprite) return;
@@ -1348,42 +1349,46 @@ window.EffectEngine = {
         
         // Intensity settings
         const intensityConfig = {
-            light:  { flash: 1.8, recoil: 6,  scale: 0.97, duration: 250 },
-            normal: { flash: 2.2, recoil: 10, scale: 0.94, duration: 300 },
-            heavy:  { flash: 2.8, recoil: 15, scale: 0.90, duration: 380 }
+            light:  { flash: 1.6, recoil: 5,  scale: 0.97, duration: 200 },
+            normal: { flash: 1.8, recoil: 8,  scale: 0.95, duration: 280 },
+            heavy:  { flash: 2.2, recoil: 12, scale: 0.92, duration: 350 }
         };
         const config = intensityConfig[intensity] || intensityConfig.normal;
         
         // Direction for recoil
         const recoilX = direction === 'left' ? -config.recoil : config.recoil;
         
-        // Store original styles
-        const originalTransform = sprite.style.transform || '';
-        const originalFilter = sprite.style.filter || '';
+        // Base transform that must ALWAYS be preserved (sprite centering)
+        const baseTransform = 'translate(-50%, -50%)';
         
-        // Phase 1: Instant white flash (15% of duration)
-        sprite.style.filter = `brightness(${config.flash}) saturate(0.2)`;
+        // Prevent overlapping animations
+        if (sprite.dataset.hitAnimating === 'true') return;
+        sprite.dataset.hitAnimating = 'true';
+        
+        // Phase 1: Instant white flash + initial recoil
         sprite.style.transition = 'none';
+        sprite.style.transform = `${baseTransform} translateX(${recoilX}px) scale(${config.scale})`;
+        sprite.style.filter = `brightness(${config.flash}) saturate(0.3)`;
         
-        // Phase 2: Quick recoil movement (35% of duration)
+        // Phase 2: Hold the flash briefly (20% of duration)
         setTimeout(() => {
-            sprite.style.transition = `transform ${config.duration * 0.35}ms cubic-bezier(0.25, 0.46, 0.45, 0.94), filter ${config.duration * 0.4}ms ease-out`;
-            sprite.style.transform = originalTransform + ` translateX(${recoilX}px) scale(${config.scale})`;
-            sprite.style.filter = 'brightness(0.75)';
-        }, config.duration * 0.15);
+            sprite.style.transition = `filter ${config.duration * 0.3}ms ease-out`;
+            sprite.style.filter = `brightness(0.8)`;
+        }, config.duration * 0.2);
         
-        // Phase 3: Return to normal (50% of duration)
+        // Phase 3: Return to normal position (50% of duration)
         setTimeout(() => {
-            sprite.style.transition = `transform ${config.duration * 0.5}ms cubic-bezier(0.34, 1.56, 0.64, 1), filter ${config.duration * 0.4}ms ease-out`;
-            sprite.style.transform = originalTransform;
-            sprite.style.filter = originalFilter;
+            sprite.style.transition = `transform ${config.duration * 0.5}ms cubic-bezier(0.25, 1, 0.5, 1), filter ${config.duration * 0.3}ms ease-out`;
+            sprite.style.transform = baseTransform;
+            sprite.style.filter = '';
         }, config.duration * 0.5);
         
-        // Phase 4: Clean up inline styles
+        // Phase 4: Clean up
         setTimeout(() => {
             sprite.style.transition = '';
             sprite.style.transform = '';
             sprite.style.filter = '';
+            sprite.dataset.hitAnimating = 'false';
         }, config.duration + 50);
         
         // Also show impact flash if CombatEffects is available
@@ -1394,7 +1399,7 @@ window.EffectEngine = {
                 const bRect = battlefield.getBoundingClientRect();
                 const impactX = rect.left + rect.width / 2 - bRect.left;
                 const impactY = rect.top + rect.height / 2 - bRect.top;
-                CombatEffects.createImpactFlash(impactX, impactY, 30 + (intensity === 'heavy' ? 30 : intensity === 'normal' ? 15 : 0));
+                CombatEffects.createImpactFlash(impactX, impactY, 30 + (intensity === 'heavy' ? 25 : intensity === 'normal' ? 12 : 0));
             }
         }
     },
@@ -1409,6 +1414,6 @@ window.playHitEffectOnSprite = function(sprite, target, options) {
     EffectEngine.playHitEffectOnSprite(sprite, target, options);
 };
 
-console.log('[EffectEngine] Effect execution engine loaded v5 - universal playHitEffect');
+console.log('[EffectEngine] Effect execution engine loaded v6 - improved hit animations');
 
 

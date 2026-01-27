@@ -596,10 +596,11 @@ function aiCombat(onComplete) {
             }
         }
         
-        // Add hit recoil animation (only if not killed)
+        // Add hit recoil animation (only if not killed) - use new smooth effect
         if (!result.negated && !result.protectionBlocked && !result.killed && targetSprite) {
-            targetSprite.classList.add('hit-recoil');
-            setTimeout(() => targetSprite.classList.remove('hit-recoil'), 250);
+            if (window.playHitEffectOnSprite && result.target) {
+                window.playHitEffectOnSprite(targetSprite, result.target, { intensity: 'normal' });
+            }
         }
         
         // Helper to wait for any pending trap processing with timeout safety

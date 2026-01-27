@@ -5198,103 +5198,80 @@ window.CombatEffects = {
         
         /* ==================== ENHANCED HIT REACTION ==================== */
         
-        /* Light knockback (1-2 damage) */
+        /* Light knockback (1-2 damage) - Smooth and professional */
         .cryptid-sprite.hit-knockback-light {
-            animation: hitKnockbackLight 250ms ease-out forwards !important;
+            animation: hitKnockbackLight 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
         }
         
         @keyframes hitKnockbackLight {
             0% { 
                 transform: translate(-50%, -50%);
-                filter: brightness(2.5) saturate(0);
+                filter: brightness(1.6) saturate(0.5);
             }
-            20% { 
-                transform: translate(calc(-50% + 8px * var(--hit-direction, 1)), calc(-50% - 3px)) scale(0.95);
-                filter: brightness(1.8) saturate(0.4);
-            }
-            60% {
-                transform: translate(calc(-50% + 4px * var(--hit-direction, 1)), -50%) scale(1.02);
-                filter: brightness(1.2);
+            25% { 
+                transform: translate(calc(-50% + 6px * var(--hit-direction, 1)), -50%) scale(0.96);
+                filter: brightness(0.85);
             }
             100% { 
                 transform: translate(-50%, -50%) scale(1);
-                filter: brightness(1);
+                filter: brightness(1) saturate(1);
             }
         }
         
-        /* Medium knockback (3-4 damage) */
+        /* Medium knockback (3-4 damage) - Smooth with slight weight */
         .cryptid-sprite.hit-knockback-medium {
-            animation: hitKnockbackMedium 320ms ease-out forwards !important;
+            animation: hitKnockbackMedium 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
         }
         
         @keyframes hitKnockbackMedium {
             0% { 
                 transform: translate(-50%, -50%);
-                filter: brightness(3) saturate(0);
+                filter: brightness(1.8) saturate(0.4);
             }
-            15% { 
-                transform: translate(calc(-50% + 18px * var(--hit-direction, 1)), calc(-50% - 8px)) scale(0.9) rotate(calc(5deg * var(--hit-direction, 1)));
-                filter: brightness(2) saturate(0.3);
-            }
-            40% {
-                transform: translate(calc(-50% + 12px * var(--hit-direction, 1)), calc(-50% + 2px)) scale(0.95);
-                filter: brightness(1.4);
-            }
-            70% {
-                transform: translate(calc(-50% + 4px * var(--hit-direction, 1)), -50%) scale(1.02);
+            20% { 
+                transform: translate(calc(-50% + 10px * var(--hit-direction, 1)), -50%) scale(0.94);
+                filter: brightness(0.8);
             }
             100% { 
                 transform: translate(-50%, -50%) scale(1);
-                filter: brightness(1);
+                filter: brightness(1) saturate(1);
             }
         }
         
-        /* Heavy knockback (5+ damage) */
+        /* Heavy knockback (5+ damage) - Impactful but smooth */
         .cryptid-sprite.hit-knockback-heavy {
-            animation: hitKnockbackHeavy 400ms ease-out forwards !important;
+            animation: hitKnockbackHeavy 350ms cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
         }
         
         @keyframes hitKnockbackHeavy {
             0% { 
                 transform: translate(-50%, -50%);
-                filter: brightness(4) saturate(0);
+                filter: brightness(2) saturate(0.3);
             }
-            10% { 
-                transform: translate(calc(-50% + 30px * var(--hit-direction, 1)), calc(-50% - 15px)) scale(0.85) rotate(calc(10deg * var(--hit-direction, 1)));
-                filter: brightness(2.5) saturate(0.2);
-            }
-            30% {
-                transform: translate(calc(-50% + 22px * var(--hit-direction, 1)), calc(-50% + 5px)) scale(0.9) rotate(calc(5deg * var(--hit-direction, 1)));
-                filter: brightness(1.6);
-            }
-            55% {
-                transform: translate(calc(-50% + 10px * var(--hit-direction, 1)), -50%) scale(1.03);
-                filter: brightness(1.2);
-            }
-            80% {
-                transform: translate(calc(-50% + 3px * var(--hit-direction, 1)), -50%) scale(0.98);
+            15% { 
+                transform: translate(calc(-50% + 14px * var(--hit-direction, 1)), -50%) scale(0.92);
+                filter: brightness(0.75);
             }
             100% { 
                 transform: translate(-50%, -50%) scale(1);
-                filter: brightness(1);
+                filter: brightness(1) saturate(1);
             }
         }
         
-        /* Rim flash highlight on hit */
+        /* Rim flash highlight on hit - subtle glow */
         .cryptid-sprite.hit-rim-flash .sprite {
-            filter: drop-shadow(0 0 8px rgba(255, 100, 100, 0.9)) drop-shadow(0 0 15px rgba(255, 50, 50, 0.6)) !important;
+            filter: drop-shadow(0 0 6px rgba(255, 120, 120, 0.7)) drop-shadow(0 0 10px rgba(255, 80, 80, 0.4)) !important;
         }
         
         /* Enhanced damage flash on stat bar */
         .combat-stats.damage-flash-enhanced {
-            animation: damageFlashEnhanced 400ms ease-out !important;
+            animation: damageFlashEnhanced 300ms ease-out !important;
         }
         
         @keyframes damageFlashEnhanced {
             /* Must include translateY(-50%) to preserve base positioning */
             0% { filter: brightness(1); transform: translateY(-50%) scale(1); }
-            15% { filter: brightness(2.5) drop-shadow(0 0 10px rgba(255, 0, 0, 0.8)); transform: translateY(-50%) scale(1.1); }
-            40% { filter: brightness(1.5); transform: translateY(-50%) scale(1.05); }
+            20% { filter: brightness(1.8) drop-shadow(0 0 6px rgba(255, 50, 50, 0.6)); transform: translateY(-50%) scale(1.05); }
             100% { filter: brightness(1); transform: translateY(-50%) scale(1); }
         }
         

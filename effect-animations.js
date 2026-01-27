@@ -92,9 +92,10 @@ window.EffectAnimations = {
                 const amount = amountArray[i] || amountArray[0];
                 
                 if (sprite) {
-                    // Hit recoil animation
-                    sprite.classList.add('hit-recoil');
-                    setTimeout(() => sprite.classList.remove('hit-recoil'), 300);
+                    // Hit recoil animation (use new smooth effect)
+                    if (window.playHitEffectOnSprite) {
+                        window.playHitEffectOnSprite(sprite, target, { intensity: 'normal' });
+                    }
                     
                     // Floating damage number
                     if (window.CombatEffects?.showDamageNumber) {

@@ -3158,9 +3158,10 @@ function checkCascadingDeaths(onComplete) {
                 CombatEffects.heavyImpact(impactIntensity);
                 CombatEffects.showDamageNumber(cryptid, displayDamage, displayDamage >= 5);
                 
-                // Hit recoil on sprite
-                sprite.classList.add('hit-recoil');
-                setTimeout(() => sprite.classList.remove('hit-recoil'), 300);
+                // Hit recoil on sprite (use new smooth effect)
+                if (window.playHitEffectOnSprite) {
+                    window.playHitEffectOnSprite(sprite, cryptid, { intensity: 'heavy' });
+                }
             }
         }
         
@@ -3573,10 +3574,9 @@ function performAttackOnTarget(attacker, targetOwner, targetCol, targetRow) {
             if (window.CombatEffects && result.target) {
                 CombatEffects.showDamageNumber(result.target, 0, false, true);
             }
-        } else { 
-            targetSprite.classList.add('hit-recoil'); 
-            setTimeout(() => targetSprite.classList.remove('hit-recoil'), 250); 
-        }
+        } 
+        // NOTE: Hit effect is handled by playEnhancedAttack's internal playHitReaction
+        // No need for additional hit effect here - it causes double animation!
     }
     
     ui.attackingCryptid = null;
@@ -3711,10 +3711,9 @@ function processKuchisakeExplosion(explosionInfo, onComplete) {
             CombatEffects.showDamageNumber(target, displayDamage, isCrit);
         }
         
-        // Hit recoil animation on sprite
-        if (sprite && !killed) {
-            sprite.classList.add('hit-recoil');
-            setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+        // Hit recoil animation on sprite (use new smooth effect)
+        if (sprite && !killed && window.playHitEffectOnSprite) {
+            window.playHitEffectOnSprite(sprite, target, { intensity: 'normal' });
         }
         
         // Update health bar
@@ -3858,10 +3857,9 @@ function processDeferredDestroyer(destroyerInfo, onComplete) {
         CombatEffects.showDamageNumber(target, displayDamage, isCrit);
     }
     
-    // Hit recoil
-    if (sprite && !killed) {
-        sprite.classList.add('hit-recoil');
-        setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+    // Hit recoil (use new smooth effect)
+    if (sprite && !killed && window.playHitEffectOnSprite) {
+        window.playHitEffectOnSprite(sprite, target, { intensity: 'normal' });
     }
     
     // Update health bar
@@ -4026,10 +4024,9 @@ function processMultiTargetDamage(options) {
             CombatEffects.showDamageNumber(cryptid, displayDamage, isCrit);
         }
         
-        // Hit recoil animation
-        if (sprite) {
-            sprite.classList.add('hit-recoil');
-            setTimeout(() => sprite.classList.remove('hit-recoil'), 250);
+        // Hit recoil animation (use new smooth effect)
+        if (sprite && window.playHitEffectOnSprite) {
+            window.playHitEffectOnSprite(sprite, cryptid, { intensity: 'normal' });
         }
         
         // Update health bar
@@ -5565,8 +5562,10 @@ function showCryptidTooltip(cryptid, col, row, owner) {
             const combatCol = game.getCombatCol(owner);
             const combatantSprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${cryptid.row}"]`);
             if (combatantSprite) {
-                combatantSprite.classList.add('hit-recoil');
-                setTimeout(() => combatantSprite.classList.remove('hit-recoil'), 250);
+                // Use new smooth hit effect
+                if (window.playHitEffectOnSprite && combatant) {
+                    window.playHitEffectOnSprite(combatantSprite, combatant, { intensity: 'light' });
+                }
                 
                 // Show floating damage on combatant
                 if (window.CombatEffects && combatant) {
