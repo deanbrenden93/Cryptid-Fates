@@ -114,7 +114,25 @@ window.HomeScreen = {
                 </div>
                 
                 <div class="qp-section">
-                    <div class="qp-section-title">🎮 Solo Battle</div>
+                    <div class="qp-section-title">🗺️ Roguelite Mode</div>
+                    <div class="qp-mode qp-mode-adventure" id="qp-adventure">
+                        <div class="qp-mode-main">
+                            <div class="qp-mode-icon">🏚️</div>
+                            <div class="qp-mode-info">
+                                <div class="qp-mode-name">Adventure</div>
+                                <div class="qp-mode-desc">Explore, battle, survive 3 floors</div>
+                            </div>
+                        </div>
+                        <div class="qp-mode-rewards">
+                            <span class="reward-item">🗝️ Relics</span>
+                            <span class="reward-item">📜 Discover Cards</span>
+                            <span class="reward-item"><img src="sprites/embers-icon.png" class="embers-img" alt=""> Rewards</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="qp-section">
+                    <div class="qp-section-title">🎮 Quick Battle</div>
                     <div class="qp-mode" id="qp-ai">
                         <div class="qp-mode-main">
                             <div class="qp-mode-icon">🧠</div>
@@ -347,6 +365,7 @@ window.HomeScreen = {
             if (!this.queueTimer) this.closeQuickPlay();
         };
         
+        document.getElementById('qp-adventure')?.addEventListener('click', () => this.startAdventure());
         document.getElementById('qp-ai')?.addEventListener('click', () => this.startAIGame());
         document.getElementById('qp-cheat')?.addEventListener('click', () => this.startCheatBattle());
         
@@ -491,6 +510,21 @@ window.HomeScreen = {
                 CheatMode.start();
             }
         }, 200);
+    },
+    
+    startAdventure() {
+        console.log('[QuickPlay] Starting Adventure Mode...');
+        this.closeQuickPlay();
+        this.close();
+        
+        // Open adventure setup screen
+        if (typeof AdventureUI !== 'undefined') {
+            AdventureUI.openSetup();
+        } else {
+            console.error('[QuickPlay] Adventure Mode not loaded');
+            alert('Adventure Mode is not available.');
+            this.open();
+        }
     },
     
     toggleFullscreen() {

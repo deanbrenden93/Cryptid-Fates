@@ -123,6 +123,23 @@ function initGame() {
     window.processingTraps = false;
     window.animatingTraps = new Set();
     
+    // Apply adventure mode relic effects
+    if (window.isAdventureBattle && window.adventureRelicEffects) {
+        const effects = window.adventureRelicEffects;
+        
+        // Starting pyre bonus
+        if (effects.startingPyre) {
+            game.playerPyre += effects.startingPyre;
+            console.log(`[Adventure] Applied starting pyre bonus: +${effects.startingPyre}`);
+        }
+        
+        // Extra draw will be handled by the draw phase
+        if (effects.extraDraw) {
+            window.adventureExtraDraw = effects.extraDraw;
+            console.log(`[Adventure] Extra draw queued: +${effects.extraDraw}`);
+        }
+    }
+    
     // Apply battlefield backgrounds
     applyBattlefieldBackgrounds();
     
@@ -196,6 +213,15 @@ function initGame() {
         for (let i = 0; i < 6; i++) {
             game.drawCard('player', 'initial');
             game.drawCard('enemy', 'initial');
+        }
+        
+        // Apply adventure mode extra draw bonus
+        if (window.adventureExtraDraw) {
+            for (let i = 0; i < window.adventureExtraDraw; i++) {
+                game.drawCard('player', 'initial');
+            }
+            console.log(`[Adventure] Drew ${window.adventureExtraDraw} extra card(s)`);
+            window.adventureExtraDraw = null;
         }
     }
     
