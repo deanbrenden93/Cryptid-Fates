@@ -521,24 +521,32 @@ window.HomeScreen = {
         if (typeof AdventureUI === 'undefined') {
             console.warn('[QuickPlay] AdventureUI not defined, checking globals...');
             console.log('[QuickPlay] window.AdventureUI:', typeof window.AdventureUI);
-            console.log('[QuickPlay] window.AdventureEngine:', typeof window.AdventureEngine);
+            console.log('[QuickPlay] window.IsometricEngine:', typeof window.IsometricEngine);
             console.log('[QuickPlay] window.AdventureState:', typeof window.AdventureState);
         }
         
-        // Try to open adventure setup screen
-        if (typeof AdventureUI !== 'undefined' && AdventureUI.openSetup) {
+        // Try to start adventure mode (new isometric system)
+        if (typeof AdventureUI !== 'undefined' && AdventureUI.startAdventure) {
             try {
-                AdventureUI.openSetup();
+                AdventureUI.startAdventure();
             } catch (e) {
-                console.error('[QuickPlay] Error opening Adventure Mode:', e);
+                console.error('[QuickPlay] Error starting Adventure Mode:', e);
                 this.showAdventureError(e.message);
             }
-        } else if (typeof window.AdventureUI !== 'undefined' && window.AdventureUI.openSetup) {
+        } else if (typeof window.AdventureUI !== 'undefined' && window.AdventureUI.startAdventure) {
             // Try explicit window reference
             try {
-                window.AdventureUI.openSetup();
+                window.AdventureUI.startAdventure();
             } catch (e) {
-                console.error('[QuickPlay] Error opening Adventure Mode (window):', e);
+                console.error('[QuickPlay] Error starting Adventure Mode (window):', e);
+                this.showAdventureError(e.message);
+            }
+        } else if (typeof window.startAdventure === 'function') {
+            // Fallback to global function
+            try {
+                window.startAdventure();
+            } catch (e) {
+                console.error('[QuickPlay] Error starting Adventure Mode (global):', e);
                 this.showAdventureError(e.message);
             }
         } else {

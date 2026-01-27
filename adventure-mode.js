@@ -1,20 +1,17 @@
-console.log('[Adventure Mode] SCRIPT FILE REACHED - Line 1');
+console.log('[Adventure Mode] ISOMETRIC ENGINE - Script starting...');
 /**
- * Cryptid Fates - Adventure Mode (Roguelite Sidescroller)
+ * Cryptid Fates - Adventure Mode (Isometric Room-Based Exploration)
  * A survival horror themed exploration between card battles
  * 
  * Features:
- * - 2D sidescroller room-based exploration
+ * - Isometric free-roaming room exploration
+ * - Atmospheric lighting with generous visibility
+ * - Themed dialogue system
+ * - Procedural floor map generation
  * - Persistent death counter across battles
  * - Relic system with passive effects
- * - 3 floors x 10 rooms + boss per floor
- * - Card discovery during runs
  */
 
-// Early debug to confirm script is executing
-console.log('[Adventure Mode] Script execution starting...');
-
-// Wrap everything in a try-catch to catch any parsing/execution errors
 try {
 
 // ==================== ADVENTURE STATE ====================
@@ -25,28 +22,28 @@ window.AdventureState = {
     currentFloor: 1,
     currentRoom: 0,
     totalRoomsCleared: 0,
+    phase: 'inactive', // inactive, awakening, deck_select, relic_select, exploring, battle, event
     
     // Player state
-    deadCryptidCount: 0,      // Persistent deaths - lose if this hits threshold
-    maxDeadCryptids: 10,      // Lose condition threshold
+    deadCryptidCount: 0,
+    maxDeadCryptids: 10,
     selectedDeck: null,
-    deckArchetype: null,      // 'city-of-flesh', 'forests-of-fear', etc.
-    starterCards: [],         // The 15 starting cards
-    discoveredCards: [],      // Cards found during the run
+    deckArchetype: null,
+    starterCards: [],
+    discoveredCards: [],
     
     // Relics
     relics: [],
     
-    // Resources  
-    embers: 0,                // Currency earned this run
+    // Resources
+    embers: 0,
     xpEarned: 0,
     
-    // Floor map (branching paths system)
-    rooms: [],
-    currentRoomData: null,
-    currentRoomId: null,      // ID in the map system
-    floorMap: null,           // The full map object with paths
-    visitedRooms: [],         // Track which rooms player has visited
+    // Floor map (procedural generation)
+    floorMap: null,
+    currentRoomId: 'start',
+    visitedRooms: new Set(),
+    revealedRooms: new Set(),
     
     // Stats
     battlesWon: 0,
@@ -54,29 +51,13 @@ window.AdventureState = {
     itemsFound: 0,
     floorsCompleted: 0,
     
-    // Get room by ID from current floor map
-    getRoomById(roomId) {
-        if (this.floorMap && this.floorMap.rooms) {
-            return this.floorMap.rooms[roomId] || null;
-        }
-        return null;
-    },
-    
-    // Get connected rooms for current room
-    getConnections(roomId = null) {
-        const id = roomId || this.currentRoomId;
-        if (this.floorMap && this.floorMap.paths && this.floorMap.paths[id]) {
-            return this.floorMap.paths[id];
-        }
-        return { left: null, right: null, door: null, platform: null };
-    },
-    
     // Reset for new run
     reset() {
         this.isActive = false;
         this.currentFloor = 1;
         this.currentRoom = 0;
         this.totalRoomsCleared = 0;
+        this.phase = 'inactive';
         this.deadCryptidCount = 0;
         this.selectedDeck = null;
         this.deckArchetype = null;
@@ -85,18 +66,16 @@ window.AdventureState = {
         this.relics = [];
         this.embers = 0;
         this.xpEarned = 0;
-        this.rooms = [];
-        this.currentRoomData = null;
-        this.currentRoomId = null;
         this.floorMap = null;
-        this.visitedRooms = [];
+        this.currentRoomId = 'start';
+        this.visitedRooms = new Set();
+        this.revealedRooms = new Set();
         this.battlesWon = 0;
         this.battlesLost = 0;
         this.itemsFound = 0;
         this.floorsCompleted = 0;
     },
     
-    // Calculate total allowed deaths (base + relic bonuses)
     getMaxDeaths() {
         let max = this.maxDeadCryptids;
         for (const relic of this.relics) {
@@ -107,25 +86,20 @@ window.AdventureState = {
         return max;
     },
     
-    // Check if run is over (too many deaths)
     isDefeated() {
         return this.deadCryptidCount >= this.getMaxDeaths();
     },
     
-    // Add deaths from a battle
     addDeaths(count) {
         this.deadCryptidCount += count;
         console.log(`[Adventure] Deaths: ${this.deadCryptidCount}/${this.getMaxDeaths()}`);
         return this.isDefeated();
     },
     
-    // Heal deaths (from rest sites, relics, etc.)
     healDeaths(count) {
         this.deadCryptidCount = Math.max(0, this.deadCryptidCount - count);
-        console.log(`[Adventure] Healed ${count} deaths. Now: ${this.deadCryptidCount}/${this.getMaxDeaths()}`);
     },
     
-    // Get current deck for battle (starter + discovered)
     getBattleDeck() {
         return [...this.starterCards, ...this.discoveredCards];
     }
@@ -135,7 +109,6 @@ window.AdventureState = {
 
 window.RelicRegistry = {
     relics: {
-        // === STARTER RELICS (pick 1 of 3) ===
         'iron_shovel': {
             id: 'iron_shovel',
             name: 'Iron Shovel',
@@ -235,364 +208,6 @@ window.RelicRegistry = {
     }
 };
 
-// ==================== ROOM GENERATION ====================
-
-window.RoomGenerator = {
-    // Room type weights by floor progression
-    weights: {
-        battle: 35,
-        battle_hard: 15,
-        event: 15,
-        treasure: 10,
-        shop: 8,
-        rest: 7,
-        curse: 5,
-        mystery: 5
-    },
-    
-    // Room type definitions
-    roomTypes: {
-        'entrance': {
-            type: 'entrance',
-            name: 'Entrance',
-            description: 'The journey begins...',
-            background: 'entrance',
-            canGoBack: false,
-            encounter: null
-        },
-        'battle': {
-            type: 'battle',
-            name: 'Battle',
-            description: 'Enemies await.',
-            background: 'battle',
-            encounter: 'normal'
-        },
-        'battle_hard': {
-            type: 'battle_hard', 
-            name: 'Elite Battle',
-            description: 'A powerful foe blocks the path.',
-            background: 'battle_elite',
-            encounter: 'elite'
-        },
-        'boss': {
-            type: 'boss',
-            name: 'Boss',
-            description: 'The floor guardian awaits.',
-            background: 'boss',
-            encounter: 'boss'
-        },
-        'event': {
-            type: 'event',
-            name: 'Strange Encounter',
-            description: 'Something unusual...',
-            background: 'event'
-        },
-        'treasure': {
-            type: 'treasure',
-            name: 'Treasure Room',
-            description: 'Riches await the brave.',
-            background: 'treasure'
-        },
-        'shop': {
-            type: 'shop',
-            name: 'Wandering Merchant',
-            description: 'Trade your embers for power.',
-            background: 'shop'
-        },
-        'rest': {
-            type: 'rest',
-            name: 'Safe Haven',
-            description: 'A moment of respite.',
-            background: 'rest'
-        },
-        'curse': {
-            type: 'curse',
-            name: 'Cursed Ground',
-            description: 'Dark energy permeates...',
-            background: 'curse'
-        },
-        'mystery': {
-            type: 'mystery',
-            name: '???',
-            description: 'Unknown awaits.',
-            background: 'mystery'
-        }
-    },
-    
-    // Generate a floor with branching paths
-    generateFloor(floorNumber) {
-        const map = {
-            rooms: {},    // Room data by ID
-            paths: {},    // Connections between rooms
-            mainPath: [], // Main path room IDs
-            branches: []  // Branch path arrays
-        };
-        
-        // === MAIN PATH (always exists) ===
-        const mainRoomCount = 8;
-        let recentTypes = [];
-        let battleCount = 0;
-        let shopPlaced = false;
-        let restPlaced = false;
-        
-        // Entrance room
-        const entranceId = `f${floorNumber}_main_0`;
-        map.rooms[entranceId] = this.createRoom('entrance', 0, floorNumber, entranceId);
-        map.mainPath.push(entranceId);
-        
-        // Generate main path rooms
-        for (let i = 1; i < mainRoomCount - 1; i++) {
-            const roomId = `f${floorNumber}_main_${i}`;
-            let roomType = this.selectRoomType(recentTypes, i, floorNumber, {
-                battleCount, shopPlaced, restPlaced
-            });
-            
-            if (roomType === 'battle' || roomType === 'battle_hard') battleCount++;
-            if (roomType === 'shop') shopPlaced = true;
-            if (roomType === 'rest') restPlaced = true;
-            
-            recentTypes.push(roomType);
-            if (recentTypes.length > 3) recentTypes.shift();
-            
-            const room = this.createRoom(roomType, i, floorNumber, roomId);
-            
-            // Add a door to some rooms (30% chance) for secret branches
-            if (i >= 2 && i <= 5 && Math.random() < 0.3 && !room.hasDoor) {
-                room.hasDoor = true;
-                room.doorTarget = `f${floorNumber}_branch_${i}`;
-            }
-            
-            map.rooms[roomId] = room;
-            map.mainPath.push(roomId);
-        }
-        
-        // Rest before boss
-        const restId = `f${floorNumber}_main_${mainRoomCount - 1}`;
-        map.rooms[restId] = this.createRoom('rest', mainRoomCount - 1, floorNumber, restId);
-        map.mainPath.push(restId);
-        
-        // Boss room
-        const bossId = `f${floorNumber}_boss`;
-        map.rooms[bossId] = this.createRoom('boss', mainRoomCount, floorNumber, bossId);
-        map.mainPath.push(bossId);
-        
-        // Connect main path rooms
-        for (let i = 0; i < map.mainPath.length - 1; i++) {
-            const roomId = map.mainPath[i];
-            const nextId = map.mainPath[i + 1];
-            map.paths[roomId] = map.paths[roomId] || { left: null, right: null, door: null, platform: null };
-            map.paths[nextId] = map.paths[nextId] || { left: null, right: null, door: null, platform: null };
-            map.paths[roomId].right = nextId;
-            map.paths[nextId].left = roomId;
-        }
-        
-        // === BRANCH PATHS (secret areas) ===
-        for (const [roomId, room] of Object.entries(map.rooms)) {
-            if (room.hasDoor && room.doorTarget) {
-                // Create a small branch (2-3 rooms)
-                const branchLength = 2 + Math.floor(Math.random() * 2);
-                const branch = [];
-                
-                for (let b = 0; b < branchLength; b++) {
-                    const branchRoomId = `${room.doorTarget}_${b}`;
-                    const branchType = b === branchLength - 1 ? 'treasure' : 
-                                       (Math.random() < 0.5 ? 'battle' : 'event');
-                    
-                    const branchRoom = this.createRoom(branchType, b, floorNumber, branchRoomId);
-                    branchRoom.isBranch = true;
-                    branchRoom.branchReturn = b === 0 ? roomId : null;
-                    map.rooms[branchRoomId] = branchRoom;
-                    branch.push(branchRoomId);
-                }
-                
-                // Connect branch rooms
-                map.paths[roomId].door = branch[0];
-                map.paths[branch[0]] = { left: null, right: null, door: roomId, platform: null }; // Door returns
-                
-                for (let b = 0; b < branch.length - 1; b++) {
-                    map.paths[branch[b]] = map.paths[branch[b]] || { left: null, right: null, door: null, platform: null };
-                    map.paths[branch[b]].right = branch[b + 1];
-                    map.paths[branch[b + 1]] = { left: branch[b], right: null, door: null, platform: null };
-                }
-                
-                // Last room in branch has door back to main path
-                const lastBranch = branch[branch.length - 1];
-                map.paths[lastBranch].door = roomId;
-                
-                map.branches.push(branch);
-            }
-        }
-        
-        // === PLATFORM PATHS (vertical shortcuts) ===
-        // Add occasional platform exits that skip ahead or lead to treasures
-        const platformRooms = map.mainPath.filter((id, idx) => idx >= 2 && idx <= 5 && Math.random() < 0.25);
-        for (const roomId of platformRooms) {
-            const room = map.rooms[roomId];
-            if (!room.hasDoor) {  // Don't double up on branching
-                room.hasPlatform = true;
-                room.platformPosition = Math.random() < 0.5 ? 'left' : 'right';
-                // Platform leads to a secret treasure room
-                const platformRoomId = `${roomId}_plat`;
-                const platformRoom = this.createRoom('treasure', 0, floorNumber, platformRoomId);
-                platformRoom.isPlatformRoom = true;
-                platformRoom.platformReturn = roomId;
-                map.rooms[platformRoomId] = platformRoom;
-                map.paths[roomId].platform = platformRoomId;
-                map.paths[platformRoomId] = { left: null, right: null, door: null, platform: roomId };
-            }
-        }
-        
-        // Store the map structure
-        map.currentRoomId = entranceId;
-        
-        // Return as array for backwards compatibility, but attach map data
-        const roomArray = map.mainPath.map(id => map.rooms[id]);
-        roomArray._floorMap = map;
-        
-        return roomArray;
-    },
-    
-    selectRoomType(recentTypes, roomIndex, floor, stats) {
-        const weights = { ...this.weights };
-        
-        // Adjust weights based on rules
-        
-        // No more than 2 battles in a row
-        const recentBattles = recentTypes.filter(t => t === 'battle' || t === 'battle_hard').length;
-        if (recentBattles >= 2) {
-            weights.battle = 0;
-            weights.battle_hard = 0;
-        }
-        
-        // Guarantee at least one shop per floor (rooms 3-7)
-        if (!stats.shopPlaced && roomIndex >= 5 && roomIndex <= 7) {
-            weights.shop += 30;
-        }
-        
-        // Guarantee at least one rest per floor (rooms 4-8)
-        if (!stats.restPlaced && roomIndex >= 6) {
-            weights.rest += 25;
-        }
-        
-        // More battles early, more events/treasure late
-        if (roomIndex <= 3) {
-            weights.battle += 15;
-            weights.treasure -= 5;
-        } else if (roomIndex >= 6) {
-            weights.event += 10;
-            weights.treasure += 5;
-        }
-        
-        // Higher floors = harder battles
-        if (floor >= 2) {
-            weights.battle_hard += 10 * (floor - 1);
-        }
-        
-        // No repeats of same type in a row
-        if (recentTypes.length > 0) {
-            const lastType = recentTypes[recentTypes.length - 1];
-            weights[lastType] = Math.max(0, (weights[lastType] || 0) - 20);
-        }
-        
-        // Calculate total and pick
-        const total = Object.values(weights).reduce((a, b) => Math.max(0, a) + Math.max(0, b), 0);
-        let roll = Math.random() * total;
-        
-        for (const [type, weight] of Object.entries(weights)) {
-            if (weight <= 0) continue;
-            roll -= weight;
-            if (roll <= 0) return type;
-        }
-        
-        return 'battle'; // Fallback
-    },
-    
-    createRoom(type, index, floor, roomId = null) {
-        const template = this.roomTypes[type] || this.roomTypes['battle'];
-        
-        // Entrance rooms start cleared (no encounter needed to proceed)
-        const startsCleared = (type === 'entrance');
-        
-        return {
-            ...template,
-            id: roomId || `floor${floor}_room${index}`,
-            index,
-            floor,
-            cleared: startsCleared,
-            visited: startsCleared,
-            interactables: this.generateInteractables(type, floor),
-            rewards: this.generateRewards(type, floor),
-            hasDoor: false,
-            doorTarget: null,
-            hasPlatform: false,
-            platformPosition: null
-        };
-    },
-    
-    generateInteractables(type, floor) {
-        const interactables = [];
-        
-        // Dig spots (random chance based on room type)
-        const digChance = type === 'treasure' ? 0.8 : type === 'battle' ? 0.3 : 0.15;
-        if (Math.random() < digChance) {
-            interactables.push({
-                type: 'dig_spot',
-                x: 150 + Math.random() * 400,
-                collected: false,
-                reward: this.getDigReward(floor)
-            });
-        }
-        
-        // Chests in treasure rooms
-        if (type === 'treasure') {
-            interactables.push({
-                type: 'chest',
-                x: 350,
-                collected: false,
-                locked: Math.random() < 0.3,
-                reward: { type: 'card', rarity: Math.random() < 0.3 ? 'rare' : 'common' }
-            });
-        }
-        
-        // Hidden traps in curse rooms
-        if (type === 'curse') {
-            interactables.push({
-                type: 'trap',
-                x: 200 + Math.random() * 300,
-                triggered: false,
-                damage: 1 + floor
-            });
-        }
-        
-        return interactables;
-    },
-    
-    generateRewards(type, floor) {
-        const baseEmbers = 10 + floor * 5;
-        
-        switch (type) {
-            case 'battle':
-                return { embers: baseEmbers + Math.floor(Math.random() * 10), xp: 15 };
-            case 'battle_hard':
-                return { embers: baseEmbers * 2, xp: 30, card: true };
-            case 'boss':
-                return { embers: baseEmbers * 5, xp: 100, relic: true };
-            case 'treasure':
-                return { embers: baseEmbers * 2, card: true };
-            default:
-                return { embers: Math.floor(baseEmbers / 2) };
-        }
-    },
-    
-    getDigReward(floor) {
-        const roll = Math.random();
-        if (roll < 0.4) return { type: 'embers', amount: 15 + floor * 10 };
-        if (roll < 0.7) return { type: 'heal', amount: 1 };
-        if (roll < 0.9) return { type: 'card', rarity: 'common' };
-        return { type: 'curse', damage: 1 }; // Bad luck!
-    }
-};
-
 // ==================== STARTER DECK DEFINITIONS ====================
 
 window.StarterDecks = {
@@ -602,14 +217,12 @@ window.StarterDecks = {
         description: 'Vampires, gargoyles, and nightmares from the urban shadows.',
         icon: '🏚️',
         theme: 'Blood & Steel • Status Effects',
-        // 15 starter cards
         starterCards: [
             'rooftopGargoyle', 'vampireInitiate', 'sewerAlligator',
             'hellpup', 'hellpup', 'myling', 'myling', 'vampireBat',
             'pyre', 'pyre', 'pyre', 'freshKill',
             'crossroads', 'wakingNightmare', 'antiVampiricBlade'
         ],
-        // Full discovery pool
         discoveryPool: {
             cryptids: ['libraryGargoyle', 'vampireLord', 'kuchisakeOnna', 'hellhound', 
                       'mothman', 'bogeyman', 'theFlayer', 'decayRat'],
@@ -651,1805 +264,2415 @@ window.StarterDecks = {
     }
 };
 
-// ==================== SIDESCROLLER ENGINE ====================
+// ==================== FLOOR MAP GENERATOR ====================
 
-window.AdventureEngine = {
+window.FloorMapGenerator = {
+    // Room types and their properties
+    roomTypes: {
+        start: { name: 'Awakening Chamber', color: '#4a3a6a', icon: '🌀' },
+        battle: { name: 'Combat', color: '#6b1c1c', icon: '⚔️' },
+        elite: { name: 'Elite Battle', color: '#8b2c2c', icon: '💀' },
+        treasure: { name: 'Treasure', color: '#8b7d3a', icon: '✨' },
+        shop: { name: 'Merchant', color: '#3a5a4a', icon: '🛒' },
+        rest: { name: 'Sanctuary', color: '#2a4a5a', icon: '🕯️' },
+        event: { name: 'Mystery', color: '#5a3a5a', icon: '❓' },
+        boss: { name: 'Floor Guardian', color: '#4a1a1a', icon: '👁️' }
+    },
+    
+    // Generate a complete floor map
+    generateFloor(floorNum) {
+        const roomsPerRow = 3;
+        const totalRows = 4; // 4 rows of rooms plus boss
+        const rooms = {};
+        const connections = {};
+        
+        // Create start room
+        rooms['start'] = {
+            id: 'start',
+            type: 'start',
+            x: 1, // Middle column
+            y: 0,
+            cleared: false,
+            exits: { north: [], south: [], east: [], west: [] }
+        };
+        
+        // Generate room grid
+        for (let row = 1; row <= totalRows; row++) {
+            for (let col = 0; col < roomsPerRow; col++) {
+                const roomId = `r${row}_${col}`;
+                const type = this.pickRoomType(row, totalRows, floorNum);
+                
+                rooms[roomId] = {
+                    id: roomId,
+                    type: type,
+                    x: col,
+                    y: row,
+                    cleared: false,
+                    exits: { north: [], south: [], east: [], west: [] }
+                };
+            }
+        }
+        
+        // Add boss room
+        rooms['boss'] = {
+            id: 'boss',
+            type: 'boss',
+            x: 1,
+            y: totalRows + 1,
+            cleared: false,
+            exits: { north: [], south: [], east: [], west: [] }
+        };
+        
+        // Generate connections
+        // Start connects to all rooms in row 1
+        for (let col = 0; col < roomsPerRow; col++) {
+            const targetId = `r1_${col}`;
+            rooms['start'].exits.north.push(targetId);
+            rooms[targetId].exits.south.push('start');
+        }
+        
+        // Connect rows
+        for (let row = 1; row < totalRows; row++) {
+            for (let col = 0; col < roomsPerRow; col++) {
+                const currentId = `r${row}_${col}`;
+                const current = rooms[currentId];
+                
+                // Connect to next row (each room connects to 1-2 rooms ahead)
+                const nextRow = row + 1;
+                const possibleTargets = [];
+                
+                // Can connect to same column or adjacent
+                for (let targetCol = Math.max(0, col - 1); targetCol <= Math.min(roomsPerRow - 1, col + 1); targetCol++) {
+                    possibleTargets.push(`r${nextRow}_${targetCol}`);
+                }
+                
+                // Randomly connect to 1-2 targets
+                const numConnections = Math.random() < 0.6 ? 2 : 1;
+                const shuffled = possibleTargets.sort(() => Math.random() - 0.5);
+                const targets = shuffled.slice(0, numConnections);
+                
+                for (const targetId of targets) {
+                    current.exits.north.push(targetId);
+                    rooms[targetId].exits.south.push(currentId);
+                }
+                
+                // Connect horizontally within row (optional)
+                if (col < roomsPerRow - 1 && Math.random() < 0.3) {
+                    const rightId = `r${row}_${col + 1}`;
+                    current.exits.east.push(rightId);
+                    rooms[rightId].exits.west.push(currentId);
+                }
+            }
+        }
+        
+        // Last row connects to boss
+        for (let col = 0; col < roomsPerRow; col++) {
+            const roomId = `r${totalRows}_${col}`;
+            rooms[roomId].exits.north.push('boss');
+            rooms['boss'].exits.south.push(roomId);
+        }
+        
+        return {
+            floorNum,
+            rooms,
+            totalRooms: Object.keys(rooms).length
+        };
+    },
+    
+    pickRoomType(row, totalRows, floorNum) {
+        // Last row before boss has higher elite chance
+        if (row === totalRows) {
+            const roll = Math.random();
+            if (roll < 0.4) return 'elite';
+            if (roll < 0.6) return 'battle';
+            if (roll < 0.8) return 'rest';
+            return 'treasure';
+        }
+        
+        // Normal distribution
+        const roll = Math.random();
+        if (roll < 0.35) return 'battle';
+        if (roll < 0.50) return 'event';
+        if (roll < 0.65) return 'treasure';
+        if (roll < 0.78) return 'shop';
+        if (roll < 0.88) return 'rest';
+        if (roll < 0.95) return 'elite';
+        return 'battle';
+    },
+    
+    getRoomInfo(type) {
+        return this.roomTypes[type] || this.roomTypes.battle;
+    }
+};
+
+// ==================== ISOMETRIC ENGINE ====================
+
+window.IsometricEngine = {
     canvas: null,
     ctx: null,
     isRunning: false,
     lastTime: 0,
+    animationId: null,
     
-    // Player state
-    player: {
-        x: 100,
+    // Isometric settings
+    tileWidth: 64,
+    tileHeight: 32,
+    tileDepth: 12,  // Height of tile sides for 3D effect
+    roomWidth: 11,  // tiles (smaller for better visibility)
+    roomHeight: 11, // tiles
+    
+    // Camera
+    camera: {
+        x: 0,
         y: 0,
-        vx: 0,
-        vy: 0,
-        width: 50,
-        height: 80,
-        grounded: true,
-        facing: 1, // 1 = right, -1 = left
-        state: 'idle', // idle, walking, jumping, interacting
-        interactTarget: null
+        targetX: 0,
+        targetY: 0,
+        zoom: 1
     },
     
-    // Room dimensions - will be set dynamically based on viewport
-    room: {
-        width: 1200,
-        height: 600,
-        groundY: 520
+    // Player (grid-based movement like Pokemon)
+    player: {
+        tileX: 5,      // Current tile position (integer)
+        tileY: 5,
+        visualX: 5,    // Visual position for smooth animation
+        visualY: 5,
+        targetTileX: 5,
+        targetTileY: 5,
+        moveProgress: 1, // 0 to 1, 1 = arrived
+        moveSpeed: 5,    // Tiles per second
+        facing: 'south',
+        isMoving: false,
+        canMove: true,   // False while moving between tiles
+        sprite: '🚶'
     },
     
-    // Controls
+    // Interactables in current room
+    interactables: [],
+    nearbyInteractable: null,
+    
+    // Lighting
+    lights: [],
+    ambientLight: 0.6,  // Very generous ambient light for visibility
+    playerLightRadius: 350,
+    
+    // Room exits (directions player can leave)
+    exits: [],
+    
+    // Input state
     keys: {
+        up: false,
+        down: false,
         left: false,
         right: false,
-        up: false,
         action: false
     },
-    
-    // Movement settings
-    physics: {
-        moveSpeed: 6,
-        gravity: 0.6,
-        jumpForce: -14,
-        friction: 0.88
-    },
-    
-    // Visual settings
-    visuals: {
-        fogOpacity: 0.7,
-        ambientParticles: [],
-        screenShake: 0
-    },
-    
-    // Transition/encounter lock to prevent multiple triggers
-    transitionLock: false,
+    touchStart: null,
+    touchCurrent: null,
     
     // ==================== INITIALIZATION ====================
     
     init() {
         this.createCanvas();
         this.bindControls();
-        this.injectStyles();
     },
     
     createCanvas() {
         if (this.canvas) return;
         
         this.canvas = document.createElement('canvas');
-        this.canvas.id = 'adventure-canvas';
+        this.canvas.id = 'isometric-canvas';
+        this.canvas.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        `;
         this.ctx = this.canvas.getContext('2d');
         
-        // Size canvas to fit viewport
-        this.resizeCanvas();
-        
-        // Listen for resize
+        // Don't resize yet - wait until canvas is attached and visible
         window.addEventListener('resize', () => this.resizeCanvas());
+        
+        console.log('[Isometric] Canvas element created');
     },
     
     resizeCanvas() {
-        // Fill the entire viewport
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+        // Store dimensions without DPR for simpler rendering
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
         
-        // Update canvas size to fill screen
-        this.canvas.width = width;
-        this.canvas.height = height;
+        // Center camera on room
+        this.centerCamera();
         
-        // Update room dimensions to match
-        this.room.width = width;
-        this.room.height = height;
-        // Ground at 25% from bottom (75% down from top)
-        this.room.groundY = Math.floor(height * 0.75);
-        
-        // Update player size relative to screen
-        this.player.width = Math.max(50, Math.floor(width * 0.04));
-        this.player.height = Math.max(80, Math.floor(width * 0.065));
-        
-        console.log('[Adventure] Canvas resized to', width, 'x', height, 'Ground at', this.room.groundY);
+        console.log('[Isometric] Canvas resized:', this.canvas.width, 'x', this.canvas.height);
     },
+    
+    centerCamera() {
+        const centerTile = Math.floor(this.roomWidth / 2);
+        const pos = this.tileToScreen(centerTile, centerTile);
+        this.camera.x = pos.x - window.innerWidth / 2;
+        this.camera.y = pos.y - window.innerHeight / 2 + 50;
+        this.camera.targetX = this.camera.x;
+        this.camera.targetY = this.camera.y;
+    },
+    
+    // ==================== COORDINATE CONVERSION ====================
+    
+    tileToScreen(tileX, tileY) {
+        const x = (tileX - tileY) * (this.tileWidth / 2);
+        const y = (tileX + tileY) * (this.tileHeight / 2);
+        return { x, y };
+    },
+    
+    screenToTile(screenX, screenY) {
+        const x = screenX + this.camera.x;
+        const y = screenY + this.camera.y;
+        
+        const tileX = (x / (this.tileWidth / 2) + y / (this.tileHeight / 2)) / 2;
+        const tileY = (y / (this.tileHeight / 2) - x / (this.tileWidth / 2)) / 2;
+        
+        return { x: Math.floor(tileX), y: Math.floor(tileY) };
+    },
+    
+    // ==================== CONTROLS ====================
     
     bindControls() {
         // Keyboard
-        window.addEventListener('keydown', (e) => {
-            if (!AdventureState.isActive) return;
-            switch (e.key.toLowerCase()) {
-                case 'a':
-                case 'arrowleft':
-                    this.keys.left = true;
-                    break;
-                case 'd':
-                case 'arrowright':
-                    this.keys.right = true;
-                    break;
-                case 'w':
-                case 'arrowup':
-                case ' ':
-                    this.keys.up = true;
-                    break;
-                case 'e':
-                case 'enter':
-                    this.keys.action = true;
-                    this.handleInteraction();
-                    break;
+        document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        document.addEventListener('keyup', (e) => this.handleKeyUp(e));
+        
+        // Mouse/Touch for click-to-move
+        document.addEventListener('mousedown', (e) => this.handlePointerDown(e));
+        document.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+        document.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
+        document.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+    },
+    
+    handleKeyDown(e) {
+        if (!this.isRunning) return;
+        if (AdventureState.phase === 'dialogue') return;
+        
+        switch(e.key.toLowerCase()) {
+            case 'w': case 'arrowup': this.keys.up = true; break;
+            case 's': case 'arrowdown': this.keys.down = true; break;
+            case 'a': case 'arrowleft': this.keys.left = true; break;
+            case 'd': case 'arrowright': this.keys.right = true; break;
+            case 'e': case ' ': case 'enter': 
+                this.keys.action = true;
+                this.tryInteract();
+                break;
+        }
+    },
+    
+    handleKeyUp(e) {
+        switch(e.key.toLowerCase()) {
+            case 'w': case 'arrowup': this.keys.up = false; break;
+            case 's': case 'arrowdown': this.keys.down = false; break;
+            case 'a': case 'arrowleft': this.keys.left = false; break;
+            case 'd': case 'arrowright': this.keys.right = false; break;
+            case 'e': case ' ': case 'enter': this.keys.action = false; break;
+        }
+    },
+    
+    handlePointerDown(e) {
+        if (!this.isRunning) return;
+        if (AdventureState.phase === 'dialogue') return;
+        if (e.target.closest('.adventure-ui')) return;
+        
+        const tile = this.screenToTile(e.clientX, e.clientY);
+        if (this.isValidTile(tile.x, tile.y)) {
+            this.player.targetX = tile.x;
+            this.player.targetY = tile.y;
+        }
+    },
+    
+    handleTouchStart(e) {
+        if (!this.isRunning) return;
+        if (e.target.closest('.adventure-ui')) return;
+        
+        const touch = e.touches[0];
+        this.touchStart = { x: touch.clientX, y: touch.clientY };
+        this.touchCurrent = { x: touch.clientX, y: touch.clientY };
+    },
+    
+    handleTouchMove(e) {
+        if (!this.touchStart) return;
+        e.preventDefault();
+        
+        const touch = e.touches[0];
+        this.touchCurrent = { x: touch.clientX, y: touch.clientY };
+        
+        // Virtual joystick behavior
+        const dx = this.touchCurrent.x - this.touchStart.x;
+        const dy = this.touchCurrent.y - this.touchStart.y;
+        const threshold = 30;
+        
+        this.keys.up = dy < -threshold;
+        this.keys.down = dy > threshold;
+        this.keys.left = dx < -threshold;
+        this.keys.right = dx > threshold;
+    },
+    
+    handleTouchEnd(e) {
+        this.touchStart = null;
+        this.touchCurrent = null;
+        this.keys.up = false;
+        this.keys.down = false;
+        this.keys.left = false;
+        this.keys.right = false;
+        
+        // Tap to interact
+        if (e.changedTouches.length > 0 && this.nearbyInteractable) {
+            this.tryInteract();
+        }
+    },
+    
+    isValidTile(x, y) {
+        return x >= 0 && x < this.roomWidth && y >= 0 && y < this.roomHeight;
+    },
+    
+    // ==================== INTERACTION ====================
+    
+    tryInteract() {
+        if (this.nearbyInteractable) {
+            const obj = this.nearbyInteractable;
+            if (obj.onInteract) {
+                obj.onInteract(obj);
             }
+        }
+    },
+    
+    checkNearbyInteractables() {
+        const px = this.player.tileX;
+        const py = this.player.tileY;
+        
+        let closest = null;
+        let closestDist = 2.0; // Interaction range in tiles
+        
+        for (const obj of this.interactables) {
+            const dx = obj.x - px;
+            const dy = obj.y - py;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist < closestDist) {
+                closest = obj;
+                closestDist = dist;
+            }
+        }
+        
+        // Check exits
+        for (const exit of this.exits) {
+            const dx = exit.x - px;
+            const dy = exit.y - py;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist < closestDist) {
+                closest = exit;
+                closestDist = dist;
+            }
+        }
+        
+        this.nearbyInteractable = closest;
+    },
+    
+    // ==================== GAME LOOP ====================
+    
+    start() {
+        if (this.isRunning) {
+            console.log('[Isometric] Already running');
+            return;
+        }
+        console.log('[Isometric] Starting engine...');
+        console.log('[Isometric] Canvas:', this.canvas?.width, 'x', this.canvas?.height);
+        console.log('[Isometric] Player at:', this.player.x, this.player.y);
+        console.log('[Isometric] Interactables:', this.interactables.length);
+        console.log('[Isometric] Camera:', this.camera.x, this.camera.y);
+        
+        this.isRunning = true;
+        this.lastTime = performance.now();
+        this.loop();
+    },
+    
+    stop() {
+        this.isRunning = false;
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+    },
+    
+    loop() {
+        if (!this.isRunning) return;
+        
+        const now = performance.now();
+        const dt = Math.min((now - this.lastTime) / 1000, 0.1);
+        this.lastTime = now;
+        
+        // Debug frame counter (less verbose)
+        this.frameCount = (this.frameCount || 0) + 1;
+        
+        this.update(dt);
+        this.render();
+        
+        this.animationId = requestAnimationFrame(() => this.loop());
+    },
+    
+    update(dt) {
+        const p = this.player;
+        
+        // Grid-based movement (Pokemon style) - only accept input when not moving
+        if (p.canMove && (this.keys.up || this.keys.down || this.keys.left || this.keys.right)) {
+            let dx = 0, dy = 0;
+            
+            // Isometric direction mapping (visual up = tile northwest, etc.)
+            if (this.keys.up) { dx = -1; dy = -1; p.facing = 'north'; }
+            else if (this.keys.down) { dx = 1; dy = 1; p.facing = 'south'; }
+            else if (this.keys.left) { dx = -1; dy = 1; p.facing = 'west'; }
+            else if (this.keys.right) { dx = 1; dy = -1; p.facing = 'east'; }
+            
+            // Only move one direction at a time (no diagonals in Pokemon style)
+            if (dx !== 0 || dy !== 0) {
+                const newX = p.tileX + dx;
+                const newY = p.tileY + dy;
+                
+                // Check bounds
+                if (this.isValidTile(newX, newY)) {
+                    p.targetTileX = newX;
+                    p.targetTileY = newY;
+                    p.moveProgress = 0;
+                    p.canMove = false;
+                    p.isMoving = true;
+                }
+            }
+        }
+        
+        // Animate movement between tiles
+        if (p.isMoving) {
+            const speed = p.moveSpeed * (1 + this.getSpeedBonus());
+            p.moveProgress += speed * dt;
+            
+            if (p.moveProgress >= 1) {
+                // Arrived at destination
+                p.moveProgress = 1;
+                p.tileX = p.targetTileX;
+                p.tileY = p.targetTileY;
+                p.visualX = p.tileX;
+                p.visualY = p.tileY;
+                p.isMoving = false;
+                p.canMove = true;
+            } else {
+                // Lerp visual position
+                p.visualX = p.tileX + (p.targetTileX - p.tileX) * p.moveProgress;
+                p.visualY = p.tileY + (p.targetTileY - p.tileY) * p.moveProgress;
+            }
+        }
+        
+        // Update world position from visual tile position
+        const worldPos = this.tileToScreen(p.visualX, p.visualY);
+        p.worldX = worldPos.x;
+        p.worldY = worldPos.y;
+        
+        // Camera follows player smoothly
+        this.camera.targetX = p.worldX - window.innerWidth / 2;
+        this.camera.targetY = p.worldY - window.innerHeight / 2 + 50;
+        this.camera.x += (this.camera.targetX - this.camera.x) * 0.1;
+        this.camera.y += (this.camera.targetY - this.camera.y) * 0.1;
+        
+        // Check for nearby interactables
+        this.checkNearbyInteractables();
+        
+        // Update lights (subtle flicker)
+        const now = performance.now();
+        for (const light of this.lights) {
+            light.flicker = 0.95 + Math.sin(now * 0.003 + light.phase) * 0.05;
+        }
+    },
+    
+    getSpeedBonus() {
+        let bonus = 0;
+        for (const relic of AdventureState.relics) {
+            if (relic.effect?.speedBonus) {
+                bonus += relic.effect.speedBonus;
+            }
+        }
+        return bonus;
+    },
+    
+    // ==================== RENDERING ====================
+    
+    render() {
+        const ctx = this.ctx;
+        if (!ctx) {
+            console.error('[Isometric] No canvas context!');
+            return;
+        }
+        
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        
+        // Clear entire canvas with dark background
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+        ctx.fillStyle = '#12121a';
+        ctx.fillRect(0, 0, w, h);
+        
+        ctx.save();
+        ctx.translate(-this.camera.x, -this.camera.y);
+        
+        // Draw floor tiles
+        this.renderFloor();
+        
+        // Draw interactables (sorted by y for depth)
+        const p = this.player;
+        const sortedObjects = [...this.interactables, ...this.exits]
+            .sort((a, b) => (a.y + a.x) - (b.y + b.x));
+        
+        for (const obj of sortedObjects) {
+            if (obj.y < p.visualY || (obj.y === p.visualY && obj.x < p.visualX)) {
+                this.renderObject(obj);
+            }
+        }
+        
+        // Draw player
+        this.renderPlayer();
+        
+        // Draw objects in front of player
+        for (const obj of sortedObjects) {
+            if (obj.y >= p.visualY && (obj.y > p.visualY || obj.x >= p.visualX)) {
+                this.renderObject(obj);
+            }
+        }
+        
+        ctx.restore();
+        
+        // Apply lighting overlay
+        this.renderLighting();
+        
+        // Render interaction prompt
+        if (this.nearbyInteractable) {
+            this.renderInteractionPrompt();
+        }
+        
+        // Debug: Draw frame indicator
+        const p = this.player;
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.7)';
+        ctx.font = '11px monospace';
+        ctx.fillText(`Tile: ${p.tileX},${p.tileY} | Phase: ${AdventureState.phase}`, 10, h - 10);
+    },
+    
+    renderFloor() {
+        const ctx = this.ctx;
+        const depth = this.tileDepth;
+        
+        // Draw tiles back to front for proper depth sorting
+        for (let y = 0; y < this.roomHeight; y++) {
+            for (let x = 0; x < this.roomWidth; x++) {
+                const pos = this.tileToScreen(x, y);
+                
+                // Color variations for checkerboard
+                const isLight = (x + y) % 2 === 0;
+                const topColor = isLight ? '#3a3a4d' : '#2d2d3d';
+                const leftColor = isLight ? '#252535' : '#1e1e2a';
+                const rightColor = isLight ? '#2f2f42' : '#252532';
+                const borderColor = '#4a4a5d';
+                
+                // Draw left side face (visible from our view angle)
+                ctx.beginPath();
+                ctx.moveTo(pos.x - this.tileWidth / 2, pos.y);
+                ctx.lineTo(pos.x, pos.y + this.tileHeight / 2);
+                ctx.lineTo(pos.x, pos.y + this.tileHeight / 2 + depth);
+                ctx.lineTo(pos.x - this.tileWidth / 2, pos.y + depth);
+                ctx.closePath();
+                ctx.fillStyle = leftColor;
+                ctx.fill();
+                
+                // Draw right side face
+                ctx.beginPath();
+                ctx.moveTo(pos.x + this.tileWidth / 2, pos.y);
+                ctx.lineTo(pos.x, pos.y + this.tileHeight / 2);
+                ctx.lineTo(pos.x, pos.y + this.tileHeight / 2 + depth);
+                ctx.lineTo(pos.x + this.tileWidth / 2, pos.y + depth);
+                ctx.closePath();
+                ctx.fillStyle = rightColor;
+                ctx.fill();
+                
+                // Draw top face (diamond)
+                ctx.beginPath();
+                ctx.moveTo(pos.x, pos.y - this.tileHeight / 2);
+                ctx.lineTo(pos.x + this.tileWidth / 2, pos.y);
+                ctx.lineTo(pos.x, pos.y + this.tileHeight / 2);
+                ctx.lineTo(pos.x - this.tileWidth / 2, pos.y);
+                ctx.closePath();
+                ctx.fillStyle = topColor;
+                ctx.fill();
+                
+                // Subtle edge highlight on top
+                ctx.strokeStyle = borderColor;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+    },
+    
+    renderPlayer() {
+        const ctx = this.ctx;
+        const p = this.player;
+        const pos = this.tileToScreen(p.visualX, p.visualY);
+        
+        // Shadow on the floor
+        ctx.beginPath();
+        ctx.ellipse(pos.x, pos.y + this.tileDepth + 2, 14, 7, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fill();
+        
+        // Player sprite (raised above tile)
+        ctx.font = '42px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Bob when moving
+        const bobOffset = p.isMoving ? Math.sin(performance.now() * 0.015) * 3 : 0;
+        
+        // Draw player above the tile
+        const playerY = pos.y - 8 + bobOffset;
+        ctx.fillText(p.sprite, pos.x, playerY);
+        
+        // Direction indicator (subtle glow in facing direction)
+        if (!p.isMoving) {
+            ctx.fillStyle = 'rgba(126, 184, 158, 0.3)';
+            ctx.beginPath();
+            let indicatorX = pos.x, indicatorY = pos.y;
+            if (p.facing === 'north') { indicatorX -= 8; indicatorY -= 20; }
+            else if (p.facing === 'south') { indicatorX += 8; indicatorY += 8; }
+            else if (p.facing === 'west') { indicatorX -= 16; indicatorY -= 6; }
+            else if (p.facing === 'east') { indicatorX += 16; indicatorY -= 6; }
+            ctx.arc(indicatorX, indicatorY, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    },
+    
+    renderObject(obj) {
+        const ctx = this.ctx;
+        const pos = this.tileToScreen(obj.x, obj.y);
+        
+        // Glow effect for interactables
+        if (obj.glow) {
+            ctx.shadowColor = obj.glowColor || '#e8a93e';
+            ctx.shadowBlur = 20 + Math.sin(performance.now() * 0.003) * 5;
+        }
+        
+        // Shadow
+        ctx.beginPath();
+        ctx.ellipse(pos.x, pos.y + 5, 12, 6, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.fill();
+        
+        // Floating animation
+        const floatOffset = obj.float ? Math.sin(performance.now() * 0.002 + (obj.floatPhase || 0)) * 8 : 0;
+        
+        // Sprite
+        ctx.font = `${obj.size || 32}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(obj.sprite, pos.x, pos.y - 25 - floatOffset);
+        
+        ctx.shadowBlur = 0;
+        
+        // Label if nearby
+        if (obj === this.nearbyInteractable && obj.label) {
+            ctx.font = '14px "Cinzel", serif';
+            ctx.fillStyle = '#d4c4a8';
+            ctx.fillText(obj.label, pos.x, pos.y - 60 - floatOffset);
+        }
+    },
+    
+    renderLighting() {
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        
+        // Create lighting canvas
+        const lightCanvas = document.createElement('canvas');
+        lightCanvas.width = w;
+        lightCanvas.height = h;
+        const lctx = lightCanvas.getContext('2d');
+        
+        // Start with semi-transparent darkness (generous lighting)
+        lctx.fillStyle = `rgba(5, 5, 15, ${1 - this.ambientLight})`;
+        lctx.fillRect(0, 0, w, h);
+        
+        // Set composite for "punching out" light
+        lctx.globalCompositeOperation = 'destination-out';
+        
+        // Player light
+        const playerScreen = {
+            x: this.player.worldX - this.camera.x,
+            y: this.player.worldY - this.camera.y - 20
+        };
+        
+        const playerGrad = lctx.createRadialGradient(
+            playerScreen.x, playerScreen.y, 0,
+            playerScreen.x, playerScreen.y, this.playerLightRadius
+        );
+        playerGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+        playerGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.4)');
+        playerGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        
+        lctx.fillStyle = playerGrad;
+        lctx.beginPath();
+        lctx.arc(playerScreen.x, playerScreen.y, this.playerLightRadius, 0, Math.PI * 2);
+        lctx.fill();
+        
+        // Additional light sources
+        for (const light of this.lights) {
+            const screenPos = {
+                x: light.worldX - this.camera.x,
+                y: light.worldY - this.camera.y
+            };
+            
+            const radius = light.radius * (light.flicker || 1);
+            const grad = lctx.createRadialGradient(
+                screenPos.x, screenPos.y, 0,
+                screenPos.x, screenPos.y, radius
+            );
+            grad.addColorStop(0, `rgba(255, 255, 255, ${light.intensity})`);
+            grad.addColorStop(0.6, `rgba(255, 255, 255, ${light.intensity * 0.3})`);
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            
+            lctx.fillStyle = grad;
+            lctx.beginPath();
+            lctx.arc(screenPos.x, screenPos.y, radius, 0, Math.PI * 2);
+            lctx.fill();
+        }
+        
+        // Apply to main canvas
+        ctx.drawImage(lightCanvas, 0, 0);
+        
+        // Subtle vignette
+        const vignette = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, Math.max(w, h) * 0.7);
+        vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vignette.addColorStop(0.7, 'rgba(0, 0, 0, 0)');
+        vignette.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, w, h);
+    },
+    
+    renderInteractionPrompt() {
+        const ctx = this.ctx;
+        const obj = this.nearbyInteractable;
+        const pos = this.tileToScreen(obj.x, obj.y);
+        const screenPos = {
+            x: pos.x - this.camera.x,
+            y: pos.y - this.camera.y - 80
+        };
+        
+        // Prompt background
+        ctx.fillStyle = 'rgba(20, 18, 25, 0.9)';
+        ctx.strokeStyle = 'rgba(232, 169, 62, 0.6)';
+        ctx.lineWidth = 2;
+        
+        const text = obj.promptText || '[E] Interact';
+        ctx.font = '14px "Cinzel", serif';
+        const metrics = ctx.measureText(text);
+        const padding = 12;
+        const boxWidth = metrics.width + padding * 2;
+        const boxHeight = 28;
+        
+        ctx.beginPath();
+        ctx.roundRect(screenPos.x - boxWidth/2, screenPos.y - boxHeight/2, boxWidth, boxHeight, 4);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#d4c4a8';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, screenPos.x, screenPos.y);
+    },
+    
+    // ==================== ROOM SETUP ====================
+    
+    setupRoom(roomData) {
+        this.interactables = [];
+        this.lights = [];
+        this.exits = [];
+        
+        // Reset player position to center (grid-based)
+        const p = this.player;
+        p.tileX = 5;
+        p.tileY = 5;
+        p.visualX = 5;
+        p.visualY = 5;
+        p.targetTileX = 5;
+        p.targetTileY = 5;
+        p.moveProgress = 1;
+        p.isMoving = false;
+        p.canMove = true;
+        
+        // Initialize world position
+        const worldPos = this.tileToScreen(p.tileX, p.tileY);
+        p.worldX = worldPos.x;
+        p.worldY = worldPos.y;
+        
+        // Add room-specific content
+        if (roomData) {
+            this.setupRoomContent(roomData);
+        }
+        
+        this.centerCamera();
+    },
+    
+    setupRoomContent(roomData) {
+        const info = FloorMapGenerator.getRoomInfo(roomData.type);
+        
+        // Add exit portals based on room connections (adjusted for 11x11 room)
+        if (roomData.exits) {
+            if (roomData.exits.north?.length > 0) {
+                this.exits.push({
+                    x: 5, y: 0,
+                    sprite: '🚪',
+                    label: 'Continue Forward',
+                    promptText: '[E] Enter',
+                    glow: true,
+                    glowColor: '#7eb89e',
+                    direction: 'north',
+                    targetRooms: roomData.exits.north,
+                    onInteract: (obj) => AdventureUI.showExitChoice(obj)
+                });
+            }
+            if (roomData.exits.south?.length > 0 && roomData.type !== 'start') {
+                this.exits.push({
+                    x: 5, y: 10,
+                    sprite: '🚪',
+                    label: 'Go Back',
+                    promptText: '[E] Return',
+                    glow: true,
+                    glowColor: '#6b8fa3',
+                    direction: 'south',
+                    targetRooms: roomData.exits.south,
+                    onInteract: (obj) => AdventureUI.showExitChoice(obj)
+                });
+            }
+            if (roomData.exits.east?.length > 0) {
+                this.exits.push({
+                    x: 10, y: 5,
+                    sprite: '🚪',
+                    label: 'East Passage',
+                    promptText: '[E] Enter',
+                    glow: true,
+                    glowColor: '#a080d0',
+                    direction: 'east',
+                    targetRooms: roomData.exits.east,
+                    onInteract: (obj) => AdventureUI.showExitChoice(obj)
+                });
+            }
+            if (roomData.exits.west?.length > 0) {
+                this.exits.push({
+                    x: 0, y: 5,
+                    sprite: '🚪',
+                    label: 'West Passage',
+                    promptText: '[E] Enter',
+                    glow: true,
+                    glowColor: '#d08080',
+                    direction: 'west',
+                    targetRooms: roomData.exits.west,
+                    onInteract: (obj) => AdventureUI.showExitChoice(obj)
+                });
+            }
+        }
+        
+        // Add room-specific content
+        switch(roomData.type) {
+            case 'battle':
+            case 'elite':
+                this.addBattleContent(roomData);
+                break;
+            case 'treasure':
+                this.addTreasureContent(roomData);
+                break;
+            case 'shop':
+                this.addShopContent(roomData);
+                break;
+            case 'rest':
+                this.addRestContent(roomData);
+                break;
+            case 'event':
+                this.addEventContent(roomData);
+                break;
+            case 'boss':
+                this.addBossContent(roomData);
+                break;
+        }
+        
+        // Add ambient lights
+        this.addAmbientLights();
+    },
+    
+    addBattleContent(roomData) {
+        if (!roomData.cleared) {
+            this.interactables.push({
+                x: 5, y: 3,
+                sprite: roomData.type === 'elite' ? '💀' : '⚔️',
+                size: 48,
+                label: roomData.type === 'elite' ? 'Elite Enemy' : 'Enemy',
+                promptText: '[E] Fight',
+                glow: true,
+                glowColor: '#6b1c1c',
+                float: true,
+                floatPhase: 0,
+                onInteract: () => AdventureUI.startBattle(roomData)
+            });
+        }
+    },
+    
+    addTreasureContent(roomData) {
+        if (!roomData.cleared) {
+            this.interactables.push({
+                x: 5, y: 3,
+                sprite: '✨',
+                size: 40,
+                label: 'Treasure',
+                promptText: '[E] Open',
+                glow: true,
+                glowColor: '#e8a93e',
+                float: true,
+                floatPhase: Math.random() * Math.PI * 2,
+                onInteract: () => AdventureUI.openTreasure(roomData)
+            });
+        }
+    },
+    
+    addShopContent(roomData) {
+        this.interactables.push({
+            x: 5, y: 3,
+            sprite: '🛒',
+            size: 40,
+            label: 'Merchant',
+            promptText: '[E] Browse',
+            glow: true,
+            glowColor: '#3a5a4a',
+            onInteract: () => AdventureUI.openShop(roomData)
+        });
+    },
+    
+    addRestContent(roomData) {
+        this.interactables.push({
+            x: 5, y: 3,
+            sprite: '🕯️',
+            size: 40,
+            label: 'Sanctuary',
+            promptText: '[E] Rest',
+            glow: true,
+            glowColor: '#e8a93e',
+            float: true,
+            floatPhase: Math.random() * Math.PI * 2,
+            onInteract: () => AdventureUI.useRestSite(roomData)
         });
         
-        window.addEventListener('keyup', (e) => {
-            switch (e.key.toLowerCase()) {
-                case 'a':
-                case 'arrowleft':
-                    this.keys.left = false;
-                    break;
-                case 'd':
-                case 'arrowright':
-                    this.keys.right = false;
-                    break;
-                case 'w':
-                case 'arrowup':
-                case ' ':
-                    this.keys.up = false;
-                    break;
-                case 'e':
-                case 'enter':
-                    this.keys.action = false;
-                    break;
+        // Add extra lights for sanctuary
+        const pos = this.tileToScreen(5, 3);
+        this.lights.push({
+            worldX: pos.x,
+            worldY: pos.y - 20,
+            radius: 200,
+            intensity: 0.8,
+            phase: Math.random() * Math.PI * 2
+        });
+    },
+    
+    addEventContent(roomData) {
+        if (!roomData.cleared) {
+            this.interactables.push({
+                x: 5, y: 3,
+                sprite: '❓',
+                size: 40,
+                label: 'Mystery',
+                promptText: '[E] Investigate',
+                glow: true,
+                glowColor: '#5a3a5a',
+                float: true,
+                floatPhase: Math.random() * Math.PI * 2,
+                onInteract: () => AdventureUI.triggerEvent(roomData)
+            });
+        }
+    },
+    
+    addBossContent(roomData) {
+        if (!roomData.cleared) {
+            this.interactables.push({
+                x: 5, y: 2,
+                sprite: '👁️',
+                size: 64,
+                label: 'Floor Guardian',
+                promptText: '[E] Challenge',
+                glow: true,
+                glowColor: '#4a1a1a',
+                float: true,
+                floatPhase: 0,
+                onInteract: () => AdventureUI.startBossBattle(roomData)
+            });
+        }
+    },
+    
+    addAmbientLights() {
+        // Corner lights (adjusted for 11x11 room)
+        const corners = [[1, 1], [9, 1], [1, 9], [9, 9]];
+        for (const [x, y] of corners) {
+            const pos = this.tileToScreen(x, y);
+            this.lights.push({
+                worldX: pos.x,
+                worldY: pos.y,
+                radius: 100,
+                intensity: 0.5,
+                phase: Math.random() * Math.PI * 2
+            });
+        }
+        
+        // Center light for better visibility
+        const centerPos = this.tileToScreen(5, 5);
+        this.lights.push({
+            worldX: centerPos.x,
+            worldY: centerPos.y,
+            radius: 180,
+            intensity: 0.6,
+            phase: 0
+        });
+    },
+    
+    // Setup starting chamber with deck selection
+    setupStartingChamber() {
+        console.log('[Isometric] Setting up starting chamber...');
+        
+        this.interactables = [];
+        this.lights = [];
+        this.exits = [];
+        
+        // Reset player to bottom of room (grid-based)
+        const p = this.player;
+        p.tileX = 5;
+        p.tileY = 8;
+        p.visualX = 5;
+        p.visualY = 8;
+        p.targetTileX = 5;
+        p.targetTileY = 8;
+        p.moveProgress = 1;
+        p.isMoving = false;
+        p.canMove = true;
+        
+        // Initialize world position
+        const worldPos = this.tileToScreen(p.tileX, p.tileY);
+        p.worldX = worldPos.x;
+        p.worldY = worldPos.y;
+        
+        // Floating deck orbs in center (adjusted for 11x11 room)
+        const decks = Object.values(StarterDecks || {}).filter(d => !d.locked);
+        console.log('[Isometric] Available decks:', decks.length, decks.map(d => d.name));
+        const positions = [[3, 4], [5, 3], [7, 4]];
+        
+        decks.forEach((deck, i) => {
+            if (i >= positions.length) return;
+            const [x, y] = positions[i];
+            
+            this.interactables.push({
+                x, y,
+                sprite: deck.icon,
+                size: 48,
+                label: deck.name,
+                promptText: '[E] Examine',
+                glow: true,
+                glowColor: '#a080d0',
+                float: true,
+                floatPhase: i * (Math.PI * 2 / 3),
+                deckId: deck.id,
+                onInteract: () => AdventureUI.showDeckPreview(deck)
+            });
+            
+            // Light for each deck
+            const pos = this.tileToScreen(x, y);
+            this.lights.push({
+                worldX: pos.x,
+                worldY: pos.y - 20,
+                radius: 150,
+                intensity: 0.7,
+                phase: i * (Math.PI * 2 / 3)
+            });
+        });
+        
+        // Central stronger light (adjusted for 11x11 room)
+        const centerPos = this.tileToScreen(5, 4);
+        this.lights.push({
+            worldX: centerPos.x,
+            worldY: centerPos.y,
+            radius: 220,
+            intensity: 0.9,
+            phase: 0
+        });
+        
+        this.centerCamera();
+    },
+    
+    // Setup relic selection (after deck chosen)
+    setupRelicSelection() {
+        this.interactables = [];
+        
+        const relics = RelicRegistry.getRandomStarterRelics(3);
+        const positions = [[3, 4], [5, 3], [7, 4]]; // Adjusted for 11x11 room
+        
+        relics.forEach((relic, i) => {
+            if (i >= positions.length) return;
+            const [x, y] = positions[i];
+            
+            this.interactables.push({
+                x, y,
+                sprite: relic.sprite,
+                size: 48,
+                label: relic.name,
+                promptText: '[E] Examine',
+                glow: true,
+                glowColor: '#e8a93e',
+                float: true,
+                floatPhase: i * (Math.PI * 2 / 3),
+                relicId: relic.id,
+                relic: relic,
+                onInteract: () => AdventureUI.showRelicPreview(relic)
+            });
+        });
+        
+        // Store choices for reference
+        this.relicChoices = relics;
+    }
+};
+
+// ==================== DIALOGUE SYSTEM ====================
+
+window.DialogueSystem = {
+    queue: [],
+    isActive: false,
+    currentCallback: null,
+    typewriterSpeed: 30,
+    typewriterTimeout: null,
+    
+    // Show a dialogue message
+    show(text, options = {}) {
+        return new Promise((resolve) => {
+            this.queue.push({
+                text,
+                speaker: options.speaker || null,
+                typewriter: options.typewriter !== false,
+                autoClose: options.autoClose || 0,
+                onComplete: resolve
+            });
+            
+            if (!this.isActive) {
+                this.processQueue();
             }
         });
     },
     
+    // Show a sequence of messages
+    async showSequence(messages) {
+        for (const msg of messages) {
+            if (typeof msg === 'string') {
+                await this.show(msg);
+            } else {
+                await this.show(msg.text, msg);
+            }
+        }
+    },
+    
+    processQueue() {
+        if (this.queue.length === 0) {
+            this.isActive = false;
+            // Restore previous phase if we stored one
+            if (this.previousPhase) {
+                AdventureState.phase = this.previousPhase;
+                this.previousPhase = null;
+            }
+            return;
+        }
+        
+        this.isActive = true;
+        // Store the current phase before switching to dialogue (only once per sequence)
+        if (AdventureState.phase !== 'dialogue' && !this.previousPhase) {
+            this.previousPhase = AdventureState.phase;
+        }
+        AdventureState.phase = 'dialogue';
+        const message = this.queue.shift();
+        this.displayMessage(message);
+    },
+    
+    displayMessage(message) {
+        const overlay = document.getElementById('dialogue-overlay');
+        const box = document.getElementById('dialogue-box');
+        const textEl = document.getElementById('dialogue-text');
+        const speakerEl = document.getElementById('dialogue-speaker');
+        const continueEl = document.getElementById('dialogue-continue');
+        
+        // Show overlay
+        overlay.classList.add('active');
+        
+        // Set speaker
+        if (message.speaker) {
+            speakerEl.textContent = message.speaker;
+            speakerEl.style.display = 'block';
+        } else {
+            speakerEl.style.display = 'none';
+        }
+        
+        // Clear previous text
+        textEl.textContent = '';
+        continueEl.style.opacity = '0';
+        
+        // Store callback
+        this.currentCallback = message.onComplete;
+        
+        // Typewriter effect
+        if (message.typewriter) {
+            this.typewriterEffect(textEl, message.text, () => {
+                continueEl.style.opacity = '1';
+                if (message.autoClose > 0) {
+                    setTimeout(() => this.advance(), message.autoClose);
+                }
+            });
+        } else {
+            textEl.textContent = message.text;
+            continueEl.style.opacity = '1';
+            if (message.autoClose > 0) {
+                setTimeout(() => this.advance(), message.autoClose);
+            }
+        }
+    },
+    
+    typewriterEffect(element, text, onComplete) {
+        // Store full text for skip functionality
+        this.currentFullText = text.replace(/\*/g, ''); // Remove formatting markers
+        this.isTypingComplete = false;
+        
+        let index = 0;
+        let displayText = '';
+        
+        const type = () => {
+            if (index < text.length) {
+                let char = text[index];
+                
+                // Skip formatting markers
+                if (char === '*') {
+                    index++;
+                    return type();
+                }
+                
+                displayText += char;
+                
+                // Pre-wrap: Set full text with invisible remainder to maintain word wrap
+                // This prevents words from jumping to new lines mid-typing
+                const remaining = text.slice(index + 1).replace(/\*/g, '');
+                element.innerHTML = displayText + '<span style="opacity:0">' + remaining + '</span>';
+                
+                index++;
+                
+                // Variable speed for punctuation
+                let delay = this.typewriterSpeed;
+                if (['.', '!', '?'].includes(char)) delay = 120;
+                else if ([',', ';', ':'].includes(char)) delay = 60;
+                
+                this.typewriterTimeout = setTimeout(type, delay);
+            } else {
+                element.textContent = this.currentFullText;
+                this.isTypingComplete = true;
+                onComplete?.();
+            }
+        };
+        
+        type();
+    },
+    
+    advance() {
+        // If still typing, complete immediately
+        if (this.typewriterTimeout) {
+            clearTimeout(this.typewriterTimeout);
+            this.typewriterTimeout = null;
+        }
+        
+        const overlay = document.getElementById('dialogue-overlay');
+        overlay.classList.remove('active');
+        
+        // Callback
+        if (this.currentCallback) {
+            this.currentCallback();
+            this.currentCallback = null;
+        }
+        
+        // Process next in queue
+        setTimeout(() => this.processQueue(), 200);
+    },
+    
+    // Handle click/tap - complete text first, then advance
+    skip() {
+        // If still typing, complete the text immediately
+        if (this.typewriterTimeout) {
+            clearTimeout(this.typewriterTimeout);
+            this.typewriterTimeout = null;
+            
+            // Show full text immediately
+            const textEl = document.getElementById('dialogue-text');
+            if (this.currentFullText) {
+                textEl.textContent = this.currentFullText;
+            }
+            this.isTypingComplete = true;
+            document.getElementById('dialogue-continue').style.opacity = '1';
+        } else if (this.isTypingComplete) {
+            // Text is complete, advance to next message
+            this.advance();
+        }
+    }
+};
+
+// ==================== ADVENTURE UI ====================
+
+window.AdventureUI = {
+    container: null,
+    selectedDeck: null,
+    selectedRelic: null,
+    
+    init() {
+        this.injectStyles();
+        this.createUI();
+        this.bindEvents();
+    },
+    
     injectStyles() {
-        if (document.getElementById('adventure-styles')) return;
+        if (document.getElementById('adventure-ui-styles')) return;
         
         const style = document.createElement('style');
-        style.id = 'adventure-styles';
+        style.id = 'adventure-ui-styles';
         style.textContent = `
-            /* Adventure Screen Container */
+            /* ==================== ADVENTURE SCREEN ==================== */
             #adventure-screen {
                 position: fixed;
                 inset: 0;
-                z-index: 15000;
-                background: #0a0806;
+                background: #0a0a0f;
+                z-index: 5000;
                 display: none;
-                font-family: 'Cinzel', serif;
             }
             
-            #adventure-screen.open {
+            #adventure-screen.active {
                 display: block;
             }
             
-            /* Canvas Container - fullscreen */
-            .adventure-viewport {
+            #isometric-canvas {
                 position: absolute;
-                inset: 0;
-                overflow: hidden;
-            }
-            
-            #adventure-canvas {
-                display: block;
+                top: 0;
+                left: 0;
                 width: 100%;
                 height: 100%;
+                background: #0d0d14;
             }
             
-            /* HUD Overlay */
+            /* ==================== DIALOGUE SYSTEM ==================== */
+            #dialogue-overlay {
+                position: fixed;
+                inset: 0;
+                background: linear-gradient(to bottom, transparent 50%, rgba(5, 5, 15, 0.95) 100%);
+                z-index: 6000;
+                display: flex;
+                align-items: flex-end;
+                justify-content: center;
+                padding: 24px;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.4s ease;
+            }
+            
+            #dialogue-overlay.active {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            
+            #dialogue-box {
+                background: linear-gradient(180deg, 
+                    rgba(25, 22, 35, 0.98) 0%, 
+                    rgba(15, 12, 22, 0.98) 100%);
+                border: 2px solid rgba(160, 128, 208, 0.4);
+                border-radius: 8px;
+                padding: 24px 32px;
+                max-width: 700px;
+                width: 100%;
+                position: relative;
+                box-shadow: 
+                    0 0 60px rgba(160, 128, 208, 0.2),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            }
+            
+            #dialogue-box::before {
+                content: '';
+                position: absolute;
+                top: 4px;
+                left: 4px;
+                right: 4px;
+                bottom: 4px;
+                border: 1px solid rgba(160, 128, 208, 0.15);
+                border-radius: 4px;
+                pointer-events: none;
+            }
+            
+            #dialogue-speaker {
+                font-family: 'Cinzel', serif;
+                font-size: 14px;
+                color: #a080d0;
+                letter-spacing: 3px;
+                text-transform: uppercase;
+                margin-bottom: 12px;
+                display: none;
+            }
+            
+            #dialogue-text {
+                font-family: 'Cinzel', serif;
+                font-size: 18px;
+                color: #d4c4a8;
+                line-height: 1.6;
+                min-height: 60px;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+            }
+            
+            #dialogue-continue {
+                position: absolute;
+                bottom: 12px;
+                right: 16px;
+                font-family: 'Cinzel', serif;
+                font-size: 12px;
+                color: #706050;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+            }
+            
+            /* ==================== HUD ==================== */
             .adventure-hud {
                 position: fixed;
-                top: 20px;
-                left: 25px;
-                right: 25px;
-                padding: 0;
+                top: 0;
+                left: 0;
+                right: 0;
+                padding: 16px 24px;
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
+                z-index: 5500;
                 pointer-events: none;
-                z-index: 15001;
             }
             
             .adventure-hud > * {
                 pointer-events: auto;
             }
             
-            .hud-left, .hud-right {
+            .hud-left {
                 display: flex;
                 flex-direction: column;
-                gap: 12px;
+                gap: 8px;
+            }
+            
+            .hud-right {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 8px;
             }
             
             .hud-stat {
+                background: rgba(15, 12, 20, 0.9);
+                border: 1px solid rgba(160, 128, 208, 0.3);
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-family: 'Cinzel', serif;
+                font-size: 14px;
+                color: #d4c4a8;
                 display: flex;
                 align-items: center;
-                gap: 10px;
-                font-size: 20px;
-                color: #e8e0d5;
-                text-shadow: 0 2px 8px rgba(0,0,0,0.9);
-                background: linear-gradient(135deg, rgba(10,8,6,0.92), rgba(20,15,10,0.92));
-                padding: 10px 20px;
-                border-radius: 25px;
-                border: 2px solid rgba(232, 169, 62, 0.4);
-                backdrop-filter: blur(8px);
-                box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+                gap: 8px;
             }
             
             .hud-stat .icon {
-                font-size: 24px;
+                font-size: 18px;
             }
             
-            .hud-stat.deaths .value {
-                color: #ff6b6b;
-                font-weight: bold;
+            .hud-stat.danger {
+                border-color: rgba(107, 28, 28, 0.5);
+                color: #c45c26;
             }
             
-            .hud-stat.embers .value {
-                color: #ffc107;
-                font-weight: bold;
+            /* ==================== MINIMAP ==================== */
+            .minimap-container {
+                background: rgba(15, 12, 20, 0.95);
+                border: 2px solid rgba(160, 128, 208, 0.3);
+                border-radius: 8px;
+                padding: 12px;
+                min-width: 150px;
             }
             
-            .floor-indicator {
-                font-size: 14px;
-                color: #c9b896;
+            .minimap-title {
+                font-family: 'Cinzel', serif;
+                font-size: 11px;
+                color: #706050;
+                text-transform: uppercase;
                 letter-spacing: 2px;
-                text-transform: uppercase;
-                padding: 4px 12px;
-                background: rgba(0,0,0,0.3);
-                border-radius: 4px;
+                margin-bottom: 8px;
+                text-align: center;
             }
             
-            /* Room info bar */
-            .room-info-bar {
-                position: fixed;
-                bottom: 20px;
-                left: 25px;
-                right: 25px;
-                padding: 16px 28px;
-                background: linear-gradient(135deg, rgba(10,8,6,0.92), rgba(20,15,10,0.92));
-                border: 2px solid rgba(232, 169, 62, 0.4);
-                border-radius: 15px;
+            .minimap-grid {
                 display: flex;
-                justify-content: space-between;
+                flex-direction: column;
+                gap: 2px;
                 align-items: center;
-                backdrop-filter: blur(8px);
-                box-shadow: 0 4px 30px rgba(0,0,0,0.6);
-                z-index: 15001;
             }
             
-            .room-name {
-                font-size: 24px;
-                color: #e8a93e;
-                text-shadow: 0 2px 10px rgba(0,0,0,0.9), 0 0 25px rgba(232, 169, 62, 0.4);
-                text-transform: uppercase;
-                letter-spacing: 4px;
-                font-weight: bold;
-            }
-            
-            .room-hint {
-                font-size: 15px;
-                color: #c8b898;
-                background: rgba(0,0,0,0.5);
-                padding: 10px 20px;
-                border-radius: 20px;
-                border: 1px solid rgba(232, 169, 62, 0.2);
-            }
-            
-            /* Relics display */
-            .relics-bar {
-                position: absolute;
-                top: 50px;
-                left: 10px;
+            .minimap-row {
                 display: flex;
-                gap: 5px;
+                gap: 2px;
             }
             
-            .relic-icon {
-                width: 32px;
-                height: 32px;
-                background: rgba(0,0,0,0.6);
-                border: 1px solid rgba(232, 169, 62, 0.4);
-                border-radius: 6px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 18px;
-                cursor: pointer;
-                transition: all 0.2s;
-            }
-            
-            .relic-icon:hover {
-                transform: scale(1.1);
-                border-color: #e8a93e;
-            }
-            
-            .relic-icon .uses {
-                position: absolute;
-                bottom: -2px;
-                right: -2px;
-                background: #e8a93e;
-                color: #0a0806;
-                font-size: 10px;
-                padding: 0 4px;
+            .minimap-room {
+                width: 24px;
+                height: 24px;
                 border-radius: 3px;
-            }
-            
-            /* Touch controls */
-            .touch-controls {
-                position: absolute;
-                bottom: 60px;
-                left: 10px;
-                right: 10px;
-                display: none;
-                justify-content: space-between;
-                pointer-events: none;
-            }
-            
-            .touch-controls > * {
-                pointer-events: auto;
-            }
-            
-            @media (hover: none) and (pointer: coarse) {
-                .touch-controls {
-                    display: flex;
-                }
-            }
-            
-            .touch-btn {
-                width: 50px;
-                height: 50px;
-                background: rgba(232, 169, 62, 0.3);
-                border: 2px solid rgba(232, 169, 62, 0.5);
-                border-radius: 50%;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 20px;
-                color: #e8e0d5;
-                user-select: none;
-                -webkit-user-select: none;
-            }
-            
-            .touch-btn:active {
-                background: rgba(232, 169, 62, 0.5);
-            }
-            
-            .touch-dpad {
-                display: flex;
-                gap: 5px;
-            }
-            
-            /* Interaction prompt */
-            .interact-prompt {
-                position: absolute;
-                padding: 8px 16px;
-                background: rgba(0,0,0,0.8);
-                border: 1px solid #e8a93e;
-                border-radius: 6px;
-                color: #e8e0d5;
-                font-size: 12px;
-                transform: translateX(-50%);
-                pointer-events: none;
-                opacity: 0;
-                transition: opacity 0.2s;
-            }
-            
-            .interact-prompt.show {
-                opacity: 1;
-            }
-            
-            /* Room transition overlay */
-            .room-transition {
-                position: absolute;
-                inset: 0;
-                background: #0a0806;
-                opacity: 0;
-                pointer-events: none;
-                transition: opacity 0.3s;
-            }
-            
-            .room-transition.active {
-                opacity: 1;
-                pointer-events: auto;
-            }
-            
-            /* ==================== SELECTION SCREENS ==================== */
-            
-            #adventure-setup {
-                position: fixed;
-                inset: 0;
-                z-index: 15001;
-                background: #0a0806;
-                display: none;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 20px;
-                overflow-y: auto;
-            }
-            
-            #adventure-setup.open {
-                display: flex;
-            }
-            
-            .setup-container {
-                max-width: 800px;
-                width: 100%;
-                text-align: center;
-            }
-            
-            .setup-title {
-                font-size: 28px;
-                color: #e8a93e;
-                margin-bottom: 10px;
-                text-shadow: 0 0 20px rgba(232, 169, 62, 0.5);
-            }
-            
-            .setup-subtitle {
-                font-size: 14px;
-                color: #a89070;
-                margin-bottom: 30px;
-            }
-            
-            /* Deck Selection */
-            .deck-options {
-                display: flex;
-                gap: 20px;
-                justify-content: center;
-                flex-wrap: wrap;
-                margin-bottom: 30px;
-            }
-            
-            .deck-option {
-                width: 200px;
-                padding: 20px;
-                background: rgba(20, 15, 10, 0.9);
-                border: 2px solid rgba(232, 169, 62, 0.3);
-                border-radius: 12px;
-                cursor: pointer;
-                transition: all 0.3s;
-                text-align: center;
-            }
-            
-            .deck-option:hover {
-                border-color: rgba(232, 169, 62, 0.6);
-                transform: translateY(-5px);
-            }
-            
-            .deck-option.selected {
-                border-color: #e8a93e;
-                background: rgba(232, 169, 62, 0.1);
-                box-shadow: 0 0 30px rgba(232, 169, 62, 0.3);
-            }
-            
-            .deck-option.locked {
-                opacity: 0.5;
-                pointer-events: none;
-            }
-            
-            .deck-option .icon {
-                font-size: 48px;
-                margin-bottom: 10px;
-            }
-            
-            .deck-option .name {
-                font-size: 16px;
-                color: #e8e0d5;
-                margin-bottom: 5px;
-            }
-            
-            .deck-option .theme {
-                font-size: 11px;
-                color: #8a7a6a;
-            }
-            
-            /* Relic Selection */
-            .relic-options {
-                display: flex;
-                gap: 20px;
-                justify-content: center;
-                flex-wrap: wrap;
-                margin-bottom: 30px;
-            }
-            
-            .relic-option {
-                width: 180px;
-                padding: 20px;
-                background: rgba(20, 15, 10, 0.9);
-                border: 2px solid rgba(150, 100, 200, 0.3);
-                border-radius: 12px;
-                cursor: pointer;
-                transition: all 0.3s;
-                text-align: center;
-            }
-            
-            .relic-option:hover {
-                border-color: rgba(150, 100, 200, 0.6);
-                transform: translateY(-5px);
-            }
-            
-            .relic-option.selected {
-                border-color: #a080d0;
-                background: rgba(150, 100, 200, 0.1);
-                box-shadow: 0 0 30px rgba(150, 100, 200, 0.3);
-            }
-            
-            .relic-option .icon {
-                font-size: 36px;
-                margin-bottom: 10px;
-            }
-            
-            .relic-option .name {
-                font-size: 14px;
-                color: #e8e0d5;
-                margin-bottom: 5px;
-            }
-            
-            .relic-option .desc {
-                font-size: 11px;
-                color: #a89070;
-                line-height: 1.4;
-            }
-            
-            /* Setup buttons */
-            .setup-btn {
-                padding: 15px 40px;
-                font-family: 'Cinzel', serif;
-                font-size: 16px;
-                background: linear-gradient(180deg, #b85020 0%, #702810 100%);
-                border: none;
-                color: #ffeedd;
-                cursor: pointer;
-                border-radius: 8px;
-                transition: all 0.3s;
-                margin: 10px;
-            }
-            
-            .setup-btn:hover {
-                transform: translateY(-3px);
-                box-shadow: 0 8px 30px rgba(255, 80, 20, 0.4);
-            }
-            
-            .setup-btn:disabled {
-                opacity: 0.5;
-                cursor: not-allowed;
-                transform: none;
-            }
-            
-            .setup-btn.secondary {
-                background: rgba(100, 80, 60, 0.5);
-                border: 1px solid rgba(232, 169, 62, 0.3);
-            }
-            
-            /* ==================== DEFEAT/VICTORY SCREEN ==================== */
-            
-            #adventure-results {
-                position: fixed;
-                inset: 0;
-                z-index: 15002;
-                background: rgba(10, 8, 6, 0.95);
-                display: none;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 20px;
-            }
-            
-            #adventure-results.open {
-                display: flex;
-            }
-            
-            .results-container {
-                max-width: 500px;
-                width: 100%;
-                text-align: center;
-            }
-            
-            .results-banner {
-                font-size: 36px;
-                margin-bottom: 10px;
-                text-shadow: 0 0 30px currentColor;
-            }
-            
-            .results-banner.victory {
-                color: #e8a93e;
-            }
-            
-            .results-banner.defeat {
-                color: #e57373;
-            }
-            
-            .results-subtitle {
-                font-size: 14px;
-                color: #a89070;
-                margin-bottom: 30px;
-            }
-            
-            .results-stats {
-                display: grid;
-                grid-template-columns: repeat(2, 1fr);
-                gap: 15px;
-                margin-bottom: 30px;
-                text-align: left;
-            }
-            
-            .result-stat {
-                display: flex;
-                justify-content: space-between;
-                padding: 10px 15px;
-                background: rgba(0,0,0,0.4);
-                border-radius: 6px;
-            }
-            
-            .result-stat .label {
-                color: #a89070;
-            }
-            
-            .result-stat .value {
-                color: #e8e0d5;
-                font-weight: bold;
-            }
-            
-            .results-rewards {
-                background: rgba(232, 169, 62, 0.1);
-                border: 1px solid rgba(232, 169, 62, 0.3);
-                border-radius: 8px;
-                padding: 20px;
-                margin-bottom: 30px;
-            }
-            
-            .rewards-title {
-                font-size: 14px;
-                color: #e8a93e;
-                margin-bottom: 15px;
-            }
-            
-            .reward-row {
-                display: flex;
-                justify-content: center;
-                gap: 30px;
-            }
-            
-            .reward-item {
-                text-align: center;
-            }
-            
-            .reward-item .icon {
-                font-size: 24px;
-                margin-bottom: 5px;
-            }
-            
-            .reward-item .amount {
-                font-size: 18px;
-                color: #e8e0d5;
-                font-weight: bold;
-            }
-            
-            .reward-item .label {
-                font-size: 11px;
-                color: #a89070;
-            }
-            
-            /* ==================== EVENT MODAL ==================== */
-            
-            .adventure-event-modal {
-                position: fixed;
-                inset: 0;
-                z-index: 16000;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                opacity: 0;
-                pointer-events: none;
-                transition: opacity 0.3s ease;
-            }
-            
-            .adventure-event-modal.open {
-                opacity: 1;
-                pointer-events: auto;
-            }
-            
-            .event-backdrop {
-                position: absolute;
-                inset: 0;
-                background: rgba(0, 0, 0, 0.85);
-                backdrop-filter: blur(8px);
-            }
-            
-            .event-content {
-                position: relative;
-                max-width: 500px;
-                width: 90%;
-                background: linear-gradient(180deg, #1a1510 0%, #0d0a08 100%);
-                border: 2px solid rgba(232, 169, 62, 0.5);
-                border-radius: 16px;
-                padding: 32px;
-                text-align: center;
-                box-shadow: 
-                    0 0 60px rgba(0, 0, 0, 0.8),
-                    0 0 100px rgba(232, 169, 62, 0.15),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-                transform: scale(0.9) translateY(20px);
-                transition: transform 0.3s ease;
-            }
-            
-            .adventure-event-modal.open .event-content {
-                transform: scale(1) translateY(0);
-            }
-            
-            .event-icon {
-                font-size: 64px;
-                margin-bottom: 16px;
-                filter: drop-shadow(0 4px 20px rgba(232, 169, 62, 0.4));
-                animation: eventIconFloat 3s ease-in-out infinite;
-            }
-            
-            @keyframes eventIconFloat {
-                0%, 100% { transform: translateY(0); }
-                50% { transform: translateY(-8px); }
-            }
-            
-            .event-title {
-                font-family: 'Cinzel', serif;
-                font-size: 28px;
-                color: #e8a93e;
-                margin: 0 0 16px 0;
-                text-shadow: 0 2px 10px rgba(232, 169, 62, 0.5);
-            }
-            
-            .event-text {
-                font-size: 16px;
-                color: #c9b896;
-                line-height: 1.6;
-                margin: 0 0 28px 0;
-            }
-            
-            .event-choices {
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
-            }
-            
-            .event-choice {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                gap: 4px;
-                padding: 16px 24px;
-                background: linear-gradient(180deg, rgba(232, 169, 62, 0.15) 0%, rgba(232, 169, 62, 0.05) 100%);
-                border: 1px solid rgba(232, 169, 62, 0.3);
-                border-radius: 10px;
-                cursor: pointer;
-                transition: all 0.2s ease;
-                font-family: 'Cinzel', serif;
-            }
-            
-            .event-choice:hover:not(:disabled) {
-                background: linear-gradient(180deg, rgba(232, 169, 62, 0.25) 0%, rgba(232, 169, 62, 0.1) 100%);
-                border-color: rgba(232, 169, 62, 0.6);
-                transform: translateY(-2px);
-                box-shadow: 0 4px 20px rgba(232, 169, 62, 0.2);
-            }
-            
-            .event-choice:active:not(:disabled) {
-                transform: translateY(0);
-            }
-            
-            .event-choice:disabled {
-                opacity: 0.5;
-                cursor: not-allowed;
-            }
-            
-            .event-choice.selected {
-                background: linear-gradient(180deg, rgba(232, 169, 62, 0.35) 0%, rgba(232, 169, 62, 0.15) 100%);
-                border-color: #e8a93e;
-                box-shadow: 0 0 20px rgba(232, 169, 62, 0.3);
-            }
-            
-            .choice-text {
-                font-size: 16px;
-                color: #e8e0d5;
-            }
-            
-            .choice-subtext {
-                font-size: 12px;
-                color: #8a7a6a;
-                font-family: 'Source Sans Pro', sans-serif;
-            }
-            
-            .event-result {
-                margin-top: 20px;
-                padding: 16px 20px;
-                border-radius: 8px;
-                font-size: 15px;
-                opacity: 0;
-                transform: translateY(10px);
+                font-size: 10px;
                 transition: all 0.3s ease;
             }
             
-            .event-result.show {
-                opacity: 1;
-                transform: translateY(0);
+            .minimap-room.hidden {
+                background: rgba(40, 35, 50, 0.5);
             }
             
-            .event-result.success {
-                background: rgba(74, 222, 128, 0.15);
-                border: 1px solid rgba(74, 222, 128, 0.4);
-                color: #4ade80;
+            .minimap-room.revealed {
+                background: rgba(60, 50, 70, 0.8);
+                border: 1px solid rgba(160, 128, 208, 0.3);
             }
             
-            .event-result.failure {
-                background: rgba(239, 68, 68, 0.15);
-                border: 1px solid rgba(239, 68, 68, 0.4);
-                color: #ef4444;
+            .minimap-room.visited {
+                background: rgba(80, 70, 100, 0.9);
+                border: 1px solid rgba(160, 128, 208, 0.5);
             }
             
-            /* ==================== SHOP MODAL ==================== */
+            .minimap-room.current {
+                background: rgba(126, 184, 158, 0.8);
+                border: 2px solid #7eb89e;
+                box-shadow: 0 0 10px rgba(126, 184, 158, 0.5);
+            }
             
-            .adventure-shop-modal {
+            .minimap-connections {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+            }
+            
+            /* ==================== DECK/RELIC PREVIEW ==================== */
+            .preview-overlay {
                 position: fixed;
                 inset: 0;
-                z-index: 16000;
+                background: rgba(5, 5, 15, 0.95);
+                z-index: 7000;
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                padding: 24px;
                 opacity: 0;
                 pointer-events: none;
                 transition: opacity 0.3s ease;
             }
             
-            .adventure-shop-modal.open {
+            .preview-overlay.active {
                 opacity: 1;
                 pointer-events: auto;
             }
             
-            .shop-backdrop {
-                position: absolute;
+            .preview-card {
+                background: linear-gradient(180deg, 
+                    rgba(30, 25, 40, 0.98) 0%, 
+                    rgba(20, 15, 28, 0.98) 100%);
+                border: 2px solid rgba(160, 128, 208, 0.5);
+                border-radius: 12px;
+                padding: 32px;
+                max-width: 400px;
+                width: 100%;
+                text-align: center;
+                box-shadow: 0 0 80px rgba(160, 128, 208, 0.3);
+            }
+            
+            .preview-icon {
+                font-size: 64px;
+                margin-bottom: 16px;
+                filter: drop-shadow(0 0 20px currentColor);
+            }
+            
+            .preview-title {
+                font-family: 'Cinzel', serif;
+                font-size: 28px;
+                color: #d4c4a8;
+                margin-bottom: 8px;
+                letter-spacing: 2px;
+            }
+            
+            .preview-subtitle {
+                font-family: 'Cinzel', serif;
+                font-size: 14px;
+                color: #a080d0;
+                margin-bottom: 20px;
+                letter-spacing: 1px;
+            }
+            
+            .preview-description {
+                font-size: 16px;
+                color: #908070;
+                line-height: 1.5;
+                margin-bottom: 24px;
+            }
+            
+            .preview-cards {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                justify-content: center;
+                margin-bottom: 24px;
+                max-height: 200px;
+                overflow-y: auto;
+            }
+            
+            .preview-card-item {
+                background: rgba(60, 50, 70, 0.6);
+                border: 1px solid rgba(160, 128, 208, 0.3);
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 12px;
+                color: #d4c4a8;
+            }
+            
+            .preview-buttons {
+                display: flex;
+                gap: 16px;
+                justify-content: center;
+            }
+            
+            .preview-btn {
+                padding: 14px 28px;
+                font-family: 'Cinzel', serif;
+                font-size: 14px;
+                font-weight: 600;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.3s ease;
+            }
+            
+            .preview-btn.acquire {
+                background: linear-gradient(180deg, 
+                    rgba(126, 184, 158, 0.9) 0%, 
+                    rgba(80, 130, 110, 0.9) 100%);
+                border: 2px solid rgba(126, 184, 158, 0.6);
+                color: #0a0d12;
+            }
+            
+            .preview-btn.acquire:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 0 30px rgba(126, 184, 158, 0.4);
+            }
+            
+            .preview-btn.forsake {
+                background: transparent;
+                border: 1px solid rgba(160, 144, 128, 0.3);
+                color: #706050;
+            }
+            
+            .preview-btn.forsake:hover {
+                border-color: rgba(160, 144, 128, 0.5);
+                color: #908070;
+            }
+            
+            /* ==================== EXIT CHOICE PANEL ==================== */
+            .exit-choice-overlay {
+                position: fixed;
                 inset: 0;
-                background: rgba(0, 0, 0, 0.9);
-                backdrop-filter: blur(8px);
+                background: rgba(5, 5, 15, 0.9);
+                z-index: 7000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 24px;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease;
             }
             
-            .shop-content {
-                position: relative;
-                max-width: 550px;
-                width: 92%;
-                background: linear-gradient(180deg, #1c1815 0%, #0f0c0a 100%);
-                border: 2px solid rgba(139, 90, 43, 0.6);
-                border-radius: 16px;
-                padding: 28px;
-                box-shadow: 
-                    0 0 80px rgba(0, 0, 0, 0.9),
-                    0 0 40px rgba(139, 90, 43, 0.2),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-                transform: scale(0.9) translateY(20px);
-                transition: transform 0.3s ease;
+            .exit-choice-overlay.active {
+                opacity: 1;
+                pointer-events: auto;
             }
             
-            .adventure-shop-modal.open .shop-content {
-                transform: scale(1) translateY(0);
+            .exit-choice-panel {
+                background: linear-gradient(180deg, 
+                    rgba(25, 22, 35, 0.98) 0%, 
+                    rgba(15, 12, 22, 0.98) 100%);
+                border: 2px solid rgba(160, 128, 208, 0.4);
+                border-radius: 12px;
+                padding: 24px;
+                max-width: 500px;
+                width: 100%;
             }
             
-            .shop-header {
+            .exit-choice-title {
+                font-family: 'Cinzel', serif;
+                font-size: 20px;
+                color: #d4c4a8;
                 text-align: center;
                 margin-bottom: 20px;
             }
             
-            .shop-icon {
-                font-size: 48px;
-                display: block;
-                margin-bottom: 8px;
-            }
-            
-            .shop-title {
-                font-family: 'Cinzel', serif;
-                font-size: 26px;
-                color: #d4a857;
-                margin: 0;
-                text-shadow: 0 2px 10px rgba(212, 168, 87, 0.4);
-            }
-            
-            .shop-subtitle {
-                font-size: 14px;
-                color: #8a7a6a;
-                font-style: italic;
-                margin: 8px 0 0 0;
-            }
-            
-            .shop-balance {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 8px;
-                padding: 12px 20px;
-                background: rgba(0, 0, 0, 0.4);
-                border-radius: 30px;
-                margin-bottom: 20px;
-                border: 1px solid rgba(232, 169, 62, 0.3);
-            }
-            
-            .balance-icon {
-                font-size: 20px;
-            }
-            
-            .balance-amount {
-                font-size: 24px;
-                font-weight: bold;
-                color: #ffc107;
-            }
-            
-            .balance-label {
-                font-size: 14px;
-                color: #8a7a6a;
-            }
-            
-            .shop-items {
+            .exit-options {
                 display: flex;
                 flex-direction: column;
                 gap: 12px;
-                margin-bottom: 16px;
             }
             
-            .shop-item {
+            .exit-option {
+                background: rgba(40, 35, 55, 0.6);
+                border: 2px solid rgba(100, 80, 130, 0.3);
+                border-radius: 8px;
+                padding: 16px;
+                cursor: pointer;
+                transition: all 0.3s ease;
                 display: flex;
                 align-items: center;
                 gap: 16px;
-                padding: 16px;
-                background: linear-gradient(90deg, rgba(139, 90, 43, 0.1) 0%, rgba(139, 90, 43, 0.05) 100%);
-                border: 1px solid rgba(139, 90, 43, 0.3);
-                border-radius: 10px;
-                cursor: pointer;
-                transition: all 0.2s ease;
             }
             
-            .shop-item:hover:not(.unaffordable):not(.purchased) {
-                background: linear-gradient(90deg, rgba(139, 90, 43, 0.2) 0%, rgba(139, 90, 43, 0.1) 100%);
-                border-color: rgba(212, 168, 87, 0.5);
+            .exit-option:hover {
+                background: rgba(60, 50, 80, 0.7);
+                border-color: rgba(160, 128, 208, 0.5);
                 transform: translateX(4px);
             }
             
-            .shop-item.unaffordable {
-                opacity: 0.4;
-                cursor: not-allowed;
+            .exit-option .room-icon {
+                font-size: 32px;
+                width: 50px;
+                text-align: center;
             }
             
-            .shop-item.purchased {
-                background: rgba(74, 222, 128, 0.1);
-                border-color: rgba(74, 222, 128, 0.3);
-                justify-content: center;
-            }
-            
-            .purchased-text {
-                color: #4ade80;
-                font-size: 16px;
-            }
-            
-            .item-icon {
-                font-size: 36px;
-                flex-shrink: 0;
-            }
-            
-            .item-info {
+            .exit-option .room-info {
                 flex: 1;
-                text-align: left;
             }
             
-            .item-name {
+            .exit-option .room-name {
                 font-family: 'Cinzel', serif;
                 font-size: 16px;
-                color: #e8e0d5;
+                color: #d4c4a8;
                 margin-bottom: 4px;
             }
             
-            .item-desc {
+            .exit-option .room-type {
                 font-size: 12px;
-                color: #8a7a6a;
-                margin-bottom: 4px;
+                color: #706050;
             }
             
-            .item-effect {
+            .exit-cancel {
+                margin-top: 16px;
+                text-align: center;
+            }
+            
+            .exit-cancel-btn {
+                background: transparent;
+                border: 1px solid rgba(100, 80, 90, 0.4);
+                color: #605050;
+                padding: 10px 24px;
+                font-family: 'Cinzel', serif;
                 font-size: 13px;
-                color: #4ade80;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.3s ease;
             }
             
-            .item-price {
+            .exit-cancel-btn:hover {
+                border-color: rgba(160, 128, 128, 0.5);
+                color: #908080;
+            }
+            
+            /* ==================== RELICS BAR ==================== */
+            .relics-bar {
+                display: flex;
+                gap: 8px;
+            }
+            
+            .relic-slot {
+                width: 40px;
+                height: 40px;
+                background: rgba(30, 25, 40, 0.8);
+                border: 1px solid rgba(160, 128, 208, 0.3);
+                border-radius: 6px;
                 display: flex;
                 align-items: center;
-                gap: 4px;
-                padding: 8px 14px;
-                background: rgba(0, 0, 0, 0.4);
-                border-radius: 20px;
-                flex-shrink: 0;
+                justify-content: center;
+                font-size: 20px;
+                position: relative;
+                cursor: help;
             }
             
-            .price-amount {
-                font-size: 18px;
-                font-weight: bold;
-                color: #ffc107;
+            .relic-slot .uses {
+                position: absolute;
+                bottom: -4px;
+                right: -4px;
+                background: rgba(107, 28, 28, 0.9);
+                color: white;
+                font-size: 10px;
+                padding: 2px 4px;
+                border-radius: 3px;
             }
             
-            .price-icon {
-                font-size: 14px;
+            /* ==================== MOBILE CONTROLS ==================== */
+            @media (max-width: 768px) {
+                .adventure-hud {
+                    padding: 12px 16px;
+                }
+                
+                .hud-stat {
+                    padding: 6px 12px;
+                    font-size: 12px;
+                }
+                
+                .minimap-container {
+                    padding: 8px;
+                }
+                
+                .minimap-room {
+                    width: 20px;
+                    height: 20px;
+                }
+                
+                #dialogue-box {
+                    padding: 16px 20px;
+                }
+                
+                #dialogue-text {
+                    font-size: 16px;
+                }
+                
+                .preview-card {
+                    padding: 20px;
+                }
+                
+                .preview-title {
+                    font-size: 22px;
+                }
+                
+                .mobile-controls {
+                    position: fixed;
+                    bottom: 80px;
+                    left: 20px;
+                    z-index: 5600;
+                    display: block;
+                }
+                
+                .mobile-dpad {
+                    width: 140px;
+                    height: 140px;
+                    position: relative;
+                }
+                
+                .dpad-btn {
+                    position: absolute;
+                    width: 45px;
+                    height: 45px;
+                    background: rgba(40, 35, 55, 0.8);
+                    border: 2px solid rgba(160, 128, 208, 0.4);
+                    border-radius: 8px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 20px;
+                    color: #a080d0;
+                    cursor: pointer;
+                    user-select: none;
+                    -webkit-user-select: none;
+                }
+                
+                .dpad-btn:active {
+                    background: rgba(60, 50, 80, 0.9);
+                    transform: scale(0.95);
+                }
+                
+                .dpad-up { top: 0; left: 50%; transform: translateX(-50%); }
+                .dpad-down { bottom: 0; left: 50%; transform: translateX(-50%); }
+                .dpad-left { left: 0; top: 50%; transform: translateY(-50%); }
+                .dpad-right { right: 0; top: 50%; transform: translateY(-50%); }
+                
+                .mobile-action {
+                    position: fixed;
+                    bottom: 100px;
+                    right: 20px;
+                    width: 70px;
+                    height: 70px;
+                    background: rgba(126, 184, 158, 0.8);
+                    border: 3px solid rgba(126, 184, 158, 0.6);
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-family: 'Cinzel', serif;
+                    font-size: 14px;
+                    font-weight: bold;
+                    color: #0a0d12;
+                    cursor: pointer;
+                    z-index: 5600;
+                    user-select: none;
+                    -webkit-user-select: none;
+                }
+                
+                .mobile-action:active {
+                    transform: scale(0.95);
+                    background: rgba(126, 184, 158, 1);
+                }
             }
             
-            .shop-result {
-                text-align: center;
-                padding: 12px;
-                color: #4ade80;
-                font-size: 14px;
-                opacity: 0;
-                transition: opacity 0.3s;
-            }
-            
-            .shop-result.show {
-                opacity: 1;
-            }
-            
-            .shop-leave {
-                width: 100%;
-                padding: 14px;
-                background: linear-gradient(180deg, #3a3530 0%, #2a2520 100%);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
-                color: #a89070;
-                font-family: 'Cinzel', serif;
-                font-size: 15px;
-                cursor: pointer;
-                transition: all 0.2s;
-            }
-            
-            .shop-leave:hover {
-                background: linear-gradient(180deg, #4a4540 0%, #3a3530 100%);
-                color: #e8e0d5;
+            @media (min-width: 769px) {
+                .mobile-controls, .mobile-action {
+                    display: none;
+                }
             }
         `;
         document.head.appendChild(style);
     },
     
-    // ==================== GAME LOOP ====================
-    
-    start() {
-        if (this.isRunning) return;
-        this.isRunning = true;
-        this.lastTime = performance.now();
+    createUI() {
+        // Main adventure screen container
+        const screen = document.createElement('div');
+        screen.id = 'adventure-screen';
+        screen.className = 'adventure-ui';
+        screen.innerHTML = `
+            <!-- Isometric canvas will be inserted here -->
+            
+            <!-- HUD -->
+            <div class="adventure-hud">
+                <div class="hud-left">
+                    <div class="hud-stat">
+                        <span class="icon">🏔️</span>
+                        <span>Floor <span id="adv-floor">1</span></span>
+                    </div>
+                    <div class="hud-stat danger">
+                        <span class="icon">☠️</span>
+                        <span><span id="adv-deaths">0</span>/<span id="adv-max-deaths">10</span></span>
+                    </div>
+                    <div class="hud-stat">
+                        <span class="icon">🔥</span>
+                        <span id="adv-embers">0</span>
+                    </div>
+                    <div class="relics-bar" id="adv-relics"></div>
+                </div>
+                <div class="hud-right">
+                    <div class="minimap-container" id="minimap-container">
+                        <div class="minimap-title">Floor Map</div>
+                        <div class="minimap-grid" id="minimap-grid"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Dialogue System -->
+            <div id="dialogue-overlay">
+                <div id="dialogue-box">
+                    <div id="dialogue-speaker"></div>
+                    <div id="dialogue-text"></div>
+                    <div id="dialogue-continue">Click or press any key to continue...</div>
+                </div>
+            </div>
+            
+            <!-- Deck/Relic Preview -->
+            <div class="preview-overlay" id="preview-overlay">
+                <div class="preview-card" id="preview-card">
+                    <div class="preview-icon" id="preview-icon"></div>
+                    <div class="preview-title" id="preview-title"></div>
+                    <div class="preview-subtitle" id="preview-subtitle"></div>
+                    <div class="preview-description" id="preview-description"></div>
+                    <div class="preview-cards" id="preview-cards"></div>
+                    <div class="preview-buttons">
+                        <button class="preview-btn acquire" id="preview-acquire">Acquire</button>
+                        <button class="preview-btn forsake" id="preview-forsake">Forsake</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Exit Choice Panel -->
+            <div class="exit-choice-overlay" id="exit-choice-overlay">
+                <div class="exit-choice-panel">
+                    <div class="exit-choice-title">Choose Your Path</div>
+                    <div class="exit-options" id="exit-options"></div>
+                    <div class="exit-cancel">
+                        <button class="exit-cancel-btn" id="exit-cancel-btn">Stay Here</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Mobile Controls -->
+            <div class="mobile-controls">
+                <div class="mobile-dpad">
+                    <div class="dpad-btn dpad-up" data-dir="up">↑</div>
+                    <div class="dpad-btn dpad-down" data-dir="down">↓</div>
+                    <div class="dpad-btn dpad-left" data-dir="left">←</div>
+                    <div class="dpad-btn dpad-right" data-dir="right">→</div>
+                </div>
+            </div>
+            <div class="mobile-action" id="mobile-action-btn">ACT</div>
+        `;
         
-        // Make sure canvas is sized
-        this.resizeCanvas();
+        document.body.appendChild(screen);
+        this.container = screen;
         
-        // Position player on ground
-        this.player.x = 100;
-        this.player.y = this.room.groundY - this.player.height;
-        this.player.vx = 0;
-        this.player.vy = 0;
-        this.player.grounded = true;
-        this.player.state = 'idle';
-        
-        // Reset transition lock
-        this.transitionLock = false;
-        
-        console.log('[Adventure] Starting game loop. Ground at', this.room.groundY, 'Player at', this.player.y);
-        this.gameLoop();
+        // Insert canvas
+        IsometricEngine.init();
+        screen.insertBefore(IsometricEngine.canvas, screen.firstChild);
     },
     
-    stop() {
-        this.isRunning = false;
-    },
-    
-    gameLoop(currentTime = performance.now()) {
-        if (!this.isRunning) return;
-        
-        const deltaTime = (currentTime - this.lastTime) / 16.67; // Normalize to ~60fps
-        this.lastTime = currentTime;
-        
-        this.update(deltaTime);
-        this.render();
-        
-        requestAnimationFrame((t) => this.gameLoop(t));
-    },
-    
-    update(dt) {
-        // Apply speed bonus from relics
-        let speedMultiplier = 1;
-        for (const relic of AdventureState.relics) {
-            if (relic.effect?.speedBonus) {
-                speedMultiplier += relic.effect.speedBonus;
+    bindEvents() {
+        // Dialogue advancement - click anywhere on screen when dialogue is active
+        document.addEventListener('click', (e) => {
+            if (DialogueSystem.isActive) {
+                // Don't trigger if clicking UI buttons
+                if (e.target.closest('.preview-btn') || e.target.closest('.exit-option')) return;
+                DialogueSystem.skip();
             }
+        });
+        
+        document.addEventListener('keydown', (e) => {
+            if (DialogueSystem.isActive && !e.repeat) {
+                DialogueSystem.skip();
+            }
+        });
+        
+        // Preview buttons
+        document.getElementById('preview-acquire').addEventListener('click', () => {
+            this.acquireSelection();
+        });
+        
+        document.getElementById('preview-forsake').addEventListener('click', () => {
+            this.closePreview();
+        });
+        
+        // Exit cancel
+        document.getElementById('exit-cancel-btn').addEventListener('click', () => {
+            document.getElementById('exit-choice-overlay').classList.remove('active');
+        });
+        
+        // Mobile controls
+        const dpadBtns = document.querySelectorAll('.dpad-btn');
+        dpadBtns.forEach(btn => {
+            const dir = btn.dataset.dir;
+            
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                IsometricEngine.keys[dir] = true;
+            });
+            
+            btn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                IsometricEngine.keys[dir] = false;
+            });
+            
+            btn.addEventListener('mousedown', () => {
+                IsometricEngine.keys[dir] = true;
+            });
+            
+            btn.addEventListener('mouseup', () => {
+                IsometricEngine.keys[dir] = false;
+            });
+        });
+        
+        document.getElementById('mobile-action-btn').addEventListener('click', () => {
+            IsometricEngine.tryInteract();
+        });
+    },
+    
+    // ==================== GAME FLOW ====================
+    
+    async startAdventure() {
+        console.log('[Adventure] Starting new adventure...');
+        
+        // Reset state
+        AdventureState.reset();
+        AdventureState.isActive = true;
+        AdventureState.phase = 'awakening';
+        
+        // Show adventure screen first (makes it visible)
+        this.show();
+        
+        // Now resize canvas (after it's visible and has dimensions)
+        await new Promise(r => setTimeout(r, 50)); // Brief delay for DOM to update
+        IsometricEngine.resizeCanvas();
+        
+        // Setup starting chamber
+        IsometricEngine.setupStartingChamber();
+        IsometricEngine.start();
+        
+        console.log('[Adventure] Engine started, canvas:', IsometricEngine.canvas.width, 'x', IsometricEngine.canvas.height);
+        
+        // Update HUD
+        this.updateHUD();
+        this.hideMinimapDuringSetup();
+        
+        // Opening dialogue sequence
+        await DialogueSystem.show("You should not have come here...");
+        
+        await new Promise(r => setTimeout(r, 500));
+        
+        AdventureState.phase = 'deck_select';
+        
+        await DialogueSystem.showSequence([
+            "Once trespassed, there is no departure. The darkness encroaches. You *will* die...",
+            "However, you will be allowed some reprieve.",
+            "Before you are the gatherings of souls of monsters. Choose which gathering you wish to defend you."
+        ]);
+    },
+    
+    hideMinimapDuringSetup() {
+        document.getElementById('minimap-container').style.display = 'none';
+    },
+    
+    showMinimap() {
+        document.getElementById('minimap-container').style.display = 'block';
+    },
+    
+    showDeckPreview(deck) {
+        const overlay = document.getElementById('preview-overlay');
+        
+        document.getElementById('preview-icon').textContent = deck.icon;
+        document.getElementById('preview-icon').style.color = '#a080d0';
+        document.getElementById('preview-title').textContent = deck.name;
+        document.getElementById('preview-subtitle').textContent = deck.theme;
+        document.getElementById('preview-description').textContent = deck.description;
+        
+        // Show starter cards
+        const cardsContainer = document.getElementById('preview-cards');
+        cardsContainer.innerHTML = '';
+        
+        // Count cards
+        const cardCounts = {};
+        for (const cardId of deck.starterCards) {
+            cardCounts[cardId] = (cardCounts[cardId] || 0) + 1;
         }
         
-        const moveSpeed = this.physics.moveSpeed * speedMultiplier;
+        for (const [cardId, count] of Object.entries(cardCounts)) {
+            const cardEl = document.createElement('div');
+            cardEl.className = 'preview-card-item';
+            cardEl.textContent = count > 1 ? `${cardId} x${count}` : cardId;
+            cardsContainer.appendChild(cardEl);
+        }
         
-        // Horizontal movement
-        if (this.keys.left) {
-            this.player.vx = -moveSpeed;
-            this.player.facing = -1;
-            this.player.state = 'walking';
-        } else if (this.keys.right) {
-            this.player.vx = moveSpeed;
-            this.player.facing = 1;
-            this.player.state = 'walking';
+        document.getElementById('preview-acquire').textContent = 'Acquire';
+        
+        this.selectedDeck = deck;
+        this.previewType = 'deck';
+        overlay.classList.add('active');
+    },
+    
+    showRelicPreview(relic) {
+        const overlay = document.getElementById('preview-overlay');
+        
+        document.getElementById('preview-icon').textContent = relic.sprite;
+        document.getElementById('preview-icon').style.color = '#e8a93e';
+        document.getElementById('preview-title').textContent = relic.name;
+        document.getElementById('preview-subtitle').textContent = relic.rarity.charAt(0).toUpperCase() + relic.rarity.slice(1) + ' Relic';
+        document.getElementById('preview-description').textContent = relic.description;
+        document.getElementById('preview-cards').innerHTML = '';
+        
+        document.getElementById('preview-acquire').textContent = 'Acquire';
+        
+        this.selectedRelic = relic;
+        this.previewType = 'relic';
+        overlay.classList.add('active');
+    },
+    
+    closePreview() {
+        document.getElementById('preview-overlay').classList.remove('active');
+    },
+    
+    async acquireSelection() {
+        this.closePreview();
+        
+        if (this.previewType === 'deck' && AdventureState.phase === 'deck_select') {
+            // Deck selected
+            const deck = this.selectedDeck;
+            AdventureState.selectedDeck = deck.id;
+            AdventureState.deckArchetype = deck.id;
+            AdventureState.starterCards = [...deck.starterCards];
+            
+            // Clear deck orbs and show relic selection
+            AdventureState.phase = 'relic_select';
+            
+            await DialogueSystem.showSequence([
+                "The souls of the harbingers have been assigned to you. They will do battle on your behalf, but only at your command.",
+                "Now, select a reliquary with which you might be blessed or, perhaps, cursed."
+            ]);
+            
+            IsometricEngine.setupRelicSelection();
+            
+        } else if (this.previewType === 'relic' && AdventureState.phase === 'relic_select') {
+            // Relic selected
+            const relic = RelicRegistry.getRelic(this.selectedRelic.id);
+            if (relic) {
+                AdventureState.relics.push(relic);
+            }
+            
+            await DialogueSystem.show("A wise choice. Or not. The deed is done.");
+            
+            await DialogueSystem.showSequence([
+                "Proceed into the darkness. Survive, combat it, or even conquer the void entirely. Be warned: If 10 of your acquired monsters die, you will *die*.",
+                "If you perish, a sliver of your visage will be brought back when you are hungry for more."
+            ]);
+            
+            // Generate floor and start exploring
+            this.startFloor(1);
+        }
+    },
+    
+    startFloor(floorNum) {
+        console.log(`[Adventure] Starting floor ${floorNum}`);
+        
+        // Generate floor map
+        AdventureState.floorMap = FloorMapGenerator.generateFloor(floorNum);
+        AdventureState.currentFloor = floorNum;
+        AdventureState.currentRoomId = 'start';
+        AdventureState.visitedRooms = new Set(['start']);
+        AdventureState.revealedRooms = new Set(['start']);
+        
+        // Check for scout's map relic
+        const hasScoutMap = AdventureState.relics.some(r => r.effect?.revealMap);
+        if (hasScoutMap) {
+            for (const roomId of Object.keys(AdventureState.floorMap.rooms)) {
+                AdventureState.revealedRooms.add(roomId);
+            }
         } else {
-            this.player.vx *= this.physics.friction;
-            if (Math.abs(this.player.vx) < 0.1) {
-                this.player.vx = 0;
-                if (this.player.grounded) {
-                    this.player.state = 'idle';
+            // Reveal adjacent rooms
+            this.revealAdjacentRooms('start');
+        }
+        
+        // Setup start room
+        const startRoom = AdventureState.floorMap.rooms['start'];
+        IsometricEngine.setupRoom(startRoom);
+        
+        // Update UI
+        AdventureState.phase = 'exploring';
+        this.showMinimap();
+        this.updateHUD();
+        this.updateMinimap();
+    },
+    
+    revealAdjacentRooms(roomId) {
+        const room = AdventureState.floorMap.rooms[roomId];
+        if (!room) return;
+        
+        for (const dir of ['north', 'south', 'east', 'west']) {
+            if (room.exits[dir]) {
+                for (const targetId of room.exits[dir]) {
+                    AdventureState.revealedRooms.add(targetId);
                 }
             }
         }
-        
-        // Jumping - only when grounded and up key pressed
-        if (this.keys.up && this.player.grounded) {
-            this.player.vy = this.physics.jumpForce;
-            this.player.grounded = false;
-            this.player.state = 'jumping';
-            console.log('[Adventure] Jump!');
-        }
-        
-        // Apply gravity
-        if (!this.player.grounded) {
-            this.player.vy += this.physics.gravity * dt;
-        }
-        
-        // Apply velocity
-        this.player.x += this.player.vx * dt;
-        this.player.y += this.player.vy * dt;
-        
-        // Ground collision
-        const groundLevel = this.room.groundY - this.player.height;
-        if (this.player.y >= groundLevel) {
-            this.player.y = groundLevel;
-            this.player.vy = 0;
-            this.player.grounded = true;
-            if (this.player.state === 'jumping') {
-                this.player.state = 'idle';
-            }
-        } else {
-            this.player.grounded = false;
-        }
-        
-        // Boundary checks / room transitions
-        if (this.player.x < -30) {
-            // Exit left - go back (if allowed)
-            this.tryExitLeft();
-        } else if (this.player.x > this.room.width - this.player.width - 30) {
-            // Exit right - advance to next room
-            this.tryExitRight();
-        }
-        
-        // Clamp position (but allow slight overshoot for transition feel)
-        this.player.x = Math.max(-10, Math.min(this.room.width - this.player.width + 10, this.player.x));
-        
-        // Check for nearby interactables
-        this.updateInteractables();
-        
-        // Update ambient particles
-        this.updateParticles(dt);
     },
     
-    updateInteractables() {
-        if (!AdventureState.currentRoomData) return;
+    showExitChoice(exitObj) {
+        const overlay = document.getElementById('exit-choice-overlay');
+        const optionsContainer = document.getElementById('exit-options');
+        optionsContainer.innerHTML = '';
         
-        this.player.interactTarget = null;
-        const room = AdventureState.currentRoomData;
-        const interactables = room.interactables || [];
-        const playerCenterX = this.player.x + this.player.width / 2;
-        
-        // Check regular interactables
-        for (const item of interactables) {
-            if (item.collected || item.triggered) continue;
+        for (const targetId of exitObj.targetRooms) {
+            const targetRoom = AdventureState.floorMap.rooms[targetId];
+            if (!targetRoom) continue;
             
-            const dx = Math.abs(playerCenterX - item.x);
-            if (dx < 50) {
-                this.player.interactTarget = item;
-                break;
-            }
-        }
-        
-        // Check for room door (branching path)
-        if (!this.player.interactTarget && room.hasDoor && room.doorTarget) {
-            const doorX = this.room.width / 2; // Door in center of room
-            const dx = Math.abs(playerCenterX - doorX);
-            if (dx < 60) {
-                this.player.interactTarget = {
-                    type: 'room_door',
-                    targetRoom: room.doorTarget,
-                    x: doorX
-                };
-            }
-        }
-        
-        // Check for platform (elevated secret area)
-        if (!this.player.interactTarget && room.hasPlatform) {
-            const platX = room.platformPosition === 'left' ? 150 : this.room.width - 150;
-            const dx = Math.abs(playerCenterX - platX);
-            if (dx < 60) {
-                const connections = AdventureState.getConnections();
-                if (connections.platform) {
-                    this.player.interactTarget = {
-                        type: 'platform',
-                        targetRoom: connections.platform,
-                        x: platX,
-                        side: room.platformPosition
-                    };
-                }
-            }
-        }
-        
-        // Check for platform return (in platform rooms)
-        if (!this.player.interactTarget && room.isPlatformRoom && room.platformReturn) {
-            const returnX = this.room.width / 2;
-            const dx = Math.abs(playerCenterX - returnX);
-            if (dx < 60) {
-                this.player.interactTarget = {
-                    type: 'platform_return',
-                    targetRoom: room.platformReturn,
-                    x: returnX
-                };
-            }
-        }
-        
-        // Check for branch return (door back)
-        if (!this.player.interactTarget && room.isBranch) {
-            const connections = AdventureState.getConnections();
-            if (connections.door) {
-                const doorX = this.room.width / 2;
-                const dx = Math.abs(playerCenterX - doorX);
-                if (dx < 60) {
-                    this.player.interactTarget = {
-                        type: 'branch_door',
-                        targetRoom: connections.door,
-                        x: doorX
-                    };
-                }
-            }
-        }
-        
-        // Update prompt visibility
-        this.updateInteractPrompt();
-    },
-    
-    updateInteractPrompt() {
-        const prompt = document.querySelector('.interact-prompt');
-        if (!prompt) return;
-        
-        if (this.player.interactTarget) {
-            const item = this.player.interactTarget;
-            let text = '[E] ';
+            const info = FloorMapGenerator.getRoomInfo(targetRoom.type);
+            const isRevealed = AdventureState.revealedRooms.has(targetId);
+            const hasVision = AdventureState.relics.some(r => r.effect?.roomVision);
             
-            switch (item.type) {
-                case 'dig_spot':
-                    const hasShovel = AdventureState.relics.some(r => r.effect?.canDig && r.uses > 0);
-                    text += hasShovel ? 'Dig' : 'Need Shovel';
-                    break;
-                case 'chest':
-                    text += item.locked ? 'Locked Chest' : 'Open Chest';
-                    break;
-                case 'door':
-                    text += 'Enter';
-                    break;
-                case 'room_door':
-                    text += '🚪 Enter Secret Path';
-                    break;
-                case 'platform':
-                    text += '⬆ Climb to Hidden Area';
-                    break;
-                case 'platform_return':
-                    text += '⬇ Return to Path';
-                    break;
-                case 'branch_door':
-                    text += '🚪 Exit';
-                    break;
-                default:
-                    text += 'Interact';
-            }
+            const option = document.createElement('div');
+            option.className = 'exit-option';
+            option.innerHTML = `
+                <div class="room-icon">${isRevealed || hasVision ? info.icon : '❓'}</div>
+                <div class="room-info">
+                    <div class="room-name">${isRevealed || hasVision ? info.name : 'Unknown'}</div>
+                    <div class="room-type">${targetRoom.cleared ? '(Cleared)' : ''}</div>
+                </div>
+            `;
             
-            prompt.textContent = text;
-            prompt.style.left = `${item.x}px`;
-            prompt.style.bottom = '120px';
-            prompt.classList.add('show');
-        } else {
-            prompt.classList.remove('show');
-        }
-    },
-    
-    handleInteraction() {
-        const target = this.player.interactTarget;
-        if (!target) return;
-        
-        switch (target.type) {
-            case 'dig_spot':
-                this.handleDig(target);
-                break;
-            case 'chest':
-                this.handleChest(target);
-                break;
-            case 'door':
-                this.handleDoor(target);
-                break;
-            case 'trap':
-                this.handleTrap(target);
-                break;
-            case 'room_door':
-            case 'branch_door':
-                // Enter a branching path via door
-                if (this.transitionLock) return;
-                this.transitionLock = true;
-                AdventureUI.showMessage('Entering secret passage...');
-                setTimeout(() => {
-                    this.transitionToRoomById(target.targetRoom, 'door');
-                }, 300);
-                break;
-            case 'platform':
-            case 'platform_return':
-                // Climb to hidden area or return
-                if (this.transitionLock) return;
-                this.transitionLock = true;
-                AdventureUI.showMessage(target.type === 'platform' ? 'Climbing up...' : 'Descending...');
-                setTimeout(() => {
-                    this.transitionToRoomById(target.targetRoom, 'platform');
-                }, 300);
-                break;
-        }
-    },
-    
-    handleDig(spot) {
-        // Check for shovel relic with uses
-        const shovel = AdventureState.relics.find(r => r.effect?.canDig && r.uses > 0);
-        if (!shovel) {
-            AdventureUI.showMessage('You need a shovel to dig here.');
-            return;
-        }
-        
-        shovel.uses--;
-        spot.collected = true;
-        AdventureState.itemsFound++;
-        
-        // Apply reward
-        const reward = spot.reward;
-        if (reward.type === 'embers') {
-            AdventureState.embers += reward.amount;
-            AdventureUI.showMessage(`Found ${reward.amount} embers!`);
-        } else if (reward.type === 'heal') {
-            AdventureState.healDeaths(reward.amount);
-            AdventureUI.showMessage(`Healed ${reward.amount} death(s)!`);
-        } else if (reward.type === 'card') {
-            this.grantRandomCard(reward.rarity);
-        } else if (reward.type === 'curse') {
-            AdventureState.addDeaths(reward.damage);
-            AdventureUI.showMessage('Cursed! You take damage.');
-        }
-        
-        AdventureUI.updateHUD();
-    },
-    
-    handleChest(chest) {
-        if (chest.locked) {
-            AdventureUI.showMessage('This chest is locked...');
-            return;
-        }
-        
-        chest.collected = true;
-        AdventureState.itemsFound++;
-        
-        if (chest.reward.type === 'card') {
-            this.grantRandomCard(chest.reward.rarity);
-        }
-        
-        AdventureUI.updateHUD();
-    },
-    
-    handleTrap(trap) {
-        if (trap.triggered) return;
-        trap.triggered = true;
-        
-        AdventureState.addDeaths(trap.damage);
-        AdventureUI.showMessage(`Trap! ${trap.damage} death(s) added.`);
-        AdventureUI.updateHUD();
-        
-        if (AdventureState.isDefeated()) {
-            this.endRun(false);
-        }
-    },
-    
-    handleDoor(door) {
-        // Door to specific encounter/room type
-        if (door.destination) {
-            this.enterEncounter(door.destination);
-        }
-    },
-    
-    grantRandomCard(rarity) {
-        const pool = AdventureState.deckArchetype ? 
-            StarterDecks[AdventureState.deckArchetype]?.discoveryPool : null;
-        
-        if (!pool) return;
-        
-        // Combine all discoverable cards
-        const allCards = [
-            ...pool.cryptids,
-            ...pool.kindling,
-            ...pool.spells,
-            ...pool.pyres
-        ].filter(c => c); // Remove empty
-        
-        if (allCards.length === 0) return;
-        
-        const cardKey = allCards[Math.floor(Math.random() * allCards.length)];
-        AdventureState.discoveredCards.push(cardKey);
-        
-        // Get card name for display
-        const card = CardRegistry?.getCryptid(cardKey) || 
-                    CardRegistry?.getBurst(cardKey) ||
-                    CardRegistry?.getTrap(cardKey) ||
-                    CardRegistry?.getAura(cardKey) ||
-                    CardRegistry?.getPyre(cardKey) ||
-                    CardRegistry?.getKindling(cardKey);
-        
-        const name = card?.name || cardKey;
-        AdventureUI.showMessage(`Discovered: ${name}!`);
-    },
-    
-    tryExitLeft() {
-        // Check for left connection in the map
-        const connections = AdventureState.getConnections();
-        
-        if (connections.left) {
-            // Can go back - transition to left room
-            if (this.transitionLock) return;
-            this.transitionLock = true;
+            option.addEventListener('click', () => {
+                this.moveToRoom(targetId);
+                overlay.classList.remove('active');
+            });
             
-            console.log('[Adventure] Going left to:', connections.left);
-            this.transitionToRoomById(connections.left, 'left');
-        } else {
-            // No left connection - block movement
-            this.player.x = 10;
-            if (!this._leftBlockedMessageShown) {
-                AdventureUI.showMessage("The path behind has collapsed...");
-                this._leftBlockedMessageShown = true;
-                setTimeout(() => { this._leftBlockedMessageShown = false; }, 3000);
-            }
+            optionsContainer.appendChild(option);
         }
+        
+        overlay.classList.add('active');
     },
     
-    tryExitRight() {
-        // Prevent multiple triggers
-        if (this.transitionLock) {
-            return;
-        }
+    moveToRoom(roomId) {
+        console.log(`[Adventure] Moving to room: ${roomId}`);
         
-        const room = AdventureState.currentRoomData;
-        const connections = AdventureState.getConnections();
+        AdventureState.currentRoomId = roomId;
+        AdventureState.visitedRooms.add(roomId);
+        this.revealAdjacentRooms(roomId);
         
-        if (!room) {
-            console.log('[Adventure] No room data');
-            return;
-        }
+        const room = AdventureState.floorMap.rooms[roomId];
+        IsometricEngine.setupRoom(room);
         
-        // Check if there's a right connection
-        if (!connections.right) {
-            this.player.x = this.room.width - this.player.width - 20;
-            if (!this._rightBlockedMessageShown) {
-                AdventureUI.showMessage("Dead end... look for another path.");
-                this._rightBlockedMessageShown = true;
-                setTimeout(() => { this._rightBlockedMessageShown = false; }, 3000);
-            }
-            return;
-        }
-        
-        console.log('[Adventure] Trying to exit right. Room:', room.name, 'Encounter:', room.encounter, 'Cleared:', room.cleared);
-        
-        // If room has an encounter that hasn't been cleared, trigger it
-        if (room.encounter && !room.cleared) {
-            console.log('[Adventure] Entering encounter...');
-            this.transitionLock = true;
-            this.enterEncounter(room);
-            return;
-        }
-        
-        // For non-combat rooms without encounters, mark as cleared
-        if (!room.encounter && !room.cleared) {
-            room.cleared = true;
-        }
-        
-        // Advance to next room
-        console.log('[Adventure] Advancing to:', connections.right);
-        this.transitionLock = true;
-        this.advanceRoom();
+        this.updateMinimap();
     },
     
-    enterEncounter(room) {
-        // Check if already started this encounter
-        if (room.encounterStarted) {
-            console.log('[Adventure] Encounter already started, skipping');
-            return;
-        }
-        
-        const encounterType = room.encounter;
-        
-        // Mark as started immediately
-        room.encounterStarted = true;
-        
-        if (encounterType === 'normal' || encounterType === 'elite') {
-            // Start a battle
-            AdventureUI.showMessage('Battle begins!');
-            setTimeout(() => {
-                this.startBattle(encounterType);
-            }, 500);
-        } else if (encounterType === 'boss') {
-            AdventureUI.showMessage('Boss battle!');
-            setTimeout(() => {
-                this.startBattle('boss');
-            }, 500);
-        }
-    },
+    // ==================== ROOM INTERACTIONS ====================
     
-    startBattle(type) {
-        // Ensure lock is set
-        this.transitionLock = true;
-        
-        this.stop();
-        
-        // Mark the room's encounter as in-progress to prevent re-triggers
-        if (AdventureState.currentRoomData) {
-            AdventureState.currentRoomData.encounterStarted = true;
-        }
-        
-        // Prepare deck from adventure state
-        const deckCards = AdventureState.getBattleDeck();
-        
-        // Build the deck object for the game
-        window.selectedPlayerDeck = {
-            name: 'Adventure Deck',
-            cards: deckCards.map(cardKey => ({ cardKey }))
-        };
-        
-        // Set adventure battle flags
-        window.isAdventureBattle = true;
-        window.adventureBattleType = type;
-        
-        // Apply relic effects
-        window.adventureRelicEffects = {};
-        for (const relic of AdventureState.relics) {
-            if (relic.effect?.startingPyre) {
-                window.adventureRelicEffects.startingPyre = (window.adventureRelicEffects.startingPyre || 0) + relic.effect.startingPyre;
-            }
-            if (relic.effect?.extraDraw) {
-                window.adventureRelicEffects.extraDraw = (window.adventureRelicEffects.extraDraw || 0) + relic.effect.extraDraw;
-            }
-            if (relic.effect?.deathShield) {
-                window.adventureRelicEffects.deathShield = (window.adventureRelicEffects.deathShield || 0) + relic.effect.deathShield;
-            }
-        }
-        
-        // Store current deaths to track new ones
-        window.adventureDeathsBefore = AdventureState.deadCryptidCount;
-        
-        // Hide adventure screen
-        document.getElementById('adventure-screen').classList.remove('open');
-        
-        // Show game container and start battle
-        document.getElementById('game-container').style.display = 'flex';
-        
-        if (typeof applyBattlefieldBackgrounds === 'function') {
-            applyBattlefieldBackgrounds();
-        }
-        
-        // Short delay then init game
+    startBattle(roomData) {
+        console.log('[Adventure] Starting battle...');
+        // TODO: Integrate with existing battle system
+        // For now, simulate victory
         setTimeout(() => {
-            if (typeof initGame === 'function') {
-                initGame();
-            }
-        }, 100);
-    },
-    
-    // Called when battle ends
-    onBattleEnd(isWin, playerDeaths) {
-        // Add deaths from battle to adventure total
-        const newDeaths = playerDeaths;
-        
-        // Apply death shield relic
-        let shieldedDeaths = 0;
-        const shield = window.adventureRelicEffects?.deathShield || 0;
-        if (shield > 0 && newDeaths > 0) {
-            shieldedDeaths = Math.min(shield, newDeaths);
-        }
-        
-        const actualDeaths = newDeaths - shieldedDeaths;
-        
-        if (actualDeaths > 0) {
-            AdventureState.addDeaths(actualDeaths);
-        }
-        
-        if (shieldedDeaths > 0) {
-            console.log(`[Adventure] Death shield blocked ${shieldedDeaths} death(s)`);
-        }
-        
-        if (isWin) {
+            roomData.cleared = true;
             AdventureState.battlesWon++;
-            AdventureState.currentRoomData.cleared = true;
-            
-            // Grant rewards
-            const rewards = AdventureState.currentRoomData.rewards || {};
-            if (rewards.embers) {
-                let emberAmount = rewards.embers;
-                // Apply ember bonus relic
-                for (const relic of AdventureState.relics) {
-                    if (relic.effect?.emberBonus) {
-                        emberAmount = Math.floor(emberAmount * (1 + relic.effect.emberBonus));
-                    }
-                }
-                AdventureState.embers += emberAmount;
-            }
-            if (rewards.xp) {
-                AdventureState.xpEarned += rewards.xp;
-            }
-            if (rewards.card) {
-                this.grantRandomCard('common');
-            }
-        } else {
-            AdventureState.battlesLost++;
-        }
-        
-        // Clean up battle flags
-        window.isAdventureBattle = false;
-        window.adventureBattleType = null;
-        window.adventureRelicEffects = null;
-        window.adventureDeathsBefore = null;
-        
-        // Check for defeat
-        if (AdventureState.isDefeated()) {
-            this.endRun(false);
-            return;
-        }
-        
-        // Return to adventure
-        this.returnToAdventure();
+            AdventureState.embers += 50;
+            this.updateHUD();
+            IsometricEngine.setupRoom(roomData);
+        }, 1000);
     },
     
-    returnToAdventure() {
-        // Hide battle, show adventure
-        document.getElementById('game-container').style.display = 'none';
-        
-        // Position player - if room cleared, put near exit, otherwise back from edge
-        if (AdventureState.currentRoomData?.cleared) {
-            this.player.x = this.room.width - 200;
-        } else {
-            this.player.x = this.room.width / 2;
-        }
-        this.player.y = this.room.groundY - this.player.height;
-        
-        // Show adventure screen
-        document.getElementById('adventure-screen').classList.add('open');
-        AdventureUI.updateHUD();
-        
-        // Release the transition lock
-        this.transitionLock = false;
-        
-        // Resume game loop
-        this.start();
-    },
-    
-    advanceRoom() {
-        const connections = AdventureState.getConnections();
-        const nextRoomId = connections.right;
-        
-        if (!nextRoomId) {
-            // No right exit - check if boss defeated (floor complete)
-            const room = AdventureState.currentRoomData;
-            if (room && room.type === 'boss' && room.cleared) {
-                this.completeFloor();
-            }
-            return;
-        }
-        
-        // Transition to next room by ID
-        this.transitionToRoomById(nextRoomId, 'right');
-    },
-    
-    transitionToRoomById(roomId, direction = 'right') {
-        const transition = document.querySelector('.room-transition');
-        if (transition) {
-            transition.classList.add('active');
-        }
-        
+    startBossBattle(roomData) {
+        console.log('[Adventure] Starting boss battle...');
+        // TODO: Integrate with existing battle system
         setTimeout(() => {
-            // Get room from map
-            const targetRoom = AdventureState.getRoomById(roomId);
-            if (!targetRoom) {
-                console.error('[Adventure] Room not found:', roomId);
-                this.transitionLock = false;
-                return;
-            }
-            
-            AdventureState.currentRoomId = roomId;
-            AdventureState.currentRoomData = targetRoom;
-            targetRoom.visited = true;
-            
-            // Track visited rooms
-            if (!AdventureState.visitedRooms.includes(roomId)) {
-                AdventureState.visitedRooms.push(roomId);
-                AdventureState.totalRoomsCleared++;
-            }
-            
-            // Update room index for main path display
-            if (AdventureState.floorMap) {
-                const mainPathIndex = AdventureState.floorMap.mainPath.indexOf(roomId);
-                if (mainPathIndex !== -1) {
-                    AdventureState.currentRoom = mainPathIndex;
-                }
-            }
-            
-            // Reset player position based on entry direction
-            if (direction === 'right') {
-                // Entering from left side
-                this.player.x = 100;
-            } else if (direction === 'left') {
-                // Entering from right side
-                this.player.x = this.room.width - this.player.width - 100;
-            } else if (direction === 'door' || direction === 'platform') {
-                // Entering from door/platform - center position
-                this.player.x = this.room.width / 2 - this.player.width / 2;
-            }
-            this.player.y = this.room.groundY - this.player.height;
-            
-            // Update UI
-            AdventureUI.updateRoomInfo();
-            AdventureUI.updateHUD();
-            
-            // Check for special room types (may set its own lock)
-            this.handleRoomEntry();
-            
-            setTimeout(() => {
-                if (transition) {
-                    transition.classList.remove('active');
-                }
-                // Release lock after transition animation completes
-                // (unless an event/shop took over)
-                if (!AdventureState.currentRoomData?.encounter || AdventureState.currentRoomData?.cleared) {
-                    this.transitionLock = false;
-                }
-            }, 300);
-        }, 300);
+            roomData.cleared = true;
+            AdventureState.floorsCompleted++;
+            AdventureState.embers += 200;
+            this.updateHUD();
+            DialogueSystem.show("The guardian falls. The path to the next floor opens...");
+            // TODO: Start next floor
+        }, 1000);
     },
     
-    // Legacy function for backwards compatibility
-    transitionToRoom(roomIndex) {
-        // Map to the new system
-        const roomId = AdventureState.floorMap?.mainPath?.[roomIndex];
-        if (roomId) {
-            this.transitionToRoomById(roomId, 'right');
-        }
+    openTreasure(roomData) {
+        console.log('[Adventure] Opening treasure...');
+        roomData.cleared = true;
+        AdventureState.embers += 100;
+        AdventureState.itemsFound++;
+        this.updateHUD();
+        IsometricEngine.setupRoom(roomData);
+        DialogueSystem.show("You found 100 embers!");
     },
     
-    handleRoomEntry() {
-        const room = AdventureState.currentRoomData;
-        if (!room) {
-            this.transitionLock = false;
-            return;
-        }
-        
-        switch (room.type) {
-            case 'shop':
-                // Open shop modal (lock stays until shop closes)
-                setTimeout(() => AdventureUI.openShop(), 500);
-                break;
-            case 'rest':
-                // Auto-heal at rest sites
-                setTimeout(() => this.handleRestSite(), 500);
-                break;
-            case 'event':
-                // Random event (lock stays until event closes)
-                setTimeout(() => AdventureUI.showEvent(), 500);
-                break;
-            case 'treasure':
-            case 'entrance':
-            default:
-                // No special handling, release lock
-                this.transitionLock = false;
-                break;
-        }
+    openShop(roomData) {
+        console.log('[Adventure] Opening shop...');
+        DialogueSystem.show("The merchant's wares are not yet available...");
     },
     
-    handleRestSite() {
+    useRestSite(roomData) {
+        console.log('[Adventure] Using rest site...');
         let healAmount = 2;
         
-        // Apply healer's kit relic
+        // Apply healer's kit bonus
         for (const relic of AdventureState.relics) {
             if (relic.effect?.restBonus) {
                 healAmount += relic.effect.restBonus;
@@ -2457,1626 +2680,154 @@ window.AdventureEngine = {
         }
         
         AdventureState.healDeaths(healAmount);
-        AdventureUI.showMessage(`Rested and healed ${healAmount} death(s).`);
-        AdventureUI.updateHUD();
-        
-        AdventureState.currentRoomData.cleared = true;
-        
-        // Release lock after rest
-        this.transitionLock = false;
-    },
-    
-    completeFloor() {
-        AdventureState.floorsCompleted++;
-        
-        // Bonus rewards for floor completion
-        const floorBonus = 100 * AdventureState.currentFloor;
-        AdventureState.embers += floorBonus;
-        AdventureState.xpEarned += 50 * AdventureState.currentFloor;
-        
-        // Refill shovel uses
-        for (const relic of AdventureState.relics) {
-            if (relic.maxUses) {
-                relic.uses = relic.maxUses;
-            }
-        }
-        
-        if (AdventureState.currentFloor >= 3) {
-            // Victory!
-            this.endRun(true);
-        } else {
-            // Next floor
-            AdventureState.currentFloor++;
-            AdventureState.currentRoom = 0;
-            AdventureState.rooms = RoomGenerator.generateFloor(AdventureState.currentFloor);
-            AdventureState.floorMap = AdventureState.rooms._floorMap;
-            AdventureState.currentRoomId = AdventureState.floorMap.currentRoomId;
-            AdventureState.currentRoomData = AdventureState.floorMap.rooms[AdventureState.currentRoomId];
-            AdventureState.visitedRooms = [AdventureState.currentRoomId];
-            
-            AdventureUI.showMessage(`Floor ${AdventureState.currentFloor} begins!`);
-            this.player.x = 100;
-            AdventureUI.updateHUD();
-            AdventureUI.updateRoomInfo();
-        }
-    },
-    
-    endRun(isVictory) {
-        this.stop();
-        AdventureState.isActive = false;
-        
-        // Calculate final rewards
-        const rewards = {
-            embers: AdventureState.embers,
-            xp: AdventureState.xpEarned,
-            floorsCompleted: AdventureState.floorsCompleted,
-            battlesWon: AdventureState.battlesWon
-        };
-        
-        // Victory bonuses
-        if (isVictory) {
-            rewards.embers += 500;
-            rewards.xp += 200;
-        }
-        
-        // Apply to player data
-        if (typeof PlayerData !== 'undefined') {
-            PlayerData.embers += rewards.embers;
-            PlayerData.addXP(rewards.xp);
-            PlayerData.save();
-        }
-        
-        // Show results
-        AdventureUI.showResults(isVictory, rewards);
-    },
-    
-    updateParticles(dt) {
-        // Ambient fog/dust particles
-        if (Math.random() < 0.05) {
-            this.visuals.ambientParticles.push({
-                x: Math.random() * this.room.width,
-                y: Math.random() * this.room.height,
-                vx: (Math.random() - 0.5) * 0.5,
-                vy: -0.2 - Math.random() * 0.3,
-                life: 1,
-                size: 1 + Math.random() * 2
-            });
-        }
-        
-        // Update particles
-        this.visuals.ambientParticles = this.visuals.ambientParticles.filter(p => {
-            p.x += p.vx * dt;
-            p.y += p.vy * dt;
-            p.life -= 0.01;
-            return p.life > 0;
-        });
-    },
-    
-    // ==================== RENDERING ====================
-    
-    render() {
-        const ctx = this.ctx;
-        const room = AdventureState.currentRoomData;
-        
-        // Clear
-        ctx.fillStyle = '#0a0806';
-        ctx.fillRect(0, 0, this.room.width, this.room.height);
-        
-        // Draw background
-        this.drawBackground(room?.background || 'entrance');
-        
-        // Draw interactables
-        this.drawInteractables();
-        
-        // Draw player
-        this.drawPlayer();
-        
-        // Draw particles
-        this.drawParticles();
-        
-        // Draw fog/darkness
-        this.drawFog();
-        
-        // Draw exit indicators
-        this.drawExitIndicators();
-    },
-    
-    drawBackground(type) {
-        const ctx = this.ctx;
-        const gradients = {
-            'entrance': ['#1a1510', '#0a0806'],
-            'battle': ['#201510', '#0a0806'],
-            'battle_elite': ['#251015', '#0a0806'],
-            'boss': ['#2a1010', '#0a0806'],
-            'shop': ['#151a15', '#0a0806'],
-            'rest': ['#101520', '#0a0806'],
-            'treasure': ['#1a1a10', '#0a0806'],
-            'event': ['#151520', '#0a0806'],
-            'curse': ['#1a1015', '#0a0806'],
-            'mystery': ['#151515', '#0a0806']
-        };
-        
-        const colors = gradients[type] || gradients['entrance'];
-        const gradient = ctx.createLinearGradient(0, 0, 0, this.room.height);
-        gradient.addColorStop(0, colors[0]);
-        gradient.addColorStop(1, colors[1]);
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, this.room.width, this.room.height);
-        
-        // Ground
-        ctx.fillStyle = '#0d0a07';
-        ctx.fillRect(0, this.room.groundY, this.room.width, this.room.height - this.room.groundY);
-        
-        // Ground line
-        ctx.strokeStyle = 'rgba(232, 169, 62, 0.3)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(0, this.room.groundY);
-        ctx.lineTo(this.room.width, this.room.groundY);
-        ctx.stroke();
-        
-        // Draw some environmental details based on room type
-        this.drawEnvironmentDetails(type);
-    },
-    
-    drawEnvironmentDetails(type) {
-        const ctx = this.ctx;
-        
-        // Draw some pillars/trees/etc based on room type
-        ctx.fillStyle = 'rgba(30, 25, 20, 0.8)';
-        
-        if (type === 'battle' || type === 'battle_elite' || type === 'boss') {
-            // Ominous pillars
-            ctx.fillRect(50, 100, 20, 220);
-            ctx.fillRect(630, 100, 20, 220);
-        }
-        
-        if (type === 'shop') {
-            // Market stall shape
-            ctx.fillRect(300, 150, 100, 170);
-            ctx.fillStyle = 'rgba(150, 100, 50, 0.3)';
-            ctx.fillRect(290, 140, 120, 20);
-        }
-        
-        if (type === 'rest') {
-            // Campfire glow
-            const glow = ctx.createRadialGradient(350, 280, 0, 350, 280, 80);
-            glow.addColorStop(0, 'rgba(255, 150, 50, 0.3)');
-            glow.addColorStop(1, 'transparent');
-            ctx.fillStyle = glow;
-            ctx.fillRect(270, 200, 160, 160);
-        }
-    },
-    
-    drawInteractables() {
-        const ctx = this.ctx;
-        const room = AdventureState.currentRoomData;
-        if (!room) return;
-        
-        const y = this.room.groundY;
-        const time = Date.now();
-        
-        // Draw door (for branching paths)
-        if (room.hasDoor && room.doorTarget) {
-            const doorX = this.room.width / 2;
-            const doorTarget = this.player.interactTarget;
-            const isNear = doorTarget?.type === 'room_door';
-            
-            ctx.save();
-            if (isNear) {
-                ctx.shadowColor = '#e8a93e';
-                ctx.shadowBlur = 25;
-            }
-            
-            // Door frame
-            const doorH = 120;
-            const doorW = 60;
-            ctx.fillStyle = '#3a2a1a';
-            ctx.fillRect(doorX - doorW/2 - 10, y - doorH - 20, doorW + 20, doorH + 20);
-            
-            // Door
-            ctx.fillStyle = isNear ? '#5a4030' : '#4a3020';
-            ctx.fillRect(doorX - doorW/2, y - doorH - 10, doorW, doorH + 10);
-            
-            // Handle
-            ctx.fillStyle = '#e8a93e';
-            ctx.beginPath();
-            ctx.arc(doorX + 15, y - doorH/2, 5, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Mysterious glow
-            const glowIntensity = 0.3 + Math.sin(time / 500) * 0.1;
-            ctx.fillStyle = `rgba(232, 169, 62, ${glowIntensity})`;
-            ctx.fillRect(doorX - doorW/2 + 5, y - doorH, doorW - 10, 5);
-            
-            ctx.restore();
-        }
-        
-        // Draw branch door (in branch rooms) - back to main path
-        if (room.isBranch) {
-            const connections = AdventureState.getConnections();
-            if (connections.door) {
-                const doorX = this.room.width / 2;
-                const doorTarget = this.player.interactTarget;
-                const isNear = doorTarget?.type === 'branch_door';
-                
-                ctx.save();
-                if (isNear) {
-                    ctx.shadowColor = '#4ade80';
-                    ctx.shadowBlur = 25;
-                }
-                
-                const doorH = 100;
-                const doorW = 50;
-                ctx.fillStyle = '#2a3a2a';
-                ctx.fillRect(doorX - doorW/2 - 8, y - doorH - 15, doorW + 16, doorH + 15);
-                
-                ctx.fillStyle = isNear ? '#3a5a3a' : '#2a4a2a';
-                ctx.fillRect(doorX - doorW/2, y - doorH - 5, doorW, doorH + 5);
-                
-                ctx.fillStyle = '#4ade80';
-                ctx.font = '24px serif';
-                ctx.fillText('↩', doorX - 10, y - doorH/2);
-                
-                ctx.restore();
-            }
-        }
-        
-        // Draw platform (for vertical paths)
-        if (room.hasPlatform) {
-            const platX = room.platformPosition === 'left' ? 150 : this.room.width - 150;
-            const platTarget = this.player.interactTarget;
-            const isNear = platTarget?.type === 'platform';
-            
-            ctx.save();
-            if (isNear) {
-                ctx.shadowColor = '#60a5fa';
-                ctx.shadowBlur = 20;
-            }
-            
-            // Platform base
-            const platW = 100;
-            const platH = 150;
-            ctx.fillStyle = '#2a2a3a';
-            ctx.fillRect(platX - platW/2, y - platH, platW, platH);
-            
-            // Ladder
-            ctx.strokeStyle = '#8a7a5a';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(platX - 15, y);
-            ctx.lineTo(platX - 15, y - platH + 20);
-            ctx.moveTo(platX + 15, y);
-            ctx.lineTo(platX + 15, y - platH + 20);
-            for (let ry = y - 20; ry > y - platH; ry -= 25) {
-                ctx.moveTo(platX - 15, ry);
-                ctx.lineTo(platX + 15, ry);
-            }
-            ctx.stroke();
-            
-            // Glow arrow
-            ctx.fillStyle = `rgba(96, 165, 250, ${0.5 + Math.sin(time / 400) * 0.3})`;
-            ctx.font = '30px serif';
-            ctx.fillText('⬆', platX - 12, y - platH - 10);
-            
-            ctx.restore();
-        }
-        
-        // Draw platform return (in hidden areas)
-        if (room.isPlatformRoom && room.platformReturn) {
-            const returnX = this.room.width / 2;
-            const returnTarget = this.player.interactTarget;
-            const isNear = returnTarget?.type === 'platform_return';
-            
-            ctx.save();
-            if (isNear) {
-                ctx.shadowColor = '#60a5fa';
-                ctx.shadowBlur = 20;
-            }
-            
-            ctx.fillStyle = `rgba(96, 165, 250, ${0.5 + Math.sin(time / 400) * 0.3})`;
-            ctx.font = '30px serif';
-            ctx.fillText('⬇', returnX - 12, y - 30);
-            
-            ctx.restore();
-        }
-        
-        // Draw regular interactables
-        const interactables = room.interactables || [];
-        for (const item of interactables) {
-            if (item.collected || item.triggered) continue;
-            
-            ctx.save();
-            
-            const itemY = y - 30;
-            const isNear = this.player.interactTarget === item;
-            
-            // Glow if near
-            if (isNear) {
-                ctx.shadowColor = '#e8a93e';
-                ctx.shadowBlur = 20;
-            }
-            
-            switch (item.type) {
-                case 'dig_spot':
-                    ctx.fillStyle = 'rgba(139, 90, 43, 0.6)';
-                    ctx.beginPath();
-                    ctx.ellipse(item.x, itemY + 15, 25, 10, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.fillStyle = '#8B5A2B';
-                    ctx.font = '16px serif';
-                    ctx.fillText('⛏', item.x - 8, itemY + 5);
-                    break;
-                    
-                case 'chest':
-                    ctx.fillStyle = item.locked ? '#8B4513' : '#CD853F';
-                    ctx.fillRect(item.x - 20, itemY - 15, 40, 30);
-                    ctx.fillStyle = '#e8a93e';
-                    ctx.fillRect(item.x - 5, itemY - 5, 10, 10);
-                    if (item.locked) {
-                        ctx.fillStyle = '#444';
-                        ctx.fillRect(item.x - 3, itemY - 3, 6, 6);
-                    }
-                    break;
-                    
-                case 'trap':
-                    // Hidden until triggered
-                    if (!item.revealed) break;
-                    ctx.fillStyle = 'rgba(200, 50, 50, 0.5)';
-                    ctx.beginPath();
-                    ctx.moveTo(item.x, itemY - 20);
-                    ctx.lineTo(item.x - 15, itemY + 10);
-                    ctx.lineTo(item.x + 15, itemY + 10);
-                    ctx.closePath();
-                    ctx.fill();
-                    break;
-            }
-            
-            ctx.restore();
-        }
-    },
-    
-    drawPlayer() {
-        const ctx = this.ctx;
-        const p = this.player;
-        
-        ctx.save();
-        
-        // Calculate animation values
-        const time = Date.now();
-        const walkBob = p.state === 'walking' ? Math.sin(time / 80) * 3 : 0;
-        const jumpSquash = p.state === 'jumping' ? (p.vy < 0 ? 0.9 : 1.1) : 1;
-        
-        // Shadow (smaller when jumping)
-        const shadowScale = p.grounded ? 1 : 0.5;
-        ctx.fillStyle = `rgba(0, 0, 0, ${p.grounded ? 0.4 : 0.2})`;
-        ctx.beginPath();
-        ctx.ellipse(p.x + p.width / 2, this.room.groundY + 5, (p.width / 2) * shadowScale, 10 * shadowScale, 0, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Apply transformations
-        ctx.translate(p.x + p.width / 2, p.y + p.height / 2);
-        ctx.scale(p.facing, jumpSquash);
-        ctx.translate(0, walkBob);
-        
-        // Body glow
-        ctx.shadowColor = '#e8a93e';
-        ctx.shadowBlur = 15;
-        
-        // Cloak (main body)
-        const gradient = ctx.createLinearGradient(0, -p.height/2, 0, p.height/2);
-        gradient.addColorStop(0, '#3a3530');
-        gradient.addColorStop(0.3, '#2a2520');
-        gradient.addColorStop(1, '#1a1510');
-        ctx.fillStyle = gradient;
-        
-        ctx.beginPath();
-        ctx.moveTo(0, -p.height/2 + 10); // Top of head
-        ctx.lineTo(p.width/2 - 5, -p.height/2 + 25); // Right shoulder
-        ctx.lineTo(p.width/2 - 8, p.height/2 - 5); // Right foot
-        ctx.lineTo(-p.width/2 + 8, p.height/2 - 5); // Left foot
-        ctx.lineTo(-p.width/2 + 5, -p.height/2 + 25); // Left shoulder
-        ctx.closePath();
-        ctx.fill();
-        
-        ctx.shadowBlur = 0;
-        
-        // Hood
-        ctx.fillStyle = '#1a1510';
-        ctx.beginPath();
-        ctx.arc(0, -p.height/2 + 20, 18, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Face area (darker)
-        ctx.fillStyle = '#0a0806';
-        ctx.beginPath();
-        ctx.arc(3, -p.height/2 + 22, 12, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Eyes (glowing embers)
-        ctx.shadowColor = '#ff6b00';
-        ctx.shadowBlur = 10;
-        ctx.fillStyle = '#e8a93e';
-        ctx.beginPath();
-        ctx.arc(-2, -p.height/2 + 20, 3, 0, Math.PI * 2);
-        ctx.arc(8, -p.height/2 + 20, 3, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Eye glow cores
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(-2, -p.height/2 + 20, 1.5, 0, Math.PI * 2);
-        ctx.arc(8, -p.height/2 + 20, 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.restore();
-    },
-    
-    drawParticles() {
-        const ctx = this.ctx;
-        
-        for (const p of this.visuals.ambientParticles) {
-            ctx.fillStyle = `rgba(200, 180, 150, ${p.life * 0.3})`;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    },
-    
-    drawFog() {
-        const ctx = this.ctx;
-        
-        // Top fog
-        const topFog = ctx.createLinearGradient(0, 0, 0, 80);
-        topFog.addColorStop(0, 'rgba(10, 8, 6, 0.8)');
-        topFog.addColorStop(1, 'transparent');
-        ctx.fillStyle = topFog;
-        ctx.fillRect(0, 0, this.room.width, 80);
-        
-        // Side vignette
-        const leftVig = ctx.createLinearGradient(0, 0, 80, 0);
-        leftVig.addColorStop(0, 'rgba(10, 8, 6, 0.6)');
-        leftVig.addColorStop(1, 'transparent');
-        ctx.fillStyle = leftVig;
-        ctx.fillRect(0, 0, 80, this.room.height);
-        
-        const rightVig = ctx.createLinearGradient(this.room.width, 0, this.room.width - 80, 0);
-        rightVig.addColorStop(0, 'rgba(10, 8, 6, 0.6)');
-        rightVig.addColorStop(1, 'transparent');
-        ctx.fillStyle = rightVig;
-        ctx.fillRect(this.room.width - 80, 0, 80, this.room.height);
-    },
-    
-    drawExitIndicators() {
-        const ctx = this.ctx;
-        const room = AdventureState.currentRoomData;
-        const connections = AdventureState.getConnections();
-        
-        const pulse = (Math.sin(Date.now() / 300) + 1) / 2;
-        const glowAlpha = 0.3 + pulse * 0.3;
-        const arrowY = this.room.groundY - 100;
-        
-        // RIGHT EXIT
-        if (connections.right) {
-            const rightX = this.room.width - 80;
-            
-            ctx.shadowColor = room?.cleared ? '#4ade80' : '#e8a93e';
-            ctx.shadowBlur = 20 + pulse * 10;
-            
-            ctx.fillStyle = room?.cleared 
-                ? `rgba(74, 222, 128, ${glowAlpha})` 
-                : `rgba(232, 169, 62, ${glowAlpha})`;
-            
-            // Draw arrow pointing right
-            ctx.beginPath();
-            ctx.moveTo(rightX, arrowY - 40);
-            ctx.lineTo(rightX + 55, arrowY);
-            ctx.lineTo(rightX, arrowY + 40);
-            ctx.lineTo(rightX + 20, arrowY);
-            ctx.closePath();
-            ctx.fill();
-            
-            ctx.strokeStyle = room?.cleared ? '#4ade80' : '#e8a93e';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            
-            ctx.shadowBlur = 0;
-            
-            ctx.fillStyle = room?.cleared ? '#4ade80' : '#e8a93e';
-            ctx.font = 'bold 14px "Cinzel", serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(room?.cleared ? 'GO →' : '⚔ →', rightX + 20, arrowY + 65);
-        }
-        
-        // LEFT EXIT (if available)
-        if (connections.left) {
-            const leftX = 80;
-            
-            ctx.shadowColor = '#60a5fa';
-            ctx.shadowBlur = 15 + pulse * 8;
-            
-            ctx.fillStyle = `rgba(96, 165, 250, ${glowAlpha * 0.8})`;
-            
-            // Draw arrow pointing left
-            ctx.beginPath();
-            ctx.moveTo(leftX, arrowY - 35);
-            ctx.lineTo(leftX - 50, arrowY);
-            ctx.lineTo(leftX, arrowY + 35);
-            ctx.lineTo(leftX - 18, arrowY);
-            ctx.closePath();
-            ctx.fill();
-            
-            ctx.strokeStyle = '#60a5fa';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            
-            ctx.shadowBlur = 0;
-            
-            ctx.fillStyle = '#60a5fa';
-            ctx.font = 'bold 14px "Cinzel", serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('← BACK', leftX - 18, arrowY + 60);
-        } else {
-            // Blocked left
-            ctx.fillStyle = 'rgba(100, 60, 60, 0.4)';
-            ctx.font = 'bold 40px serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('✕', 40, arrowY + 15);
-        }
-        
-        ctx.textAlign = 'left'; // Reset
-    }
-};
-
-// ==================== ADVENTURE UI ====================
-
-window.AdventureUI = {
-    init() {
-        if (this.initialized) return; // Prevent double init
-        
-        this.createScreens();
-        this.bindEvents();
-        this.initialized = true;
-        console.log('[AdventureUI] Initialized');
-    },
-    
-    createScreens() {
-        console.log('[AdventureUI] createScreens called');
-        
-        // Main adventure screen
-        if (!document.getElementById('adventure-screen')) {
-            try {
-                const screen = document.createElement('div');
-                screen.id = 'adventure-screen';
-                screen.innerHTML = `
-                    <div class="adventure-viewport">
-                        <div class="adventure-hud">
-                            <div class="hud-left">
-                                <div class="hud-stat deaths">
-                                    <span class="icon">☠</span>
-                                    <span class="value" id="adv-deaths">0</span>/<span id="adv-max-deaths">10</span>
-                                </div>
-                                <div class="floor-indicator">
-                                    Floor <span id="adv-floor">1</span> • Room <span id="adv-room">1</span>/10
-                                </div>
-                            </div>
-                            <div class="hud-right">
-                                <div class="hud-stat embers">
-                                    <span class="icon">🔥</span>
-                                    <span class="value" id="adv-embers">0</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="relics-bar" id="adv-relics"></div>
-                        <div class="interact-prompt"></div>
-                        <div class="room-transition"></div>
-                        <div class="room-info-bar">
-                            <div class="room-name" id="adv-room-name">Entrance</div>
-                            <div class="room-hint" id="adv-room-hint">→ Move right to continue</div>
-                        </div>
-                        <div class="touch-controls">
-                            <div class="touch-dpad">
-                                <button class="touch-btn" id="touch-left">←</button>
-                            </div>
-                            <button class="touch-btn" id="touch-interact">E</button>
-                            <div class="touch-dpad">
-                                <button class="touch-btn" id="touch-right">→</button>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(screen);
-                
-                // Insert canvas (with null checks)
-                const viewport = screen.querySelector('.adventure-viewport');
-                if (viewport && AdventureEngine.canvas) {
-                    viewport.insertBefore(AdventureEngine.canvas, viewport.firstChild);
-                } else {
-                    console.warn('[AdventureUI] Could not insert canvas - viewport:', !!viewport, 'canvas:', !!AdventureEngine.canvas);
-                }
-            } catch (e) {
-                console.error('[AdventureUI] Error creating adventure screen:', e);
-            }
-        }
-        
-        // Setup screen
-        if (!document.getElementById('adventure-setup')) {
-            const setup = document.createElement('div');
-            setup.id = 'adventure-setup';
-            setup.innerHTML = `
-                <div class="setup-container">
-                    <div class="setup-title">⚔️ Begin Adventure</div>
-                    <div class="setup-subtitle">Choose your path through the darkness</div>
-                    
-                    <div id="deck-selection-step">
-                        <h3 style="color: #e8a93e; margin-bottom: 20px;">Select Your Deck</h3>
-                        <div class="deck-options" id="adv-deck-options"></div>
-                    </div>
-                    
-                    <div id="relic-selection-step" style="display: none;">
-                        <h3 style="color: #a080d0; margin-bottom: 20px;">Choose a Starting Relic</h3>
-                        <div class="relic-options" id="adv-relic-options"></div>
-                    </div>
-                    
-                    <div style="margin-top: 20px;">
-                        <button class="setup-btn" id="adv-continue-btn" disabled>Continue</button>
-                        <button class="setup-btn secondary" id="adv-cancel-btn">Cancel</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(setup);
-        }
-        
-        // Results screen
-        if (!document.getElementById('adventure-results')) {
-            const results = document.createElement('div');
-            results.id = 'adventure-results';
-            results.innerHTML = `
-                <div class="results-container">
-                    <div class="results-banner" id="results-banner">VICTORY</div>
-                    <div class="results-subtitle" id="results-subtitle">The darkness retreats... for now.</div>
-                    
-                    <div class="results-stats" id="results-stats"></div>
-                    
-                    <div class="results-rewards">
-                        <div class="rewards-title">✧ Rewards Earned ✧</div>
-                        <div class="reward-row" id="results-rewards"></div>
-                    </div>
-                    
-                    <button class="setup-btn" id="results-home-btn">Return Home</button>
-                </div>
-            `;
-            document.body.appendChild(results);
-        }
-    },
-    
-    bindEvents() {
-        // Setup screen events
-        document.getElementById('adv-continue-btn')?.addEventListener('click', () => this.onSetupContinue());
-        document.getElementById('adv-cancel-btn')?.addEventListener('click', () => this.closeSetup());
-        document.getElementById('results-home-btn')?.addEventListener('click', () => this.returnHome());
-        
-        // Touch controls
-        const touchLeft = document.getElementById('touch-left');
-        const touchRight = document.getElementById('touch-right');
-        const touchInteract = document.getElementById('touch-interact');
-        
-        if (touchLeft) {
-            touchLeft.addEventListener('touchstart', () => AdventureEngine.keys.left = true);
-            touchLeft.addEventListener('touchend', () => AdventureEngine.keys.left = false);
-        }
-        if (touchRight) {
-            touchRight.addEventListener('touchstart', () => AdventureEngine.keys.right = true);
-            touchRight.addEventListener('touchend', () => AdventureEngine.keys.right = false);
-        }
-        if (touchInteract) {
-            touchInteract.addEventListener('click', () => AdventureEngine.handleInteraction());
-        }
-    },
-    
-    // ==================== SETUP FLOW ====================
-    
-    // Track if init has been called
-    initialized: false,
-    
-    openSetup() {
-        console.log('[AdventureUI] openSetup called, initialized:', this.initialized);
-        
-        try {
-            // Ensure initialization has completed
-            if (!this.initialized) {
-                console.log('[AdventureUI] Late initialization triggered');
-                this.init();
-            }
-            
-            // Also ensure engine is initialized
-            if (!AdventureEngine.canvas) {
-                console.log('[AdventureUI] Late engine init triggered');
-                AdventureEngine.init();
-            }
-            
-            this.setupStep = 'deck';
-            this.selectedDeck = null;
-            this.selectedRelic = null;
-            this.relicChoices = RelicRegistry.getRandomStarterRelics(3);
-            
-            this.renderDeckOptions();
-            
-            const deckStep = document.getElementById('deck-selection-step');
-            const relicStep = document.getElementById('relic-selection-step');
-            const continueBtn = document.getElementById('adv-continue-btn');
-            const setupScreen = document.getElementById('adventure-setup');
-            
-            if (!deckStep || !relicStep || !continueBtn || !setupScreen) {
-                console.error('[AdventureUI] Missing DOM elements, recreating screens...');
-                this.createScreens();
-                this.bindEvents();
-            }
-            
-            document.getElementById('deck-selection-step').style.display = 'block';
-            document.getElementById('relic-selection-step').style.display = 'none';
-            document.getElementById('adv-continue-btn').disabled = true;
-            document.getElementById('adv-continue-btn').textContent = 'Select a Deck';
-            
-            document.getElementById('adventure-setup').classList.add('open');
-            console.log('[AdventureUI] Setup screen opened');
-        } catch (e) {
-            console.error('[AdventureUI] openSetup error:', e);
-            console.error('[AdventureUI] Stack:', e.stack);
-            
-            // Show error to user
-            const msg = document.createElement('div');
-            msg.style.cssText = `
-                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                background: rgba(0,0,0,0.95); border: 2px solid #e57373; padding: 30px 50px;
-                border-radius: 12px; color: #e8e0d5; font-family: 'Cinzel', serif;
-                font-size: 16px; z-index: 99999; text-align: center; max-width: 400px;
-            `;
-            msg.innerHTML = `
-                <div style="color: #e57373; font-size: 20px; margin-bottom: 15px;">⚠️ Adventure Mode Error</div>
-                <div style="margin-bottom: 10px;">Failed to open Adventure Mode.</div>
-                <div style="font-size: 12px; color: #888; margin-bottom: 15px;">${e.message}</div>
-                <button onclick="localStorage.removeItem('cryptidFates_playerData'); location.reload();" style="
-                    margin: 5px; padding: 10px 20px; background: #e57373; border: none;
-                    color: white; cursor: pointer; border-radius: 6px; font-family: inherit;
-                ">Reset Save Data</button>
-                <button onclick="this.parentElement.remove(); HomeScreen.open();" style="
-                    margin: 5px; padding: 10px 20px; background: #666; border: none;
-                    color: white; cursor: pointer; border-radius: 6px; font-family: inherit;
-                ">Cancel</button>
-            `;
-            document.body.appendChild(msg);
-        }
-    },
-    
-    closeSetup() {
-        document.getElementById('adventure-setup').classList.remove('open');
-        
-        // Return to home
-        if (typeof HomeScreen !== 'undefined') {
-            HomeScreen.open();
-        }
-    },
-    
-    renderDeckOptions() {
-        const container = document.getElementById('adv-deck-options');
-        container.innerHTML = '';
-        
-        for (const [id, deck] of Object.entries(StarterDecks)) {
-            const div = document.createElement('div');
-            div.className = `deck-option${deck.locked ? ' locked' : ''}`;
-            div.dataset.deckId = id;
-            div.innerHTML = `
-                <div class="icon">${deck.icon}</div>
-                <div class="name">${deck.name}</div>
-                <div class="theme">${deck.theme}</div>
-            `;
-            
-            if (!deck.locked) {
-                div.addEventListener('click', () => this.selectDeck(id));
-            }
-            
-            container.appendChild(div);
-        }
-    },
-    
-    selectDeck(deckId) {
-        this.selectedDeck = deckId;
-        
-        // Update UI
-        document.querySelectorAll('.deck-option').forEach(el => {
-            el.classList.toggle('selected', el.dataset.deckId === deckId);
-        });
-        
-        document.getElementById('adv-continue-btn').disabled = false;
-        document.getElementById('adv-continue-btn').textContent = 'Choose Relic →';
-    },
-    
-    renderRelicOptions() {
-        const container = document.getElementById('adv-relic-options');
-        container.innerHTML = '';
-        
-        for (const relic of this.relicChoices) {
-            const div = document.createElement('div');
-            div.className = 'relic-option';
-            div.dataset.relicId = relic.id;
-            div.innerHTML = `
-                <div class="icon">${relic.sprite}</div>
-                <div class="name">${relic.name}</div>
-                <div class="desc">${relic.description}</div>
-            `;
-            
-            div.addEventListener('click', () => this.selectRelic(relic.id));
-            container.appendChild(div);
-        }
-    },
-    
-    selectRelic(relicId) {
-        this.selectedRelic = relicId;
-        
-        // Update UI
-        document.querySelectorAll('.relic-option').forEach(el => {
-            el.classList.toggle('selected', el.dataset.relicId === relicId);
-        });
-        
-        document.getElementById('adv-continue-btn').disabled = false;
-        document.getElementById('adv-continue-btn').textContent = 'Begin Adventure!';
-    },
-    
-    onSetupContinue() {
-        if (this.setupStep === 'deck') {
-            if (!this.selectedDeck) return;
-            
-            // Move to relic selection
-            this.setupStep = 'relic';
-            document.getElementById('deck-selection-step').style.display = 'none';
-            document.getElementById('relic-selection-step').style.display = 'block';
-            document.getElementById('adv-continue-btn').disabled = true;
-            document.getElementById('adv-continue-btn').textContent = 'Select a Relic';
-            
-            this.renderRelicOptions();
-            
-        } else if (this.setupStep === 'relic') {
-            if (!this.selectedRelic) return;
-            
-            // Start the adventure!
-            this.startAdventure();
-        }
-    },
-    
-    startAdventure() {
-        // Close setup
-        document.getElementById('adventure-setup').classList.remove('open');
-        
-        // Initialize adventure state
-        AdventureState.reset();
-        AdventureState.isActive = true;
-        AdventureState.deckArchetype = this.selectedDeck;
-        
-        // Set up deck
-        const deckData = StarterDecks[this.selectedDeck];
-        AdventureState.starterCards = [...deckData.starterCards];
-        
-        // Set up relic
-        const relic = RelicRegistry.getRelic(this.selectedRelic);
-        if (relic) {
-            AdventureState.relics.push(relic);
-        }
-        
-        // Generate first floor with branching paths
-        AdventureState.rooms = RoomGenerator.generateFloor(1);
-        AdventureState.floorMap = AdventureState.rooms._floorMap;
-        AdventureState.currentRoomId = AdventureState.floorMap.currentRoomId;
-        AdventureState.currentRoomData = AdventureState.floorMap.rooms[AdventureState.currentRoomId];
-        AdventureState.currentRoomData.visited = true;
-        AdventureState.visitedRooms = [AdventureState.currentRoomId];
-        
-        // Show adventure screen
-        document.getElementById('adventure-screen').classList.add('open');
         this.updateHUD();
-        this.updateRoomInfo();
-        this.updateRelicsDisplay();
-        
-        // Start the engine
-        AdventureEngine.init();
-        AdventureEngine.start();
+        DialogueSystem.show(`The sanctuary's light soothes your wounds. ${healAmount} deaths restored.`);
     },
     
-    // ==================== HUD UPDATES ====================
+    triggerEvent(roomData) {
+        console.log('[Adventure] Triggering event...');
+        roomData.cleared = true;
+        
+        // Random event outcome
+        const roll = Math.random();
+        if (roll < 0.5) {
+            AdventureState.embers += 75;
+            this.updateHUD();
+            IsometricEngine.setupRoom(roomData);
+            DialogueSystem.show("In the shadows, you find forgotten treasures. +75 embers.");
+        } else if (roll < 0.8) {
+            DialogueSystem.show("The mystery yields nothing of value. Continue on...");
+            IsometricEngine.setupRoom(roomData);
+        } else {
+            AdventureState.addDeaths(1);
+            this.updateHUD();
+            IsometricEngine.setupRoom(roomData);
+            DialogueSystem.show("A trap! One of your monsters perishes...");
+        }
+    },
+    
+    // ==================== UI UPDATES ====================
     
     updateHUD() {
+        document.getElementById('adv-floor').textContent = AdventureState.currentFloor;
         document.getElementById('adv-deaths').textContent = AdventureState.deadCryptidCount;
         document.getElementById('adv-max-deaths').textContent = AdventureState.getMaxDeaths();
-        document.getElementById('adv-floor').textContent = AdventureState.currentFloor;
-        document.getElementById('adv-room').textContent = AdventureState.currentRoom + 1;
         document.getElementById('adv-embers').textContent = AdventureState.embers;
-    },
-    
-    updateRoomInfo() {
-        const room = AdventureState.currentRoomData;
-        if (!room) return;
         
-        // Room name with branch indicator
-        let roomName = room.name;
-        if (room.isBranch) {
-            roomName = '🔮 ' + roomName + ' (Secret)';
-        } else if (room.isPlatformRoom) {
-            roomName = '⬆ ' + roomName + ' (Hidden)';
-        }
-        document.getElementById('adv-room-name').textContent = roomName;
-        
-        // Build hint based on room type and available exits
-        const connections = AdventureState.getConnections();
-        let hint = '';
-        
-        if (room.encounter && !room.cleared) {
-            hint = '⚔ Battle awaits...';
-        } else if (room.type === 'shop' && !room.shopVisited) {
-            hint = '💰 Browse the wares';
-        } else if (room.type === 'rest') {
-            hint = '🏕️ Rest and recover';
-        } else if (room.type === 'treasure') {
-            hint = '✨ Search for treasure';
-        } else if (room.type === 'event' && !room.cleared) {
-            hint = '❓ Something unusual awaits...';
-        } else {
-            // Show available paths
-            const paths = [];
-            if (connections.left) paths.push('← Back');
-            if (connections.right) paths.push('→ Forward');
-            if (room.hasDoor) paths.push('[E] Door');
-            if (room.hasPlatform) paths.push('[E] Climb');
-            if (room.isBranch && connections.door) paths.push('[E] Exit');
-            if (room.isPlatformRoom) paths.push('[E] Descend');
-            
-            hint = paths.length > 0 ? paths.join(' • ') : '→ Continue';
-        }
-        
-        document.getElementById('adv-room-hint').textContent = hint;
-    },
-    
-    updateRelicsDisplay() {
-        const container = document.getElementById('adv-relics');
-        container.innerHTML = '';
+        // Update relics display
+        const relicsContainer = document.getElementById('adv-relics');
+        relicsContainer.innerHTML = '';
         
         for (const relic of AdventureState.relics) {
-            const div = document.createElement('div');
-            div.className = 'relic-icon';
-            div.title = `${relic.name}: ${relic.description}`;
-            div.innerHTML = relic.sprite;
+            const slot = document.createElement('div');
+            slot.className = 'relic-slot';
+            slot.title = `${relic.name}: ${relic.description}`;
+            slot.textContent = relic.sprite;
             
-            if (relic.maxUses) {
+            if (relic.maxUses !== undefined) {
                 const uses = document.createElement('span');
                 uses.className = 'uses';
                 uses.textContent = relic.uses;
-                div.appendChild(uses);
+                slot.appendChild(uses);
             }
             
-            container.appendChild(div);
+            relicsContainer.appendChild(slot);
         }
     },
     
-    showMessage(text, duration = 2000) {
-        // Simple message display
-        const existing = document.querySelector('.adventure-message');
-        if (existing) existing.remove();
+    updateMinimap() {
+        const grid = document.getElementById('minimap-grid');
+        if (!AdventureState.floorMap) return;
         
-        const msg = document.createElement('div');
-        msg.className = 'adventure-message';
-        msg.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.9);
-            border: 1px solid #e8a93e;
-            padding: 15px 30px;
-            border-radius: 8px;
-            color: #e8e0d5;
-            font-family: 'Cinzel', serif;
-            font-size: 16px;
-            z-index: 15010;
-            animation: fadeInOut ${duration}ms ease;
-        `;
-        msg.textContent = text;
-        document.body.appendChild(msg);
+        grid.innerHTML = '';
         
-        setTimeout(() => msg.remove(), duration);
-    },
-    
-    // ==================== RESULTS ====================
-    
-    showResults(isVictory, rewards) {
-        document.getElementById('adventure-screen').classList.remove('open');
+        const rooms = AdventureState.floorMap.rooms;
         
-        const banner = document.getElementById('results-banner');
-        banner.textContent = isVictory ? 'VICTORY!' : 'DEFEATED';
-        banner.className = `results-banner ${isVictory ? 'victory' : 'defeat'}`;
-        
-        document.getElementById('results-subtitle').textContent = isVictory 
-            ? 'The darkness retreats... for now.'
-            : 'The shadows claim another soul.';
-        
-        // Stats
-        document.getElementById('results-stats').innerHTML = `
-            <div class="result-stat">
-                <span class="label">Floors Completed</span>
-                <span class="value">${rewards.floorsCompleted}/3</span>
-            </div>
-            <div class="result-stat">
-                <span class="label">Battles Won</span>
-                <span class="value">${rewards.battlesWon}</span>
-            </div>
-            <div class="result-stat">
-                <span class="label">Items Found</span>
-                <span class="value">${AdventureState.itemsFound}</span>
-            </div>
-            <div class="result-stat">
-                <span class="label">Cards Discovered</span>
-                <span class="value">${AdventureState.discoveredCards.length}</span>
-            </div>
-        `;
-        
-        // Rewards
-        document.getElementById('results-rewards').innerHTML = `
-            <div class="reward-item">
-                <div class="icon">🔥</div>
-                <div class="amount">+${rewards.embers}</div>
-                <div class="label">Embers</div>
-            </div>
-            <div class="reward-item">
-                <div class="icon">⭐</div>
-                <div class="amount">+${rewards.xp}</div>
-                <div class="label">XP</div>
-            </div>
-        `;
-        
-        document.getElementById('adventure-results').classList.add('open');
-    },
-    
-    returnHome() {
-        document.getElementById('adventure-results').classList.remove('open');
-        
-        if (typeof HomeScreen !== 'undefined') {
-            HomeScreen.open();
-        }
-    },
-    
-    // ==================== SHOP ====================
-    
-    shopInventory: [
-        { 
-            id: 'heal2', 
-            name: 'Soul Salve', 
-            icon: '💚',
-            description: 'Restore vitality to your cryptids',
-            effect: 'Heal 2 Deaths',
-            cost: 30,
-            action: () => {
-                AdventureState.healDeaths(2);
-                return 'Your wounds mend... -2 Deaths';
-            }
-        },
-        { 
-            id: 'card', 
-            name: 'Mystery Card', 
-            icon: '🃏',
-            description: 'A card wrapped in shadow',
-            effect: 'Gain a random card',
-            cost: 50,
-            action: () => {
-                AdventureEngine.grantRandomCard('common');
-                return 'A new card joins your arsenal!';
-            }
-        },
-        { 
-            id: 'embers', 
-            name: 'Ember Cache', 
-            icon: '🔥',
-            description: 'A stash of burning embers',
-            effect: '+40 Embers',
-            cost: 25,
-            action: () => {
-                AdventureState.embers += 40;
-                return 'The cache bursts open! +40 Embers';
-            }
-        },
-        { 
-            id: 'rarecard', 
-            name: 'Forbidden Tome', 
-            icon: '📕',
-            description: 'Contains powerful secrets',
-            effect: 'Gain a rare card',
-            cost: 100,
-            action: () => {
-                AdventureEngine.grantRandomCard('rare');
-                return 'Ancient power flows into a new card!';
-            }
-        }
-    ],
-    
-    openShop() {
-        // Mark room as cleared FIRST
-        if (AdventureState.currentRoomData) {
-            AdventureState.currentRoomData.cleared = true;
+        // Find grid bounds
+        let maxY = 0;
+        for (const room of Object.values(rooms)) {
+            if (room.y > maxY) maxY = room.y;
         }
         
-        // Remove any existing shop modal
-        const existing = document.getElementById('adventure-shop-modal');
-        if (existing) existing.remove();
-        
-        // Pick 3 random items to offer
-        const shuffled = [...this.shopInventory].sort(() => Math.random() - 0.5);
-        const offerings = shuffled.slice(0, 3);
-        
-        // Create modal
-        const modal = document.createElement('div');
-        modal.id = 'adventure-shop-modal';
-        modal.className = 'adventure-shop-modal';
-        modal.innerHTML = `
-            <div class="shop-backdrop"></div>
-            <div class="shop-content">
-                <div class="shop-header">
-                    <span class="shop-icon">🏪</span>
-                    <h2 class="shop-title">Wandering Merchant</h2>
-                    <p class="shop-subtitle">"See anything you like, traveler?"</p>
-                </div>
-                <div class="shop-balance">
-                    <span class="balance-icon">🔥</span>
-                    <span class="balance-amount" id="shop-balance">${AdventureState.embers}</span>
-                    <span class="balance-label">Embers</span>
-                </div>
-                <div class="shop-items">
-                    ${offerings.map(item => `
-                        <div class="shop-item ${AdventureState.embers < item.cost ? 'unaffordable' : ''}" data-id="${item.id}" data-cost="${item.cost}">
-                            <div class="item-icon">${item.icon}</div>
-                            <div class="item-info">
-                                <div class="item-name">${item.name}</div>
-                                <div class="item-desc">${item.description}</div>
-                                <div class="item-effect">${item.effect}</div>
-                            </div>
-                            <div class="item-price">
-                                <span class="price-amount">${item.cost}</span>
-                                <span class="price-icon">🔥</span>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-                <div class="shop-result" id="shop-result"></div>
-                <button class="shop-leave" id="shop-leave">Leave Shop</button>
-            </div>
-        `;
-        
-        document.body.appendChild(modal);
-        
-        // Animate in
-        requestAnimationFrame(() => modal.classList.add('open'));
-        
-        // Bind item clicks
-        modal.querySelectorAll('.shop-item:not(.unaffordable)').forEach(item => {
-            item.addEventListener('click', () => {
-                const id = item.dataset.id;
-                const cost = parseInt(item.dataset.cost);
-                const shopItem = this.shopInventory.find(i => i.id === id);
+        // Create rows
+        for (let y = 0; y <= maxY; y++) {
+            const row = document.createElement('div');
+            row.className = 'minimap-row';
+            
+            // Find rooms in this row
+            const rowRooms = Object.values(rooms).filter(r => r.y === y);
+            rowRooms.sort((a, b) => a.x - b.x);
+            
+            // Pad with empty cells
+            for (let x = 0; x < 3; x++) {
+                const room = rowRooms.find(r => r.x === x) || 
+                            (y === 0 && x === 1 ? rooms['start'] : null) ||
+                            (y === maxY && x === 1 ? rooms['boss'] : null);
                 
-                if (shopItem && AdventureState.embers >= cost) {
-                    AdventureState.embers -= cost;
-                    const result = shopItem.action();
+                const cell = document.createElement('div');
+                cell.className = 'minimap-room';
+                
+                if (room) {
+                    const isVisited = AdventureState.visitedRooms.has(room.id);
+                    const isRevealed = AdventureState.revealedRooms.has(room.id);
+                    const isCurrent = room.id === AdventureState.currentRoomId;
                     
-                    // Update balance
-                    document.getElementById('shop-balance').textContent = AdventureState.embers;
+                    if (isCurrent) {
+                        cell.classList.add('current');
+                    } else if (isVisited) {
+                        cell.classList.add('visited');
+                    } else if (isRevealed) {
+                        cell.classList.add('revealed');
+                    } else {
+                        cell.classList.add('hidden');
+                    }
                     
-                    // Mark as purchased
-                    item.classList.add('purchased');
-                    item.innerHTML = `<div class="purchased-text">✓ Purchased</div>`;
-                    
-                    // Show result
-                    const resultEl = document.getElementById('shop-result');
-                    resultEl.textContent = result;
-                    resultEl.classList.add('show');
-                    
-                    // Update affordability
-                    modal.querySelectorAll('.shop-item:not(.purchased)').forEach(otherItem => {
-                        const otherCost = parseInt(otherItem.dataset.cost);
-                        if (AdventureState.embers < otherCost) {
-                            otherItem.classList.add('unaffordable');
-                        }
-                    });
-                    
-                    this.updateHUD();
+                    if (isRevealed || isVisited) {
+                        const info = FloorMapGenerator.getRoomInfo(room.type);
+                        cell.textContent = info.icon;
+                        cell.style.color = info.color;
+                    }
+                } else {
+                    cell.style.visibility = 'hidden';
                 }
-            });
-        });
-        
-        // Leave button
-        document.getElementById('shop-leave').addEventListener('click', () => {
-            modal.classList.remove('open');
-            setTimeout(() => {
-                modal.remove();
-                // Release the transition lock
-                AdventureEngine.transitionLock = false;
-            }, 300);
-        });
-    },
-    
-    revealTraps() {
-        const room = AdventureState.currentRoomData;
-        if (!room?.interactables) return;
-        
-        for (const item of room.interactables) {
-            if (item.type === 'trap') {
-                item.revealed = true;
+                
+                row.appendChild(cell);
             }
+            
+            grid.appendChild(row);
         }
     },
     
-    // ==================== EVENTS ====================
-    
-    eventRegistry: [
-        {
-            id: 'altar',
-            title: 'Mysterious Altar',
-            icon: '🗿',
-            text: 'A dark altar pulses with malevolent energy. Ancient whispers promise power... for a price.',
-            choices: [
-                { 
-                    text: '🩸 Sacrifice Health', 
-                    subtext: 'Heal 1 death → Gain a rare card',
-                    action: () => {
-                        if (AdventureState.deadCryptidCount > 0) {
-                            AdventureState.healDeaths(1);
-                            AdventureEngine.grantRandomCard('rare');
-                            return { success: true, message: 'The altar accepts your offering. A card materializes!' };
-                        } else {
-                            return { success: false, message: 'You have nothing to sacrifice...' };
-                        }
-                    }
-                },
-                { 
-                    text: '🚶 Walk Away', 
-                    subtext: 'Leave the altar undisturbed',
-                    action: () => ({ success: true, message: 'You leave the altar behind.' })
-                }
-            ]
-        },
-        {
-            id: 'spirit',
-            title: 'Wandering Spirit',
-            icon: '👻',
-            text: 'A translucent figure floats before you, its hollow eyes filled with ancient sorrow. It extends a spectral hand.',
-            choices: [
-                { 
-                    text: '🤝 Accept Gift', 
-                    subtext: '+25 Embers',
-                    action: () => {
-                        AdventureState.embers += 25;
-                        return { success: true, message: 'The spirit fades, leaving behind glowing embers.' };
-                    }
-                },
-                { 
-                    text: '🙏 Offer Comfort', 
-                    subtext: 'Heal 1 death',
-                    action: () => {
-                        AdventureState.healDeaths(1);
-                        return { success: true, message: 'The spirit smiles peacefully and dissolves into light.' };
-                    }
-                }
-            ]
-        },
-        {
-            id: 'chest',
-            title: 'Cursed Treasure',
-            icon: '💀',
-            text: 'An ornate chest sits alone, pulsing with dark energy. Riches or ruin await within.',
-            choices: [
-                { 
-                    text: '📦 Open Chest', 
-                    subtext: '60% chance: +50 Embers | 40% chance: +1 Death',
-                    action: () => {
-                        if (Math.random() < 0.6) {
-                            AdventureState.embers += 50;
-                            return { success: true, message: 'Gold and embers spill forth! +50 Embers!' };
-                        } else {
-                            AdventureState.addDeaths(1);
-                            return { success: false, message: 'A curse lashes out! Your soul takes damage.' };
-                        }
-                    }
-                },
-                { 
-                    text: '🚶 Leave It', 
-                    subtext: 'Better safe than sorry',
-                    action: () => ({ success: true, message: 'You resist the temptation and move on.' })
-                }
-            ]
-        },
-        {
-            id: 'fountain',
-            title: 'Corrupted Fountain',
-            icon: '⛲',
-            text: 'Dark waters bubble in an ancient fountain. Something glints beneath the surface.',
-            choices: [
-                { 
-                    text: '💧 Drink Deep', 
-                    subtext: 'Heal 2 deaths, but lose 20 embers',
-                    action: () => {
-                        if (AdventureState.embers >= 20) {
-                            AdventureState.embers -= 20;
-                            AdventureState.healDeaths(2);
-                            return { success: true, message: 'The waters restore your vitality!' };
-                        } else {
-                            return { success: false, message: 'You cannot afford the fountain\'s price.' };
-                        }
-                    }
-                },
-                { 
-                    text: '🪙 Fish for Coins', 
-                    subtext: '50% chance: +30 Embers | 50% chance: Nothing',
-                    action: () => {
-                        if (Math.random() < 0.5) {
-                            AdventureState.embers += 30;
-                            return { success: true, message: 'You find coins at the bottom! +30 Embers!' };
-                        } else {
-                            return { success: false, message: 'The waters are empty...' };
-                        }
-                    }
-                },
-                { 
-                    text: '🚶 Move On', 
-                    subtext: 'Leave the fountain alone',
-                    action: () => ({ success: true, message: 'You continue your journey.' })
-                }
-            ]
-        },
-        {
-            id: 'merchant',
-            title: 'Shadowy Merchant',
-            icon: '🎭',
-            text: 'A figure emerges from the darkness, their face hidden beneath a mask. "Trade?" they whisper.',
-            choices: [
-                { 
-                    text: '💰 Buy Card', 
-                    subtext: 'Pay 40 Embers for a random card',
-                    action: () => {
-                        if (AdventureState.embers >= 40) {
-                            AdventureState.embers -= 40;
-                            AdventureEngine.grantRandomCard('common');
-                            return { success: true, message: 'The merchant hands you a card and vanishes.' };
-                        } else {
-                            return { success: false, message: '"Not enough..." the merchant fades away.' };
-                        }
-                    }
-                },
-                { 
-                    text: '🎲 Gamble', 
-                    subtext: 'Pay 25 Embers: Win = +60 | Lose = Nothing',
-                    action: () => {
-                        if (AdventureState.embers >= 25) {
-                            AdventureState.embers -= 25;
-                            if (Math.random() < 0.45) {
-                                AdventureState.embers += 60;
-                                return { success: true, message: 'You win! The merchant chuckles. +60 Embers!' };
-                            } else {
-                                return { success: false, message: 'You lose. The merchant vanishes with your embers.' };
-                            }
-                        } else {
-                            return { success: false, message: '"Come back with more coin..."' };
-                        }
-                    }
-                },
-                { 
-                    text: '👋 Decline', 
-                    subtext: 'Walk away',
-                    action: () => ({ success: true, message: 'The merchant melts back into shadow.' })
-                }
-            ]
-        }
-    ],
-    
-    showEvent() {
-        // Mark room as cleared FIRST to prevent re-triggering
-        if (AdventureState.currentRoomData) {
-            AdventureState.currentRoomData.cleared = true;
-        }
+    show() {
+        this.container.classList.add('active');
         
-        // Pick a random event
-        const event = this.eventRegistry[Math.floor(Math.random() * this.eventRegistry.length)];
+        // Hide other game elements
+        const gameContainer = document.getElementById('game-container');
+        if (gameContainer) gameContainer.style.display = 'none';
         
-        // Create and show the event modal
-        this.showEventModal(event);
+        const homeScreen = document.getElementById('home-screen');
+        if (homeScreen) homeScreen.classList.add('hidden');
     },
     
-    showEventModal(event) {
-        // Remove any existing event modal
-        const existing = document.getElementById('adventure-event-modal');
-        if (existing) existing.remove();
-        
-        // Create modal
-        const modal = document.createElement('div');
-        modal.id = 'adventure-event-modal';
-        modal.className = 'adventure-event-modal';
-        modal.innerHTML = `
-            <div class="event-backdrop"></div>
-            <div class="event-content">
-                <div class="event-icon">${event.icon}</div>
-                <h2 class="event-title">${event.title}</h2>
-                <p class="event-text">${event.text}</p>
-                <div class="event-choices">
-                    ${event.choices.map((choice, i) => `
-                        <button class="event-choice" data-index="${i}">
-                            <span class="choice-text">${choice.text}</span>
-                            <span class="choice-subtext">${choice.subtext || ''}</span>
-                        </button>
-                    `).join('')}
-                </div>
-                <div class="event-result" id="event-result"></div>
-            </div>
-        `;
-        
-        document.body.appendChild(modal);
-        
-        // Animate in
-        requestAnimationFrame(() => {
-            modal.classList.add('open');
-        });
-        
-        // Bind choice buttons
-        modal.querySelectorAll('.event-choice').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const index = parseInt(btn.dataset.index);
-                const choice = event.choices[index];
-                
-                // Disable all buttons
-                modal.querySelectorAll('.event-choice').forEach(b => b.disabled = true);
-                btn.classList.add('selected');
-                
-                // Execute action
-                const result = choice.action();
-                
-                // Show result
-                const resultEl = document.getElementById('event-result');
-                resultEl.className = `event-result ${result.success ? 'success' : 'failure'}`;
-                resultEl.textContent = result.message;
-                resultEl.classList.add('show');
-                
-                // Update HUD
-                this.updateHUD();
-                
-                // Close after delay
-                setTimeout(() => {
-                    modal.classList.remove('open');
-                    setTimeout(() => {
-                        modal.remove();
-                        // Release the transition lock
-                        AdventureEngine.transitionLock = false;
-                    }, 300);
-                }, 2000);
-            });
-        });
+    hide() {
+        this.container.classList.remove('active');
+        IsometricEngine.stop();
     }
 };
 
-// ==================== BATTLE INTEGRATION ====================
-
-// Override win screen to handle adventure mode - wrapped in try-catch to prevent script failure
-try {
-    const originalWinScreenShow = window.WinScreen?.show;
-    if (originalWinScreenShow) {
-        window.WinScreen.show = function(data) {
-            if (window.isAdventureBattle) {
-                // Adventure battle ended
-                const isWin = data.isWin;
-                const playerDeaths = data.stats?.playerDeaths || 0;
-                
-                // Hide game container
-                document.getElementById('game-container').style.display = 'none';
-                
-                // Return to adventure
-                AdventureEngine.onBattleEnd(isWin, playerDeaths);
-            } else {
-                // Normal battle - use original
-                originalWinScreenShow.call(this, data);
-            }
-        };
-    }
-} catch (e) {
-    console.error('[Adventure Mode] Failed to override WinScreen:', e);
-}
-
 // ==================== INITIALIZATION ====================
 
-// Initialize on load - with defensive setup
-function initAdventureMode() {
-    try {
-        console.log('[Adventure Mode] Initializing...');
-        
-        // Make sure global objects exist
-        if (typeof AdventureEngine === 'undefined') {
-            console.error('[Adventure Mode] AdventureEngine not defined!');
-            return;
-        }
-        if (typeof AdventureUI === 'undefined') {
-            console.error('[Adventure Mode] AdventureUI not defined!');
-            return;
-        }
-        
-        AdventureEngine.init();
-        AdventureUI.init();
-        console.log('[Adventure Mode] Initialized successfully');
-    } catch (e) {
-        console.error('[Adventure Mode] Init error:', e);
-        console.error('[Adventure Mode] Stack:', e.stack);
-    }
+// Initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('[Adventure Mode] DOM ready, initializing UI...');
+    AdventureUI.init();
+});
+
+// Export for external access
+window.startAdventure = () => AdventureUI.startAdventure();
+
+console.log('[Adventure Mode] Isometric engine loaded successfully');
+
+} catch (error) {
+    console.error('[Adventure Mode] CRITICAL ERROR:', error);
 }
-
-// Ensure initialization happens - try multiple times if needed
-function safeInitAdventureMode() {
-    try {
-        initAdventureMode();
-    } catch (e) {
-        console.error('[Adventure Mode] Safe init failed:', e);
-    }
-}
-
-// Schedule initialization
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', safeInitAdventureMode);
-} else {
-    // Document already loaded - init now, but also schedule a fallback
-    safeInitAdventureMode();
-}
-
-// Fallback: also try to init after a short delay in case of race conditions
-setTimeout(() => {
-    if (typeof AdventureUI !== 'undefined' && !AdventureUI.initialized) {
-        console.log('[Adventure Mode] Late initialization attempt...');
-        safeInitAdventureMode();
-    }
-}, 500);
-
-console.log('[Adventure Mode] Script loaded');
-
-} catch (adventureModeError) {
-    // Catch any errors during script execution
-    console.error('[Adventure Mode] CRITICAL: Script failed to load!', adventureModeError);
-    console.error('[Adventure Mode] Stack:', adventureModeError.stack);
-    
-    // Create minimal stub objects so the game doesn't crash when trying to access them
-    if (typeof window.AdventureState === 'undefined') {
-        window.AdventureState = { isActive: false, reset: function(){} };
-    }
-    if (typeof window.AdventureUI === 'undefined') {
-        window.AdventureUI = {
-            initialized: false,
-            init: function() { console.error('[AdventureUI] Module failed to load'); },
-            openSetup: function() { 
-                console.error('[AdventureUI] Module failed to load');
-                // Show error
-                const msg = document.createElement('div');
-                msg.style.cssText = `
-                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                    background: rgba(0,0,0,0.95); border: 2px solid #e57373; padding: 30px;
-                    border-radius: 12px; color: #e8e0d5; font-family: 'Cinzel', serif;
-                    z-index: 99999; text-align: center; max-width: 400px;
-                `;
-                msg.innerHTML = `
-                    <div style="color: #e57373; font-size: 18px; margin-bottom: 15px;">⚠️ Adventure Mode Error</div>
-                    <div style="font-size: 14px;">The Adventure Mode module failed to initialize.</div>
-                    <div style="font-size: 12px; color: #888; margin: 10px 0;">This is usually caused by corrupted save data from an older version.</div>
-                    <button onclick="localStorage.removeItem('cryptidFates_playerData'); location.reload();" style="
-                        margin: 10px 5px; padding: 12px 20px; background: #c9302c; border: none;
-                        color: white; cursor: pointer; border-radius: 6px; font-family: inherit; font-size: 14px;
-                    ">Clear Save Data & Reload</button>
-                    <button onclick="this.parentElement.remove(); if(HomeScreen)HomeScreen.open();" style="
-                        margin: 10px 5px; padding: 12px 20px; background: #555; border: none;
-                        color: white; cursor: pointer; border-radius: 6px; font-family: inherit; font-size: 14px;
-                    ">Go Back</button>
-                `;
-                document.body.appendChild(msg);
-            }
-        };
-    }
-    if (typeof window.AdventureEngine === 'undefined') {
-        window.AdventureEngine = { init: function(){}, start: function(){}, stop: function(){} };
-    }
-}
-
