@@ -34,7 +34,10 @@ window.EffectEngine = {
      * Register a cryptid's effects when it enters the field
      */
     registerCryptid(cryptid, owner, game) {
+        console.log(`[EffectEngine] registerCryptid called for ${cryptid?.name}, effects:`, cryptid?.effects?.length || 0);
+        
         if (!cryptid.effects || !Array.isArray(cryptid.effects)) {
+            console.log(`[EffectEngine] ${cryptid?.name} has no declarative effects, skipping registration`);
             return; // Card has no declarative effects
         }
         
@@ -80,6 +83,7 @@ window.EffectEngine = {
             onEnterCombat: 'onEnterCombat',
             onEnterSupport: 'onSupport',
             onLeaveSupport: 'onLeavingSupport',
+            onLeavingSupport: 'onLeavingSupport',
             onDeath: 'onDeath',
             onAllyDeath: 'onDeath',
             onEnemyDeath: 'onDeath',
@@ -89,6 +93,8 @@ window.EffectEngine = {
             onDamageDealt: 'onDamageDealt',
             onDamageTaken: 'onDamageTaken',
             onAttack: 'onAttack',
+            onCombatAttack: 'onCombatAttack',
+            onBeforeAttack: 'onBeforeAttack',
             onKill: 'onKill',
         };
         
@@ -99,15 +105,17 @@ window.EffectEngine = {
             if (trigger === 'whileInCombat' || trigger === 'whileInSupport' || trigger === 'whileAlive') {
                 return null;
             }
-            console.warn(`[EffectEngine] Unknown trigger: ${trigger}`);
+            console.warn(`[EffectEngine] Unknown trigger: ${trigger} for effect ${effect.action}`);
             return null;
         }
         
         // Subscribe to the event
         const handler = (data) => {
+            console.log(`[EffectEngine] Event '${eventName}' fired, checking effect '${effect.action}' for ${cryptid.name}`);
             this.handleTrigger(cryptid, owner, game, effect, trigger, data);
         };
         
+        console.log(`[EffectEngine] Subscribing ${cryptid.name} to '${eventName}' for action '${effect.action}'`);
         return GameEvents.on(eventName, handler);
     },
     
@@ -119,15 +127,17 @@ window.EffectEngine = {
     handleTrigger(cryptid, owner, game, effect, trigger, eventData) {
         // Check if this trigger applies to this cryptid
         if (!this.shouldTrigger(cryptid, owner, game, effect, trigger, eventData)) {
+            console.log(`[EffectEngine] shouldTrigger returned false for ${cryptid.name}'s ${effect.action}`);
             return;
         }
         
         // Check conditions
         if (effect.condition && !this.checkCondition(cryptid, owner, game, effect.condition, eventData)) {
+            console.log(`[EffectEngine] Condition check failed for ${cryptid.name}'s ${effect.action}`);
             return;
         }
         
-        console.log(`[EffectEngine] Triggering ${effect.action} for ${cryptid.name}`);
+        console.log(`[EffectEngine] ✅ Triggering ${effect.action} for ${cryptid.name}`);
         
         // Execute the effect
         this.executeEffect(cryptid, owner, game, effect, eventData);
@@ -153,7 +163,9 @@ window.EffectEngine = {
         
         // For summon/position triggers, check if it's this cryptid
         if (trigger === 'onSummon' || trigger === 'onEnterCombat' || trigger === 'onEnterSupport') {
-            return eventData.cryptid?.id === cryptid.id || eventData.card?.id === cryptid.id;
+            const match = eventData.cryptid?.id === cryptid.id || eventData.card?.id === cryptid.id;
+            console.log(`[EffectEngine] shouldTrigger for ${trigger}: eventData.cryptid.id=${eventData.cryptid?.id}, cryptid.id=${cryptid.id}, match=${match}`);
+            return match;
         }
         
         // For turn triggers, check ownership
@@ -161,8 +173,8 @@ window.EffectEngine = {
             return eventData.owner === owner;
         }
         
-        // For damage triggers, check if this cryptid was involved
-        if (trigger === 'onDamageDealt') {
+        // For damage/attack triggers, check if this cryptid was involved
+        if (trigger === 'onDamageDealt' || trigger === 'onCombatAttack' || trigger === 'onBeforeAttack') {
             return eventData.attacker?.id === cryptid.id;
         }
         if (trigger === 'onDamageTaken') {
@@ -327,6 +339,7 @@ window.EffectEngine = {
             // Enemies
             case 'allEnemies':
                 targets = this.getAllCryptids(theirField);
+                console.log(`[EffectEngine] resolveTargets 'allEnemies': found ${targets.length} enemies`, targets.map(t => t.name));
                 break;
             case 'enemyCombatants':
                 targets = this.getColumnCryptids(theirField, enemyCombatCol);
@@ -341,6 +354,64 @@ window.EffectEngine = {
             case 'enemyOppositeSupport':
                 const oppSupport = theirField[enemySupportCol]?.[cryptid.row];
                 if (oppSupport) targets = [oppSupport];
+                break;
+            case 'enemiesAcross':
+                // Both enemy combatant and support in same row
+                const acrossCombat = theirField[enemyCombatCol]?.[cryptid.row];
+                const acrossSupport = theirField[enemySupportCol]?.[cryptid.row];
+                if (acrossCombat) targets.push(acrossCombat);
+                if (acrossSupport) targets.push(acrossSupport);
+                break;
+            case 'attackTarget':
+                // The target of the current attack (from event data)
+                if (eventData.target) targets = [eventData.target];
+                else if (eventData.defender) targets = [eventData.defender];
+                break;
+            case 'myCombatant':
+                // The combatant in the same row as this support
+                const myCombatant = myField[combatCol]?.[cryptid.row];
+                if (myCombatant && myCombatant.id !== cryptid.id) targets = [myCombatant];
+                break;
+            case 'enemyCombatantAcross':
+            case 'enemyCombatSlotAcross':
+                // The enemy combatant directly across
+                const enemyAcross = theirField[enemyCombatCol]?.[cryptid.row];
+                if (enemyAcross) targets = [enemyAcross];
+                break;
+            case 'enemyRowAcross':
+                // All enemies in the same row (both columns)
+                const rowCombat = theirField[enemyCombatCol]?.[cryptid.row];
+                const rowSupport = theirField[enemySupportCol]?.[cryptid.row];
+                if (rowCombat) targets.push(rowCombat);
+                if (rowSupport) targets.push(rowSupport);
+                break;
+            case 'attacker':
+                // The attacker in a damage/combat event
+                if (eventData.attacker) targets = [eventData.attacker];
+                break;
+            case 'randomAdjacentToVictim':
+                // Random enemy adjacent to the killed target (for on-kill effects)
+                if (eventData.cryptid || eventData.target) {
+                    const victim = eventData.cryptid || eventData.target;
+                    const victimRow = victim.row;
+                    const adjacentRows = [victimRow - 1, victimRow + 1].filter(r => r >= 0 && r < 3);
+                    const adjacent = [];
+                    adjacentRows.forEach(r => {
+                        const c1 = theirField[enemyCombatCol]?.[r];
+                        const c2 = theirField[enemySupportCol]?.[r];
+                        if (c1) adjacent.push(c1);
+                        if (c2) adjacent.push(c2);
+                    });
+                    if (adjacent.length > 0) {
+                        targets = [adjacent[Math.floor(Math.random() * adjacent.length)]];
+                    }
+                }
+                break;
+            case 'spellTarget':
+            case 'auraTarget':
+                // For spells/auras, the target comes from event data
+                if (eventData.target) targets = [eventData.target];
+                else if (eventData.targets) targets = eventData.targets;
                 break;
             case 'randomEnemy':
                 const enemies = this.getAllCryptids(theirField);
@@ -501,6 +572,10 @@ window.EffectEngine = {
             case 'dealDamagePerStack':
                 this.actionDealDamage(cryptid, owner, game, targets, amount, effect);
                 break;
+            
+            case 'dealDamagePerAilmentStack':
+                this.actionDealDamagePerAilmentStack(cryptid, owner, game, targets, effect);
+                break;
                 
             case 'heal':
                 this.actionHeal(cryptid, owner, game, targets, amount, effect);
@@ -553,6 +628,39 @@ window.EffectEngine = {
             case 'destroy':
                 this.actionDestroy(cryptid, owner, game, targets, effect);
                 break;
+            
+            case 'gainPermanentStat':
+                this.actionGainPermanentStat(cryptid, owner, game, effect);
+                break;
+            
+            case 'applyAilment':
+                this.actionApplyAilment(cryptid, owner, game, targets, effect.ailmentType, amount || 1, effect);
+                break;
+            
+            case 'extendAilments':
+                this.actionExtendAilments(cryptid, owner, game, targets, effect.amount || 1, effect);
+                break;
+            
+            case 'setFlag':
+            case 'grantFlag':
+                this.actionSetFlag(cryptid, owner, game, targets, effect.flag, effect.value !== false, effect);
+                break;
+            
+            case 'removeFlag':
+                this.actionSetFlag(cryptid, owner, game, targets, effect.flag, false, effect);
+                break;
+            
+            case 'grantCombatBonus':
+                this.actionGrantCombatBonus(cryptid, owner, game, targets, effect.bonusType, effect.amount, effect);
+                break;
+            
+            case 'removeCombatBonus':
+                this.actionRemoveCombatBonus(cryptid, owner, game, targets, effect.bonusType, effect.amount, effect);
+                break;
+            
+            case 'grantRegeneration':
+                this.actionGrantRegeneration(cryptid, owner, game, targets, effect.amount || 1, effect);
+                break;
                 
             default:
                 console.warn(`[EffectEngine] Unknown action: ${effect.action}`);
@@ -571,29 +679,42 @@ window.EffectEngine = {
     
     actionDealDamage(source, owner, game, targets, amounts, effect) {
         const amountArray = Array.isArray(amounts) ? amounts : targets.map(() => amounts);
+        const deaths = [];
         
+        // Phase 1: Apply damage to all targets, show damage numbers simultaneously
         targets.forEach((target, i) => {
             const damage = amountArray[i] || amountArray[0] || 1;
             if (damage <= 0) return;
             
-            const before = target.currentHp || target.hp;
             target.currentHp = (target.currentHp || target.hp) - damage;
             
             console.log(`[EffectEngine] ${source.name} deals ${damage} damage to ${target.name}`);
             
-            // Check for death
+            // Show damage number animation (all at once)
+            if (typeof CombatEffects !== 'undefined' && CombatEffects.showDamageNumber) {
+                CombatEffects.showDamageNumber(target, damage, damage >= 5);
+            }
+            
+            // Show clean hit effect
+            this.playHitEffect(target);
+            
+            // Collect deaths
             if (target.currentHp <= 0) {
                 target.killedBy = effect.killedBy || 'effect';
-                GameEvents.emit('onDeath', { cryptid: target, owner: target.owner, killer: source });
+                target.killedBySource = source;
+                deaths.push({ target, col: target.col, row: target.row, owner: target.owner });
             }
         });
         
-        // Play animation
-        EffectAnimations.playForAction('dealDamage', source, targets, { amount: amountArray });
-        
-        // Trigger re-render
+        // Phase 2: Re-render to show damage
         if (typeof renderSprites === 'function') {
-            setTimeout(() => renderSprites(), 100);
+            setTimeout(() => renderSprites(), 50);
+        }
+        
+        // Phase 3: Process deaths sequentially (row-first, combat before support)
+        if (deaths.length > 0) {
+            const sortedDeaths = this.sortDeathsForAnimation(deaths);
+            this.processDeathsSequentially(sortedDeaths, game, owner, 0);
         }
     },
     
@@ -822,6 +943,317 @@ window.EffectEngine = {
         EffectAnimations.playForAction('destroy', source, targets, {});
     },
     
+    /**
+     * Deal damage to each target based on their ailment stacks
+     * Used by Mothman's Harbinger ability
+     * 
+     * Animation strategy:
+     * 1. Show damage numbers on ALL targets simultaneously
+     * 2. Collect deaths
+     * 3. Animate deaths in sequence (left-to-right, top-to-bottom)
+     */
+    actionDealDamagePerAilmentStack(source, owner, game, targets, effect) {
+        const damagePerStack = effect.damagePerStack || 1;
+        let totalDamage = 0;
+        const deaths = [];
+        
+        console.log(`[EffectEngine] actionDealDamagePerAilmentStack: ${targets.length} targets, damagePerStack=${damagePerStack}`);
+        
+        // Phase 1: Apply damage to all targets simultaneously, show damage numbers
+        targets.forEach(target => {
+            const stacks = this.getAilmentStacks(target);
+            const damage = stacks * damagePerStack;
+            
+            console.log(`[EffectEngine] Target ${target.name}: ${stacks} ailment stacks, dealing ${damage} damage`);
+            
+            if (damage <= 0) {
+                console.log(`[EffectEngine] ${target.name} has no ailment stacks, no damage dealt`);
+                return;
+            }
+            
+            totalDamage += damage;
+            target.currentHp = (target.currentHp || target.hp) - damage;
+            
+            console.log(`[EffectEngine] ${source.name} deals ${damage} damage to ${target.name}`);
+            
+            // Show damage number animation (all at once)
+            if (typeof CombatEffects !== 'undefined' && CombatEffects.showDamageNumber) {
+                CombatEffects.showDamageNumber(target, damage, damage >= 5);
+            }
+            
+            // Show clean hit effect
+            this.playHitEffect(target);
+            
+            // Collect deaths for sequenced animation
+            if (target.currentHp <= 0) {
+                target.killedBy = effect.damageType || 'harbinger';
+                target.killedBySource = source;
+                deaths.push({ target, col: target.col, row: target.row, owner: target.owner });
+            }
+        });
+        
+        // Phase 2: Render to show damage numbers
+        if (typeof renderSprites === 'function') {
+            setTimeout(() => renderSprites(), 50);
+        }
+        
+        // Phase 3: Process deaths in sequence (row-first, combat before support)
+        if (deaths.length > 0) {
+            const sortedDeaths = this.sortDeathsForAnimation(deaths);
+            this.processDeathsSequentially(sortedDeaths, game, owner, 0);
+        }
+        
+        return totalDamage;
+    },
+    
+    /**
+     * Process deaths one at a time with animations
+     * Order: row-first (top to bottom), then column (combat before support)
+     * 
+     * @param {Array} deaths - Array of { target, col, row, owner }
+     * @param {Object} game - Game instance
+     * @param {string} killerOwner - Owner of the source that caused deaths
+     * @param {number} index - Current index in deaths array
+     */
+    processDeathsSequentially(deaths, game, killerOwner, index) {
+        if (index >= deaths.length) {
+            // All deaths processed - now handle promotions
+            this.processPromotionsAfterDeaths(deaths, game, () => {
+                if (typeof renderAll === 'function') {
+                    setTimeout(() => renderAll(), 100);
+                }
+            });
+            return;
+        }
+        
+        const { target, col, row, owner } = deaths[index];
+        const DEATH_DELAY = 500; // ms between death animations
+        
+        // Find the sprite for death animation
+        const sprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${owner}"][data-col="${col}"][data-row="${row}"]`
+        );
+        
+        // Play death animation
+        if (sprite && typeof CombatEffects !== 'undefined' && CombatEffects.playDramaticDeath) {
+            const rarity = target.rarity || 'common';
+            CombatEffects.playDramaticDeath(sprite, owner, rarity, () => {
+                // Actually kill the cryptid after animation
+                game.killCryptid(target, killerOwner);
+                
+                // Process next death
+                setTimeout(() => {
+                    this.processDeathsSequentially(deaths, game, killerOwner, index + 1);
+                }, 50);
+            });
+        } else {
+            // Fallback: no animation available
+            game.killCryptid(target, killerOwner);
+            
+            // Process next death after delay
+            setTimeout(() => {
+                this.processDeathsSequentially(deaths, game, killerOwner, index + 1);
+            }, DEATH_DELAY);
+        }
+    },
+    
+    /**
+     * Sort deaths in the correct order: row-first (top to bottom), then column (combat before support)
+     * This gives: top combat, top support, middle combat, middle support, bottom combat, bottom support
+     */
+    sortDeathsForAnimation(deaths) {
+        return deaths.sort((a, b) => {
+            // Row first (top to bottom)
+            if (a.row !== b.row) return a.row - b.row;
+            
+            // Then by column - combat cols vary by owner, but typically:
+            // For enemy: col 0 is combat, col 1 is support
+            // For player: col 1 is combat, col 0 is support
+            // We want combat before support
+            const aIsCombat = (a.owner === 'enemy' && a.col === 0) || (a.owner === 'player' && a.col === 1);
+            const bIsCombat = (b.owner === 'enemy' && b.col === 0) || (b.owner === 'player' && b.col === 1);
+            
+            if (aIsCombat && !bIsCombat) return -1;
+            if (!aIsCombat && bIsCombat) return 1;
+            return 0;
+        });
+    },
+    
+    /**
+     * Process promotions after all deaths have been animated
+     * Supports that survived should promote to combat if their combatant died
+     */
+    processPromotionsAfterDeaths(deaths, game, onComplete) {
+        // Find rows where combatants died but supports survived
+        const promotionRows = new Map(); // owner -> Set of rows needing promotion
+        
+        deaths.forEach(death => {
+            const owner = death.owner;
+            const row = death.row;
+            
+            // Check if this was a combatant death
+            const combatCol = owner === 'enemy' ? 0 : 1;
+            if (death.col === combatCol) {
+                // Combatant died - check if support exists and survived
+                const supportCol = owner === 'enemy' ? 1 : 0;
+                const field = owner === 'player' ? game.playerField : game.enemyField;
+                const support = field[supportCol]?.[row];
+                
+                if (support && (support.currentHp > 0 || support.hp > 0)) {
+                    if (!promotionRows.has(owner)) {
+                        promotionRows.set(owner, new Set());
+                    }
+                    promotionRows.get(owner).add(row);
+                }
+            }
+        });
+        
+        // If no promotions needed, complete immediately
+        if (promotionRows.size === 0) {
+            onComplete?.();
+            return;
+        }
+        
+        // Collect all promotions and sort by row
+        const promotions = [];
+        promotionRows.forEach((rows, owner) => {
+            rows.forEach(row => {
+                promotions.push({ owner, row });
+            });
+        });
+        promotions.sort((a, b) => a.row - b.row);
+        
+        // Process promotions sequentially
+        this.processPromotionsSequentially(promotions, game, 0, onComplete);
+    },
+    
+    /**
+     * Animate promotions one at a time
+     */
+    processPromotionsSequentially(promotions, game, index, onComplete) {
+        if (index >= promotions.length) {
+            onComplete?.();
+            return;
+        }
+        
+        const { owner, row } = promotions[index];
+        const PROMOTION_DELAY = 400;
+        
+        // Use game's built-in promotion if available
+        if (typeof game.promoteSupport === 'function') {
+            game.promoteSupport(owner, row);
+        }
+        
+        // Render to show promotion
+        if (typeof renderAll === 'function') {
+            renderAll();
+        }
+        
+        // Process next promotion after delay
+        setTimeout(() => {
+            this.processPromotionsSequentially(promotions, game, index + 1, onComplete);
+        }, PROMOTION_DELAY);
+    },
+    
+    /**
+     * Gain permanent stat buffs (used by Mothman's on enemy death effect)
+     */
+    actionGainPermanentStat(source, owner, game, effect) {
+        const atkGain = effect.atk || 0;
+        const hpGain = effect.hp || 0;
+        
+        if (atkGain) {
+            source.currentAtk = (source.currentAtk || source.atk) + atkGain;
+            source.baseAtk = (source.baseAtk || source.atk) + atkGain;
+        }
+        if (hpGain) {
+            source.currentHp = (source.currentHp || source.hp) + hpGain;
+            source.maxHp = (source.maxHp || source.hp) + hpGain;
+        }
+        
+        console.log(`[EffectEngine] ${source.name} permanently gains +${atkGain}/+${hpGain}`);
+        
+        EffectAnimations.playForAction('buffStats', source, [source], { atk: atkGain, hp: hpGain });
+        
+        if (typeof renderSprites === 'function') {
+            setTimeout(() => renderSprites(), 100);
+        }
+    },
+    
+    /**
+     * Extend existing ailments on targets (used by Decay Rat)
+     */
+    actionExtendAilments(source, owner, game, targets, amount, effect) {
+        targets.forEach(target => {
+            if (target.burnTurns > 0) {
+                target.burnTurns += amount;
+            }
+            if (target.bleedTurns > 0) {
+                target.bleedTurns += amount;
+            }
+            if (target.paralyzeTurns > 0) {
+                target.paralyzeTurns += amount;
+            }
+            if (target.calamityCounters > 0) {
+                target.calamityCounters += amount;
+            }
+            if (target.curseTokens > 0) {
+                target.curseTokens += amount;
+            }
+            
+            console.log(`[EffectEngine] Extended ailments on ${target.name} by ${amount} turns`);
+        });
+        
+        if (typeof renderSprites === 'function') {
+            setTimeout(() => renderSprites(), 100);
+        }
+    },
+    
+    /**
+     * Set a flag on targets
+     */
+    actionSetFlag(source, owner, game, targets, flag, value, effect) {
+        targets.forEach(target => {
+            target[flag] = value;
+            console.log(`[EffectEngine] Set ${flag}=${value} on ${target.name}`);
+        });
+        
+        if (typeof renderSprites === 'function') {
+            setTimeout(() => renderSprites(), 100);
+        }
+    },
+    
+    /**
+     * Grant a combat bonus to targets
+     */
+    actionGrantCombatBonus(source, owner, game, targets, bonusType, amount, effect) {
+        targets.forEach(target => {
+            target[bonusType] = (target[bonusType] || 0) + amount;
+            console.log(`[EffectEngine] Granted ${bonusType}+${amount} to ${target.name}`);
+        });
+    },
+    
+    /**
+     * Remove a combat bonus from targets
+     */
+    actionRemoveCombatBonus(source, owner, game, targets, bonusType, amount, effect) {
+        targets.forEach(target => {
+            target[bonusType] = Math.max(0, (target[bonusType] || 0) - amount);
+            console.log(`[EffectEngine] Removed ${bonusType}-${amount} from ${target.name}`);
+        });
+    },
+    
+    /**
+     * Grant regeneration to targets
+     */
+    actionGrantRegeneration(source, owner, game, targets, amount, effect) {
+        targets.forEach(target => {
+            target.hasRegeneration = true;
+            target.regenerationAmount = (target.regenerationAmount || 0) + amount;
+            console.log(`[EffectEngine] Granted regeneration(${amount}) to ${target.name}`);
+        });
+    },
+    
     // ==================== AURA MANAGEMENT ====================
     
     removeAurasFrom(source) {
@@ -885,7 +1317,98 @@ window.EffectEngine = {
         const field = owner === 'player' ? game.enemyField : game.playerField;
         return this.getAllCryptids(field).length;
     },
+    
+    /**
+     * Play a clean hit effect on a target
+     * Uses a smooth flash + shake instead of the spastic CSS animation
+     * @param {Object} target - Target cryptid with owner, col, row properties
+     * @param {Object} options - Optional settings { intensity: 'light'|'normal'|'heavy', direction: 'left'|'right'|'auto' }
+     */
+    playHitEffect(target, options = {}) {
+        if (!target) return;
+        
+        const sprite = document.querySelector(
+            `.cryptid-sprite[data-owner="${target.owner}"][data-col="${target.col}"][data-row="${target.row}"]`
+        );
+        
+        if (!sprite) return;
+        
+        this.playHitEffectOnSprite(sprite, target, options);
+    },
+    
+    /**
+     * Play hit effect directly on a sprite element
+     * Can be called from anywhere (game-core, etc.)
+     */
+    playHitEffectOnSprite(sprite, target, options = {}) {
+        if (!sprite) return;
+        
+        const intensity = options.intensity || 'normal';
+        const direction = options.direction || (target?.owner === 'enemy' ? 'left' : 'right');
+        
+        // Intensity settings
+        const intensityConfig = {
+            light:  { flash: 1.8, recoil: 6,  scale: 0.97, duration: 250 },
+            normal: { flash: 2.2, recoil: 10, scale: 0.94, duration: 300 },
+            heavy:  { flash: 2.8, recoil: 15, scale: 0.90, duration: 380 }
+        };
+        const config = intensityConfig[intensity] || intensityConfig.normal;
+        
+        // Direction for recoil
+        const recoilX = direction === 'left' ? -config.recoil : config.recoil;
+        
+        // Store original styles
+        const originalTransform = sprite.style.transform || '';
+        const originalFilter = sprite.style.filter || '';
+        
+        // Phase 1: Instant white flash (15% of duration)
+        sprite.style.filter = `brightness(${config.flash}) saturate(0.2)`;
+        sprite.style.transition = 'none';
+        
+        // Phase 2: Quick recoil movement (35% of duration)
+        setTimeout(() => {
+            sprite.style.transition = `transform ${config.duration * 0.35}ms cubic-bezier(0.25, 0.46, 0.45, 0.94), filter ${config.duration * 0.4}ms ease-out`;
+            sprite.style.transform = originalTransform + ` translateX(${recoilX}px) scale(${config.scale})`;
+            sprite.style.filter = 'brightness(0.75)';
+        }, config.duration * 0.15);
+        
+        // Phase 3: Return to normal (50% of duration)
+        setTimeout(() => {
+            sprite.style.transition = `transform ${config.duration * 0.5}ms cubic-bezier(0.34, 1.56, 0.64, 1), filter ${config.duration * 0.4}ms ease-out`;
+            sprite.style.transform = originalTransform;
+            sprite.style.filter = originalFilter;
+        }, config.duration * 0.5);
+        
+        // Phase 4: Clean up inline styles
+        setTimeout(() => {
+            sprite.style.transition = '';
+            sprite.style.transform = '';
+            sprite.style.filter = '';
+        }, config.duration + 50);
+        
+        // Also show impact flash if CombatEffects is available
+        if (typeof CombatEffects !== 'undefined' && CombatEffects.createImpactFlash) {
+            const battlefield = document.getElementById('battlefield-area');
+            if (battlefield) {
+                const rect = sprite.getBoundingClientRect();
+                const bRect = battlefield.getBoundingClientRect();
+                const impactX = rect.left + rect.width / 2 - bRect.left;
+                const impactY = rect.top + rect.height / 2 - bRect.top;
+                CombatEffects.createImpactFlash(impactX, impactY, 30 + (intensity === 'heavy' ? 30 : intensity === 'normal' ? 15 : 0));
+            }
+        }
+    },
 };
 
-console.log('[EffectEngine] Effect execution engine loaded');
+// Expose globally for use by game-core.js and other files
+window.playHitEffect = function(target, options) {
+    EffectEngine.playHitEffect(target, options);
+};
+
+window.playHitEffectOnSprite = function(sprite, target, options) {
+    EffectEngine.playHitEffectOnSprite(sprite, target, options);
+};
+
+console.log('[EffectEngine] Effect execution engine loaded v5 - universal playHitEffect');
+
 

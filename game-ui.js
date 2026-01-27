@@ -2785,7 +2785,9 @@ function executeAuraDirect(card, col, row) {
 // Execute Decay Rat's support ability on a selected target
 function executeDecayRatAbility(targetCol, targetRow) {
     const cryptid = ui.targetingDecayRat;
-    if (!cryptid || !cryptid.activateDecayDebuff) {
+    // Support both data-driven (activatedAbilities) and legacy (activateDecayDebuff) formats
+    const hasAbility = cryptid?.activatedAbilities?.find(a => a.id === 'decayDebuff') || cryptid?.activateDecayDebuff;
+    if (!cryptid || !hasAbility) {
         cancelDecayRatTargeting();
         return;
     }
@@ -2817,17 +2819,6 @@ function executeDecayRatAbility(targetCol, targetRow) {
         setTimeout(() => ratSprite.classList.remove('ability-activate'), 500);
     }
     
-    GameEvents.emit('onActivatedAbility', { 
-        ability: 'decayRatDebuff', 
-        card: cryptid, 
-        owner, 
-        col: cryptid.col, 
-        row: cryptid.row, 
-        targetCol,
-        targetRow,
-        target: targetEnemy 
-    });
-    
     // Clean up targeting state first
     cancelDecayRatTargeting();
     document.getElementById('cancel-target').classList.remove('show');
@@ -2835,8 +2826,12 @@ function executeDecayRatAbility(targetCol, targetRow) {
     // Play debuff animation, then execute ability
     if (window.CombatEffects?.playDebuffEffect && targetSprite) {
         window.CombatEffects.playDebuffEffect(targetSprite, () => {
-            // Execute the actual debuff after animation
-            const result = cryptid.activateDecayDebuff(cryptid, game, targetCol, targetRow);
+            // Execute the actual debuff after animation (data-driven or legacy)
+            if (cryptid.activatedAbilities) {
+                game.activateAbility(cryptid, 'decayDebuff', { col: targetCol, row: targetRow });
+            } else if (cryptid.activateDecayDebuff) {
+                cryptid.activateDecayDebuff(cryptid, game, targetCol, targetRow);
+            }
             
             // Check if target died
             if (targetEnemy.currentHp <= 0 && targetSprite) {
@@ -2861,7 +2856,12 @@ function executeDecayRatAbility(targetCol, targetRow) {
             setTimeout(() => targetSprite.classList.remove('debuff-applied'), 500);
         }
         
-        const result = cryptid.activateDecayDebuff(cryptid, game, targetCol, targetRow);
+        // Execute (data-driven or legacy)
+        if (cryptid.activatedAbilities) {
+            game.activateAbility(cryptid, 'decayDebuff', { col: targetCol, row: targetRow });
+        } else if (cryptid.activateDecayDebuff) {
+            cryptid.activateDecayDebuff(cryptid, game, targetCol, targetRow);
+        }
         
         // Check if target died
         if (targetEnemy.currentHp <= 0 && targetSprite) {
@@ -5463,10 +5463,12 @@ function showCryptidTooltip(cryptid, col, row, owner) {
         }
     }
     
-    // Handle sacrifice button
+    // Handle sacrifice button - supports both data-driven and legacy formats
     const sacrificeBtn = document.getElementById('tooltip-sacrifice-btn');
-    const canSacrifice = cryptid.hasSacrificeAbility && 
-                         cryptid.sacrificeAbilityAvailable && 
+    const hasSacrificeAbility = cryptid.activatedAbilities?.find(a => a.id === 'sacrifice') || cryptid.hasSacrificeAbility;
+    const sacrificeAvailable = cryptid.sacrificeAvailable !== false && cryptid.sacrificeAbilityAvailable !== false;
+    const canSacrifice = hasSacrificeAbility && 
+                         sacrificeAvailable && 
                          cryptid.col === supportCol &&
                          owner === 'player' && 
                          game.currentTurn === 'player' &&
@@ -5476,52 +5478,58 @@ function showCryptidTooltip(cryptid, col, row, owner) {
         sacrificeBtn.style.display = 'block';
         sacrificeBtn.onclick = (e) => {
             e.stopPropagation();
-            if (cryptid.activateSacrifice) {
-                const combatant = game.getCombatant(cryptid);
-                const combatCol = game.getCombatCol(owner);
-                const combatantRow = cryptid.row;
-                
-                // Get sprite for death animation BEFORE activating sacrifice
-                const combatantSprite = document.querySelector(
-                    `.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${combatantRow}"]`
-                );
-                const rarity = combatant?.rarity || 'common';
-                
-                GameEvents.emit('onActivatedAbility', { ability: 'sacrifice', card: cryptid, owner, col: cryptid.col, row: cryptid.row, target: combatant });
-                hideTooltip();
-                isAnimating = true;
-                
-                // Pre-mark the promotion in activePromotions BEFORE activating sacrifice
-                // This prevents renderSprites from showing the support at combat position prematurely
-                if (!window.activePromotions) window.activePromotions = new Set();
-                window.activePromotions.add(`${owner}-${combatantRow}`);
-                
-                // Play death animation for the sacrificed combatant
-                if (combatantSprite && window.CombatEffects?.playDramaticDeath) {
-                    // Activate sacrifice after a small delay (so animation starts first)
-                    setTimeout(() => cryptid.activateSacrifice(cryptid, game), 100);
-                    
-                    window.CombatEffects.playDramaticDeath(combatantSprite, owner, rarity, () => {
-                        // After death animation, process pending promotions with animation
-                        renderAll();
-                        processPendingPromotions(() => {
-                            isAnimating = false;
-                            renderAll();
-                            updateButtons();
-                        });
-                    });
-                } else {
-                    // Fallback - no animation available
+            const combatant = game.getCombatant(cryptid);
+            const combatCol = game.getCombatCol(owner);
+            const combatantRow = cryptid.row;
+            
+            // Get sprite for death animation BEFORE activating sacrifice
+            const combatantSprite = document.querySelector(
+                `.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${combatantRow}"]`
+            );
+            const rarity = combatant?.rarity || 'common';
+            
+            hideTooltip();
+            isAnimating = true;
+            
+            // Pre-mark the promotion in activePromotions BEFORE activating sacrifice
+            // This prevents renderSprites from showing the support at combat position prematurely
+            if (!window.activePromotions) window.activePromotions = new Set();
+            window.activePromotions.add(`${owner}-${combatantRow}`);
+            
+            // Function to execute the sacrifice
+            const executeSacrifice = () => {
+                if (cryptid.activatedAbilities) {
+                    game.activateAbility(cryptid, 'sacrifice');
+                } else if (cryptid.activateSacrifice) {
                     cryptid.activateSacrifice(cryptid, game);
-                    setTimeout(() => {
-                        renderAll();
-                        processPendingPromotions(() => {
-                            isAnimating = false;
-                            renderAll();
-                            updateButtons();
-                        });
-                    }, TIMING.deathAnim);
                 }
+            };
+            
+            // Play death animation for the sacrificed combatant
+            if (combatantSprite && window.CombatEffects?.playDramaticDeath) {
+                // Activate sacrifice after a small delay (so animation starts first)
+                setTimeout(executeSacrifice, 100);
+                
+                window.CombatEffects.playDramaticDeath(combatantSprite, owner, rarity, () => {
+                    // After death animation, process pending promotions with animation
+                    renderAll();
+                    processPendingPromotions(() => {
+                        isAnimating = false;
+                        renderAll();
+                        updateButtons();
+                    });
+                });
+            } else {
+                // Fallback - no animation available
+                executeSacrifice();
+                setTimeout(() => {
+                    renderAll();
+                    processPendingPromotions(() => {
+                        isAnimating = false;
+                        renderAll();
+                        updateButtons();
+                    });
+                }, TIMING.deathAnim);
             }
         };
         tooltip.classList.add('has-sacrifice');
@@ -5530,10 +5538,12 @@ function showCryptidTooltip(cryptid, col, row, owner) {
         tooltip.classList.remove('has-sacrifice');
     }
     
-    // Handle Blood Pact button (Vampire Neophyte)
+    // Handle Blood Pact button (Vampire Initiate) - supports both data-driven and legacy formats
     const bloodPactBtn = document.getElementById('tooltip-bloodpact-btn');
-    const canBloodPact = cryptid.hasBloodPactAbility && 
-                         cryptid.bloodPactAvailable && 
+    const hasBloodPactAbility = cryptid.activatedAbilities?.find(a => a.id === 'bloodPact') || cryptid.hasBloodPactAbility;
+    const bloodPactAvailable = cryptid.bloodPactAvailable !== false;
+    const canBloodPact = hasBloodPactAbility && 
+                         bloodPactAvailable && 
                          cryptid.col === supportCol &&
                          owner === 'player' && 
                          game.currentTurn === 'player' &&
@@ -5543,45 +5553,47 @@ function showCryptidTooltip(cryptid, col, row, owner) {
         bloodPactBtn.style.display = 'block';
         bloodPactBtn.onclick = (e) => {
             e.stopPropagation();
-            if (cryptid.activateBloodPact) {
-                const combatant = game.getCombatant(cryptid);
-                // Use effective HP (combatant + support) to determine if this will kill
-                const effectiveHp = combatant ? game.getEffectiveHp(combatant) : 0;
-                const willKill = effectiveHp <= 1;
+            const combatant = game.getCombatant(cryptid);
+            // Use effective HP (combatant + support) to determine if this will kill
+            const effectiveHp = combatant ? game.getEffectiveHp(combatant) : 0;
+            const willKill = effectiveHp <= 1;
+            
+            // Show activation message
+            showMessage(`🩸 ${cryptid.name} uses Blood Pact!`, 1000);
+            
+            // Add damage animation to combatant
+            const combatCol = game.getCombatCol(owner);
+            const combatantSprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${cryptid.row}"]`);
+            if (combatantSprite) {
+                combatantSprite.classList.add('hit-recoil');
+                setTimeout(() => combatantSprite.classList.remove('hit-recoil'), 250);
                 
-                // Show activation message
-                showMessage(`🩸 ${cryptid.name} uses Blood Pact!`, 1000);
-                
-                // Add damage animation to combatant
-                const combatCol = game.getCombatCol(owner);
-                const combatantSprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${combatCol}"][data-row="${cryptid.row}"]`);
-                if (combatantSprite) {
-                    combatantSprite.classList.add('hit-recoil');
-                    setTimeout(() => combatantSprite.classList.remove('hit-recoil'), 250);
-                    
-                    // Show floating damage on combatant
-                    if (window.CombatEffects && combatant) {
-                        CombatEffects.showDamageNumber(combatant, 1, false);
-                    }
+                // Show floating damage on combatant
+                if (window.CombatEffects && combatant) {
+                    CombatEffects.showDamageNumber(combatant, 1, false);
                 }
-                
-                // Add blood effect on vampire
-                const vampireSprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`);
-                if (vampireSprite) {
-                    vampireSprite.classList.add('ability-activate');
-                    setTimeout(() => vampireSprite.classList.remove('ability-activate'), 500);
-                }
-                
-                GameEvents.emit('onActivatedAbility', { ability: 'bloodPact', card: cryptid, owner, col: cryptid.col, row: cryptid.row, target: combatant, willKill });
+            }
+            
+            // Add blood effect on vampire
+            const vampireSprite = document.querySelector(`.cryptid-sprite[data-owner="${owner}"][data-col="${cryptid.col}"][data-row="${cryptid.row}"]`);
+            if (vampireSprite) {
+                vampireSprite.classList.add('ability-activate');
+                setTimeout(() => vampireSprite.classList.remove('ability-activate'), 500);
+            }
+            
+            // Execute ability (data-driven or legacy)
+            if (cryptid.activatedAbilities) {
+                game.activateAbility(cryptid, 'bloodPact');
+            } else if (cryptid.activateBloodPact) {
                 cryptid.activateBloodPact(cryptid, game);
-                hideTooltip();
-                
-                if (willKill) {
-                    // Combatant will die - delay for death + promotion
-                    setTimeout(() => renderAll(), TIMING.deathAnim + TIMING.promoteAnim + 200);
-                } else {
-                    setTimeout(() => renderAll(), 400);
-                }
+            }
+            hideTooltip();
+            
+            if (willKill) {
+                // Combatant will die - delay for death + promotion
+                setTimeout(() => renderAll(), TIMING.deathAnim + TIMING.promoteAnim + 200);
+            } else {
+                setTimeout(() => renderAll(), 400);
             }
         };
         tooltip.classList.add('has-sacrifice');
@@ -5689,11 +5701,12 @@ function showCryptidTooltip(cryptid, col, row, owner) {
         }
     }
     
-    // Handle Decay Rat button
+    // Handle Decay Rat button - supports both data-driven and legacy formats
     const decayRatBtn = document.getElementById('tooltip-decayrat-btn');
     if (decayRatBtn) {
         // Check if this is Decay Rat in support position with ability available
-        const isDecayRatSupport = cryptid.hasDecayRatAbility && 
+        const hasDecayAbility = cryptid.activatedAbilities?.find(a => a.id === 'decayDebuff') || cryptid.hasDecayRatAbility;
+        const isDecayRatSupport = hasDecayAbility && 
                                   cryptid.col === supportCol &&
                                   owner === 'player' && 
                                   game.currentTurn === 'player';
@@ -5714,7 +5727,8 @@ function showCryptidTooltip(cryptid, col, row, owner) {
             }
         }
         
-        const abilityAvailable = cryptid.decayRatDebuffAvailable;
+        // Check availability - data-driven uses decayDebuffAvailable, legacy uses decayRatDebuffAvailable
+        const abilityAvailable = cryptid.decayDebuffAvailable !== false && cryptid.decayRatDebuffAvailable !== false;
         
         if (isDecayRatSupport) {
             decayRatBtn.style.display = 'block';

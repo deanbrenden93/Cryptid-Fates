@@ -491,3 +491,4 @@ window.EffectAnimations = {
 
 console.log('[EffectAnimations] Effect animation system loaded');
 
+

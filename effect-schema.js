@@ -286,6 +286,69 @@ const Ailments = {
     silence: 'silence',                      // Abilities disabled
 };
 
+// ==================== ACTIVATED ABILITIES ====================
+// These define player-clickable abilities that appear as buttons in tooltips
+// Unlike passive effects, these require explicit player action to activate
+
+/**
+ * Activated Ability Schema:
+ * {
+ *     id: string,              // Unique identifier for this ability
+ *     name: string,            // Display name for button
+ *     description: string,     // Tooltip description (optional)
+ *     position: 'support'|'combat'|'any',  // Where ability is available
+ *     requiresCombatant: boolean,  // Needs a combatant in same row
+ *     requiresTarget: string,      // Target selection type (optional)
+ *     targetFilter: object,        // Filter for valid targets (optional)
+ *     oncePerTurn: boolean,        // Resets each turn
+ *     oncePerGame: boolean,        // Can only use once ever
+ *     condition: object,           // Condition to be available (optional)
+ *     effects: array,              // Array of effects to execute
+ * }
+ */
+
+const ActivatedAbilityTypes = {
+    // Ability availability positions
+    positions: {
+        support: 'support',      // Only available in support column
+        combat: 'combat',        // Only available in combat column
+        any: 'any',              // Available in any position
+    },
+    
+    // Target selection types for abilities that need player to pick
+    targetTypes: {
+        none: 'none',                    // No target needed
+        combatant: 'combatant',          // The combatant in same row
+        anyAlly: 'anyAlly',              // Any friendly cryptid
+        anyEnemy: 'anyEnemy',            // Any enemy cryptid
+        ailmentedEnemy: 'ailmentedEnemy',// Any enemy with ailments
+        emptySlot: 'emptySlot',          // An empty tile
+    },
+};
+
+// Common activated ability effects that the engine handles
+const ActivatedAbilityEffects = {
+    // Combat-related
+    killCombatant: 'killCombatant',      // Kill the combatant in same row
+    damageCombatant: 'damageCombatant',  // Deal damage to combatant
+    
+    // Stat modifications
+    setStats: 'setStats',                // Set ATK/HP to specific values
+    buffStats: 'buffStats',              // Add ATK/HP
+    debuffStats: 'debuffStats',          // Reduce ATK/HP
+    
+    // Keyword/flag granting
+    grantKeyword: 'grantKeyword',        // Grant a keyword
+    grantFlag: 'grantFlag',              // Grant a game flag
+    
+    // Resource effects
+    gainPyre: 'gainPyre',                // Gain pyre
+    
+    // Target-based effects
+    debuffTarget: 'debuffTarget',        // Debuff selected target
+    damageTarget: 'damageTarget',        // Damage selected target
+};
+
 // ==================== EXPORT ====================
 
 window.EffectSchema = {
@@ -297,6 +360,8 @@ window.EffectSchema = {
     Keywords,
     Auras,
     Ailments,
+    ActivatedAbility: ActivatedAbilityTypes,
+    ActivatedEffects: ActivatedAbilityEffects,
     
     // Helper to validate an effect definition
     validateEffect(effect) {
@@ -316,8 +381,26 @@ window.EffectSchema = {
         }
         
         return { valid: errors.length === 0, errors };
+    },
+    
+    // Helper to validate an activated ability definition
+    validateActivatedAbility(ability) {
+        const errors = [];
+        
+        if (!ability.id) {
+            errors.push('Activated ability must have an id');
+        }
+        if (!ability.name) {
+            errors.push('Activated ability must have a name');
+        }
+        if (!ability.effects || !Array.isArray(ability.effects) || ability.effects.length === 0) {
+            errors.push('Activated ability must have at least one effect');
+        }
+        
+        return { valid: errors.length === 0, errors };
     }
 };
 
 console.log('[EffectSchema] Effect schema system loaded');
+
 

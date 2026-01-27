@@ -3792,9 +3792,12 @@ async function playAbilityAnimation(effect) {
             
             // Flash target and show damage with combat effects
             if (targetSprite) {
-                targetSprite.classList.add('hit-recoil');
+                // Use new smooth JS-based hit effect
+                if (window.playHitEffectOnSprite) {
+                    window.playHitEffectOnSprite(targetSprite, target, { intensity: 'normal' });
+                }
                 
-                // Add combat effects
+                // Add combat effects (particles, screen shake, damage number)
                 if (window.CombatEffects && target) {
                     const battlefield = document.getElementById('battlefield-area');
                     if (battlefield) {
@@ -3802,7 +3805,6 @@ async function playAbilityAnimation(effect) {
                         const bRect = battlefield.getBoundingClientRect();
                         const impactX = rect.left + rect.width/2 - bRect.left;
                         const impactY = rect.top + rect.height/2 - bRect.top;
-                        CombatEffects.createImpactFlash(impactX, impactY, 60);
                         CombatEffects.createImpactParticles(impactX, impactY, '#aa66ff', 8);
                         CombatEffects.lightImpact();
                         CombatEffects.showDamageNumber(target, displayDamage);
@@ -3811,7 +3813,6 @@ async function playAbilityAnimation(effect) {
                     showFloatingDamage(target, displayDamage);
                 }
                 await new Promise(r => setTimeout(r, 300));
-                targetSprite.classList.remove('hit-recoil');
             }
             break;
             
@@ -3827,7 +3828,10 @@ async function playAbilityAnimation(effect) {
             
             // Flash target (attacker receiving counter damage) with combat effects
             if (targetSprite) {
-                targetSprite.classList.add('hit-recoil');
+                // Use new smooth JS-based hit effect (heavy for counter)
+                if (window.playHitEffectOnSprite) {
+                    window.playHitEffectOnSprite(targetSprite, target, { intensity: 'heavy' });
+                }
                 
                 // Add combat effects for counter damage
                 if (window.CombatEffects && target) {
@@ -3837,7 +3841,6 @@ async function playAbilityAnimation(effect) {
                         const bRect = battlefield.getBoundingClientRect();
                         const impactX = rect.left + rect.width/2 - bRect.left;
                         const impactY = rect.top + rect.height/2 - bRect.top;
-                        CombatEffects.createImpactFlash(impactX, impactY, 70);
                         CombatEffects.createSparks(impactX, impactY, 10);
                         CombatEffects.heavyImpact(damage || 2);
                         CombatEffects.showDamageNumber(target, displayDamage, displayDamage >= 5);
@@ -3845,8 +3848,7 @@ async function playAbilityAnimation(effect) {
                 } else {
                     showFloatingDamage(target, displayDamage);
                 }
-                await new Promise(r => setTimeout(r, 250));
-                targetSprite.classList.remove('hit-recoil');
+                await new Promise(r => setTimeout(r, 350));
             }
             
             if (sourceSprite) sourceSprite.classList.remove('counter-attacking');
@@ -3857,7 +3859,10 @@ async function playAbilityAnimation(effect) {
             // Show cleave hit on secondary target with effects
             if (message) showMessage(message, 600);
             if (targetSprite) {
-                targetSprite.classList.add('hit-recoil');
+                // Use new smooth JS-based hit effect
+                if (window.playHitEffectOnSprite) {
+                    window.playHitEffectOnSprite(targetSprite, target, { intensity: 'normal' });
+                }
                 
                 // Add combat effects for cleave
                 if (window.CombatEffects && target) {
@@ -3867,7 +3872,6 @@ async function playAbilityAnimation(effect) {
                         const bRect = battlefield.getBoundingClientRect();
                         const impactX = rect.left + rect.width/2 - bRect.left;
                         const impactY = rect.top + rect.height/2 - bRect.top;
-                        CombatEffects.createImpactFlash(impactX, impactY, 60);
                         CombatEffects.createSparks(impactX, impactY, 8);
                         CombatEffects.lightImpact();
                         CombatEffects.showDamageNumber(target, displayDamage);
@@ -3875,15 +3879,17 @@ async function playAbilityAnimation(effect) {
                 } else {
                     showFloatingDamage(target, displayDamage);
                 }
-                await new Promise(r => setTimeout(r, 250));
-                targetSprite.classList.remove('hit-recoil');
+                await new Promise(r => setTimeout(r, 300));
             }
             break;
             
         case 'multiAttack':
             // Show multi-attack hit with effects
             if (targetSprite) {
-                targetSprite.classList.add('hit-recoil');
+                // Use new smooth JS-based hit effect (light for rapid hits)
+                if (window.playHitEffectOnSprite) {
+                    window.playHitEffectOnSprite(targetSprite, target, { intensity: 'light' });
+                }
                 
                 // Add combat effects for multi-attack
                 if (window.CombatEffects && target) {
@@ -3893,7 +3899,6 @@ async function playAbilityAnimation(effect) {
                         const bRect = battlefield.getBoundingClientRect();
                         const impactX = rect.left + rect.width/2 - bRect.left;
                         const impactY = rect.top + rect.height/2 - bRect.top;
-                        CombatEffects.createImpactFlash(impactX, impactY, 50);
                         CombatEffects.createSparks(impactX, impactY, 6);
                         CombatEffects.lightImpact();
                         CombatEffects.showDamageNumber(target, displayDamage);
@@ -3902,7 +3907,6 @@ async function playAbilityAnimation(effect) {
                     showFloatingDamage(target, displayDamage);
                 }
                 await new Promise(r => setTimeout(r, 250));
-                targetSprite.classList.remove('hit-recoil');
             }
             break;
             
@@ -3994,9 +3998,10 @@ async function playAbilityAnimation(effect) {
                 
                 // Target takes damage
                 if (targetSprite) {
-                    targetSprite.classList.add('hit-recoil');
-                    await new Promise(r => setTimeout(r, 250));
-                    targetSprite.classList.remove('hit-recoil');
+                    if (window.playHitEffectOnSprite) {
+                        window.playHitEffectOnSprite(targetSprite, target, { intensity: 'normal' });
+                    }
+                    await new Promise(r => setTimeout(r, 300));
                 }
                 
                 if (sourceSprite) {
@@ -5506,6 +5511,326 @@ class Game {
         
         return { pyreGained: totalPyreGained };
     }
+    
+    // ==================== ACTIVATED ABILITIES (Data-Driven) ====================
+    
+    /**
+     * Get an activated ability definition from a cryptid
+     * @param {Object} cryptid - The cryptid with the ability
+     * @param {string} abilityId - The ability ID to find
+     * @returns {Object|null} The ability definition or null
+     */
+    getActivatedAbility(cryptid, abilityId) {
+        if (!cryptid.activatedAbilities || !Array.isArray(cryptid.activatedAbilities)) {
+            return null;
+        }
+        return cryptid.activatedAbilities.find(a => a.id === abilityId) || null;
+    }
+    
+    /**
+     * Check if an activated ability can be used
+     * @param {Object} cryptid - The cryptid with the ability
+     * @param {string} abilityId - The ability ID to check
+     * @returns {boolean} Whether the ability can be activated
+     */
+    canActivateAbility(cryptid, abilityId) {
+        const ability = this.getActivatedAbility(cryptid, abilityId);
+        if (!ability) return false;
+        
+        const owner = cryptid.owner;
+        const supportCol = this.getSupportCol(owner);
+        const combatCol = this.getCombatCol(owner);
+        
+        // Check if ability has been used (availability flag)
+        const availableFlag = `${abilityId}Available`;
+        if (cryptid[availableFlag] === false) return false;
+        
+        // Check position requirement
+        if (ability.position === 'support' && cryptid.col !== supportCol) return false;
+        if (ability.position === 'combat' && cryptid.col !== combatCol) return false;
+        
+        // Check if requires combatant
+        if (ability.requiresCombatant) {
+            const combatant = this.getCombatant(cryptid);
+            if (!combatant) return false;
+        }
+        
+        // Check custom conditions
+        if (ability.condition) {
+            // Use EffectEngine's condition checker if available
+            if (typeof EffectEngine !== 'undefined' && EffectEngine.checkCondition) {
+                if (!EffectEngine.checkCondition(cryptid, owner, this, ability.condition, {})) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Activate an ability on a cryptid (data-driven execution)
+     * @param {Object} cryptid - The cryptid activating the ability
+     * @param {string} abilityId - The ability ID to activate
+     * @param {Object} targetInfo - Optional target information { col, row } for targeted abilities
+     * @returns {Object|boolean} Result object or false if failed
+     */
+    activateAbility(cryptid, abilityId, targetInfo = null) {
+        const ability = this.getActivatedAbility(cryptid, abilityId);
+        if (!ability) {
+            console.warn(`[activateAbility] Ability '${abilityId}' not found on ${cryptid.name}`);
+            return false;
+        }
+        
+        if (!this.canActivateAbility(cryptid, abilityId)) {
+            console.warn(`[activateAbility] Cannot activate '${abilityId}' on ${cryptid.name}`);
+            return false;
+        }
+        
+        const owner = cryptid.owner;
+        const result = { success: true, abilityId, effects: [] };
+        
+        // Mark ability as used
+        const availableFlag = `${abilityId}Available`;
+        if (ability.oncePerTurn || ability.oncePerGame) {
+            cryptid[availableFlag] = false;
+        }
+        
+        // Track if ability was activated (for permanent abilities)
+        if (ability.oncePerGame) {
+            cryptid[`${abilityId}Activated`] = true;
+        }
+        
+        // Execute each effect in the ability
+        for (const effect of ability.effects) {
+            const effectResult = this.executeActivatedEffect(cryptid, owner, effect, targetInfo);
+            result.effects.push(effectResult);
+        }
+        
+        // Emit activation event
+        GameEvents.emit('onActivatedAbility', { 
+            ability: abilityId, 
+            card: cryptid, 
+            owner, 
+            col: cryptid.col, 
+            row: cryptid.row,
+            targetInfo,
+            result
+        });
+        
+        return result;
+    }
+    
+    /**
+     * Execute a single effect from an activated ability
+     */
+    executeActivatedEffect(cryptid, owner, effect, targetInfo) {
+        const result = { action: effect.action, success: true };
+        
+        switch (effect.action) {
+            case 'killCombatant': {
+                const combatant = this.getCombatant(cryptid);
+                if (combatant) {
+                    combatant.killedBy = effect.killedBy || 'sacrifice';
+                    combatant.killedBySource = cryptid;
+                    this.killCryptid(combatant, owner);
+                    result.killed = combatant;
+                }
+                break;
+            }
+            
+            case 'damageCombatant': {
+                const combatant = this.getCombatant(cryptid);
+                if (combatant) {
+                    const damage = effect.amount || 1;
+                    combatant.currentHp -= damage;
+                    result.damage = damage;
+                    result.target = combatant;
+                    
+                    if (combatant.currentHp <= 0) {
+                        combatant.killedBy = effect.killedBy || 'ability';
+                        combatant.killedBySource = cryptid;
+                        this.killCryptid(combatant, owner);
+                        result.killed = combatant;
+                    }
+                }
+                break;
+            }
+            
+            case 'setStats': {
+                if (effect.atk !== undefined) {
+                    cryptid.currentAtk = effect.atk;
+                    cryptid.baseAtk = effect.atk;
+                }
+                if (effect.hp !== undefined) {
+                    cryptid.currentHp = effect.hp;
+                    cryptid.maxHp = effect.hp;
+                }
+                result.newStats = { atk: cryptid.currentAtk, hp: cryptid.currentHp };
+                break;
+            }
+            
+            case 'buffStats': {
+                if (effect.atk) {
+                    cryptid.currentAtk = (cryptid.currentAtk || cryptid.atk) + effect.atk;
+                    if (effect.permanent) cryptid.baseAtk = (cryptid.baseAtk || cryptid.atk) + effect.atk;
+                }
+                if (effect.hp) {
+                    cryptid.currentHp = (cryptid.currentHp || cryptid.hp) + effect.hp;
+                    cryptid.maxHp = (cryptid.maxHp || cryptid.hp) + effect.hp;
+                }
+                break;
+            }
+            
+            case 'grantKeyword': {
+                const keyword = effect.keyword;
+                switch (keyword) {
+                    case 'destroyer': cryptid.hasDestroyer = true; break;
+                    case 'flight': cryptid.canTargetAny = true; break;
+                    case 'vampiric': 
+                    case 'lifesteal': cryptid.hasLifesteal = true; break;
+                    case 'regeneration': cryptid.hasRegeneration = true; break;
+                    default:
+                        cryptid[`has${keyword.charAt(0).toUpperCase() + keyword.slice(1)}`] = true;
+                }
+                result.keyword = keyword;
+                break;
+            }
+            
+            case 'gainPyre': {
+                const amount = effect.amount || 1;
+                if (owner === 'player') this.playerPyre += amount;
+                else this.enemyPyre += amount;
+                result.pyreGained = amount;
+                break;
+            }
+            
+            case 'debuffTarget': {
+                // For targeted abilities like Decay Rat
+                if (!targetInfo) {
+                    result.success = false;
+                    result.error = 'No target specified';
+                    break;
+                }
+                
+                const enemyOwner = owner === 'player' ? 'enemy' : 'player';
+                const enemyField = enemyOwner === 'player' ? this.playerField : this.enemyField;
+                const target = enemyField[targetInfo.col]?.[targetInfo.row];
+                
+                if (!target) {
+                    result.success = false;
+                    result.error = 'Target not found';
+                    break;
+                }
+                
+                // Calculate debuff amount based on effect definition
+                let debuffAmount = effect.amount || 1;
+                
+                if (effect.perAilmentStack) {
+                    let stacks = 0;
+                    if (target.burnTurns > 0) stacks += target.burnTurns;
+                    if (target.bleedTurns > 0) stacks += target.bleedTurns;
+                    if (target.paralyzeTurns > 0) stacks += target.paralyzeTurns;
+                    if (target.calamityCounters > 0) stacks += target.calamityCounters;
+                    if (target.curseTokens > 0) stacks += target.curseTokens;
+                    debuffAmount = stacks * (effect.multiplier || 1);
+                }
+                
+                if (debuffAmount <= 0) {
+                    result.success = false;
+                    result.error = 'No ailments to calculate debuff';
+                    break;
+                }
+                
+                // Apply temporary debuff
+                if (effect.debuffAtk) {
+                    target.decayRatAtkDebuff = (target.decayRatAtkDebuff || 0) + debuffAmount;
+                }
+                if (effect.debuffHp) {
+                    target.decayRatHpDebuff = (target.decayRatHpDebuff || 0) + debuffAmount;
+                    target.currentHp = (target.currentHp || target.hp) - debuffAmount;
+                }
+                
+                // Track for end-of-turn cleanup
+                if (effect.temporary) {
+                    target.hasDecayRatDebuff = true;
+                    target.decayRatDebuffOwner = owner;
+                }
+                
+                result.target = target;
+                result.debuffAmount = debuffAmount;
+                
+                // Check for death
+                if (target.currentHp <= 0) {
+                    target.killedBy = 'decayRat';
+                    target.killedBySource = cryptid;
+                    this.killCryptid(target, owner);
+                    result.killed = target;
+                }
+                
+                GameEvents.emit('onDecayRatDebuff', { 
+                    source: cryptid,
+                    target,
+                    ailmentStacks: debuffAmount,
+                    atkDebuff: effect.debuffAtk ? debuffAmount : 0,
+                    hpDebuff: effect.debuffHp ? debuffAmount : 0
+                });
+                break;
+            }
+            
+            default:
+                console.warn(`[executeActivatedEffect] Unknown action: ${effect.action}`);
+                result.success = false;
+                result.error = `Unknown action: ${effect.action}`;
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Initialize ability availability flags when a cryptid enters support
+     * Called by summonCryptid
+     */
+    initializeActivatedAbilities(cryptid) {
+        if (!cryptid.activatedAbilities) return;
+        
+        for (const ability of cryptid.activatedAbilities) {
+            // Only initialize if ability is for support position or any position
+            if (ability.position === 'support' || ability.position === 'any') {
+                // Check if position matches
+                const supportCol = this.getSupportCol(cryptid.owner);
+                if (cryptid.col === supportCol || ability.position === 'any') {
+                    // Set availability flag unless already used (once per game)
+                    if (!cryptid[`${ability.id}Activated`]) {
+                        cryptid[`${ability.id}Available`] = true;
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Reset once-per-turn abilities at turn start
+     * Called during turn processing
+     */
+    resetActivatedAbilities(cryptid) {
+        if (!cryptid.activatedAbilities) return;
+        
+        for (const ability of cryptid.activatedAbilities) {
+            if (ability.oncePerTurn && !ability.oncePerGame) {
+                // Check position requirement
+                const supportCol = this.getSupportCol(cryptid.owner);
+                const inCorrectPosition = 
+                    ability.position === 'any' ||
+                    (ability.position === 'support' && cryptid.col === supportCol) ||
+                    (ability.position === 'combat' && cryptid.col !== supportCol);
+                
+                if (inCorrectPosition && !cryptid[`${ability.id}Activated`]) {
+                    cryptid[`${ability.id}Available`] = true;
+                }
+            }
+        }
+    }
 
     drawCard(owner, source = 'normal') {
         const deck = owner === 'player' ? this.deck : this.enemyDeck;
@@ -5642,6 +5967,23 @@ class Game {
             GameEvents.emit('onCardCallback', { type: 'onSupport', card: cryptid, owner, col, row });
             cryptid.onSupport(cryptid, owner, this);
         }
+        
+        // Initialize activated abilities (data-driven)
+        this.initializeActivatedAbilities(cryptid);
+        
+        // Legacy: Auto-initialize activated ability availability for old-style cards
+        if (col === supportCol) {
+            if (cryptid.hasSacrificeAbility && !cryptid.activatedAbilities) {
+                cryptid.sacrificeAbilityAvailable = true;
+            }
+            if (cryptid.hasBloodPactAbility && !cryptid.activatedAbilities) {
+                cryptid.bloodPactAvailable = true;
+            }
+            if (cryptid.hasDecayRatAbility && !cryptid.activatedAbilities) {
+                cryptid.decayRatDebuffAvailable = true;
+            }
+        }
+        
         GameEvents.emit('onSummon', { owner, cryptid, col, row, isSupport: col === supportCol, isKindling: cardData.isKindling || false });
         
         // Trigger onEnterCombat if summoned to combat position
@@ -7279,9 +7621,15 @@ class Game {
                         GameEvents.emit('onPyreGained', { owner, amount: 1, oldValue: pyreBefore, newValue: pyreBefore + 1, source: 'pyreFuel', sourceCryptid: cryptid });
                     }
                     
-                    // Reset once-per-turn abilities
-                    if (cryptid.hasBloodPactAbility) {
+                    // Reset once-per-turn abilities (data-driven)
+                    this.resetActivatedAbilities(cryptid);
+                    
+                    // Legacy: Reset old-style ability flags
+                    if (cryptid.hasBloodPactAbility && !cryptid.activatedAbilities) {
                         cryptid.bloodPactAvailable = true;
+                    }
+                    if (cryptid.hasDecayRatAbility && !cryptid.activatedAbilities) {
+                        cryptid.decayRatDebuffAvailable = true;
                     }
                     
                     if (cryptid.tempAtkDebuff) {

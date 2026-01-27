@@ -443,11 +443,24 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
     supportAbility: "Am I Pretty?: May sacrifice combatant. If you do, Kuchisake becomes 9/7 and gains Destroyer.",
     otherAbility: "At the end of each turn, if Kuchisake has no enemy cryptids across from her, she gains Bleed.",
     
-    // Explosion flag
+    // Explosion flag (still needed for combat mechanic)
     hasKuchisakeExplosion: true,
     
-    // Activatable ability
-    hasSacrificeAbility: true,
+    // Data-driven activated abilities
+    activatedAbilities: [
+        {
+            id: "sacrifice",
+            name: "Am I Pretty?",
+            position: "support",
+            requiresCombatant: true,
+            oncePerGame: true,
+            effects: [
+                { action: "killCombatant", killedBy: "sacrifice" },
+                { action: "setStats", atk: 9, hp: 7 },
+                { action: "grantKeyword", keyword: "destroyer" }
+            ]
+        }
+    ],
     
     effects: [
         // COMBAT: Apply burn before attacking
@@ -456,18 +469,6 @@ CardRegistry.registerCryptid('kuchisakeOnna', {
             action: "applyAilment",
             target: "attackTarget",
             ailmentType: "burn"
-        },
-        // SUPPORT: Enable sacrifice ability
-        {
-            trigger: "onEnterSupport",
-            action: "enableAbility",
-            ability: "sacrifice",
-            abilityConfig: {
-                name: "Am I Pretty?",
-                sacrificeCombatant: true,
-                selfBuff: { atk: 9, hp: 7, setAbsolute: true },
-                grantKeyword: "destroyer"
-            }
         },
         // OTHER: At turn end, if no enemy across, gain bleed
         {
@@ -687,8 +688,28 @@ CardRegistry.registerCryptid('decayRat', {
     combatAbility: "Pestilence: When Decay Rat deals damage to an ailmented enemy, add 1 turn to each of their ailments.",
     supportAbility: "Once per turn, choose an ailmented enemy. It gets -1/-1 per ailment stack until end of turn.",
     
-    // Activatable ability
-    hasDecayRatAbility: true,
+    // Data-driven activated abilities
+    activatedAbilities: [
+        {
+            id: "decayDebuff",
+            name: "Decay",
+            position: "support",
+            requiresCombatant: false,
+            requiresTarget: "ailmentedEnemy",
+            oncePerTurn: true,
+            effects: [
+                { 
+                    action: "debuffTarget", 
+                    perAilmentStack: true,
+                    multiplier: 1,
+                    debuffAtk: true,
+                    debuffHp: true,
+                    temporary: true,
+                    killedBy: "decayRat"
+                }
+            ]
+        }
+    ],
     
     effects: [
         // COMBAT: Extend ailments on damage to ailmented targets
@@ -698,26 +719,6 @@ CardRegistry.registerCryptid('decayRat', {
             action: "extendAilments",
             target: "attackTarget",
             amount: 1
-        },
-        // SUPPORT: Enable decay debuff ability
-        {
-            trigger: "onEnterSupport",
-            action: "enableAbility",
-            ability: "decayDebuff",
-            abilityConfig: {
-                name: "Decay",
-                targetType: "ailmentedEnemy",
-                debuffPerStack: { atk: 1, hp: 1 },
-                temporary: true,
-                oncePerTurn: true
-            }
-        },
-        // Reset ability each turn
-        {
-            trigger: "onTurnStart",
-            condition: { check: "isSupport" },
-            action: "resetAbility",
-            ability: "decayDebuff"
         }
     ]
 });
@@ -777,8 +778,20 @@ CardRegistry.registerCryptid('vampireInitiate', {
     // Lifesteal flag
     hasLifesteal: true,
     
-    // Activatable ability
-    hasBloodPactAbility: true,
+    // Data-driven activated abilities
+    activatedAbilities: [
+        {
+            id: "bloodPact",
+            name: "Blood Pact",
+            position: "support",
+            requiresCombatant: true,
+            oncePerTurn: true,
+            effects: [
+                { action: "damageCombatant", amount: 1, killedBy: "bloodPact" },
+                { action: "gainPyre", amount: 1 }
+            ]
+        }
+    ],
     
     effects: [
         // COMBAT: Gain 1 pyre on attack
@@ -787,25 +800,6 @@ CardRegistry.registerCryptid('vampireInitiate', {
             action: "gainPyre",
             amount: 1,
             owner: "self"
-        },
-        // SUPPORT: Enable blood pact ability
-        {
-            trigger: "onEnterSupport",
-            action: "enableAbility",
-            ability: "bloodPact",
-            abilityConfig: {
-                name: "Blood Pact",
-                damageCombatant: 1,
-                gainPyre: 1,
-                oncePerTurn: true
-            }
-        },
-        // Reset ability each turn
-        {
-            trigger: "onTurnStart",
-            condition: { check: "isSupport" },
-            action: "resetAbility",
-            ability: "bloodPact"
         }
     ]
 });

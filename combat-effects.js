@@ -4094,7 +4094,7 @@ window.CombatEffects = {
         }
         
         .cryptid-sprite.hit-recoil {
-            animation: hitRecoil 0.25s ease-out !important;
+            animation: hitRecoil 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
         }
         
         /* Player attacks right */
@@ -4116,20 +4116,20 @@ window.CombatEffects = {
         
         @keyframes hitRecoil {
             0% { 
-                transform: translate(-50%, -50%); 
-                filter: brightness(3) saturate(0);
+                transform: translate(-50%, -50%) scale(1); 
+                filter: brightness(2) saturate(0.3);
             }
-            20% { 
-                transform: translate(calc(-50% + 20px), calc(-50% - 5px)) scale(0.9); 
-                filter: brightness(2) saturate(0.5);
+            15% { 
+                transform: translate(calc(-50% + 12px), -50%) scale(0.92); 
+                filter: brightness(1.5) saturate(0.6);
             }
-            50% { 
-                transform: translate(calc(-50% + 10px), -50%) scale(0.95); 
-                filter: brightness(0.6);
+            40% { 
+                transform: translate(calc(-50% + 6px), -50%) scale(0.96); 
+                filter: brightness(0.85);
             }
             100% { 
                 transform: translate(-50%, -50%) scale(1); 
-                filter: brightness(1);
+                filter: brightness(1) saturate(1);
             }
         }
         
@@ -4147,7 +4147,7 @@ window.CombatEffects = {
         }
         
         .cryptid-sprite.enemy.hit-recoil {
-            animation: hitRecoilLeft 0.25s ease-out !important;
+            animation: hitRecoilLeft 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
         }
         
         @keyframes attackWindupLeft {
@@ -4168,20 +4168,20 @@ window.CombatEffects = {
         
         @keyframes hitRecoilLeft {
             0% { 
-                transform: translate(-50%, -50%); 
-                filter: brightness(3) saturate(0);
+                transform: translate(-50%, -50%) scale(1); 
+                filter: brightness(2) saturate(0.3);
             }
-            20% { 
-                transform: translate(calc(-50% - 20px), calc(-50% - 5px)) scale(0.9); 
-                filter: brightness(2) saturate(0.5);
+            15% { 
+                transform: translate(calc(-50% - 12px), -50%) scale(0.92); 
+                filter: brightness(1.5) saturate(0.6);
             }
-            50% { 
-                transform: translate(calc(-50% - 10px), -50%) scale(0.95); 
-                filter: brightness(0.6);
+            40% { 
+                transform: translate(calc(-50% - 6px), -50%) scale(0.96); 
+                filter: brightness(0.85);
             }
             100% { 
                 transform: translate(-50%, -50%) scale(1); 
-                filter: brightness(1);
+                filter: brightness(1) saturate(1);
             }
         }
         
@@ -7236,4 +7236,4 @@ window.showFloatingHeal = function(target, amount) {
     CombatEffects.showHealNumber(target, amount);
 };
 
-console.log('[CombatEffects] System loaded');
+console.log('[CombatEffects] System loaded v2 - smoother hit recoil');
