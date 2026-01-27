@@ -2544,15 +2544,22 @@ if (originalWinScreenShow) {
 // ==================== INITIALIZATION ====================
 
 // Initialize on load
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
+function initAdventureMode() {
+    try {
+        console.log('[Adventure Mode] Initializing...');
         AdventureEngine.init();
         AdventureUI.init();
-    });
-} else {
-    AdventureEngine.init();
-    AdventureUI.init();
+        console.log('[Adventure Mode] Initialized successfully');
+    } catch (e) {
+        console.error('[Adventure Mode] Init error:', e);
+    }
 }
 
-console.log('[Adventure Mode] Loaded');
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAdventureMode);
+} else {
+    initAdventureMode();
+}
+
+console.log('[Adventure Mode] Script loaded');
 

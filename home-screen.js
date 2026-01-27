@@ -518,12 +518,28 @@ window.HomeScreen = {
         this.close();
         
         // Open adventure setup screen
-        if (typeof AdventureUI !== 'undefined') {
+        if (typeof AdventureUI !== 'undefined' && AdventureUI.openSetup) {
             AdventureUI.openSetup();
         } else {
-            console.error('[QuickPlay] Adventure Mode not loaded');
-            alert('Adventure Mode is not available.');
-            this.open();
+            console.error('[QuickPlay] Adventure Mode not loaded. AdventureUI:', typeof AdventureUI);
+            // Show error message without using blocked alert()
+            const msg = document.createElement('div');
+            msg.style.cssText = `
+                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                background: rgba(0,0,0,0.95); border: 2px solid #e57373; padding: 30px 50px;
+                border-radius: 12px; color: #e8e0d5; font-family: 'Cinzel', serif;
+                font-size: 16px; z-index: 99999; text-align: center;
+            `;
+            msg.innerHTML = `
+                <div style="color: #e57373; font-size: 20px; margin-bottom: 15px;">⚠️ Error</div>
+                <div>Adventure Mode failed to load.</div>
+                <div style="font-size: 12px; color: #888; margin-top: 10px;">Try refreshing the page (Ctrl+Shift+R)</div>
+                <button onclick="this.parentElement.remove(); HomeScreen.open();" style="
+                    margin-top: 20px; padding: 10px 30px; background: #e57373; border: none;
+                    color: white; cursor: pointer; border-radius: 6px; font-family: inherit;
+                ">OK</button>
+            `;
+            document.body.appendChild(msg);
         }
     },
     
