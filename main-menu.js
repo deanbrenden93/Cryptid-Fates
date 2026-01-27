@@ -725,12 +725,8 @@ window.MainMenu = {
                 
                 <div class="menu-buttons">
                     <button class="menu-btn primary" id="vs-ai-btn">
-                        ⚔ VS AI
-                        <span class="btn-subtitle">Battle the Warden</span>
-                    </button>
-                    <button class="menu-btn secondary" id="vs-human-btn">
-                        👥 Quick Play
-                        <span class="btn-subtitle">Play Online</span>
+                        ⚔ Battle
+                        <span class="btn-subtitle">Fight the Warden</span>
                     </button>
                     <button class="menu-btn tertiary" id="how-to-play-btn">
                         📖 How to Play
@@ -862,16 +858,6 @@ window.MainMenu = {
         // Cheat Battle Button
         document.getElementById('cheat-battle-btn')?.addEventListener('click', () => {
             this.startCheatBattle();
-        });
-        
-        // VS Human Button - Open Quick Play
-        document.getElementById('vs-human-btn').addEventListener('click', () => {
-            if (typeof HomeScreen !== 'undefined') {
-                TransitionEngine.fade(() => {
-                    this.hide();
-                    HomeScreen.open();
-                }).then(() => HomeScreen.openQuickPlay());
-            }
         });
         
         // Fullscreen Toggle

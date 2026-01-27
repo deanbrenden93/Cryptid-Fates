@@ -4162,8 +4162,6 @@ class Game {
         this.phase = 'conjure1';
         this.turnNumber = 0;
         this.gameOver = false;
-        this.isMultiplayer = false;
-        this.multiplayerData = null;
         this.evolvedThisTurn = {};
         this.playerTraps = [null, null];
         this.enemyTraps = [null, null];
@@ -5604,11 +5602,6 @@ class Game {
             }
         }
         
-        // Multiplayer hook - AFTER all callbacks complete so state is final
-        if (this.isMultiplayer && owner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onSummon(cardData, owner, col, row, cardData.foil || false);
-        }
-        
         return cryptid;
     }
 
@@ -6819,16 +6812,6 @@ class Game {
     popRandomKindling(owner) {
         let kindling = owner === 'player' ? this.playerKindling : this.enemyKindling;
         
-        // In multiplayer, if enemy kindling is empty (sync not received yet), use generic fallback
-        if (this.isMultiplayer && owner === 'enemy' && kindling.length === 0) {
-            console.log('[Game] Warning: Enemy kindling not synced, using fallback pool');
-            // Build a fallback pool from common kindling
-            if (typeof DeckBuilder !== 'undefined' && DeckBuilder.buildKindlingPool) {
-                this.enemyKindling = DeckBuilder.buildKindlingPool();
-                kindling = this.enemyKindling;
-            }
-        }
-        
         if (kindling.length === 0) return null;
         const idx = Math.floor(Math.random() * kindling.length);
         return kindling.splice(idx, 1)[0];
@@ -6884,11 +6867,6 @@ class Game {
             }
         }
         GameEvents.emit('onSummon', { owner, cryptid, col, row, isSupport: col === supportCol, isKindling: true });
-        
-        // Multiplayer hook - AFTER all callbacks complete so state is final
-        if (this.isMultiplayer && owner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onSummon(kindlingCard, owner, col, row, kindlingCard.foil || false);
-        }
         
         return cryptid;
     }
@@ -7426,54 +7404,8 @@ class Game {
         
         GameEvents.emit('onTurnEnd', { owner: this.currentTurn, turnNumber: this.turnNumber });
         
-        // In multiplayer, when player ends their turn, don't fully start enemy's turn locally
-        // The enemy client will handle their own turn logic
-        // But we DO need to process visual state changes (untap, Terrify reset) on enemy field
-        if (this.isMultiplayer && this.currentTurn === 'player') {
-            // Process enemy turn-start effects locally (visual consistency)
-            this.processEnemyTurnStartEffects();
-            
-            // Switch turn indicator
-            this.currentTurn = 'enemy';
-            this.phase = 'waiting'; // Indicate we're waiting for opponent
-            return;
-        }
-        
         // Skip status effects here - they're processed with animation by the UI layer
         this.startTurn(this.currentTurn === 'player' ? 'enemy' : 'player', true);
-    }
-    
-    // Process enemy turn-start effects locally in multiplayer (for visual consistency)
-    processEnemyTurnStartEffects() {
-        const enemyField = this.enemyField;
-        const enemyCombatCol = this.getCombatCol('enemy');
-        const enemySupportCol = this.getSupportCol('enemy');
-        
-        // Reset Terrify on enemy cryptids (their turn is starting)
-        for (let c = 0; c < 2; c++) {
-            for (let r = 0; r < 3; r++) {
-                const cryptid = enemyField[c][r];
-                if (cryptid?.terrified) {
-                    cryptid.currentAtk = cryptid.savedAtk || cryptid.atk;
-                    cryptid.terrified = false;
-                    delete cryptid.savedAtk;
-                }
-            }
-        }
-        
-        // Untap enemy cryptids and reset canAttack
-        for (let c = 0; c < 2; c++) {
-            for (let r = 0; r < 3; r++) {
-                const cryptid = enemyField[c][r];
-                if (cryptid) {
-                    // Untap combatants
-                    if (c === enemyCombatCol) {
-                        cryptid.tapped = false;
-                        cryptid.canAttack = true;
-                    }
-                }
-            }
-        }
     }
 
     pyreBurn(owner) {
@@ -7505,22 +7437,6 @@ class Game {
         if (this.gameOver) return; // Prevent double-triggering
         this.gameOver = true;
         
-        // In multiplayer, send game over message to opponent
-        if (this.isMultiplayer && typeof window.Multiplayer !== 'undefined' && window.Multiplayer.isInMatch) {
-            // Send a gameOver action so opponent sees defeat screen
-            const msg = {
-                type: 'action',
-                matchId: window.Multiplayer.matchId,
-                playerId: window.Multiplayer.playerId,
-                action: { 
-                    type: 'gameOver',
-                    winner: winner === 'player' ? window.Multiplayer.playerId : window.Multiplayer.opponentId
-                },
-                state: window.Multiplayer.serializeGameState()
-            };
-            window.Multiplayer.send(msg);
-        }
-        
         // Calculate match duration
         const duration = Math.floor((Date.now() - this.matchStats.startTime) / 1000);
         
@@ -7528,8 +7444,7 @@ class Game {
         const isWin = winner === 'player';
         const matchData = {
             isWin,
-            isHuman: this.isMultiplayer, // True for multiplayer
-            isMultiplayer: this.isMultiplayer,
+            isHuman: false, // AI battle (offline mode)
             stats: {
                 kills: this.enemyDeaths,
                 playerDeaths: this.playerDeaths,
@@ -7541,7 +7456,7 @@ class Game {
             },
             duration,
             deckName: 'Battle Deck',
-            opponentName: this.isMultiplayer ? window.Multiplayer?.opponentName : 'AI'
+            opponentName: 'AI'
         };
         
         // Deal Slide transition to results screen

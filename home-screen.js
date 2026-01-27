@@ -114,14 +114,18 @@ window.HomeScreen = {
                 </div>
                 
                 <div class="qp-section">
-                    <div class="qp-section-title">🤖 Solo</div>
+                    <div class="qp-section-title">🎮 Solo Battle</div>
                     <div class="qp-mode" id="qp-ai">
                         <div class="qp-mode-main">
                             <div class="qp-mode-icon">🧠</div>
                             <div class="qp-mode-info">
                                 <div class="qp-mode-name">Play vs AI</div>
-                                <div class="qp-mode-desc">Practice against the Warden</div>
+                                <div class="qp-mode-desc">Battle against the Warden</div>
                             </div>
+                        </div>
+                        <div class="qp-mode-rewards">
+                            <span class="reward-item"><img src="sprites/embers-icon.png" class="embers-img" alt=""> Rewards</span>
+                            <span class="reward-item">⭐ XP</span>
                         </div>
                     </div>
                     <div class="qp-mode qp-mode-dev" id="qp-cheat">
@@ -133,45 +137,6 @@ window.HomeScreen = {
                             </div>
                         </div>
                     </div>
-                </div>
-                
-                <div class="qp-section">
-                    <div class="qp-section-title">👥 Multiplayer</div>
-                    <div class="qp-mode" id="qp-bo1">
-                        <div class="qp-mode-main">
-                            <div class="qp-mode-icon">⚔️</div>
-                            <div class="qp-mode-info">
-                                <div class="qp-mode-name">Quick Match</div>
-                                <div class="qp-mode-desc">Best of 1 • ~8 minutes</div>
-                            </div>
-                        </div>
-                        <div class="qp-mode-rewards">
-                            <span class="reward-item"><img src="sprites/embers-icon.png" class="embers-img" alt=""> 15</span>
-                            <span class="reward-item">⭐ 20 XP</span>
-                        </div>
-                    </div>
-                    <div class="qp-mode" id="qp-bo3">
-                        <div class="qp-mode-main">
-                            <div class="qp-mode-icon">🏆</div>
-                            <div class="qp-mode-info">
-                                <div class="qp-mode-name">Ranked Match</div>
-                                <div class="qp-mode-desc">Best of 3 • ~20 minutes</div>
-                            </div>
-                        </div>
-                        <div class="qp-mode-rewards">
-                            <span class="reward-item"><img src="sprites/embers-icon.png" class="embers-img" alt=""> 30</span>
-                            <span class="reward-item">⭐ 50 XP</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="qp-queue" id="qp-queue">
-                    <div class="qp-queue-spinner"></div>
-                    <div class="qp-queue-text">
-                        <span id="qp-status">Searching for opponent...</span>
-                        <span class="qp-queue-timer" id="qp-timer">0:00</span>
-                    </div>
-                    <button class="qp-btn cancel" id="qp-cancel">Cancel</button>
                 </div>
             </div>
         `;
@@ -384,8 +349,6 @@ window.HomeScreen = {
         
         document.getElementById('qp-ai')?.addEventListener('click', () => this.startAIGame());
         document.getElementById('qp-cheat')?.addEventListener('click', () => this.startCheatBattle());
-        document.getElementById('qp-bo1')?.addEventListener('click', () => this.startQuickPlay('bo1'));
-        document.getElementById('qp-bo3')?.addEventListener('click', () => this.startQuickPlay('bo3'));
         
         document.getElementById('btn-settings').onclick = () => this.openSettings();
         document.getElementById('btn-help').onclick = () => this.openHelp();
@@ -480,32 +443,14 @@ window.HomeScreen = {
     
     // ==================== QUICK PLAY ====================
     
-    queueTimer: null,
-    queueStartTime: null,
-    
     openQuickPlay() {
         console.log('[QuickPlay] Opening modal...');
         
-        // Reset queue UI
-        document.getElementById('qp-queue').classList.remove('active');
-        document.getElementById('qp-timer').textContent = '0:00';
-        
-        // Always show the modal first
+        // Always show the modal
         document.getElementById('quickplay-modal').classList.add('open');
         
-        // Check if player has a valid deck for multiplayer modes
-        const validDeck = PlayerData.decks.find(d => PlayerData.validateDeck(d).valid);
-        
-        // AI mode always available, multiplayer requires valid deck
+        // AI mode always available
         document.getElementById('qp-ai').classList.remove('disabled');
-        
-        if (!validDeck) {
-            document.getElementById('qp-bo1').classList.add('disabled');
-            document.getElementById('qp-bo3').classList.add('disabled');
-        } else {
-            document.getElementById('qp-bo1').classList.remove('disabled');
-            document.getElementById('qp-bo3').classList.remove('disabled');
-        }
     },
     
     closeQuickPlay() {
@@ -519,45 +464,6 @@ window.HomeScreen = {
         setTimeout(() => {
             modal.classList.remove('open', 'closing');
         }, 250);
-        
-        this.stopQueueTimer();
-        
-        // Cancel matchmaking if in progress
-        if (typeof window.Multiplayer !== 'undefined' && window.Multiplayer.isSearching) {
-            window.Multiplayer.cancelMatchmaking();
-        }
-    },
-    
-    cancelQueue() {
-        this.stopQueueTimer();
-        document.getElementById('qp-queue').classList.remove('active');
-        
-        // Cancel matchmaking
-        if (typeof window.Multiplayer !== 'undefined' && window.Multiplayer.isSearching) {
-            window.Multiplayer.cancelMatchmaking();
-        }
-    },
-    
-    startQueueTimer() {
-        this.queueStartTime = Date.now();
-        this.updateQueueTimer();
-        this.queueTimer = setInterval(() => this.updateQueueTimer(), 1000);
-    },
-    
-    stopQueueTimer() {
-        if (this.queueTimer) {
-            clearInterval(this.queueTimer);
-            this.queueTimer = null;
-        }
-        this.queueStartTime = null;
-    },
-    
-    updateQueueTimer() {
-        if (!this.queueStartTime) return;
-        const elapsed = Math.floor((Date.now() - this.queueStartTime) / 1000);
-        const mins = Math.floor(elapsed / 60);
-        const secs = elapsed % 60;
-        document.getElementById('qp-timer').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
     },
     
     startAIGame() {
@@ -587,52 +493,6 @@ window.HomeScreen = {
         }, 200);
     },
     
-    startQuickPlay(mode) {
-        console.log('[QuickPlay] Starting matchmaking, mode:', mode);
-        
-        // Get first valid deck
-        const validDeck = PlayerData.decks.find(d => PlayerData.validateDeck(d).valid);
-        if (!validDeck) {
-            showMessage('No valid deck found!');
-            return;
-        }
-        
-        // Show queue UI
-        document.getElementById('qp-queue').classList.add('active');
-        document.getElementById('qp-status').textContent = 'Searching for opponent...';
-        this.startQueueTimer();
-        
-        // Start matchmaking
-        if (typeof window.Multiplayer !== 'undefined' && window.Multiplayer) {
-            window.Multiplayer.findMatch(mode, validDeck.id);
-        } else {
-            console.error('[QuickPlay] Multiplayer object not found!');
-            document.getElementById('qp-status').textContent = 'Multiplayer not available';
-            setTimeout(() => {
-                this.cancelQueue();
-            }, 2000);
-        }
-    },
-    
-    onMatchFound(matchData) {
-        // Called by Multiplayer when match is found
-        this.stopQueueTimer();
-        this.closeQuickPlay();
-        
-        TransitionEngine.slide(() => {
-            this.close();
-            document.getElementById('game-container').style.display = 'flex';
-            // Apply backgrounds while covered (including opponent's background)
-            if (typeof applyBattlefieldBackgrounds === 'function') {
-                applyBattlefieldBackgrounds();
-            }
-        }).then(() => {
-            if (typeof startMultiplayerGame === 'function') {
-                startMultiplayerGame(matchData);
-            }
-        });
-    },
-
     toggleFullscreen() {
         if (!document.fullscreenElement && !document.webkitFullscreenElement) {
             const elem = document.documentElement;

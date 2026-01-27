@@ -7,9 +7,6 @@
 window.WinScreen = {
     isOpen: false,
     lastMatchData: null,
-    rematchPending: false,
-    rematchTimer: null,
-    opponentAvailable: true,
     
     // Asset URLs
     assets: {
@@ -661,13 +658,9 @@ window.WinScreen = {
     show(data) {
         this.isOpen = true;
         this.lastMatchData = data;
-        this.rematchPending = false;
-        this.opponentAvailable = true;
         
         const overlay = document.getElementById('winscreen-overlay');
         const isWin = data.isWin;
-        const isHuman = data.isHuman || false;
-        const isMultiplayer = data.isMultiplayer || false;
         
         // Set victory/defeat theme
         overlay.classList.remove('victory', 'defeat', 'open');
@@ -683,7 +676,7 @@ window.WinScreen = {
             : this.getDefeatQuote();
         
         // Reset rematch button state
-        this.updateRematchButton(isMultiplayer);
+        this.updateRematchButton();
         
         // Calculate rewards
         const rewards = typeof PlayerData !== 'undefined' && PlayerData.calculateMatchRewards
@@ -740,16 +733,10 @@ window.WinScreen = {
             overlay.classList.add('open');
             overlay.style.opacity = '';  // Let CSS handle it
         });
-        
-        // Listen for multiplayer rematch events
-        if (isMultiplayer && typeof MultiplayerClient !== 'undefined') {
-            this.setupMultiplayerRematchListeners();
-        }
     },
     
     hide() {
         this.isOpen = false;
-        this.clearRematchTimer();
         const overlay = document.getElementById('winscreen-overlay');
         overlay.classList.remove('open');
         // Reset inline styles after transition
@@ -764,160 +751,21 @@ window.WinScreen = {
     
     // ==================== REMATCH LOGIC ====================
     
-    updateRematchButton(isMultiplayer) {
+    updateRematchButton() {
         const btn = document.getElementById('btn-rematch');
         const status = document.getElementById('rematch-status');
         
         btn.classList.remove('disabled', 'pending');
         status.textContent = '';
         status.className = 'rematch-status';
-        
-        if (isMultiplayer) {
-            status.textContent = 'Request Rematch';
-        }
     },
     
     requestRematch() {
-        const data = this.lastMatchData;
-        const isMultiplayer = data?.isMultiplayer || false;
-        
-        if (isMultiplayer) {
-            this.requestMultiplayerRematch();
-        } else {
-            // VS AI - immediately start new match
-            this.startRematch();
-        }
-    },
-    
-    requestMultiplayerRematch() {
-        console.log('[WinScreen] requestMultiplayerRematch called');
-        console.log('[WinScreen] rematchPending:', this.rematchPending);
-        console.log('[WinScreen] opponentAvailable:', this.opponentAvailable);
-        
-        if (this.rematchPending) {
-            console.log('[WinScreen] Already pending, returning');
-            return;
-        }
-        
-        const btn = document.getElementById('btn-rematch');
-        const status = document.getElementById('rematch-status');
-        
-        if (!this.opponentAvailable) {
-            console.log('[WinScreen] Opponent not available');
-            status.textContent = 'Opponent left';
-            status.className = 'rematch-status unavailable';
-            return;
-        }
-        
-        this.rematchPending = true;
-        btn.classList.add('pending');
-        status.textContent = 'Waiting... 30s';
-        status.className = 'rematch-status waiting';
-        
-        // Send rematch request to server
-        console.log('[WinScreen] Checking MultiplayerClient:', typeof MultiplayerClient);
-        if (typeof MultiplayerClient !== 'undefined' && MultiplayerClient.sendRematchRequest) {
-            console.log('[WinScreen] Calling MultiplayerClient.sendRematchRequest()');
-            MultiplayerClient.sendRematchRequest();
-        } else {
-            console.error('[WinScreen] MultiplayerClient not available!');
-        }
-        
-        // Start countdown timer
-        let timeLeft = 30;
-        this.rematchTimer = setInterval(() => {
-            timeLeft--;
-            status.textContent = `Waiting... ${timeLeft}s`;
-            
-            if (timeLeft <= 0) {
-                this.cancelRematchRequest('Timed out');
-            }
-        }, 1000);
-    },
-    
-    cancelRematchRequest(reason = '') {
-        this.clearRematchTimer();
-        this.rematchPending = false;
-        
-        const btn = document.getElementById('btn-rematch');
-        const status = document.getElementById('rematch-status');
-        
-        btn.classList.remove('pending');
-        status.textContent = reason || 'Request Rematch';
-        status.className = reason ? 'rematch-status unavailable' : 'rematch-status';
-    },
-    
-    clearRematchTimer() {
-        if (this.rematchTimer) {
-            clearInterval(this.rematchTimer);
-            this.rematchTimer = null;
-        }
-    },
-    
-    onOpponentRematchRequest() {
-        // Opponent requested rematch
-        const status = document.getElementById('rematch-status');
-        
-        if (this.rematchPending) {
-            // We already requested too - server will handle starting the match
-            // Just update UI to show both are ready
-            status.textContent = 'Starting...';
-            status.className = 'rematch-status waiting';
-        } else {
-            // Show that opponent wants rematch (encourages user to click)
-            status.textContent = 'Opponent ready!';
-            status.className = 'rematch-status waiting';
-        }
-    },
-    
-    onOpponentLeft() {
-        this.opponentAvailable = false;
-        this.cancelRematchRequest('Opponent left');
-        
-        const btn = document.getElementById('btn-rematch');
-        btn.classList.add('disabled');
-    },
-    
-    setupMultiplayerRematchListeners() {
-        console.log('[WinScreen] Setting up multiplayer rematch listeners');
-        if (typeof MultiplayerClient !== 'undefined') {
-            console.log('[WinScreen] MultiplayerClient found, hooking callbacks');
-            
-            // Store original handlers to restore later
-            const origRematch = MultiplayerClient.onRematchRequest;
-            const origLeft = MultiplayerClient.onOpponentLeftResults;
-            const origAccepted = MultiplayerClient.onRematchAccepted;
-            
-            MultiplayerClient.onRematchRequest = () => {
-                console.log('[WinScreen] onRematchRequest callback triggered');
-                this.onOpponentRematchRequest();
-                if (origRematch) origRematch.call(MultiplayerClient);
-            };
-            
-            MultiplayerClient.onOpponentLeftResults = () => {
-                console.log('[WinScreen] onOpponentLeftResults callback triggered');
-                this.onOpponentLeft();
-                if (origLeft) origLeft.call(MultiplayerClient);
-            };
-            
-            MultiplayerClient.onRematchAccepted = () => {
-                console.log('[WinScreen] onRematchAccepted callback triggered');
-                this.startRematch();
-                if (origAccepted) origAccepted.call(MultiplayerClient);
-            };
-            
-            console.log('[WinScreen] Rematch listeners set up successfully');
-        } else {
-            console.error('[WinScreen] MultiplayerClient not defined!');
-        }
+        // VS AI - immediately start new match
+        this.startRematch();
     },
     
     startRematch() {
-        this.clearRematchTimer();
-        
-        const data = this.lastMatchData;
-        const isMultiplayer = data?.isMultiplayer || false;
-        
         TransitionEngine.slide(() => {
             this.hide();
             document.getElementById('game-container').style.display = 'flex';
@@ -926,15 +774,11 @@ window.WinScreen = {
                 applyBattlefieldBackgrounds();
             }
         }).then(() => {
-            if (isMultiplayer) {
-                // Server will send matchFound - MultiplayerClient.onMatchFound will handle it
-            } else {
-                // VS AI - start new game
-                if (typeof HomeScreen !== 'undefined' && HomeScreen.startGame) {
-                    HomeScreen.startGame();
-                } else if (typeof initGame === 'function') {
-                    initGame();
-                }
+            // VS AI - start new game
+            if (typeof HomeScreen !== 'undefined' && HomeScreen.startGame) {
+                HomeScreen.startGame();
+            } else if (typeof initGame === 'function') {
+                initGame();
             }
         });
     },
@@ -942,15 +786,6 @@ window.WinScreen = {
     // ==================== NAVIGATION ====================
     
     goHome() {
-        this.clearRematchTimer();
-        
-        // Notify server we're leaving results screen (for multiplayer)
-        if (this.lastMatchData?.isMultiplayer && typeof MultiplayerClient !== 'undefined') {
-            if (MultiplayerClient.leaveResultsScreen) {
-                MultiplayerClient.leaveResultsScreen();
-            }
-        }
-        
         TransitionEngine.fade(() => {
             this.hide();
             document.getElementById('game-container').style.display = 'none';
@@ -1004,7 +839,7 @@ window.WinScreen = {
         const duration = data.duration || 0;
         const mins = Math.floor(duration / 60);
         const secs = duration % 60;
-        const mode = data.isMultiplayer ? (data.opponentName || 'PvP') : 'vs AI';
+        const mode = 'vs AI';
         
         details.innerHTML = `
             <div class="match-detail">

@@ -1,8 +1,38 @@
 /**
- * Cryptid Fates - Login Screen UI & Game Flow Controller
+ * Cryptid Fates - Game Flow Controller (Offline Roguelite Version)
  * 
- * Flow: Auth Check → Login → Username Entry → Tutorial → Welcome → Main Menu
+ * Flow: Asset Loading → Tutorial (if new) → Welcome → Home Screen
+ * No login required - all data stored locally
  */
+
+// ==================== OFFLINE PLAYER IDENTITY ====================
+
+const OfflinePlayer = {
+    /**
+     * Get or create a local player identity
+     */
+    getPlayerName() {
+        return localStorage.getItem('cryptid_player_name') || 'Summoner';
+    },
+    
+    setPlayerName(name) {
+        localStorage.setItem('cryptid_player_name', name);
+        if (typeof PlayerData !== 'undefined') {
+            PlayerData.playerName = name;
+            PlayerData.save();
+        }
+    },
+    
+    hasSetName() {
+        return localStorage.getItem('cryptid_name_set') === 'true';
+    },
+    
+    markNameSet() {
+        localStorage.setItem('cryptid_name_set', 'true');
+    }
+};
+
+window.OfflinePlayer = OfflinePlayer;
 
 // ==================== GAME FLOW CONTROLLER ====================
 
@@ -13,46 +43,27 @@ const GameFlow = {
      * Start the game flow - called after DOM is ready
      */
     async start() {
-        console.log('[GameFlow] Starting...');
+        console.log('[GameFlow] Starting offline game...');
+        
+        // Set offline mode flag
+        window.isOfflineMode = true;
         
         // Preload all game assets with smart caching
         if (typeof AssetPreloader !== 'undefined') {
             await AssetPreloader.preload();
         } else {
-            // Fallback to basic loading screen
             this.showLoadingScreen();
         }
         
-        // Check authentication
-        const isAuthenticated = await Auth.init();
-        
-        console.log('[GameFlow] Auth result:', isAuthenticated);
-        
-        if (isAuthenticated) {
-            // User is logged in - continue flow
-            await this.onAuthenticated();
-        } else if (window.isOfflineMode) {
-            // User chose offline mode
-            await this.onOfflineMode();
-        } else {
-            // Transition from loading to login screen
-            await TransitionEngine.fade(() => {
-                if (typeof AssetPreloader !== 'undefined') {
-                    const screen = document.getElementById('asset-loading-screen');
-                    if (screen) screen.remove();
-                } else {
-                    this.hideLoadingScreen();
-                }
-                LoginScreen.show();
-            });
-        }
+        // Continue to game flow
+        await this.onGameReady();
     },
     
     /**
-     * Called when user successfully authenticates
+     * Called when assets are loaded and game is ready
      */
-    async onAuthenticated() {
-        console.log('[GameFlow] User authenticated:', Auth.user?.displayName);
+    async onGameReady() {
+        console.log('[GameFlow] Game ready');
         
         // Hide preloader
         if (typeof AssetPreloader !== 'undefined') {
@@ -60,12 +71,11 @@ const GameFlow = {
         } else {
             this.hideLoadingScreen();
         }
-        LoginScreen.hide();
         
-        // Check if this is a new user (no custom name set yet)
-        const isNewUser = this.checkIfNewUser();
+        // Check if this is a new player who needs to set username
+        const isNewPlayer = !OfflinePlayer.hasSetName();
         
-        if (isNewUser) {
+        if (isNewPlayer) {
             await this.showUsernameEntry();
         }
         
@@ -80,54 +90,6 @@ const GameFlow = {
         
         // Continue to welcome/deck select
         this.showWelcomeScreen();
-    },
-    
-    /**
-     * Called when user chooses offline mode
-     */
-    async onOfflineMode() {
-        console.log('[GameFlow] Offline mode');
-        
-        // Clean up any active tutorial battle screen first
-        if (typeof TutorialManager !== 'undefined' && TutorialManager.isActive) {
-            console.log('[GameFlow] Cleaning up active tutorial');
-            TutorialManager.cleanupBattleScreen();
-            TutorialManager.isActive = false;
-            if (typeof TutorialOverlay !== 'undefined') {
-                TutorialOverlay.destroy();
-            }
-        }
-        
-        // Hide preloader
-        if (typeof AssetPreloader !== 'undefined') {
-            await AssetPreloader.hideLoadingScreen();
-        } else {
-            this.hideLoadingScreen();
-        }
-        LoginScreen.hide();
-        
-        // Check if user has completed tutorial
-        const hasCompletedTutorial = (typeof TutorialManager !== 'undefined' && TutorialManager.isCompleted()) ||
-                                     (typeof PlayerData !== 'undefined' && PlayerData.tutorialCompleted) ||
-                                     localStorage.getItem('cryptid_tutorial_complete');
-        
-        if (!hasCompletedTutorial) {
-            await this.showTutorial();
-        }
-        
-        // Continue to welcome/deck select
-        this.showWelcomeScreen();
-    },
-    
-    /**
-     * Check if user needs to set a username
-     */
-    checkIfNewUser() {
-        // If user has a generic name from OAuth, prompt them to customize
-        const name = Auth.user?.displayName || '';
-        // Check if they've customized before
-        const hasSetName = localStorage.getItem('cryptid_name_set');
-        return !hasSetName;
     },
     
     /**
@@ -172,7 +134,7 @@ const GameFlow = {
                                id="username-input" 
                                maxlength="24" 
                                placeholder="Enter your name..."
-                               value="${Auth.user?.displayName || ''}"
+                               value="${OfflinePlayer.getPlayerName()}"
                         >
                         <span class="char-count"><span id="char-current">0</span>/24</span>
                     </div>
@@ -210,33 +172,22 @@ const GameFlow = {
                 confirmBtn.disabled = true;
                 confirmBtn.textContent = 'Saving...';
                 
-                try {
-                    // Save to server if authenticated
-                    if (Auth.isAuthenticated) {
-                        await Auth.updateDisplayName(name);
-                    }
-                    
-                    // Mark that user has set their name
-                    localStorage.setItem('cryptid_name_set', 'true');
-                    
-                    // Also store locally for offline
-                    if (typeof PlayerData !== 'undefined') {
-                        PlayerData.playerName = name;
-                        PlayerData.save();
-                    }
-                    
-                    // Remove overlay
-                    overlay.classList.add('fade-out');
-                    setTimeout(() => {
-                        overlay.remove();
-                        resolve();
-                    }, 300);
-                    
-                } catch (err) {
-                    console.error('Failed to save name:', err);
-                    confirmBtn.disabled = false;
-                    confirmBtn.textContent = 'Confirm';
+                // Save locally
+                OfflinePlayer.setPlayerName(name);
+                OfflinePlayer.markNameSet();
+                
+                // Also store in PlayerData if available
+                if (typeof PlayerData !== 'undefined') {
+                    PlayerData.playerName = name;
+                    PlayerData.save();
                 }
+                
+                // Remove overlay
+                overlay.classList.add('fade-out');
+                setTimeout(() => {
+                    overlay.remove();
+                    resolve();
+                }, 300);
             };
             
             confirmBtn.addEventListener('click', confirm);
@@ -257,7 +208,7 @@ const GameFlow = {
             // Slide transition into tutorial battle
             TransitionEngine.slide(() => {
                 // Hide other screens and show game container while covered
-                ['main-menu', 'home-screen', 'login-screen', 'loading-screen', 'fullscreen-prompt'].forEach(id => {
+                ['main-menu', 'home-screen', 'loading-screen', 'fullscreen-prompt'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) {
                         el.style.transition = 'none';
@@ -319,553 +270,9 @@ const GameFlow = {
     }
 };
 
-// ==================== LOGIN SCREEN COMPONENT ====================
-
-const LoginScreen = {
-    isVisible: false,
-    animationCompleted: false,
-    animationSkipped: false,
-    
-    /**
-     * Create and show the login screen
-     */
-    show() {
-        if (this.isVisible) return;
-        this.isVisible = true;
-        this.animationCompleted = false;
-        this.animationSkipped = false;
-        
-        // Create overlay
-        const overlay = document.createElement('div');
-        overlay.id = 'login-screen';
-        overlay.innerHTML = `
-            <!-- SVG filter for heat distortion -->
-            <svg style="position:absolute;width:0;height:0;pointer-events:none;">
-                <defs>
-                    <filter id="heatDistortion" x="-20%" y="-20%" width="140%" height="140%">
-                        <feTurbulence type="fractalNoise" baseFrequency="0.015 0.02" numOctaves="2" result="noise" seed="5">
-                            <animate attributeName="baseFrequency" dur="7.5s" values="0.015 0.02;0.018 0.025;0.012 0.018;0.015 0.02" repeatCount="indefinite"/>
-                        </feTurbulence>
-                        <feDisplacementMap in="SourceGraphic" in2="noise" scale="6" xChannelSelector="R" yChannelSelector="G"/>
-                    </filter>
-                </defs>
-            </svg>
-            
-            <!-- Background image with heat distortion -->
-            <div class="login-bg">
-                <img src="sprites/loginbg.webp" alt="" class="login-bg-img">
-            </div>
-            
-            <!-- Canvas for 3D ember tunnel effect -->
-            <canvas id="login-ember-canvas"></canvas>
-            
-            <!-- Main layout container - holds everything in flexbox -->
-            <div class="login-layout">
-                <!-- Logo -->
-                <div class="login-logo-area">
-                    <img src="sprites/new-logo.png" alt="Cryptid Fates" class="login-logo-img">
-                </div>
-                
-                <!-- Content -->
-                <div class="login-content">
-                <div class="login-box">
-                    <h2>Welcome, Summoner</h2>
-                    <p class="login-prompt">Sign in to begin your journey</p>
-                    
-                    <div class="login-buttons">
-                        <button class="login-btn google-btn" onclick="Auth.loginWithGoogle()">
-                            <svg class="login-icon" viewBox="0 0 24 24">
-                                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                            </svg>
-                            <span>Google</span>
-                        </button>
-                        
-                        <button class="login-btn discord-btn" onclick="Auth.loginWithDiscord()">
-                            <svg class="login-icon" viewBox="0 0 24 24">
-                                <path fill="currentColor" d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
-                            </svg>
-                            <span>Discord</span>
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="login-features">
-                    <div class="feature">
-                        <span class="feature-icon">⚔️</span>
-                        <span>Battle other players online</span>
-                    </div>
-                    <div class="feature">
-                        <span class="feature-icon">🏆</span>
-                        <span>Climb the ranked ladder</span>
-                    </div>
-                    <div class="feature">
-                        <span class="feature-icon">📊</span>
-                        <span>Track your wins and progress</span>
-                    </div>
-                </div>
-                
-                <div class="login-bottom-btns">
-                    <button class="skip-login-btn" onclick="LoginScreen.playOffline()">
-                        ⚡ Play Offline vs AI
-                    </button>
-                    
-                    <button class="skip-login-btn dev-tutorial-btn" onclick="LoginScreen.startTutorial()">
-                        📖 Dev: Start Tutorial
-                    </button>
-                    
-                    <button class="skip-login-btn dev-rewards-btn" onclick="LoginScreen.testRewardsScreen()">
-                        🎁 Dev: Test Rewards
-                    </button>
-                </div>
-            </div>
-            </div><!-- Close login-layout -->
-        `;
-        
-        document.body.appendChild(overlay);
-        
-        // Start the 3D ember tunnel effect
-        this.initEmberTunnel();
-        
-        // Animate in
-        requestAnimationFrame(() => {
-            overlay.classList.add('visible');
-        });
-        
-        // Track animation completion
-        this.setupAnimationTracking(overlay);
-        
-        // Add click/tap to skip animation
-        this.setupAnimationSkip(overlay);
-        
-        // Handle resize - preserve animation state
-        this.resizeHandler = () => this.preserveAnimationState();
-        window.addEventListener('resize', this.resizeHandler);
-    },
-    
-    /**
-     * Setup tracking for when intro animation completes
-     */
-    setupAnimationTracking(overlay) {
-        const content = overlay.querySelector('.login-content');
-        if (content) {
-            content.addEventListener('animationend', (e) => {
-                if (e.animationName === 'contentFadeIn') {
-                    this.animationCompleted = true;
-                    this.applyFinalAnimationState();
-                }
-            });
-        }
-        
-        // Also set a fallback timer in case animationend doesn't fire
-        setTimeout(() => {
-            if (!this.animationCompleted && !this.animationSkipped) {
-                this.animationCompleted = true;
-                this.applyFinalAnimationState();
-            }
-        }, 5000); // Animation should complete by ~4.6s (3.8s delay + 0.8s animation)
-    },
-    
-    /**
-     * Setup click/tap handler to skip animation
-     */
-    setupAnimationSkip(overlay) {
-        const skipHandler = (e) => {
-            // Don't skip if clicking on buttons or inputs
-            if (e.target.closest('button, input, a')) return;
-            // Don't skip if animation already done
-            if (this.animationCompleted || this.animationSkipped) return;
-            
-            this.skipAnimation();
-        };
-        
-        overlay.addEventListener('click', skipHandler);
-        overlay.addEventListener('touchstart', skipHandler, { passive: true });
-    },
-    
-    /**
-     * Skip all intro animations and show final state immediately
-     */
-    skipAnimation() {
-        if (this.animationSkipped) return;
-        this.animationSkipped = true;
-        this.animationCompleted = true;
-        
-        const overlay = document.getElementById('login-screen');
-        if (!overlay) return;
-        
-        // Add class to disable all animations
-        overlay.classList.add('animation-skipped');
-        
-        // Apply final state
-        this.applyFinalAnimationState();
-    },
-    
-    /**
-     * Apply the final animation state directly via inline styles
-     * Simple version - just ensure elements are visible
-     */
-    applyFinalAnimationState() {
-        const overlay = document.getElementById('login-screen');
-        if (!overlay) return;
-        
-        const logoImg = overlay.querySelector('.login-logo-img');
-        const content = overlay.querySelector('.login-content');
-        
-        if (logoImg) {
-            logoImg.style.animation = 'none';
-            logoImg.style.opacity = '1';
-            logoImg.style.transform = 'none';
-        }
-        
-        if (content) {
-            content.style.animation = 'none';
-            content.style.opacity = '1';
-            content.style.transform = 'none';
-            content.style.pointerEvents = 'auto';
-        }
-    },
-    
-    /**
-     * Preserve animation state on resize - no longer needed with flexbox
-     */
-    preserveAnimationState() {
-        // Flexbox handles responsive layout automatically
-    },
-    
-    /**
-     * Hellfire Spark Effect - Streaking embers with tails flying in arcs
-     */
-    emberCanvas: null,
-    emberCtx: null,
-    sparks: [],
-    emberAnimationId: null,
-    lastTime: 0,
-    
-    initEmberTunnel() {
-        this.emberCanvas = document.getElementById('login-ember-canvas');
-        if (!this.emberCanvas) return;
-        
-        this.emberCtx = this.emberCanvas.getContext('2d');
-        this.sparks = [];
-        
-        // Set canvas size
-        this.resizeEmberCanvas();
-        window.addEventListener('resize', () => this.resizeEmberCanvas());
-        
-        // Create initial embers
-        for (let i = 0; i < 40; i++) {
-            this.sparks.push(this.createEmber(true));
-        }
-        
-        // Start animation
-        this.lastTime = performance.now();
-        this.animateEmbers();
-    },
-    
-    resizeEmberCanvas() {
-        if (!this.emberCanvas) return;
-        this.emberCanvas.width = window.innerWidth;
-        this.emberCanvas.height = window.innerHeight;
-    },
-    
-    createEmber(randomProgress = false) {
-        const canvas = this.emberCanvas;
-        
-        // Spawn from bottom half of screen, weighted toward center-bottom (near lava ring)
-        const spawnX = canvas.width * (0.15 + Math.random() * 0.7);
-        const spawnY = canvas.height * (0.5 + Math.random() * 0.5);
-        
-        // Determine ember type
-        const type = Math.random();
-        let color, size, speed;
-        
-        if (type < 0.15) {
-            // White hot sparks - small, fast
-            color = { r: 255, g: 250, b: 230 };
-            size = 0.8 + Math.random() * 1.5;
-            speed = 40 + Math.random() * 60;
-        } else if (type < 0.45) {
-            // Bright orange embers
-            color = { r: 255, g: 140 + Math.random() * 80, b: 30 + Math.random() * 50 };
-            size = 1 + Math.random() * 2.5;
-            speed = 25 + Math.random() * 45;
-        } else if (type < 0.75) {
-            // Orange-red embers - medium
-            color = { r: 255, g: 70 + Math.random() * 70, b: 15 + Math.random() * 35 };
-            size = 1.5 + Math.random() * 3;
-            speed = 20 + Math.random() * 35;
-        } else {
-            // Deep red embers - larger, slower
-            color = { r: 200 + Math.random() * 55, g: 30 + Math.random() * 50, b: 5 + Math.random() * 25 };
-            size = 2 + Math.random() * 3.5;
-            speed = 12 + Math.random() * 28;
-        }
-        
-        // Horizontal drift - slight side-to-side movement
-        const driftSpeed = (Math.random() - 0.5) * 30;
-        const driftPhase = Math.random() * Math.PI * 2;
-        const driftAmplitude = 15 + Math.random() * 40;
-        
-        // Life progress
-        const life = randomProgress ? Math.random() * 0.7 : 0;
-        const maxLife = 0.9 + Math.random() * 0.3; // When ember fades out
-        
-        return {
-            x: spawnX,
-            y: spawnY,
-            startX: spawnX,
-            speed,
-            color,
-            size,
-            life,
-            maxLife,
-            driftSpeed,
-            driftPhase,
-            driftAmplitude,
-            flicker: Math.random() * Math.PI * 2,
-            flickerSpeed: 8 + Math.random() * 12
-        };
-    },
-    
-    animateEmbers() {
-        const canvas = this.emberCanvas;
-        const ctx = this.emberCtx;
-        
-        if (!canvas || !ctx) return;
-        
-        const now = performance.now();
-        const dt = Math.min((now - this.lastTime) / 1000, 0.05);
-        this.lastTime = now;
-        
-        // Clear canvas (transparent to show background image)
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Update and draw embers
-        for (let i = this.sparks.length - 1; i >= 0; i--) {
-            const ember = this.sparks[i];
-            
-            // Update life
-            ember.life += dt * (ember.speed / canvas.height);
-            ember.flicker += dt * ember.flickerSpeed;
-            ember.driftPhase += dt * ember.driftSpeed * 0.1;
-            
-            // Calculate current position
-            const lifeProgress = ember.life / ember.maxLife;
-            const y = ember.y - (ember.life * canvas.height * 0.9);
-            const drift = Math.sin(ember.driftPhase) * ember.driftAmplitude * lifeProgress;
-            const x = ember.startX + drift;
-            
-            // Fade in at start, fade out at end
-            let alpha = 1;
-            if (lifeProgress < 0.1) {
-                alpha = lifeProgress / 0.1;
-            } else if (lifeProgress > 0.7) {
-                alpha = 1 - ((lifeProgress - 0.7) / 0.3);
-            }
-            
-            // Check if dead or off screen
-            if (ember.life >= ember.maxLife || y < -50) {
-                this.sparks[i] = this.createEmber(false);
-                continue;
-            }
-            
-            // Flicker effect
-            const flickerVal = 0.75 + 0.25 * Math.sin(ember.flicker);
-            const finalAlpha = alpha * flickerVal;
-            
-            // Skip nearly invisible embers
-            if (finalAlpha < 0.05) continue;
-            
-            // Size decreases slightly as ember rises and cools
-            const currentSize = ember.size * (1 - lifeProgress * 0.3);
-            
-            // Color cools as it rises (shifts from bright to darker)
-            const coolFactor = lifeProgress * 0.4;
-            const r = Math.floor(ember.color.r * (1 - coolFactor * 0.2));
-            const g = Math.floor(ember.color.g * (1 - coolFactor * 0.5));
-            const b = Math.floor(ember.color.b * (1 - coolFactor * 0.3));
-            
-            // Outer glow
-            const glowRadius = currentSize * 6;
-            if (glowRadius > 2) {
-                const emberGlow = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
-                emberGlow.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.4 * finalAlpha})`);
-                emberGlow.addColorStop(0.4, `rgba(${r}, ${Math.floor(g * 0.6)}, ${Math.floor(b * 0.4)}, ${0.15 * finalAlpha})`);
-                emberGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                ctx.fillStyle = emberGlow;
-                ctx.beginPath();
-                ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            
-            // Ember core
-            if (currentSize > 0.3) {
-                ctx.beginPath();
-                ctx.arc(x, y, currentSize, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${finalAlpha})`;
-                ctx.fill();
-                
-                // Bright center for larger embers
-                if (currentSize > 1.2 && finalAlpha > 0.5) {
-                    ctx.beginPath();
-                    ctx.arc(x, y, currentSize * 0.4, 0, Math.PI * 2);
-                    ctx.fillStyle = `rgba(255, ${200 + Math.floor(g * 0.3)}, ${150 + Math.floor(b)}, ${finalAlpha * 0.8})`;
-                    ctx.fill();
-                }
-            }
-        }
-        
-        // Spawn new embers occasionally
-        if (Math.random() < 0.12 && this.sparks.length < 50) {
-            this.sparks.push(this.createEmber(false));
-        }
-        
-        // Continue animation
-        this.emberAnimationId = requestAnimationFrame(() => this.animateEmbers());
-    },
-    
-    stopEmberTunnel() {
-        if (this.emberAnimationId) {
-            cancelAnimationFrame(this.emberAnimationId);
-            this.emberAnimationId = null;
-        }
-        window.removeEventListener('resize', () => this.resizeEmberCanvas());
-        this.emberCanvas = null;
-        this.emberCtx = null;
-        this.sparks = [];
-    },
-    
-    /**
-     * Start tutorial directly (dev bypass)
-     */
-    async startTutorial() {
-        console.log('[LoginScreen] Starting tutorial bypass...');
-        
-        await TransitionEngine.slide(() => {
-            // Hide origin screens INSTANTLY (no CSS transition - we're covered)
-            this.hide(true);
-            ['main-menu', 'home-screen', 'loading-screen', 'fullscreen-prompt'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) {
-                    el.style.transition = 'none';
-                    el.style.display = 'none';
-                    el.classList.add('hidden');
-                }
-            });
-            
-            // Show destination (game container) while still covered
-            const gameContainer = document.getElementById('game-container');
-            if (gameContainer) {
-                gameContainer.classList.remove('hidden');
-                gameContainer.style.cssText = 'display: flex !important; visibility: visible !important; opacity: 1 !important;';
-            }
-            
-            // Apply battlefield backgrounds while covered
-            if (typeof applyBattlefieldBackgrounds === 'function') {
-                applyBattlefieldBackgrounds();
-            }
-        });
-        
-        // Now initialize tutorial logic (screens already swapped)
-        if (typeof TutorialManager !== 'undefined') {
-            await TutorialManager.start();
-        } else {
-            console.error('[LoginScreen] TutorialManager not found');
-        }
-    },
-    
-    /**
-     * Test rewards screen directly (dev bypass)
-     */
-    testRewardsScreen() {
-        console.log('[LoginScreen] Testing rewards screen...');
-        
-        // IMPORTANT: Set offline mode so the game doesn't redirect back to login
-        window.isOfflineMode = true;
-        
-        this.hide();
-        
-        // Hide other screens
-        ['main-menu', 'home-screen', 'loading-screen', 'fullscreen-prompt', 'game-container'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.style.display = 'none';
-                el.classList.add('hidden');
-            }
-        });
-        
-        // Show rewards screen directly
-        if (typeof TutorialRewards !== 'undefined') {
-            TutorialRewards.show();
-        } else {
-            console.error('[LoginScreen] TutorialRewards not found');
-        }
-    },
-    
-    /**
-     * Hide the login screen
-     * @param {boolean} instant - If true, skip CSS transition (for use with TransitionEngine)
-     */
-    hide(instant = false) {
-        const overlay = document.getElementById('login-screen');
-        if (!overlay) return;
-        
-        // Stop ember tunnel effect
-        this.stopEmberTunnel();
-        
-        // Remove resize handler
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler);
-            this.resizeHandler = null;
-        }
-        
-        if (instant) {
-            // Instant hide - no CSS transition (TransitionEngine handles the visual)
-            overlay.style.transition = 'none';
-            overlay.style.display = 'none';
-            overlay.remove();
-            this.isVisible = false;
-            this.animationCompleted = false;
-            this.animationSkipped = false;
-        } else {
-            // Normal hide with CSS transition
-            overlay.classList.remove('visible');
-            setTimeout(() => {
-                overlay.remove();
-                this.isVisible = false;
-                this.animationCompleted = false;
-                this.animationSkipped = false;
-            }, 300);
-        }
-    },
-    
-    /**
-     * Play offline without logging in
-     */
-    playOffline() {
-        window.isOfflineMode = true;
-        this.hide();
-        GameFlow.onOfflineMode();
-    }
-};
-
 // ==================== CSS STYLES ====================
 
 const loginStyles = `
-/* ==================== CANVAS EMBER TUNNEL ==================== */
-#login-ember-canvas {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 1;
-    pointer-events: none;
-}
-
 /* Loading Screen */
 #loading-screen {
     position: fixed;
@@ -900,440 +307,6 @@ const loginStyles = `
 
 @keyframes spin {
     to { transform: rotate(360deg); }
-}
-
-/* ==================== LOGIN SCREEN ==================== */
-#login-screen {
-    position: fixed;
-    inset: 0;
-    background: transparent;
-    z-index: 10000;
-    opacity: 0;
-    transition: opacity 1s ease;
-    overflow: hidden;
-}
-
-#login-screen.visible {
-    opacity: 1;
-}
-
-/* Main layout - simple flexbox column with even spacing */
-.login-layout {
-    position: relative;
-    z-index: 10;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-evenly;
-    padding: clamp(20px, 4vh, 60px) clamp(16px, 4vw, 40px);
-    box-sizing: border-box;
-}
-
-/* Logo area */
-.login-logo-area {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-/* Animation skipped - show final state immediately */
-#login-screen.animation-skipped .login-logo-img,
-#login-screen.animation-skipped .login-content {
-    animation: none !important;
-    transition: none !important;
-}
-
-#login-screen.animation-skipped .login-logo-img {
-    opacity: 1 !important;
-    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5)) blur(0px) !important;
-    transform: none !important;
-}
-
-#login-screen.animation-skipped .login-content {
-    opacity: 1 !important;
-    transform: none !important;
-    pointer-events: auto !important;
-}
-
-/* Background image layer with heat distortion */
-.login-bg {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    overflow: hidden;
-    background: #030201;
-}
-
-.login-bg-img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center;
-    filter: url(#heatDistortion);
-}
-
-/* Subtle pulsing glow overlay for the lava */
-.login-bg::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at 50% 35%, rgba(255, 60, 10, 0.08) 0%, transparent 50%);
-    animation: lavaPulse 4s ease-in-out infinite;
-    pointer-events: none;
-}
-
-@keyframes lavaPulse {
-    0%, 100% { opacity: 0.5; }
-    50% { opacity: 1; }
-}
-
-/* ==================== LOGO ==================== */
-.login-logo-img {
-    width: clamp(320px, 70vw, 600px);
-    height: auto;
-    max-height: 30vh;
-    object-fit: contain;
-    filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.6));
-    /* Simple fade in */
-    opacity: 0;
-    animation: logoFadeIn 1.5s ease-out 0.3s forwards;
-}
-
-@keyframes logoFadeIn {
-    0% { opacity: 0; transform: scale(0.95); }
-    100% { opacity: 1; transform: scale(1); }
-}
-
-/* ==================== CONTENT CONTAINER ==================== */
-.login-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: clamp(14px, 2.5vh, 24px);
-    max-width: 480px;
-    width: 100%;
-    box-sizing: border-box;
-    /* Fade in after logo */
-    opacity: 0;
-    animation: contentFadeIn 0.8s ease-out 1s forwards;
-}
-
-@keyframes contentFadeIn {
-    0% { opacity: 0; transform: translateY(20px); }
-    100% { opacity: 1; transform: translateY(0); pointer-events: auto; }
-}
-
-/* Items */
-.login-box,
-.login-features,
-.login-bottom-btns {
-    width: 100%;
-    box-sizing: border-box;
-}
-
-/* ==================== LOGIN BOX ==================== */
-.login-box {
-    width: 100%;
-    max-width: clamp(280px, 50vmin, 380px);
-    text-align: center;
-}
-
-.login-box h2 {
-    font-family: 'Cinzel', serif;
-    margin: 0 0 10px;
-    font-size: 22px;
-    color: #fff;
-    letter-spacing: 4px;
-    text-shadow: 
-        0 0 10px rgba(255, 150, 80, 0.8),
-        0 0 30px rgba(255, 100, 40, 0.5),
-        0 4px 8px rgba(0, 0, 0, 0.9);
-    text-transform: uppercase;
-}
-
-.login-prompt {
-    margin: 0 0 20px;
-    color: #8a6a4a;
-    font-size: 14px;
-    letter-spacing: 2px;
-    font-family: 'Source Sans Pro', sans-serif;
-}
-
-/* ==================== BUTTON CONTAINER ==================== */
-.login-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: clamp(10px, 2vmin, 16px);
-}
-
-/* ==================== EPIC FANTASY BUTTONS ==================== */
-.login-btn {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 16px 48px;
-    font-family: 'Cinzel', serif;
-    font-size: 15px;
-    font-weight: 700;
-    border: none;
-    cursor: pointer;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    overflow: hidden;
-    transition: all 0.3s ease;
-    border-radius: 8px;
-}
-
-/* Button border frame */
-.login-btn::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 8px;
-    padding: 2px;
-    background: linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.05));
-    -webkit-mask: 
-        linear-gradient(#fff 0 0) content-box, 
-        linear-gradient(#fff 0 0);
-    mask: 
-        linear-gradient(#fff 0 0) content-box, 
-        linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
-}
-
-/* Shine effect */
-.login-btn::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -150%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-        90deg,
-        transparent,
-        rgba(255, 255, 255, 0.3),
-        transparent
-    );
-    transition: left 0.6s ease;
-    pointer-events: none;
-}
-
-.login-btn:hover::after {
-    left: 150%;
-}
-
-.login-icon {
-    width: clamp(18px, 4vmin, 24px);
-    height: clamp(18px, 4vmin, 24px);
-    flex-shrink: 0;
-    position: relative;
-    z-index: 2;
-}
-
-.login-btn span:not(.btn-glow) {
-    position: relative;
-    z-index: 2;
-}
-
-/* Google Button - Molten Silver */
-.google-btn {
-    background: linear-gradient(
-        180deg,
-        #5a5a65 0%,
-        #45454f 30%,
-        #35353e 70%,
-        #28282f 100%
-    );
-    color: #e8e8f0;
-    box-shadow: 
-        0 0 0 1px rgba(255, 255, 255, 0.1) inset,
-        0 8px 32px rgba(0, 0, 0, 0.8),
-        0 0 60px rgba(150, 150, 180, 0.15);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
-}
-
-.google-btn::before {
-    background: linear-gradient(
-        180deg,
-        rgba(200, 200, 220, 0.5),
-        rgba(120, 120, 140, 0.3),
-        rgba(80, 80, 100, 0.4),
-        rgba(200, 200, 220, 0.5)
-    );
-}
-
-.google-btn:hover {
-    transform: translateY(-4px) scale(1.03);
-    box-shadow: 
-        0 0 0 1px rgba(255, 255, 255, 0.2) inset,
-        0 12px 48px rgba(0, 0, 0, 0.9),
-        0 0 80px rgba(180, 180, 220, 0.25),
-        0 0 120px rgba(150, 150, 200, 0.15);
-}
-
-.google-btn:active {
-    transform: translateY(0) scale(0.98);
-}
-
-/* Discord Button - Arcane Purple */
-.discord-btn {
-    background: linear-gradient(
-        180deg,
-        #6875f2 0%,
-        #5560d8 30%,
-        #444eb8 70%,
-        #353d98 100%
-    );
-    color: #fff;
-    box-shadow: 
-        0 0 0 1px rgba(150, 160, 255, 0.2) inset,
-        0 8px 32px rgba(0, 0, 0, 0.8),
-        0 0 60px rgba(88, 101, 242, 0.3);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-}
-
-.discord-btn::before {
-    background: linear-gradient(
-        180deg,
-        rgba(150, 160, 255, 0.6),
-        rgba(100, 110, 220, 0.3),
-        rgba(70, 80, 180, 0.4),
-        rgba(150, 160, 255, 0.6)
-    );
-}
-
-.discord-btn:hover {
-    transform: translateY(-4px) scale(1.03);
-    box-shadow: 
-        0 0 0 1px rgba(150, 160, 255, 0.3) inset,
-        0 12px 48px rgba(0, 0, 0, 0.9),
-        0 0 80px rgba(88, 101, 242, 0.5),
-        0 0 120px rgba(100, 120, 255, 0.3);
-}
-
-.discord-btn:active {
-    transform: translateY(0) scale(0.98);
-}
-
-/* ==================== FEATURES BOX ==================== */
-.login-features {
-    display: flex;
-    flex-direction: column;
-    gap: clamp(6px, 1.2vmin, 12px);
-    padding: clamp(10px, 2vmin, 18px);
-    background: linear-gradient(
-        180deg,
-        rgba(30, 15, 8, 0.85) 0%,
-        rgba(15, 8, 4, 0.9) 100%
-    );
-    border: 1px solid rgba(255, 120, 40, 0.15);
-    width: 100%;
-    max-width: 320px;
-    clip-path: polygon(
-        12px 0%, calc(100% - 12px) 0%, 100% 12px, 100% calc(100% - 12px),
-        calc(100% - 12px) 100%, 12px 100%, 0% calc(100% - 12px), 0% 12px
-    );
-    box-shadow: 
-        0 8px 32px rgba(0, 0, 0, 0.6),
-        inset 0 1px 0 rgba(255, 150, 80, 0.1);
-}
-
-.feature {
-    display: flex;
-    align-items: center;
-    gap: clamp(12px, 2.5vmin, 18px);
-    font-size: clamp(12px, 2.6vmin, 15px);
-    color: #b89070;
-    letter-spacing: 0.5px;
-    font-family: 'Source Sans Pro', sans-serif;
-}
-
-.feature-icon {
-    font-size: clamp(18px, 4vmin, 24px);
-    filter: drop-shadow(0 0 8px rgba(255, 120, 40, 0.5));
-    flex-shrink: 0;
-}
-
-/* ==================== BOTTOM BUTTONS ==================== */
-.login-bottom-btns {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: clamp(8px, 1.5vmin, 12px);
-    margin-top: clamp(8px, 2vmin, 16px);
-}
-
-.skip-login-btn {
-    background: linear-gradient(180deg, rgba(20, 12, 8, 0.9) 0%, rgba(10, 6, 4, 0.95) 100%);
-    border: 1px solid rgba(255, 120, 40, 0.35);
-    color: #dd9966;
-    padding: 12px 24px;
-    font-family: 'Cinzel', serif;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    position: relative;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-    box-shadow: 
-        0 2px 8px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 150, 80, 0.1);
-    border-radius: 6px;
-}
-
-.skip-login-btn:hover {
-    background: linear-gradient(180deg, rgba(40, 20, 10, 0.95) 0%, rgba(20, 10, 5, 0.98) 100%);
-    border-color: rgba(255, 120, 40, 0.6);
-    color: #ffbb88;
-    box-shadow: 
-        0 4px 20px rgba(255, 100, 40, 0.25),
-        0 2px 8px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 150, 80, 0.2);
-    text-shadow: 0 0 20px rgba(255, 150, 80, 0.6);
-}
-
-.dev-tutorial-btn {
-    border-color: rgba(80, 200, 120, 0.35);
-    color: #70b080;
-}
-
-.dev-tutorial-btn:hover {
-    background: linear-gradient(180deg, rgba(15, 30, 20, 0.95) 0%, rgba(8, 15, 10, 0.98) 100%);
-    border-color: rgba(80, 200, 120, 0.6);
-    color: #90e0a0;
-    box-shadow: 
-        0 4px 20px rgba(80, 200, 120, 0.2),
-        0 2px 8px rgba(0, 0, 0, 0.5);
-    text-shadow: 0 0 20px rgba(100, 220, 140, 0.6);
-}
-
-.dev-rewards-btn {
-    border-color: rgba(255, 200, 80, 0.35);
-    color: #ccaa66;
-}
-
-.dev-rewards-btn:hover {
-    background: linear-gradient(180deg, rgba(35, 28, 12, 0.95) 0%, rgba(18, 14, 6, 0.98) 100%);
-    border-color: rgba(255, 200, 80, 0.6);
-    color: #ffe088;
-    box-shadow: 
-        0 4px 20px rgba(255, 200, 80, 0.2),
-        0 2px 8px rgba(0, 0, 0, 0.5);
-    text-shadow: 0 0 20px rgba(255, 220, 100, 0.6);
 }
 
 /* ==================== USERNAME ENTRY SCREEN ==================== */
@@ -1521,108 +494,6 @@ const loginStyles = `
     transform: none;
 }
 
-/* ==================== TUTORIAL SCREEN ==================== */
-#tutorial-screen {
-    position: fixed;
-    inset: 0;
-    background: #030201;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    opacity: 0;
-    transition: opacity 0.5s ease;
-    padding: clamp(12px, 3vw, 24px);
-    overflow: hidden;
-}
-
-#tutorial-screen.visible {
-    opacity: 1;
-}
-
-#tutorial-screen.fade-out {
-    opacity: 0;
-}
-
-.tutorial-container {
-    position: relative;
-    text-align: center;
-    max-width: 500px;
-    width: 100%;
-    z-index: 10;
-}
-
-.tutorial-container h2 {
-    font-family: 'Cinzel', serif;
-    color: #fff;
-    font-size: clamp(20px, 5vmin, 36px);
-    letter-spacing: 4px;
-    margin: 0 0 clamp(20px, 4vh, 36px);
-    text-shadow: 
-        0 0 10px rgba(255, 150, 80, 0.8),
-        0 0 30px rgba(255, 100, 40, 0.5),
-        0 4px 8px rgba(0, 0, 0, 0.9);
-    text-transform: uppercase;
-}
-
-.tutorial-content {
-    display: flex;
-    flex-direction: column;
-    gap: clamp(12px, 2.5vh, 20px);
-    margin-bottom: clamp(20px, 4vh, 36px);
-}
-
-.tutorial-step {
-    display: flex;
-    align-items: center;
-    gap: clamp(12px, 2.5vw, 20px);
-    background: linear-gradient(180deg, rgba(30, 15, 8, 0.8) 0%, rgba(15, 8, 4, 0.85) 100%);
-    padding: clamp(12px, 2.5vh, 20px) clamp(14px, 3vw, 24px);
-    border: 1px solid rgba(255, 120, 40, 0.15);
-    text-align: left;
-    clip-path: polygon(
-        8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px),
-        calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px
-    );
-}
-
-.tutorial-step .step-icon {
-    font-size: clamp(22px, 5vmin, 32px);
-    flex-shrink: 0;
-    filter: drop-shadow(0 0 12px rgba(255, 120, 40, 0.6));
-}
-
-.tutorial-step p {
-    color: #b89070;
-    margin: 0;
-    font-size: clamp(12px, 2.6vmin, 15px);
-    line-height: 1.6;
-    letter-spacing: 0.5px;
-}
-
-.tutorial-step strong {
-    color: #ffd0a0;
-}
-
-.skip-future {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: clamp(8px, 2vw, 12px);
-    margin-top: clamp(14px, 3vh, 24px);
-    color: #6a5040;
-    font-size: clamp(11px, 2.2vmin, 13px);
-    cursor: pointer;
-    letter-spacing: 1px;
-}
-
-.skip-future input {
-    cursor: pointer;
-    accent-color: #ff6030;
-    width: 18px;
-    height: 18px;
-}
-
 /* ==================== USER PROFILE BAR ==================== */
 .user-profile-bar {
     display: flex;
@@ -1675,109 +546,6 @@ const loginStyles = `
     color: #8a6a4a;
     letter-spacing: 0.5px;
 }
-
-.user-menu-btn {
-    background: none;
-    border: none;
-    color: #8a6a4a;
-    cursor: pointer;
-    padding: 4px 8px;
-    font-size: clamp(14px, 3.5vmin, 18px);
-    transition: all 0.3s;
-}
-
-.user-menu-btn:hover {
-    color: #ff8040;
-    text-shadow: 0 0 15px rgba(255, 100, 40, 0.6);
-}
-
-/* ===== SHORT SCREENS - hide features ===== */
-@media (max-height: 650px) {
-    .login-features {
-        display: none;
-    }
-}
-
-/* ===== LANDSCAPE MODE ===== */
-@media (max-height: 450px) {
-    .login-layout {
-        padding: 10px 20px;
-    }
-    
-    .login-logo-img {
-        max-height: 35vh;
-        width: auto;
-    }
-    
-    .login-content {
-        gap: 10px;
-    }
-    
-    .login-box h2 {
-        font-size: 16px;
-        margin-bottom: 6px;
-    }
-    
-    .login-prompt {
-        font-size: 11px;
-        margin-bottom: 10px;
-    }
-    
-    .login-buttons {
-        flex-direction: row;
-        gap: 12px;
-    }
-    
-    .login-btn {
-        padding: 10px 24px;
-        font-size: 12px;
-    }
-    
-    .login-bottom-btns {
-        flex-direction: row;
-        gap: 10px;
-    }
-    
-    .skip-login-btn {
-        padding: 8px 16px;
-        font-size: 9px;
-    }
-}
-
-/* ===== VERY SHORT SCREENS ===== */
-@media (max-height: 350px) {
-    .login-layout {
-        padding: 6px 12px;
-    }
-    
-    .login-logo-img {
-        max-height: 35vh;
-    }
-    
-    .login-content {
-        gap: 6px;
-    }
-    
-    .login-box h2 {
-        font-size: 13px;
-        margin-bottom: 4px;
-    }
-    
-    .login-prompt {
-        font-size: 9px;
-        margin-bottom: 6px;
-    }
-    
-    .login-btn {
-        padding: 8px 18px;
-        font-size: 10px;
-    }
-    
-    .skip-login-btn {
-        padding: 5px 12px;
-        font-size: 8px;
-    }
-}
 `;
 
 // Inject styles
@@ -1793,35 +561,17 @@ const UserProfileBar = {
     create() {
         if (this.element) return;
         
-        const user = Auth.user;
-        if (!user && !window.isOfflineMode) return;
-        
         this.element = document.createElement('div');
         this.element.className = 'user-profile-bar';
         
-        if (user) {
-            this.element.innerHTML = `
-                ${user.avatarUrl 
-                    ? `<img src="${user.avatarUrl}" class="user-avatar" alt="Avatar">`
-                    : `<div class="user-avatar placeholder">${user.displayName.charAt(0).toUpperCase()}</div>`
-                }
-                <div>
-                    <div class="user-name">${user.displayName}</div>
-                    <div class="user-stats">${Auth.getStatsString()}</div>
-                </div>
-                <button class="user-menu-btn" onclick="UserProfileBar.showMenu()" title="Account">⚙️</button>
-            `;
-        } else {
-            // Offline mode
-            const offlineName = (typeof PlayerData !== 'undefined' && PlayerData.playerName) || 'Summoner';
-            this.element.innerHTML = `
-                <div class="user-avatar placeholder">${offlineName.charAt(0).toUpperCase()}</div>
-                <div>
-                    <div class="user-name">${offlineName}</div>
-                    <div class="user-stats">Offline Mode</div>
-                </div>
-            `;
-        }
+        const playerName = OfflinePlayer.getPlayerName();
+        this.element.innerHTML = `
+            <div class="user-avatar placeholder">${playerName.charAt(0).toUpperCase()}</div>
+            <div>
+                <div class="user-name">${playerName}</div>
+                <div class="user-stats">Offline Mode</div>
+            </div>
+        `;
         
         document.body.appendChild(this.element);
     },
@@ -1836,50 +586,31 @@ const UserProfileBar = {
     update() {
         this.remove();
         this.create();
-    },
-    
-    showMenu() {
-        const choice = prompt(
-            `Account Menu\n\n` +
-            `1. Change Display Name\n` +
-            `2. ${Auth.user?.hasGoogle ? '✓ Google Linked' : 'Link Google Account'}\n` +
-            `3. ${Auth.user?.hasDiscord ? '✓ Discord Linked' : 'Link Discord Account'}\n` +
-            `4. Logout\n\n` +
-            `Enter option number:`
-        );
-        
-        switch (choice) {
-            case '1':
-                const newName = prompt('Enter new display name (2-24 characters):', Auth.user?.displayName);
-                if (newName && newName !== Auth.user?.displayName) {
-                    Auth.updateDisplayName(newName)
-                        .then(() => {
-                            this.update();
-                            if (typeof showMessage === 'function') {
-                                showMessage('Name updated!', 1500);
-                            }
-                        })
-                        .catch(err => alert(err.message));
-                }
-                break;
-            case '2':
-                if (!Auth.user?.hasGoogle) Auth.linkGoogle();
-                break;
-            case '3':
-                if (!Auth.user?.hasDiscord) Auth.linkDiscord();
-                break;
-            case '4':
-                if (confirm('Are you sure you want to logout?')) {
-                    Auth.logout();
-                }
-                break;
-        }
     }
 };
 
 // ==================== INITIALIZATION ====================
 
-// Don't auto-start - let index.html control this
+// Make available globally
 window.GameFlow = GameFlow;
-window.LoginScreen = LoginScreen;
 window.UserProfileBar = UserProfileBar;
+
+// Legacy compatibility - create stub Auth object for any code that still references it
+window.Auth = {
+    isAuthenticated: false,
+    isLoading: false,
+    user: null,
+    async init() { return false; },
+    getToken() { return null; },
+    getUserId() { return 'local_player'; },
+    getDisplayName() { return OfflinePlayer.getPlayerName(); },
+    getAvatarUrl() { return null; },
+    getStatsString() { 
+        if (typeof PlayerData !== 'undefined') {
+            const wins = PlayerData.stats?.wins || 0;
+            const losses = PlayerData.stats?.losses || 0;
+            return `${wins}W - ${losses}L`;
+        }
+        return '0W - 0L';
+    }
+};

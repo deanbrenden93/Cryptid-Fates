@@ -246,17 +246,6 @@ window.CheatMode = {
                     </div>
                 </div>
                 
-                <!-- Multiplayer Sync (only shown in MP) -->
-                <div class="cheat-section" id="cheat-mp-section" style="display:none">
-                    <div class="cheat-section-title">Multiplayer</div>
-                    <div class="cheat-row">
-                        <button class="cheat-btn" onclick="CheatMode.syncToOpponent()" style="flex:1; background: linear-gradient(135deg, #4a6a3f, #3a5a2f);">⟳ Sync to Opponent</button>
-                    </div>
-                    <div class="cheat-row" style="font-size:10px; color:#888;">
-                        Push local state to opponent after cheat changes
-                    </div>
-                </div>
-                
                 <!-- Event Log Toggle -->
                 <div class="cheat-section">
                     <div class="cheat-row">
@@ -1515,29 +1504,6 @@ window.CheatMode = {
         if (typeof renderAll === 'function') renderAll();
     },
     
-    // ==================== MULTIPLAYER SYNC ====================
-    
-    syncToOpponent() {
-        if (!window.game?.isMultiplayer) {
-            console.log('[Cheat] Not in multiplayer, no sync needed');
-            return;
-        }
-        
-        if (!window.Multiplayer?.isInMatch) {
-            console.log('[Cheat] Not in active match');
-            return;
-        }
-        
-        // Send a cheat sync action with full state
-        // The opponent will receive and apply the state
-        window.Multiplayer.sendGameAction('cheatSync', {
-            note: 'Cheat mode state sync'
-        });
-        
-        console.log('[Cheat] State synced to opponent');
-        showMessage('State synced to opponent', 1500);
-    },
-    
     // ==================== DISPLAY ====================
     
     updateDisplay() {
@@ -1552,12 +1518,6 @@ window.CheatMode = {
         if (enemyPyre) enemyPyre.textContent = window.game.enemyPyre;
         if (playerDeaths) playerDeaths.textContent = window.game.playerDeaths;
         if (enemyDeaths) enemyDeaths.textContent = window.game.enemyDeaths;
-        
-        // Show/hide multiplayer section
-        const mpSection = document.getElementById('cheat-mp-section');
-        if (mpSection) {
-            mpSection.style.display = window.game?.isMultiplayer ? 'block' : 'none';
-        }
     },
     
     toggleEventLog() {
