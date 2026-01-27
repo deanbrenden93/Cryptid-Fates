@@ -2232,8 +2232,8 @@ function summonToSlot(col, row) {
     // Server will process and send back state to both players
     // ============================================================
     if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
-        // Convert client column to server convention
-        const serverCol = 1 - col;
+        // NEW ARCHITECTURE: Server uses same column conventions as client
+        // No column flip needed!
         
         if (card.isKindling) {
             if (game.playerKindlingPlayedThisTurn) return;
@@ -2243,7 +2243,7 @@ function summonToSlot(col, row) {
                 kindlingId: card.id,
                 cardKey: card.key,
                 cardName: card.name,
-                col: serverCol,
+                col: col,
                 row: row
             });
         } else {
@@ -2254,7 +2254,7 @@ function summonToSlot(col, row) {
                 cardId: card.id,
                 cardKey: card.key,
                 cardName: card.name,
-                col: serverCol,
+                col: col,
                 row: row
             });
         }
@@ -2377,11 +2377,33 @@ function summonToSlot(col, row) {
 function executeEvolution(targetOwner, targetCol, targetRow) {
     const card = ui.selectedCard || ui.draggedCard || ui.targetingEvolution;
     if (!card?.evolvesFrom || isAnimating) return;
-    isAnimating = true;
-    window.Multiplayer?.startActionCapture?.();
     
     const baseCryptid = game.getFieldCryptid(targetOwner, targetCol, targetRow);
-    if (!baseCryptid || baseCryptid.key !== card.evolvesFrom) { isAnimating = false; return; }
+    if (!baseCryptid || baseCryptid.key !== card.evolvesFrom) { return; }
+    
+    // ============================================================
+    // MULTIPLAYER: Send intent to authoritative server, NO local execution
+    // ============================================================
+    if (game.isMultiplayer && window.Multiplayer?.isInMatch && targetOwner === 'player') {
+        window.Multiplayer.sendGameAction('evolve', {
+            cardId: card.id,
+            cardKey: card.key,
+            targetCol: targetCol,
+            targetRow: targetRow
+        });
+        
+        // Clear selection but don't change game state
+        ui.selectedCard = null;
+        ui.targetingEvolution = null;
+        document.getElementById('cancel-target').classList.remove('show');
+        return; // Server will send state update with animations
+    }
+    
+    // ============================================================
+    // SINGLE PLAYER: Execute locally as before
+    // ============================================================
+    isAnimating = true;
+    window.Multiplayer?.startActionCapture?.();
     
     // IMPORTANT: Capture the OLD sprite BEFORE any game state changes
     const oldSprite = document.querySelector(`.cryptid-sprite[data-owner="${targetOwner}"][data-col="${targetCol}"][data-row="${targetRow}"]`);
@@ -2398,12 +2420,6 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
     
     // Update game state (this changes the cryptid data but NOT the DOM yet)
     game.evolveCryptid(baseCryptid, card);
-    
-    // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animations
-    // This allows opponent to see evolution animation in parallel with us
-    if (game.isMultiplayer && targetOwner === 'player' && typeof window.multiplayerHook !== 'undefined') {
-        window.multiplayerHook.onEvolve(card, targetCol, targetRow);
-    }
     
     ui.selectedCard = null;
     ui.targetingEvolution = null;
@@ -2455,11 +2471,36 @@ function executeEvolution(targetOwner, targetCol, targetRow) {
 
 function executeBurst(targetOwner, targetCol, targetRow) {
     if (!ui.targetingBurst || isAnimating) return;
-    isAnimating = true;
-    window.Multiplayer?.startActionCapture?.();
     const card = ui.targetingBurst;
     const targetCryptid = game.getFieldCryptid(targetOwner, targetCol, targetRow);
     const isTileTarget = card.targetType === 'tile' || card.targetType === 'enemyTile' || card.targetType === 'allyTile';
+    
+    if (!targetCryptid && !isTileTarget) return;
+    
+    // ============================================================
+    // MULTIPLAYER: Send intent to authoritative server, NO local execution
+    // ============================================================
+    if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
+        window.Multiplayer.sendGameAction('playBurst', {
+            cardId: card.id,
+            cardKey: card.key,
+            targetOwner: targetOwner,
+            targetCol: targetCol,
+            targetRow: targetRow
+        });
+        
+        // Clear selection but don't change game state
+        ui.targetingBurst = null;
+        ui.selectedCard = null;
+        document.getElementById('cancel-target').classList.remove('show');
+        return; // Server will send state update with animations
+    }
+    
+    // ============================================================
+    // SINGLE PLAYER: Execute locally as before
+    // ============================================================
+    isAnimating = true;
+    window.Multiplayer?.startActionCapture?.();
     
     if (targetCryptid || isTileTarget) {
         // Track HP before effect for damage calculation
@@ -2475,7 +2516,9 @@ function executeBurst(targetOwner, targetCol, targetRow) {
         
         // Execute spell effect
         if (targetCryptid) GameEvents.emit('onTargeted', { target: targetCryptid, targetOwner, source: card, sourceType: 'spell' });
-        card.effect(game, 'player', targetCryptid);
+        if (typeof card.effect === 'function') {
+            card.effect(game, 'player', targetCryptid);
+        }
         GameEvents.emit('onSpellCast', { card, caster: 'player', target: targetCryptid, targetOwner });
         GameEvents.emit('onBurstPlayed', { card, target: targetCryptid, owner: 'player', targetOwner, targetCol, targetRow });
         
@@ -2497,15 +2540,6 @@ function executeBurst(targetOwner, targetCol, targetRow) {
         const damage = hpBefore > hpAfter ? hpBefore - hpAfter : 0;
         const healing = hpAfter > hpBefore ? hpAfter - hpBefore : 0;
         const targetDied = targetCryptid && game.getEffectiveHp(targetCryptid) <= 0;
-        
-        // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animations
-        if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onBurst(card, targetOwner, targetCol, targetRow, {
-                damage: damage,
-                healing: healing,
-                targetDied: targetDied
-            });
-        }
         
         // === NOW PLAY LOCAL ANIMATIONS ===
         
@@ -2622,15 +2656,6 @@ function executeBurstDirect(card, targetOwner, targetCol, targetRow) {
         const healing = hpAfter > hpBefore ? hpAfter - hpBefore : 0;
         const targetDied = targetCryptid && game.getEffectiveHp(targetCryptid) <= 0;
         
-        // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animations
-        if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onBurst(card, targetOwner, targetCol, targetRow, {
-                damage: damage,
-                healing: healing,
-                targetDied: targetDied
-            });
-        }
-        
         // === NOW PLAY LOCAL ANIMATIONS ===
         
         // 1. Animate card removal
@@ -2665,10 +2690,31 @@ function executeBurstDirect(card, targetOwner, targetCol, targetRow) {
 }
 
 function executeTrapPlacement(row) {
-    window.Multiplayer?.startActionCapture?.();
     const card = ui.targetingTrap;
     const effectiveCost = game.getModifiedCost(card, 'player');
     if (!card || isAnimating || game.playerPyre < effectiveCost) return;
+    
+    // ============================================================
+    // MULTIPLAYER: Send intent to authoritative server, NO local execution
+    // ============================================================
+    if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
+        window.Multiplayer.sendGameAction('playTrap', {
+            cardId: card.id,
+            cardKey: card.key,
+            row: row
+        });
+        
+        // Clear selection but don't change game state
+        ui.targetingTrap = null;
+        ui.selectedCard = null;
+        document.getElementById('cancel-target').classList.remove('show');
+        return; // Server will send state update with animations
+    }
+    
+    // ============================================================
+    // SINGLE PLAYER: Execute locally as before
+    // ============================================================
+    window.Multiplayer?.startActionCapture?.();
     
     const success = game.setTrap('player', row, card);
     if (success) {
@@ -2683,11 +2729,6 @@ function executeTrapPlacement(row) {
         const idx = game.playerHand.findIndex(c => c.id === card.id);
         if (idx > -1) game.playerHand.splice(idx, 1);
         game.playerDiscardPile.push(card);
-        
-        // MULTIPLAYER: Send hook IMMEDIATELY after game logic
-        if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-            window.multiplayerHook.onTrap(card, row);
-        }
         
         // NOW play animations
         window.newlySpawnedTrap = { owner: 'player', row };
@@ -2744,12 +2785,33 @@ function executeTrapPlacementDirect(card, row) {
 }
 
 function executeAura(col, row) {
-    window.Multiplayer?.startActionCapture?.();
     const card = ui.targetingAura;
     if (!card || isAnimating || game.playerPyre < card.cost) return;
     const targetCryptid = game.getFieldCryptid('player', col, row);
     if (!targetCryptid) return;
     
+    // ============================================================
+    // MULTIPLAYER: Send intent to authoritative server, NO local execution
+    // ============================================================
+    if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
+        window.Multiplayer.sendGameAction('playAura', {
+            cardId: card.id,
+            cardKey: card.key,
+            targetCol: col,
+            targetRow: row
+        });
+        
+        // Clear selection but don't change game state
+        ui.targetingAura = null;
+        ui.selectedCard = null;
+        document.getElementById('cancel-target').classList.remove('show');
+        return; // Server will send state update with animations
+    }
+    
+    // ============================================================
+    // SINGLE PLAYER: Execute locally as before
+    // ============================================================
+    window.Multiplayer?.startActionCapture?.();
     isAnimating = true;
     
     // 1. Animate card removal immediately
@@ -2795,11 +2857,6 @@ function executeAura(col, row) {
     GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'aura', card });
     game.applyAura(targetCryptid, card);
     
-    // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animation delays
-    if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-        window.multiplayerHook.onAura(card, col, row);
-    }
-    
     // 6. Remove from array, add to discard, and clear state (visual cleanup)
     setTimeout(() => {
         const idx = game.playerHand.findIndex(c => c.id === card.id);
@@ -2820,11 +2877,33 @@ function executeAura(col, row) {
 }
 
 function executeAuraDirect(card, col, row) {
-    window.Multiplayer?.startActionCapture?.();
     if (!card || isAnimating || game.playerPyre < card.cost) return;
     const targetCryptid = game.getFieldCryptid('player', col, row);
     if (!targetCryptid) return;
     
+    // ============================================================
+    // MULTIPLAYER: Send intent to authoritative server, NO local execution
+    // ============================================================
+    if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
+        window.Multiplayer.sendGameAction('playAura', {
+            cardId: card.id,
+            cardKey: card.key,
+            targetCol: col,
+            targetRow: row
+        });
+        
+        // Clear selection but don't change game state
+        ui.targetingAura = null;
+        ui.selectedCard = null;
+        ui.draggedCard = null;
+        document.getElementById('cancel-target').classList.remove('show');
+        return; // Server will send state update with animations
+    }
+    
+    // ============================================================
+    // SINGLE PLAYER: Execute locally as before
+    // ============================================================
+    window.Multiplayer?.startActionCapture?.();
     isAnimating = true;
     
     // 1. Animate card removal
@@ -2869,11 +2948,6 @@ function executeAuraDirect(card, col, row) {
     game.playerPyre -= card.cost;
     GameEvents.emit('onPyreSpent', { owner: 'player', amount: card.cost, oldValue: oldPyre, newValue: game.playerPyre, source: 'aura', card });
     game.applyAura(targetCryptid, card);
-    
-    // MULTIPLAYER: Send hook IMMEDIATELY after game logic, BEFORE animation delays
-    if (game.isMultiplayer && typeof window.multiplayerHook !== 'undefined') {
-        window.multiplayerHook.onAura(card, col, row);
-    }
     
     // 6. Remove from array after animation and add to discard (visual cleanup)
     setTimeout(() => {
@@ -3422,14 +3496,14 @@ function executeAttack(targetCol, targetRow) {
     // MULTIPLAYER: Send intent to authoritative server
     // ============================================================
     if (game.isMultiplayer && window.Multiplayer?.isInMatch) {
-        // Convert client columns to server convention
-        const serverAttackerCol = 1 - attacker.col;
-        const serverTargetCol = 1 - targetCol;
+        // NEW ARCHITECTURE: Server uses same column conventions as client
+        // No column flip needed!
         
         window.Multiplayer.sendGameAction('attack', {
-            attackerCol: serverAttackerCol,
+            attackerCol: attacker.col,
             attackerRow: attacker.row,
             attackerKey: attacker.key,
+            targetCol: targetCol,
             targetRow: targetRow
         });
         

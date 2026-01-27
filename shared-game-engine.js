@@ -1,8 +1,10 @@
 /**
  * Cryptid Fates - Shared Game Engine v2 (Browser Version)
  * 
- * This engine runs identically on client and server.
- * It uses the data-driven ability system to execute all game logic.
+ * This file is SYNCED with cloudflare/shared-game-engine.js
+ * The ONLY difference is the import mechanism (window.AbilitySystem vs ES6 import)
+ * 
+ * DO NOT EDIT GAME LOGIC HERE - Edit cloudflare/shared-game-engine.js and re-sync!
  * 
  * ARCHITECTURE:
  * - All game state mutations happen through this engine
@@ -1273,6 +1275,7 @@ class SharedGameEngine {
 }
 
 // ==================== BROWSER GLOBAL ====================
+
 window.SharedGameEngine = SharedGameEngine;
 window.Triggers = Triggers;
 window.EffectTypes = EffectTypes;
@@ -1281,5 +1284,5 @@ window.ConditionTypes = ConditionTypes;
 window.CalcTypes = CalcTypes;
 window.Flags = Flags;
 
-console.log('[SharedGameEngine v2] Loaded successfully');
+console.log('[SharedGameEngine] Browser version loaded - synced with cloudflare/shared-game-engine.js');
 

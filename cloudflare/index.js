@@ -33,7 +33,7 @@ import { SharedGameEngine, Triggers } from './shared-game-engine.js';
 
 // ==================== CONFIGURATION ====================
 
-const SERVER_VERSION = 38; // v=38 - Fixed getStateForPlayer perspective (no double flip)
+const SERVER_VERSION = 39; // v=39 - Clean architecture with SharedGameEngine, no column flipping
 
 const COOKIE_NAME = 'cf_session';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days in seconds

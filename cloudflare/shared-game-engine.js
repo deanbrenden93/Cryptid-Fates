@@ -1277,19 +1277,3 @@ class SharedGameEngine {
 
 // ES6 exports for Cloudflare Workers
 export { SharedGameEngine, Triggers, EffectTypes, TargetTypes, ConditionTypes, CalcTypes, Flags };
-
-// CommonJS for Node.js
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { SharedGameEngine, Triggers, EffectTypes, TargetTypes, ConditionTypes, CalcTypes, Flags };
-}
-
-// Browser global
-if (typeof window !== 'undefined') {
-    window.SharedGameEngine = SharedGameEngine;
-    window.Triggers = Triggers;
-    window.EffectTypes = EffectTypes;
-    window.TargetTypes = TargetTypes;
-    window.ConditionTypes = ConditionTypes;
-    window.CalcTypes = CalcTypes;
-    window.Flags = Flags;
-}
