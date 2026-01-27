@@ -1,7 +1,7 @@
 /**
  * Cryptid Fates - Game Flow Controller (Offline Roguelite Version)
  * 
- * Flow: Asset Loading → Tutorial (if new) → Welcome → Home Screen
+ * Flow: Asset Loading → Name Entry (if new) → Welcome → Home Screen
  * No login required - all data stored locally
  */
 
@@ -79,16 +79,7 @@ const GameFlow = {
             await this.showUsernameEntry();
         }
         
-        // Check if user has completed tutorial
-        const hasCompletedTutorial = (typeof TutorialManager !== 'undefined' && TutorialManager.isCompleted()) ||
-                                     (typeof PlayerData !== 'undefined' && PlayerData.tutorialCompleted) ||
-                                     localStorage.getItem('cryptid_tutorial_complete');
-        
-        if (!hasCompletedTutorial) {
-            await this.showTutorial();
-        }
-        
-        // Continue to welcome/deck select
+        // Go directly to welcome/deck select screen (tutorial can be accessed from Help menu)
         this.showWelcomeScreen();
     },
     
