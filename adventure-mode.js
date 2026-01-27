@@ -2003,8 +2003,12 @@ window.AdventureEngine = {
 
 window.AdventureUI = {
     init() {
+        if (this.initialized) return; // Prevent double init
+        
         this.createScreens();
         this.bindEvents();
+        this.initialized = true;
+        console.log('[AdventureUI] Initialized');
     },
     
     createScreens() {
@@ -2133,7 +2137,21 @@ window.AdventureUI = {
     
     // ==================== SETUP FLOW ====================
     
+    // Track if init has been called
+    initialized: false,
+    
     openSetup() {
+        // Ensure initialization has completed
+        if (!this.initialized) {
+            console.log('[AdventureUI] Late initialization triggered');
+            this.init();
+        }
+        
+        // Also ensure engine is initialized
+        if (!AdventureEngine.canvas) {
+            AdventureEngine.init();
+        }
+        
         this.setupStep = 'deck';
         this.selectedDeck = null;
         this.selectedRelic = null;
