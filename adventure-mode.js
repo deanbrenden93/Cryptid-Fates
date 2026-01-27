@@ -585,6 +585,9 @@ window.AdventureEngine = {
         screenShake: 0
     },
     
+    // Transition/encounter lock to prevent multiple triggers
+    transitionLock: false,
+    
     // ==================== INITIALIZATION ====================
     
     init() {
@@ -1215,6 +1218,379 @@ window.AdventureEngine = {
                 font-size: 11px;
                 color: #a89070;
             }
+            
+            /* ==================== EVENT MODAL ==================== */
+            
+            .adventure-event-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 16000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease;
+            }
+            
+            .adventure-event-modal.open {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            
+            .event-backdrop {
+                position: absolute;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.85);
+                backdrop-filter: blur(8px);
+            }
+            
+            .event-content {
+                position: relative;
+                max-width: 500px;
+                width: 90%;
+                background: linear-gradient(180deg, #1a1510 0%, #0d0a08 100%);
+                border: 2px solid rgba(232, 169, 62, 0.5);
+                border-radius: 16px;
+                padding: 32px;
+                text-align: center;
+                box-shadow: 
+                    0 0 60px rgba(0, 0, 0, 0.8),
+                    0 0 100px rgba(232, 169, 62, 0.15),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+                transform: scale(0.9) translateY(20px);
+                transition: transform 0.3s ease;
+            }
+            
+            .adventure-event-modal.open .event-content {
+                transform: scale(1) translateY(0);
+            }
+            
+            .event-icon {
+                font-size: 64px;
+                margin-bottom: 16px;
+                filter: drop-shadow(0 4px 20px rgba(232, 169, 62, 0.4));
+                animation: eventIconFloat 3s ease-in-out infinite;
+            }
+            
+            @keyframes eventIconFloat {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-8px); }
+            }
+            
+            .event-title {
+                font-family: 'Cinzel', serif;
+                font-size: 28px;
+                color: #e8a93e;
+                margin: 0 0 16px 0;
+                text-shadow: 0 2px 10px rgba(232, 169, 62, 0.5);
+            }
+            
+            .event-text {
+                font-size: 16px;
+                color: #c9b896;
+                line-height: 1.6;
+                margin: 0 0 28px 0;
+            }
+            
+            .event-choices {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            .event-choice {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+                padding: 16px 24px;
+                background: linear-gradient(180deg, rgba(232, 169, 62, 0.15) 0%, rgba(232, 169, 62, 0.05) 100%);
+                border: 1px solid rgba(232, 169, 62, 0.3);
+                border-radius: 10px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                font-family: 'Cinzel', serif;
+            }
+            
+            .event-choice:hover:not(:disabled) {
+                background: linear-gradient(180deg, rgba(232, 169, 62, 0.25) 0%, rgba(232, 169, 62, 0.1) 100%);
+                border-color: rgba(232, 169, 62, 0.6);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 20px rgba(232, 169, 62, 0.2);
+            }
+            
+            .event-choice:active:not(:disabled) {
+                transform: translateY(0);
+            }
+            
+            .event-choice:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+            
+            .event-choice.selected {
+                background: linear-gradient(180deg, rgba(232, 169, 62, 0.35) 0%, rgba(232, 169, 62, 0.15) 100%);
+                border-color: #e8a93e;
+                box-shadow: 0 0 20px rgba(232, 169, 62, 0.3);
+            }
+            
+            .choice-text {
+                font-size: 16px;
+                color: #e8e0d5;
+            }
+            
+            .choice-subtext {
+                font-size: 12px;
+                color: #8a7a6a;
+                font-family: 'Source Sans Pro', sans-serif;
+            }
+            
+            .event-result {
+                margin-top: 20px;
+                padding: 16px 20px;
+                border-radius: 8px;
+                font-size: 15px;
+                opacity: 0;
+                transform: translateY(10px);
+                transition: all 0.3s ease;
+            }
+            
+            .event-result.show {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            
+            .event-result.success {
+                background: rgba(74, 222, 128, 0.15);
+                border: 1px solid rgba(74, 222, 128, 0.4);
+                color: #4ade80;
+            }
+            
+            .event-result.failure {
+                background: rgba(239, 68, 68, 0.15);
+                border: 1px solid rgba(239, 68, 68, 0.4);
+                color: #ef4444;
+            }
+            
+            /* ==================== SHOP MODAL ==================== */
+            
+            .adventure-shop-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 16000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease;
+            }
+            
+            .adventure-shop-modal.open {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            
+            .shop-backdrop {
+                position: absolute;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.9);
+                backdrop-filter: blur(8px);
+            }
+            
+            .shop-content {
+                position: relative;
+                max-width: 550px;
+                width: 92%;
+                background: linear-gradient(180deg, #1c1815 0%, #0f0c0a 100%);
+                border: 2px solid rgba(139, 90, 43, 0.6);
+                border-radius: 16px;
+                padding: 28px;
+                box-shadow: 
+                    0 0 80px rgba(0, 0, 0, 0.9),
+                    0 0 40px rgba(139, 90, 43, 0.2),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+                transform: scale(0.9) translateY(20px);
+                transition: transform 0.3s ease;
+            }
+            
+            .adventure-shop-modal.open .shop-content {
+                transform: scale(1) translateY(0);
+            }
+            
+            .shop-header {
+                text-align: center;
+                margin-bottom: 20px;
+            }
+            
+            .shop-icon {
+                font-size: 48px;
+                display: block;
+                margin-bottom: 8px;
+            }
+            
+            .shop-title {
+                font-family: 'Cinzel', serif;
+                font-size: 26px;
+                color: #d4a857;
+                margin: 0;
+                text-shadow: 0 2px 10px rgba(212, 168, 87, 0.4);
+            }
+            
+            .shop-subtitle {
+                font-size: 14px;
+                color: #8a7a6a;
+                font-style: italic;
+                margin: 8px 0 0 0;
+            }
+            
+            .shop-balance {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                padding: 12px 20px;
+                background: rgba(0, 0, 0, 0.4);
+                border-radius: 30px;
+                margin-bottom: 20px;
+                border: 1px solid rgba(232, 169, 62, 0.3);
+            }
+            
+            .balance-icon {
+                font-size: 20px;
+            }
+            
+            .balance-amount {
+                font-size: 24px;
+                font-weight: bold;
+                color: #ffc107;
+            }
+            
+            .balance-label {
+                font-size: 14px;
+                color: #8a7a6a;
+            }
+            
+            .shop-items {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                margin-bottom: 16px;
+            }
+            
+            .shop-item {
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                padding: 16px;
+                background: linear-gradient(90deg, rgba(139, 90, 43, 0.1) 0%, rgba(139, 90, 43, 0.05) 100%);
+                border: 1px solid rgba(139, 90, 43, 0.3);
+                border-radius: 10px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+            
+            .shop-item:hover:not(.unaffordable):not(.purchased) {
+                background: linear-gradient(90deg, rgba(139, 90, 43, 0.2) 0%, rgba(139, 90, 43, 0.1) 100%);
+                border-color: rgba(212, 168, 87, 0.5);
+                transform: translateX(4px);
+            }
+            
+            .shop-item.unaffordable {
+                opacity: 0.4;
+                cursor: not-allowed;
+            }
+            
+            .shop-item.purchased {
+                background: rgba(74, 222, 128, 0.1);
+                border-color: rgba(74, 222, 128, 0.3);
+                justify-content: center;
+            }
+            
+            .purchased-text {
+                color: #4ade80;
+                font-size: 16px;
+            }
+            
+            .item-icon {
+                font-size: 36px;
+                flex-shrink: 0;
+            }
+            
+            .item-info {
+                flex: 1;
+                text-align: left;
+            }
+            
+            .item-name {
+                font-family: 'Cinzel', serif;
+                font-size: 16px;
+                color: #e8e0d5;
+                margin-bottom: 4px;
+            }
+            
+            .item-desc {
+                font-size: 12px;
+                color: #8a7a6a;
+                margin-bottom: 4px;
+            }
+            
+            .item-effect {
+                font-size: 13px;
+                color: #4ade80;
+            }
+            
+            .item-price {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                padding: 8px 14px;
+                background: rgba(0, 0, 0, 0.4);
+                border-radius: 20px;
+                flex-shrink: 0;
+            }
+            
+            .price-amount {
+                font-size: 18px;
+                font-weight: bold;
+                color: #ffc107;
+            }
+            
+            .price-icon {
+                font-size: 14px;
+            }
+            
+            .shop-result {
+                text-align: center;
+                padding: 12px;
+                color: #4ade80;
+                font-size: 14px;
+                opacity: 0;
+                transition: opacity 0.3s;
+            }
+            
+            .shop-result.show {
+                opacity: 1;
+            }
+            
+            .shop-leave {
+                width: 100%;
+                padding: 14px;
+                background: linear-gradient(180deg, #3a3530 0%, #2a2520 100%);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                color: #a89070;
+                font-family: 'Cinzel', serif;
+                font-size: 15px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            
+            .shop-leave:hover {
+                background: linear-gradient(180deg, #4a4540 0%, #3a3530 100%);
+                color: #e8e0d5;
+            }
         `;
         document.head.appendChild(style);
     },
@@ -1236,6 +1612,9 @@ window.AdventureEngine = {
         this.player.vy = 0;
         this.player.grounded = true;
         this.player.state = 'idle';
+        
+        // Reset transition lock
+        this.transitionLock = false;
         
         console.log('[Adventure] Starting game loop. Ground at', this.room.groundY, 'Player at', this.player.y);
         this.gameLoop();
@@ -1506,15 +1885,26 @@ window.AdventureEngine = {
     },
     
     tryExitLeft() {
-        // Can't go back in adventure mode
-        this.player.x = 0;
-        AdventureUI.showMessage("The path behind has collapsed...");
+        // Can't go back in adventure mode - just block movement
+        this.player.x = 10;
+        // Only show message once
+        if (!this._leftBlockedMessageShown) {
+            AdventureUI.showMessage("The path behind has collapsed...");
+            this._leftBlockedMessageShown = true;
+            setTimeout(() => { this._leftBlockedMessageShown = false; }, 3000);
+        }
     },
     
     tryExitRight() {
+        // Prevent multiple triggers
+        if (this.transitionLock) {
+            return;
+        }
+        
         const room = AdventureState.currentRoomData;
         if (!room) {
             console.log('[Adventure] No room data, advancing anyway');
+            this.transitionLock = true;
             this.advanceRoom();
             return;
         }
@@ -1524,6 +1914,7 @@ window.AdventureEngine = {
         // If room has an encounter that hasn't been cleared, trigger it
         if (room.encounter && !room.cleared) {
             console.log('[Adventure] Entering encounter...');
+            this.transitionLock = true;
             this.enterEncounter(room);
             return;
         }
@@ -1535,11 +1926,21 @@ window.AdventureEngine = {
         
         // Advance to next room
         console.log('[Adventure] Advancing to next room...');
+        this.transitionLock = true;
         this.advanceRoom();
     },
     
     enterEncounter(room) {
+        // Check if already started this encounter
+        if (room.encounterStarted) {
+            console.log('[Adventure] Encounter already started, skipping');
+            return;
+        }
+        
         const encounterType = room.encounter;
+        
+        // Mark as started immediately
+        room.encounterStarted = true;
         
         if (encounterType === 'normal' || encounterType === 'elite') {
             // Start a battle
@@ -1556,7 +1957,15 @@ window.AdventureEngine = {
     },
     
     startBattle(type) {
+        // Ensure lock is set
+        this.transitionLock = true;
+        
         this.stop();
+        
+        // Mark the room's encounter as in-progress to prevent re-triggers
+        if (AdventureState.currentRoomData) {
+            AdventureState.currentRoomData.encounterStarted = true;
+        }
         
         // Prepare deck from adventure state
         const deckCards = AdventureState.getBattleDeck();
@@ -1674,14 +2083,20 @@ window.AdventureEngine = {
         // Hide battle, show adventure
         document.getElementById('game-container').style.display = 'none';
         
-        // If room is cleared, advance player to right side ready to exit
+        // Position player - if room cleared, put near exit, otherwise back from edge
         if (AdventureState.currentRoomData?.cleared) {
-            this.player.x = this.room.width - 150;
+            this.player.x = this.room.width - 200;
+        } else {
+            this.player.x = this.room.width / 2;
         }
+        this.player.y = this.room.groundY - this.player.height;
         
         // Show adventure screen
         document.getElementById('adventure-screen').classList.add('open');
         AdventureUI.updateHUD();
+        
+        // Release the transition lock
+        this.transitionLock = false;
         
         // Resume game loop
         this.start();
@@ -1712,19 +2127,25 @@ window.AdventureEngine = {
             AdventureState.currentRoomData.visited = true;
             AdventureState.totalRoomsCleared++;
             
-            // Reset player position
-            this.player.x = 50;
+            // Reset player position to left side
+            this.player.x = 100;
+            this.player.y = this.room.groundY - this.player.height;
             
             // Update UI
             AdventureUI.updateRoomInfo();
             AdventureUI.updateHUD();
             
-            // Check for special room types
+            // Check for special room types (may set its own lock)
             this.handleRoomEntry();
             
             setTimeout(() => {
                 if (transition) {
                     transition.classList.remove('active');
+                }
+                // Release lock after transition animation completes
+                // (unless an event/shop took over)
+                if (!AdventureState.currentRoomData?.encounter || AdventureState.currentRoomData?.cleared) {
+                    this.transitionLock = false;
                 }
             }, 300);
         }, 300);
@@ -1732,11 +2153,14 @@ window.AdventureEngine = {
     
     handleRoomEntry() {
         const room = AdventureState.currentRoomData;
-        if (!room) return;
+        if (!room) {
+            this.transitionLock = false;
+            return;
+        }
         
         switch (room.type) {
             case 'shop':
-                // Open shop modal
+                // Open shop modal (lock stays until shop closes)
                 setTimeout(() => AdventureUI.openShop(), 500);
                 break;
             case 'rest':
@@ -1744,11 +2168,14 @@ window.AdventureEngine = {
                 setTimeout(() => this.handleRestSite(), 500);
                 break;
             case 'event':
-                // Random event
+                // Random event (lock stays until event closes)
                 setTimeout(() => AdventureUI.showEvent(), 500);
                 break;
             case 'treasure':
-                // Already handled by interactables
+            case 'entrance':
+            default:
+                // No special handling, release lock
+                this.transitionLock = false;
                 break;
         }
     },
@@ -1768,6 +2195,9 @@ window.AdventureEngine = {
         AdventureUI.updateHUD();
         
         AdventureState.currentRoomData.cleared = true;
+        
+        // Release lock after rest
+        this.transitionLock = false;
     },
     
     completeFloor() {
@@ -2660,29 +3090,159 @@ window.AdventureUI = {
     
     // ==================== SHOP ====================
     
-    openShop() {
-        // Simple shop for now
-        const items = [
-            { name: 'Heal 2 Deaths', cost: 30, effect: () => AdventureState.healDeaths(2) },
-            { name: 'Random Card', cost: 50, effect: () => AdventureEngine.grantRandomCard('common') },
-            { name: 'Reveal Traps', cost: 20, effect: () => this.revealTraps() }
-        ];
-        
-        const choice = Math.floor(Math.random() * items.length);
-        const item = items[choice];
-        
-        if (AdventureState.embers >= item.cost) {
-            if (confirm(`Buy ${item.name} for ${item.cost} embers?`)) {
-                AdventureState.embers -= item.cost;
-                item.effect();
-                this.showMessage(`Purchased: ${item.name}`);
-                this.updateHUD();
+    shopInventory: [
+        { 
+            id: 'heal2', 
+            name: 'Soul Salve', 
+            icon: '💚',
+            description: 'Restore vitality to your cryptids',
+            effect: 'Heal 2 Deaths',
+            cost: 30,
+            action: () => {
+                AdventureState.healDeaths(2);
+                return 'Your wounds mend... -2 Deaths';
             }
-        } else {
-            this.showMessage('Not enough embers...');
+        },
+        { 
+            id: 'card', 
+            name: 'Mystery Card', 
+            icon: '🃏',
+            description: 'A card wrapped in shadow',
+            effect: 'Gain a random card',
+            cost: 50,
+            action: () => {
+                AdventureEngine.grantRandomCard('common');
+                return 'A new card joins your arsenal!';
+            }
+        },
+        { 
+            id: 'embers', 
+            name: 'Ember Cache', 
+            icon: '🔥',
+            description: 'A stash of burning embers',
+            effect: '+40 Embers',
+            cost: 25,
+            action: () => {
+                AdventureState.embers += 40;
+                return 'The cache bursts open! +40 Embers';
+            }
+        },
+        { 
+            id: 'rarecard', 
+            name: 'Forbidden Tome', 
+            icon: '📕',
+            description: 'Contains powerful secrets',
+            effect: 'Gain a rare card',
+            cost: 100,
+            action: () => {
+                AdventureEngine.grantRandomCard('rare');
+                return 'Ancient power flows into a new card!';
+            }
+        }
+    ],
+    
+    openShop() {
+        // Mark room as cleared FIRST
+        if (AdventureState.currentRoomData) {
+            AdventureState.currentRoomData.cleared = true;
         }
         
-        AdventureState.currentRoomData.cleared = true;
+        // Remove any existing shop modal
+        const existing = document.getElementById('adventure-shop-modal');
+        if (existing) existing.remove();
+        
+        // Pick 3 random items to offer
+        const shuffled = [...this.shopInventory].sort(() => Math.random() - 0.5);
+        const offerings = shuffled.slice(0, 3);
+        
+        // Create modal
+        const modal = document.createElement('div');
+        modal.id = 'adventure-shop-modal';
+        modal.className = 'adventure-shop-modal';
+        modal.innerHTML = `
+            <div class="shop-backdrop"></div>
+            <div class="shop-content">
+                <div class="shop-header">
+                    <span class="shop-icon">🏪</span>
+                    <h2 class="shop-title">Wandering Merchant</h2>
+                    <p class="shop-subtitle">"See anything you like, traveler?"</p>
+                </div>
+                <div class="shop-balance">
+                    <span class="balance-icon">🔥</span>
+                    <span class="balance-amount" id="shop-balance">${AdventureState.embers}</span>
+                    <span class="balance-label">Embers</span>
+                </div>
+                <div class="shop-items">
+                    ${offerings.map(item => `
+                        <div class="shop-item ${AdventureState.embers < item.cost ? 'unaffordable' : ''}" data-id="${item.id}" data-cost="${item.cost}">
+                            <div class="item-icon">${item.icon}</div>
+                            <div class="item-info">
+                                <div class="item-name">${item.name}</div>
+                                <div class="item-desc">${item.description}</div>
+                                <div class="item-effect">${item.effect}</div>
+                            </div>
+                            <div class="item-price">
+                                <span class="price-amount">${item.cost}</span>
+                                <span class="price-icon">🔥</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="shop-result" id="shop-result"></div>
+                <button class="shop-leave" id="shop-leave">Leave Shop</button>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Animate in
+        requestAnimationFrame(() => modal.classList.add('open'));
+        
+        // Bind item clicks
+        modal.querySelectorAll('.shop-item:not(.unaffordable)').forEach(item => {
+            item.addEventListener('click', () => {
+                const id = item.dataset.id;
+                const cost = parseInt(item.dataset.cost);
+                const shopItem = this.shopInventory.find(i => i.id === id);
+                
+                if (shopItem && AdventureState.embers >= cost) {
+                    AdventureState.embers -= cost;
+                    const result = shopItem.action();
+                    
+                    // Update balance
+                    document.getElementById('shop-balance').textContent = AdventureState.embers;
+                    
+                    // Mark as purchased
+                    item.classList.add('purchased');
+                    item.innerHTML = `<div class="purchased-text">✓ Purchased</div>`;
+                    
+                    // Show result
+                    const resultEl = document.getElementById('shop-result');
+                    resultEl.textContent = result;
+                    resultEl.classList.add('show');
+                    
+                    // Update affordability
+                    modal.querySelectorAll('.shop-item:not(.purchased)').forEach(otherItem => {
+                        const otherCost = parseInt(otherItem.dataset.cost);
+                        if (AdventureState.embers < otherCost) {
+                            otherItem.classList.add('unaffordable');
+                        }
+                    });
+                    
+                    this.updateHUD();
+                }
+            });
+        });
+        
+        // Leave button
+        document.getElementById('shop-leave').addEventListener('click', () => {
+            modal.classList.remove('open');
+            setTimeout(() => {
+                modal.remove();
+                // Release the transition lock
+                AdventureEngine.transitionLock = false;
+            }, 300);
+        });
     },
     
     revealTraps() {
@@ -2698,66 +3258,246 @@ window.AdventureUI = {
     
     // ==================== EVENTS ====================
     
-    showEvent() {
-        const events = [
-            {
-                title: 'Mysterious Altar',
-                text: 'A dark altar pulses with energy. Sacrifice 1 death to gain a card?',
-                choices: [
-                    { text: 'Sacrifice', action: () => {
+    eventRegistry: [
+        {
+            id: 'altar',
+            title: 'Mysterious Altar',
+            icon: '🗿',
+            text: 'A dark altar pulses with malevolent energy. Ancient whispers promise power... for a price.',
+            choices: [
+                { 
+                    text: '🩸 Sacrifice Health', 
+                    subtext: 'Heal 1 death → Gain a rare card',
+                    action: () => {
                         if (AdventureState.deadCryptidCount > 0) {
                             AdventureState.healDeaths(1);
                             AdventureEngine.grantRandomCard('rare');
+                            return { success: true, message: 'The altar accepts your offering. A card materializes!' };
                         } else {
-                            this.showMessage('Nothing to sacrifice...');
+                            return { success: false, message: 'You have nothing to sacrifice...' };
                         }
-                    }},
-                    { text: 'Leave', action: () => {} }
-                ]
-            },
-            {
-                title: 'Wandering Spirit',
-                text: 'A lost soul offers guidance. Gain 20 embers.',
-                choices: [
-                    { text: 'Accept', action: () => {
-                        AdventureState.embers += 20;
-                        this.showMessage('+20 Embers');
-                    }}
-                ]
-            },
-            {
-                title: 'Cursed Treasure',
-                text: 'A chest radiates dark energy. Risk 1 death for potential riches?',
-                choices: [
-                    { text: 'Open', action: () => {
+                    }
+                },
+                { 
+                    text: '🚶 Walk Away', 
+                    subtext: 'Leave the altar undisturbed',
+                    action: () => ({ success: true, message: 'You leave the altar behind.' })
+                }
+            ]
+        },
+        {
+            id: 'spirit',
+            title: 'Wandering Spirit',
+            icon: '👻',
+            text: 'A translucent figure floats before you, its hollow eyes filled with ancient sorrow. It extends a spectral hand.',
+            choices: [
+                { 
+                    text: '🤝 Accept Gift', 
+                    subtext: '+25 Embers',
+                    action: () => {
+                        AdventureState.embers += 25;
+                        return { success: true, message: 'The spirit fades, leaving behind glowing embers.' };
+                    }
+                },
+                { 
+                    text: '🙏 Offer Comfort', 
+                    subtext: 'Heal 1 death',
+                    action: () => {
+                        AdventureState.healDeaths(1);
+                        return { success: true, message: 'The spirit smiles peacefully and dissolves into light.' };
+                    }
+                }
+            ]
+        },
+        {
+            id: 'chest',
+            title: 'Cursed Treasure',
+            icon: '💀',
+            text: 'An ornate chest sits alone, pulsing with dark energy. Riches or ruin await within.',
+            choices: [
+                { 
+                    text: '📦 Open Chest', 
+                    subtext: '60% chance: +50 Embers | 40% chance: +1 Death',
+                    action: () => {
                         if (Math.random() < 0.6) {
                             AdventureState.embers += 50;
-                            this.showMessage('+50 Embers!');
+                            return { success: true, message: 'Gold and embers spill forth! +50 Embers!' };
                         } else {
                             AdventureState.addDeaths(1);
-                            this.showMessage('Cursed! +1 Death');
+                            return { success: false, message: 'A curse lashes out! Your soul takes damage.' };
                         }
-                    }},
-                    { text: 'Leave', action: () => {} }
-                ]
-            }
-        ];
-        
-        const event = events[Math.floor(Math.random() * events.length)];
-        
-        // Simple confirm dialog for now
-        const choice = event.choices.length > 1 
-            ? confirm(`${event.title}\n\n${event.text}\n\nClick OK to ${event.choices[0].text}, Cancel to ${event.choices[1]?.text || 'Leave'}`)
-            : (alert(`${event.title}\n\n${event.text}`), true);
-        
-        if (choice) {
-            event.choices[0].action();
-        } else if (event.choices[1]) {
-            event.choices[1].action();
+                    }
+                },
+                { 
+                    text: '🚶 Leave It', 
+                    subtext: 'Better safe than sorry',
+                    action: () => ({ success: true, message: 'You resist the temptation and move on.' })
+                }
+            ]
+        },
+        {
+            id: 'fountain',
+            title: 'Corrupted Fountain',
+            icon: '⛲',
+            text: 'Dark waters bubble in an ancient fountain. Something glints beneath the surface.',
+            choices: [
+                { 
+                    text: '💧 Drink Deep', 
+                    subtext: 'Heal 2 deaths, but lose 20 embers',
+                    action: () => {
+                        if (AdventureState.embers >= 20) {
+                            AdventureState.embers -= 20;
+                            AdventureState.healDeaths(2);
+                            return { success: true, message: 'The waters restore your vitality!' };
+                        } else {
+                            return { success: false, message: 'You cannot afford the fountain\'s price.' };
+                        }
+                    }
+                },
+                { 
+                    text: '🪙 Fish for Coins', 
+                    subtext: '50% chance: +30 Embers | 50% chance: Nothing',
+                    action: () => {
+                        if (Math.random() < 0.5) {
+                            AdventureState.embers += 30;
+                            return { success: true, message: 'You find coins at the bottom! +30 Embers!' };
+                        } else {
+                            return { success: false, message: 'The waters are empty...' };
+                        }
+                    }
+                },
+                { 
+                    text: '🚶 Move On', 
+                    subtext: 'Leave the fountain alone',
+                    action: () => ({ success: true, message: 'You continue your journey.' })
+                }
+            ]
+        },
+        {
+            id: 'merchant',
+            title: 'Shadowy Merchant',
+            icon: '🎭',
+            text: 'A figure emerges from the darkness, their face hidden beneath a mask. "Trade?" they whisper.',
+            choices: [
+                { 
+                    text: '💰 Buy Card', 
+                    subtext: 'Pay 40 Embers for a random card',
+                    action: () => {
+                        if (AdventureState.embers >= 40) {
+                            AdventureState.embers -= 40;
+                            AdventureEngine.grantRandomCard('common');
+                            return { success: true, message: 'The merchant hands you a card and vanishes.' };
+                        } else {
+                            return { success: false, message: '"Not enough..." the merchant fades away.' };
+                        }
+                    }
+                },
+                { 
+                    text: '🎲 Gamble', 
+                    subtext: 'Pay 25 Embers: Win = +60 | Lose = Nothing',
+                    action: () => {
+                        if (AdventureState.embers >= 25) {
+                            AdventureState.embers -= 25;
+                            if (Math.random() < 0.45) {
+                                AdventureState.embers += 60;
+                                return { success: true, message: 'You win! The merchant chuckles. +60 Embers!' };
+                            } else {
+                                return { success: false, message: 'You lose. The merchant vanishes with your embers.' };
+                            }
+                        } else {
+                            return { success: false, message: '"Come back with more coin..."' };
+                        }
+                    }
+                },
+                { 
+                    text: '👋 Decline', 
+                    subtext: 'Walk away',
+                    action: () => ({ success: true, message: 'The merchant melts back into shadow.' })
+                }
+            ]
+        }
+    ],
+    
+    showEvent() {
+        // Mark room as cleared FIRST to prevent re-triggering
+        if (AdventureState.currentRoomData) {
+            AdventureState.currentRoomData.cleared = true;
         }
         
-        this.updateHUD();
-        AdventureState.currentRoomData.cleared = true;
+        // Pick a random event
+        const event = this.eventRegistry[Math.floor(Math.random() * this.eventRegistry.length)];
+        
+        // Create and show the event modal
+        this.showEventModal(event);
+    },
+    
+    showEventModal(event) {
+        // Remove any existing event modal
+        const existing = document.getElementById('adventure-event-modal');
+        if (existing) existing.remove();
+        
+        // Create modal
+        const modal = document.createElement('div');
+        modal.id = 'adventure-event-modal';
+        modal.className = 'adventure-event-modal';
+        modal.innerHTML = `
+            <div class="event-backdrop"></div>
+            <div class="event-content">
+                <div class="event-icon">${event.icon}</div>
+                <h2 class="event-title">${event.title}</h2>
+                <p class="event-text">${event.text}</p>
+                <div class="event-choices">
+                    ${event.choices.map((choice, i) => `
+                        <button class="event-choice" data-index="${i}">
+                            <span class="choice-text">${choice.text}</span>
+                            <span class="choice-subtext">${choice.subtext || ''}</span>
+                        </button>
+                    `).join('')}
+                </div>
+                <div class="event-result" id="event-result"></div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Animate in
+        requestAnimationFrame(() => {
+            modal.classList.add('open');
+        });
+        
+        // Bind choice buttons
+        modal.querySelectorAll('.event-choice').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const index = parseInt(btn.dataset.index);
+                const choice = event.choices[index];
+                
+                // Disable all buttons
+                modal.querySelectorAll('.event-choice').forEach(b => b.disabled = true);
+                btn.classList.add('selected');
+                
+                // Execute action
+                const result = choice.action();
+                
+                // Show result
+                const resultEl = document.getElementById('event-result');
+                resultEl.className = `event-result ${result.success ? 'success' : 'failure'}`;
+                resultEl.textContent = result.message;
+                resultEl.classList.add('show');
+                
+                // Update HUD
+                this.updateHUD();
+                
+                // Close after delay
+                setTimeout(() => {
+                    modal.classList.remove('open');
+                    setTimeout(() => {
+                        modal.remove();
+                        // Release the transition lock
+                        AdventureEngine.transitionLock = false;
+                    }, 300);
+                }, 2000);
+            });
+        });
     }
 };
 
