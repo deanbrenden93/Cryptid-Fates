@@ -115,12 +115,12 @@ window.HomeScreen = {
                 
                 <div class="qp-section">
                     <div class="qp-section-title">🗺️ Roguelite Mode</div>
-                    <div class="qp-mode qp-mode-adventure" id="qp-adventure">
+                    <div class="qp-mode qp-mode-abyss" id="qp-abyss">
                         <div class="qp-mode-main">
-                            <div class="qp-mode-icon">🏚️</div>
+                            <div class="qp-mode-icon">🏮</div>
                             <div class="qp-mode-info">
-                                <div class="qp-mode-name">Adventure</div>
-                                <div class="qp-mode-desc">Explore, battle, survive 3 floors</div>
+                                <div class="qp-mode-name">ABYSS</div>
+                                <div class="qp-mode-desc">Descend into darkness, find POIs before time runs out</div>
                             </div>
                         </div>
                         <div class="qp-mode-rewards">
@@ -365,7 +365,7 @@ window.HomeScreen = {
             if (!this.queueTimer) this.closeQuickPlay();
         };
         
-        document.getElementById('qp-adventure')?.addEventListener('click', () => this.startAdventure());
+        document.getElementById('qp-abyss')?.addEventListener('click', () => this.startAbyss());
         document.getElementById('qp-ai')?.addEventListener('click', () => this.startAIGame());
         document.getElementById('qp-cheat')?.addEventListener('click', () => this.startCheatBattle());
         
@@ -512,42 +512,42 @@ window.HomeScreen = {
         }, 200);
     },
     
-    startAdventure() {
-        console.log('[QuickPlay] Starting Adventure Mode...');
+    startAbyss() {
+        console.log('[QuickPlay] Starting ABYSS Mode...');
         this.closeQuickPlay();
         this.close();
         
-        // Check if AdventureUI is loaded
-        if (typeof AdventureUI === 'undefined') {
-            console.warn('[QuickPlay] AdventureUI not defined, checking globals...');
-            console.log('[QuickPlay] window.AdventureUI:', typeof window.AdventureUI);
-            console.log('[QuickPlay] window.AdventureEngine:', typeof window.AdventureEngine);
-            console.log('[QuickPlay] window.AdventureState:', typeof window.AdventureState);
+        // Check if AbyssUI is loaded
+        if (typeof AbyssUI === 'undefined') {
+            console.warn('[QuickPlay] AbyssUI not defined, checking globals...');
+            console.log('[QuickPlay] window.AbyssUI:', typeof window.AbyssUI);
+            console.log('[QuickPlay] window.AbyssEngine:', typeof window.AbyssEngine);
+            console.log('[QuickPlay] window.AbyssState:', typeof window.AbyssState);
         }
         
-        // Try to open adventure setup screen
-        if (typeof AdventureUI !== 'undefined' && AdventureUI.openSetup) {
+        // Try to open ABYSS setup screen
+        if (typeof AbyssUI !== 'undefined' && AbyssUI.openSetup) {
             try {
-                AdventureUI.openSetup();
+                AbyssUI.openSetup();
             } catch (e) {
-                console.error('[QuickPlay] Error opening Adventure Mode:', e);
-                this.showAdventureError(e.message);
+                console.error('[QuickPlay] Error opening ABYSS Mode:', e);
+                this.showAbyssError(e.message);
             }
-        } else if (typeof window.AdventureUI !== 'undefined' && window.AdventureUI.openSetup) {
+        } else if (typeof window.AbyssUI !== 'undefined' && window.AbyssUI.openSetup) {
             // Try explicit window reference
             try {
-                window.AdventureUI.openSetup();
+                window.AbyssUI.openSetup();
             } catch (e) {
-                console.error('[QuickPlay] Error opening Adventure Mode (window):', e);
-                this.showAdventureError(e.message);
+                console.error('[QuickPlay] Error opening ABYSS Mode (window):', e);
+                this.showAbyssError(e.message);
             }
         } else {
-            console.error('[QuickPlay] Adventure Mode not loaded. AdventureUI:', typeof AdventureUI);
-            this.showAdventureError('Adventure Mode module failed to load. This may be caused by corrupted save data.');
+            console.error('[QuickPlay] ABYSS Mode not loaded. AbyssUI:', typeof AbyssUI);
+            this.showAbyssError('ABYSS Mode module failed to load. This may be caused by corrupted save data.');
         }
     },
     
-    showAdventureError(details) {
+    showAbyssError(details) {
         const msg = document.createElement('div');
         msg.style.cssText = `
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -556,8 +556,8 @@ window.HomeScreen = {
             font-size: 16px; z-index: 99999; text-align: center; max-width: 450px;
         `;
         msg.innerHTML = `
-            <div style="color: #e57373; font-size: 20px; margin-bottom: 15px;">⚠️ Adventure Mode Error</div>
-            <div>Adventure Mode failed to load.</div>
+            <div style="color: #e57373; font-size: 20px; margin-bottom: 15px;">⚠️ ABYSS Mode Error</div>
+            <div>ABYSS Mode failed to load.</div>
             <div style="font-size: 12px; color: #888; margin-top: 10px; margin-bottom: 15px;">${details || 'Unknown error'}</div>
             <div style="font-size: 11px; color: #666; margin-bottom: 15px;">
                 If this persists, try clearing your save data below.
