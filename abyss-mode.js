@@ -150,11 +150,35 @@ window.AbyssShroud = {
         const cfg = AbyssConfig;
         const res = cfg.SHROUD_RESOLUTION;
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        // Only draw darkness where NOT revealed
-        this.ctx.fillStyle = cfg.DARKNESS_COLOR;
+        
+        // Draw darkness where NOT revealed, with edge detection for soft borders
         for (let y = 0; y < this.height; y++) {
             for (let x = 0; x < this.width; x++) {
                 if (!this.data[y][x]) {
+                    // Check if this is an edge cell (adjacent to revealed area)
+                    let isEdge = false;
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            const ny = y + dy;
+                            const nx = x + dx;
+                            if (ny >= 0 && ny < this.height && nx >= 0 && nx < this.width) {
+                                if (this.data[ny][nx]) isEdge = true;
+                            }
+                        }
+                    }
+                    
+                    if (isEdge) {
+                        // Soft edge with gradient
+                        const grad = this.ctx.createRadialGradient(
+                            x * res + res/2, y * res + res/2, 0,
+                            x * res + res/2, y * res + res/2, res
+                        );
+                        grad.addColorStop(0, 'rgba(5,5,15,0.5)');
+                        grad.addColorStop(1, 'rgba(5,5,15,0.95)');
+                        this.ctx.fillStyle = grad;
+                    } else {
+                        this.ctx.fillStyle = cfg.DARKNESS_COLOR;
+                    }
                     this.ctx.fillRect(x * res, y * res, res, res);
                 }
             }
@@ -218,8 +242,19 @@ window.AbyssMap = {
         return this.terrain[ty][tx] === this.TERRAIN.FLOOR;
     },
     
-    getTerrainColor(type) {
-        return type === this.TERRAIN.WALL ? '#0a0a14' : '#1a1a2e';
+    getTerrainColor(type, x, y) {
+        if (type === this.TERRAIN.WALL) {
+            // Walls with slight variation
+            const v = ((x * 7 + y * 13) % 20) / 100;
+            return `rgb(${10 + v * 10}, ${10 + v * 8}, ${20 + v * 10})`;
+        } else {
+            // Floor with more noticeable variation for texture
+            const v = ((x * 11 + y * 17) % 30) / 100;
+            const r = Math.floor(26 + v * 15);
+            const g = Math.floor(26 + v * 12);
+            const b = Math.floor(46 + v * 15);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
     }
 };
 
@@ -455,8 +490,13 @@ window.AbyssRenderer = {
         
         for (let y = startY; y < endY; y++) {
             for (let x = startX; x < endX; x++) {
-                ctx.fillStyle = AbyssMap.getTerrainColor(AbyssMap.terrain[y][x]);
+                ctx.fillStyle = AbyssMap.getTerrainColor(AbyssMap.terrain[y][x], x, y);
                 ctx.fillRect(x * ts, y * ts, ts, ts);
+                
+                // Add subtle tile borders for depth
+                ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x * ts, y * ts, ts, ts);
             }
         }
         
@@ -482,42 +522,91 @@ window.AbyssRenderer = {
             }
         }
         
-        // Draw player
-        ctx.fillStyle = '#c4a35a';
+        // Draw lantern glow FIRST (under player)
+        const radius = state.getLanternRadius();
+        
+        // Outer ambient glow
+        const outerGlow = ctx.createRadialGradient(state.playerX, state.playerY, 0, state.playerX, state.playerY, radius);
+        outerGlow.addColorStop(0, 'rgba(255,180,80,0.25)');
+        outerGlow.addColorStop(0.3, 'rgba(255,150,50,0.12)');
+        outerGlow.addColorStop(0.7, 'rgba(255,100,30,0.05)');
+        outerGlow.addColorStop(1, 'rgba(255,80,20,0)');
+        ctx.fillStyle = outerGlow;
+        ctx.beginPath();
+        ctx.arc(state.playerX, state.playerY, radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Inner bright glow
+        const innerGlow = ctx.createRadialGradient(state.playerX, state.playerY, 0, state.playerX, state.playerY, 60);
+        innerGlow.addColorStop(0, 'rgba(255,230,180,0.3)');
+        innerGlow.addColorStop(1, 'rgba(255,200,100,0)');
+        ctx.fillStyle = innerGlow;
+        ctx.beginPath();
+        ctx.arc(state.playerX, state.playerY, 60, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Player shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath();
+        ctx.ellipse(state.playerX + 4, state.playerY + cfg.PLAYER_SIZE / 2 + 4, cfg.PLAYER_SIZE / 2, cfg.PLAYER_SIZE / 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Player body
+        const playerGrad = ctx.createRadialGradient(
+            state.playerX - 4, state.playerY - 4, 0,
+            state.playerX, state.playerY, cfg.PLAYER_SIZE / 2
+        );
+        playerGrad.addColorStop(0, '#e8c878');
+        playerGrad.addColorStop(1, '#9a7840');
+        ctx.fillStyle = playerGrad;
         ctx.beginPath();
         ctx.arc(state.playerX, state.playerY, cfg.PLAYER_SIZE / 2, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = '#8b7355';
+        
+        // Player outline
+        ctx.strokeStyle = '#5a4020';
         ctx.lineWidth = 2;
         ctx.stroke();
         
-        // Draw lantern glow
-        const radius = state.getLanternRadius();
-        const grad = ctx.createRadialGradient(state.playerX, state.playerY, 0, state.playerX, state.playerY, radius);
-        grad.addColorStop(0, 'rgba(255,220,150,0.15)');
-        grad.addColorStop(1, 'rgba(255,150,50,0)');
-        ctx.fillStyle = grad;
+        // Lantern on player (small glowing orb)
+        ctx.fillStyle = '#ffdd88';
         ctx.beginPath();
-        ctx.arc(state.playerX, state.playerY, radius, 0, Math.PI * 2);
+        ctx.arc(state.playerX + 10, state.playerY - 8, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff8e0';
+        ctx.beginPath();
+        ctx.arc(state.playerX + 9, state.playerY - 9, 2, 0, Math.PI * 2);
         ctx.fill();
         
         // Draw shroud on top of everything
         const shroudCanvas = AbyssShroud.render();
         ctx.drawImage(shroudCanvas, 0, 0);
         
-        // Cut current lantern area from the shroud we just drew
-        // This lets player always see around them even in unexplored areas
-        ctx.save();
-        ctx.globalCompositeOperation = 'destination-out';
-        const lg = ctx.createRadialGradient(state.playerX, state.playerY, 0, state.playerX, state.playerY, radius);
-        lg.addColorStop(0, 'rgba(255,255,255,1)');
-        lg.addColorStop(0.8, 'rgba(255,255,255,0.8)');
-        lg.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = lg;
-        ctx.beginPath();
-        ctx.arc(state.playerX, state.playerY, radius, 0, Math.PI * 2);
-        ctx.fill();
         ctx.restore();
+        
+        // === POST-PROCESSING EFFECTS (screen space) ===
+        
+        // Vignette effect for depth
+        const vignette = ctx.createRadialGradient(
+            this.canvas.width / 2, this.canvas.height / 2, this.canvas.height * 0.3,
+            this.canvas.width / 2, this.canvas.height / 2, this.canvas.height * 0.8
+        );
+        vignette.addColorStop(0, 'rgba(0,0,0,0)');
+        vignette.addColorStop(1, 'rgba(0,0,0,0.6)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Warm lantern glow overlay in center of screen
+        const warmGlow = ctx.createRadialGradient(
+            this.canvas.width / 2, this.canvas.height / 2, 0,
+            this.canvas.width / 2, this.canvas.height / 2, 200
+        );
+        warmGlow.addColorStop(0, 'rgba(255,200,100,0.08)');
+        warmGlow.addColorStop(1, 'rgba(255,150,50,0)');
+        ctx.fillStyle = warmGlow;
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        return; // Early return since we already restored context
         
         ctx.restore();
     },
