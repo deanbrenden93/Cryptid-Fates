@@ -6,18 +6,18 @@
 // ==================== CONFIGURATION ====================
 
 window.AbyssConfig = {
-    MAP_WIDTH: 2400,
-    MAP_HEIGHT: 2400,
+    MAP_WIDTH: 4800,
+    MAP_HEIGHT: 4800,
     TILE_SIZE: 48,
-    PLAYER_SIZE: 32,
-    PLAYER_SPEED: 180,
-    INITIAL_TIME: 90,
-    MIN_LANTERN_RADIUS: 60,
-    MAX_LANTERN_RADIUS: 280,
+    PLAYER_SIZE: 40,
+    PLAYER_SPEED: 220,
+    INITIAL_TIME: 120,
+    MIN_LANTERN_RADIUS: 80,
+    MAX_LANTERN_RADIUS: 350,
     TIMER_REFRESH_RATES: [0.7, 0.5, 0],
-    POI_COUNT_MIN: 8,
-    POI_COUNT_MAX: 12,
-    POI_MIN_DISTANCE: 200,
+    POI_COUNT_MIN: 15,
+    POI_COUNT_MAX: 22,
+    POI_MIN_DISTANCE: 300,
     POI_GLOW_RADIUS: 40,
     SHROUD_RESOLUTION: 8,
     SHROUD_ERASE_MULTIPLIER: 1.0,
@@ -355,6 +355,11 @@ window.AbyssPOI = {
 
 window.AbyssPlayer = {
     keys: { up: false, down: false, left: false, right: false },
+    touchActive: false,
+    touchStartX: 0,
+    touchStartY: 0,
+    joystickX: 0,
+    joystickY: 0,
     
     init() {
         this.handleKeyDown = (e) => {
@@ -378,18 +383,177 @@ window.AbyssPlayer = {
         
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('keyup', this.handleKeyUp);
+        
+        // Mobile touch controls
+        this.initTouchControls();
+    },
+    
+    initTouchControls() {
+        // Only show on touch devices
+        if (!('ontouchstart' in window)) return;
+        
+        // Create joystick
+        this.joystickContainer = document.createElement('div');
+        this.joystickContainer.id = 'abyss-joystick';
+        this.joystickContainer.innerHTML = `
+            <div class="joystick-base">
+                <div class="joystick-thumb"></div>
+            </div>
+        `;
+        
+        // Create interact button
+        this.interactBtn = document.createElement('div');
+        this.interactBtn.id = 'abyss-interact-btn';
+        this.interactBtn.innerHTML = '✋';
+        
+        // Create pause button
+        this.pauseBtn = document.createElement('div');
+        this.pauseBtn.id = 'abyss-pause-btn';
+        this.pauseBtn.innerHTML = '⏸️';
+        
+        // Add styles
+        const style = document.createElement('style');
+        style.id = 'abyss-touch-styles';
+        style.textContent = `
+            #abyss-joystick {
+                position: fixed;
+                bottom: 30px;
+                left: 30px;
+                z-index: 16000;
+                touch-action: none;
+            }
+            .joystick-base {
+                width: 120px;
+                height: 120px;
+                background: rgba(232,169,62,0.2);
+                border: 3px solid rgba(232,169,62,0.5);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .joystick-thumb {
+                width: 50px;
+                height: 50px;
+                background: radial-gradient(circle, rgba(232,169,62,0.8), rgba(196,92,38,0.6));
+                border-radius: 50%;
+                transition: transform 0.05s;
+                box-shadow: 0 0 15px rgba(232,169,62,0.5);
+            }
+            #abyss-interact-btn {
+                position: fixed;
+                bottom: 50px;
+                right: 30px;
+                width: 80px;
+                height: 80px;
+                background: rgba(232,169,62,0.3);
+                border: 3px solid rgba(232,169,62,0.6);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 32px;
+                z-index: 16000;
+                touch-action: none;
+                user-select: none;
+            }
+            #abyss-interact-btn:active {
+                background: rgba(232,169,62,0.6);
+                transform: scale(0.95);
+            }
+            #abyss-pause-btn {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                width: 50px;
+                height: 50px;
+                background: rgba(10,10,20,0.8);
+                border: 2px solid rgba(232,169,62,0.5);
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 24px;
+                z-index: 16000;
+                touch-action: none;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        AbyssUI.container.appendChild(this.joystickContainer);
+        AbyssUI.container.appendChild(this.interactBtn);
+        AbyssUI.container.appendChild(this.pauseBtn);
+        
+        // Joystick touch handlers
+        const joystickBase = this.joystickContainer.querySelector('.joystick-base');
+        const joystickThumb = this.joystickContainer.querySelector('.joystick-thumb');
+        
+        joystickBase.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.touchActive = true;
+            const touch = e.touches[0];
+            const rect = joystickBase.getBoundingClientRect();
+            this.touchStartX = rect.left + rect.width / 2;
+            this.touchStartY = rect.top + rect.height / 2;
+        });
+        
+        joystickBase.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!this.touchActive) return;
+            const touch = e.touches[0];
+            const dx = touch.clientX - this.touchStartX;
+            const dy = touch.clientY - this.touchStartY;
+            const maxDist = 35;
+            const dist = Math.min(Math.sqrt(dx*dx + dy*dy), maxDist);
+            const angle = Math.atan2(dy, dx);
+            
+            this.joystickX = (dist / maxDist) * Math.cos(angle);
+            this.joystickY = (dist / maxDist) * Math.sin(angle);
+            
+            joystickThumb.style.transform = `translate(${this.joystickX * maxDist}px, ${this.joystickY * maxDist}px)`;
+        });
+        
+        const endTouch = () => {
+            this.touchActive = false;
+            this.joystickX = 0;
+            this.joystickY = 0;
+            joystickThumb.style.transform = 'translate(0, 0)';
+        };
+        
+        joystickBase.addEventListener('touchend', endTouch);
+        joystickBase.addEventListener('touchcancel', endTouch);
+        
+        // Interact button
+        this.interactBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.tryInteract();
+        });
+        
+        // Pause button
+        this.pauseBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            AbyssUI.togglePause();
+        });
     },
     
     update(dt) {
         if (!AbyssState.isActive || AbyssState.isPaused) return;
         
         let dx = 0, dy = 0;
+        
+        // Keyboard input
         if (this.keys.up) dy -= 1;
         if (this.keys.down) dy += 1;
         if (this.keys.left) dx -= 1;
         if (this.keys.right) dx += 1;
         
-        if (dx !== 0 && dy !== 0) {
+        // Touch joystick input (overrides keyboard if active)
+        if (this.touchActive) {
+            dx = this.joystickX;
+            dy = this.joystickY;
+        }
+        
+        if (dx !== 0 && dy !== 0 && !this.touchActive) {
             const len = Math.sqrt(2);
             dx /= len;
             dy /= len;
@@ -423,6 +587,14 @@ window.AbyssPlayer = {
         document.removeEventListener('keydown', this.handleKeyDown);
         document.removeEventListener('keyup', this.handleKeyUp);
         this.keys = { up: false, down: false, left: false, right: false };
+        this.touchActive = false;
+        this.joystickX = 0;
+        this.joystickY = 0;
+        
+        // Remove touch controls
+        if (this.joystickContainer) this.joystickContainer.remove();
+        if (this.interactBtn) this.interactBtn.remove();
+        if (this.pauseBtn) this.pauseBtn.remove();
     }
 };
 
@@ -432,18 +604,16 @@ window.AbyssRenderer = {
     canvas: null,
     ctx: null,
     camera: { x: 0, y: 0 },
+    zoom: 1,
     
     init(container) {
+        // Calculate responsive zoom based on screen size
+        this.updateZoom();
+        
         // Create wrapper for perspective transform
         this.wrapper = document.createElement('div');
         this.wrapper.id = 'abyss-wrapper';
-        this.wrapper.style.cssText = `
-            position: absolute;
-            inset: 0;
-            transform: perspective(1200px) rotateX(25deg) scale(1.15);
-            transform-origin: center 60%;
-            overflow: hidden;
-        `;
+        this.updateWrapperStyle();
         
         this.canvas = document.createElement('canvas');
         this.canvas.id = 'abyss-canvas';
@@ -457,7 +627,34 @@ window.AbyssRenderer = {
         window.addEventListener('resize', () => {
             this.canvas.width = window.innerWidth;
             this.canvas.height = window.innerHeight;
+            this.updateZoom();
+            this.updateWrapperStyle();
         });
+    },
+    
+    updateZoom() {
+        // Closer zoom on larger screens, comfortable on mobile
+        const screenWidth = window.innerWidth;
+        if (screenWidth > 1400) {
+            this.zoom = 2.0; // Desktop - much closer
+        } else if (screenWidth > 1000) {
+            this.zoom = 1.7;
+        } else if (screenWidth > 700) {
+            this.zoom = 1.4; // Tablet
+        } else {
+            this.zoom = 1.2; // Mobile - already close
+        }
+    },
+    
+    updateWrapperStyle() {
+        const baseScale = 1.15 * this.zoom;
+        this.wrapper.style.cssText = `
+            position: absolute;
+            inset: 0;
+            transform: perspective(1200px) rotateX(25deg) scale(${baseScale});
+            transform-origin: center 60%;
+            overflow: hidden;
+        `;
     },
     
     render() {
