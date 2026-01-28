@@ -114,6 +114,7 @@ window.AbyssShroud = {
     data: null,
     canvas: null,
     ctx: null,
+    dirty: true, // Only re-render when changed
     
     init() {
         const cfg = AbyssConfig;
@@ -127,6 +128,11 @@ window.AbyssShroud = {
         this.canvas.width = cfg.MAP_WIDTH;
         this.canvas.height = cfg.MAP_HEIGHT;
         this.ctx = this.canvas.getContext('2d');
+        this.dirty = true;
+        
+        // Pre-fill with darkness
+        this.ctx.fillStyle = cfg.DARKNESS_COLOR;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     },
     
     eraseAt(worldX, worldY, radius) {
@@ -135,54 +141,34 @@ window.AbyssShroud = {
         const centerY = Math.floor(worldY / res);
         const cellRadius = Math.ceil(radius / res);
         
+        // Directly erase from canvas - much faster than re-rendering
+        this.ctx.globalCompositeOperation = 'destination-out';
+        
+        // Soft circular erase
+        const grad = this.ctx.createRadialGradient(worldX, worldY, 0, worldX, worldY, radius);
+        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(0.7, 'rgba(255,255,255,0.8)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        this.ctx.fillStyle = grad;
+        this.ctx.beginPath();
+        this.ctx.arc(worldX, worldY, radius, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        this.ctx.globalCompositeOperation = 'source-over';
+        
+        // Update data for collision/visibility checks
         for (let dy = -cellRadius; dy <= cellRadius; dy++) {
             for (let dx = -cellRadius; dx <= cellRadius; dx++) {
                 const sx = centerX + dx;
                 const sy = centerY + dy;
                 if (sx < 0 || sx >= this.width || sy < 0 || sy >= this.height) continue;
                 const dist = Math.sqrt(dx * dx + dy * dy) * res;
-                if (dist <= radius) this.data[sy][sx] = true;
+                if (dist <= radius * 0.7) this.data[sy][sx] = true;
             }
         }
     },
     
-    render() {
-        const cfg = AbyssConfig;
-        const res = cfg.SHROUD_RESOLUTION;
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Draw darkness where NOT revealed, with edge detection for soft borders
-        for (let y = 0; y < this.height; y++) {
-            for (let x = 0; x < this.width; x++) {
-                if (!this.data[y][x]) {
-                    // Check if this is an edge cell (adjacent to revealed area)
-                    let isEdge = false;
-                    for (let dy = -1; dy <= 1; dy++) {
-                        for (let dx = -1; dx <= 1; dx++) {
-                            const ny = y + dy;
-                            const nx = x + dx;
-                            if (ny >= 0 && ny < this.height && nx >= 0 && nx < this.width) {
-                                if (this.data[ny][nx]) isEdge = true;
-                            }
-                        }
-                    }
-                    
-                    if (isEdge) {
-                        // Soft edge with gradient
-                        const grad = this.ctx.createRadialGradient(
-                            x * res + res/2, y * res + res/2, 0,
-                            x * res + res/2, y * res + res/2, res
-                        );
-                        grad.addColorStop(0, 'rgba(5,5,15,0.5)');
-                        grad.addColorStop(1, 'rgba(5,5,15,0.95)');
-                        this.ctx.fillStyle = grad;
-                    } else {
-                        this.ctx.fillStyle = cfg.DARKNESS_COLOR;
-                    }
-                    this.ctx.fillRect(x * res, y * res, res, res);
-                }
-            }
-        }
+    getCanvas() {
         return this.canvas;
     }
 };
@@ -448,12 +434,25 @@ window.AbyssRenderer = {
     camera: { x: 0, y: 0 },
     
     init(container) {
+        // Create wrapper for perspective transform
+        this.wrapper = document.createElement('div');
+        this.wrapper.id = 'abyss-wrapper';
+        this.wrapper.style.cssText = `
+            position: absolute;
+            inset: 0;
+            transform: perspective(1200px) rotateX(25deg) scale(1.15);
+            transform-origin: center 60%;
+            overflow: hidden;
+        `;
+        
         this.canvas = document.createElement('canvas');
         this.canvas.id = 'abyss-canvas';
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
         this.ctx = this.canvas.getContext('2d');
-        container.appendChild(this.canvas);
+        
+        this.wrapper.appendChild(this.canvas);
+        container.appendChild(this.wrapper);
         
         window.addEventListener('resize', () => {
             this.canvas.width = window.innerWidth;
@@ -488,15 +487,27 @@ window.AbyssRenderer = {
         const endX = Math.min(AbyssMap.terrain[0].length, Math.ceil((this.camera.x + this.canvas.width) / ts) + 1);
         const endY = Math.min(AbyssMap.terrain.length, Math.ceil((this.camera.y + this.canvas.height) / ts) + 1);
         
+        // Batch render floors first, then walls
+        ctx.fillStyle = '#1a1a2e';
         for (let y = startY; y < endY; y++) {
             for (let x = startX; x < endX; x++) {
-                ctx.fillStyle = AbyssMap.getTerrainColor(AbyssMap.terrain[y][x], x, y);
-                ctx.fillRect(x * ts, y * ts, ts, ts);
-                
-                // Add subtle tile borders for depth
-                ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(x * ts, y * ts, ts, ts);
+                if (AbyssMap.terrain[y][x] === AbyssMap.TERRAIN.FLOOR) {
+                    ctx.fillRect(x * ts, y * ts, ts, ts);
+                }
+            }
+        }
+        
+        // Walls with slight 3D effect
+        ctx.fillStyle = '#0a0a14';
+        for (let y = startY; y < endY; y++) {
+            for (let x = startX; x < endX; x++) {
+                if (AbyssMap.terrain[y][x] === AbyssMap.TERRAIN.WALL) {
+                    ctx.fillRect(x * ts, y * ts, ts, ts);
+                    // Wall "height" shadow
+                    ctx.fillStyle = '#050508';
+                    ctx.fillRect(x * ts, y * ts + ts - 4, ts, 4);
+                    ctx.fillStyle = '#0a0a14';
+                }
             }
         }
         
@@ -579,8 +590,7 @@ window.AbyssRenderer = {
         ctx.fill();
         
         // Draw shroud on top of everything
-        const shroudCanvas = AbyssShroud.render();
-        ctx.drawImage(shroudCanvas, 0, 0);
+        ctx.drawImage(AbyssShroud.getCanvas(), 0, 0);
         
         ctx.restore();
         
@@ -612,8 +622,8 @@ window.AbyssRenderer = {
     },
     
     cleanup() {
-        if (this.canvas && this.canvas.parentNode) {
-            this.canvas.parentNode.removeChild(this.canvas);
+        if (this.wrapper && this.wrapper.parentNode) {
+            this.wrapper.parentNode.removeChild(this.wrapper);
         }
     }
 };
