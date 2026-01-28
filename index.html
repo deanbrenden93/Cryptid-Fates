@@ -356,18 +356,26 @@
     <script src="shop.js"></script>
     <script src="win-screen.js"></script>
     <script src="tutorial.js"></script>
+    <script src="abyss-mode.js?v=4"></script>
     <script src="home-screen.js"></script>
     <script src="main-menu.js"></script>
     <script src="cheat-mode.js"></script>
     <script src="card-detail.js"></script>
     <script src="adventure-mode.js?v=9"></script>
-    <script src="abyss-mode.js?v=1"></script>
     <script>
         // Verify adventure-mode.js loaded
         console.log('[Loader Check] After adventure-mode.js - AdventureUI defined:', typeof AdventureUI !== 'undefined');
         console.log('[Loader Check] After adventure-mode.js - AdventureState defined:', typeof AdventureState !== 'undefined');
         if (typeof AdventureUI === 'undefined') {
             console.error('[Loader Check] CRITICAL: adventure-mode.js failed to define AdventureUI!');
+        }
+        
+        // Verify abyss-mode.js loaded
+        console.log('[Loader Check] After abyss-mode.js - AbyssUI defined:', typeof AbyssUI !== 'undefined');
+        console.log('[Loader Check] After abyss-mode.js - AbyssEngine defined:', typeof AbyssEngine !== 'undefined');
+        console.log('[Loader Check] After abyss-mode.js - AbyssState defined:', typeof AbyssState !== 'undefined');
+        if (typeof AbyssUI === 'undefined') {
+            console.error('[Loader Check] CRITICAL: abyss-mode.js failed to define AbyssUI!');
         }
     </script>
     
