@@ -12,6 +12,8 @@
 
 console.log('[ABYSS] Script loading...');
 
+try {
+
 // ==================== CONFIGURATION ====================
 
 window.AbyssConfig = {
