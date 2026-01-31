@@ -95,6 +95,7 @@ window.EffectEngine = {
             onAttack: 'onAttack',
             onCombatAttack: 'onCombatAttack',
             onBeforeAttack: 'onBeforeAttack',
+            onBeforeDefend: 'onBeforeDefend',
             onKill: 'onKill',
         };
         
@@ -181,6 +182,11 @@ window.EffectEngine = {
             return eventData.target?.id === cryptid.id;
         }
         
+        // For defense triggers, check if this cryptid is the defender
+        if (trigger === 'onBeforeDefend') {
+            return eventData.cryptid?.id === cryptid.id;
+        }
+        
         return true;
     },
     
@@ -261,6 +267,25 @@ window.EffectEngine = {
                 break;
             case 'killerWasAilment':
                 result = ['burn', 'bleed', 'calamity', 'curse'].includes(eventData.cryptid?.killedBy);
+                break;
+            case 'killedBy':
+                result = eventData.cryptid?.killedBy === value || cryptid.killedBy === value;
+                break;
+                
+            // Position Conditions
+            case 'isCombatant':
+                result = cryptid.col === game.getCombatCol(owner);
+                break;
+            case 'isSupport':
+                result = cryptid.col === game.getSupportCol(owner);
+                break;
+                
+            // Flag Conditions
+            case 'hasFlag':
+                result = cryptid[condition.flag] === true;
+                break;
+            case 'notHasFlag':
+                result = !cryptid[condition.flag];
                 break;
                 
             default:
@@ -554,9 +579,26 @@ window.EffectEngine = {
     // ==================== ACTION EXECUTION ====================
     
     /**
-     * Execute an effect action
+     * Execute an effect action (or multiple actions)
      */
     executeEffect(cryptid, owner, game, effect, eventData) {
+        // Handle effects with multiple actions (e.g., Hellpup Guard)
+        if (effect.actions && Array.isArray(effect.actions)) {
+            console.log(`[EffectEngine] Executing ${effect.actions.length} actions for ${cryptid.name}`);
+            for (const subAction of effect.actions) {
+                this.executeSingleAction(cryptid, owner, game, subAction, eventData);
+            }
+            return;
+        }
+        
+        // Single action
+        this.executeSingleAction(cryptid, owner, game, effect, eventData);
+    },
+    
+    /**
+     * Execute a single action
+     */
+    executeSingleAction(cryptid, owner, game, effect, eventData) {
         const targets = this.resolveTargets(cryptid, owner, game, effect.target || 'self', eventData);
         
         if (targets.length === 0 && effect.target !== 'self') {
@@ -1383,10 +1425,10 @@ window.EffectEngine = {
             sprite.style.filter = '';
         }, config.duration * 0.5);
         
-        // Phase 4: Clean up
+        // Phase 4: Clean up (preserve base transform for centering!)
         setTimeout(() => {
             sprite.style.transition = '';
-            sprite.style.transform = '';
+            sprite.style.transform = baseTransform; // Keep centering transform, don't clear it!
             sprite.style.filter = '';
             sprite.dataset.hitAnimating = 'false';
         }, config.duration + 50);

@@ -4428,7 +4428,88 @@ class Game {
         traps[row] = null;
         
         GameEvents.emit('onTrapTriggered', { trap, owner, row, triggerEvent: eventData });
-        if (trap.effect) trap.effect(this, owner, row, eventData);
+        
+        // Execute imperative effect callback (legacy traps)
+        if (trap.effect) {
+            trap.effect(this, owner, row, eventData);
+        }
+        
+        // Execute declarative effects array (data-driven traps)
+        if (trap.effects && Array.isArray(trap.effects)) {
+            this.executeTrapEffects(trap, owner, eventData);
+        }
+    }
+    
+    // Execute declarative trap effects
+    executeTrapEffects(trap, owner, eventData) {
+        const game = this;
+        
+        for (const effect of trap.effects) {
+            switch (effect.action) {
+                case 'killKiller':
+                    // Kill the cryptid that killed ours
+                    const killer = eventData.killedBySource || eventData.cryptid?.killedBySource;
+                    if (killer && killer.currentHp > 0) {
+                        console.log(`[Trap Effect] ${trap.name} kills ${killer.name}`);
+                        
+                        // Mark killed by this trap
+                        killer.killedBy = effect.killedBy || 'trap';
+                        
+                        // Play animation if specified
+                        if (effect.withAnimation === 'lightning' && window.CombatEffects?.playLightningStrike) {
+                            // Prepare death animation before kill
+                            const deathSprite = window.CombatEffects.prepareInstantKillDeath?.(killer.owner, killer.col, killer.row);
+                            
+                            // Play lightning, then death
+                            window.CombatEffects.playLightningStrike(killer, () => {
+                                game.killCryptid(killer, owner);
+                                if (deathSprite && window.CombatEffects.playPreparedDeath) {
+                                    window.CombatEffects.playPreparedDeath(deathSprite, killer.owner, killer.rarity || 'common');
+                                }
+                                window.renderAll?.();
+                            });
+                        } else {
+                            // No animation, just kill
+                            game.killCryptid(killer, owner);
+                            window.renderAll?.();
+                        }
+                    }
+                    break;
+                    
+                case 'cancelAttack':
+                    // Set flag to cancel the current attack
+                    if (eventData.attacker) {
+                        eventData.attacker.attackCancelled = true;
+                    }
+                    window._trapCancelledAttack = true;
+                    break;
+                    
+                case 'drawCard':
+                    const drawOwner = effect.owner === 'trapOwner' ? owner : (owner === 'player' ? 'enemy' : 'player');
+                    for (let i = 0; i < (effect.amount || 1); i++) {
+                        game.drawCard(drawOwner, trap.name);
+                    }
+                    break;
+                    
+                case 'applyAilment':
+                    const ailmentTarget = effect.target === 'attacker' ? eventData.attacker : eventData.cryptid;
+                    if (ailmentTarget) {
+                        game.applyAilment(ailmentTarget, effect.ailmentType, effect.amount || 1);
+                    }
+                    break;
+                    
+                case 'restTarget':
+                    const restTarget = effect.target === 'attacker' ? eventData.attacker : eventData.cryptid;
+                    if (restTarget) {
+                        restTarget.tapped = true;
+                        restTarget.restedThisTurn = true;
+                    }
+                    break;
+                    
+                default:
+                    console.warn(`[Trap Effect] Unknown action: ${effect.action}`);
+            }
+        }
     }
     
     setTrap(owner, row, trapCard) {
@@ -6087,7 +6168,9 @@ class Game {
             }
         }
         
-        // onBeforeDefend callback - triggers before damage (e.g., Deer Woman pyre generation)
+        // onBeforeDefend - triggers before damage (e.g., Deer Woman pyre generation, Hellpup Guard)
+        // Emit for both legacy callbacks and declarative effects
+        GameEvents.emit('onBeforeDefend', { cryptid: target, owner: target.owner, attacker, col: target.col, row: target.row });
         if (target.onBeforeDefend) {
             GameEvents.emit('onCardCallback', { type: 'onBeforeDefend', card: target, owner: target.owner, attacker, col: target.col, row: target.row });
             target.onBeforeDefend(target, attacker, this);
@@ -7859,6 +7942,18 @@ class Game {
     }
 
     checkGameOver() {
+        // Check for Abyss preset battle win/loss
+        if (window.isAbyssBattle && window.AbyssBattle?.active) {
+            // Win: All enemies eliminated (field empty)
+            if (this.isFieldEmpty('enemy')) {
+                this.endGame('player');
+                return;
+            }
+            // Loss: Handled by Abyss death count check in AbyssBattle
+            // Normal death threshold doesn't apply - Abyss has its own tracking
+            return;
+        }
+        
         // Determine kill threshold based on adventure mode battle type
         let killsToWin = 10; // Default for regular battles
         
@@ -7879,6 +7974,14 @@ class Game {
     endGame(winner) {
         if (this.gameOver) return; // Prevent double-triggering
         this.gameOver = true;
+        
+        // Handle Abyss battle end
+        if (window.isAbyssBattle && window.AbyssBattle?.active) {
+            const isWin = winner === 'player';
+            console.log('[Game] Abyss battle ended:', isWin ? 'VICTORY' : 'DEFEAT');
+            window.AbyssBattle.endBattle(isWin);
+            return;
+        }
         
         // Calculate match duration
         const duration = Math.floor((Date.now() - this.matchStats.startTime) / 1000);

@@ -13,7 +13,8 @@ window.AbyssConfig = {
     PLAYER_SPEED: 220,
     INITIAL_TIME: 120,
     MIN_LANTERN_RADIUS: 80,
-    MAX_LANTERN_RADIUS: 350,
+    MAX_LANTERN_RADIUS: 280, // Reduced by 20% from 350
+    POI_HITBOX_RADIUS: 30, // Collision radius for POIs
     TIMER_REFRESH_RATES: [0.7, 0.5, 0],
     POI_COUNT_MIN: 15,
     POI_COUNT_MAX: 22,
@@ -25,6 +26,833 @@ window.AbyssConfig = {
     DARKNESS_COLOR: 'rgba(5, 5, 15, 0.98)',
     BATTLES_PER_FLOOR: 3,
     FLOORS_TOTAL: 3
+};
+
+// ==================== PRESET ENCOUNTERS ====================
+
+window.AbyssPresets = {
+    // Encounter definitions: { difficulty, weight, name, field, trap }
+    // field: array of { row, position ('combat'|'support'), cardKey }
+    // Higher weight = more common
+    
+    encounters: [
+        // === EASY (weight: 50) ===
+        {
+            id: 'burning_pack',
+            name: 'The Burning Pack',
+            difficulty: 'easy',
+            weight: 50,
+            field: [
+                { row: 0, position: 'combat', cardKey: 'hellhound' },
+                { row: 1, position: 'combat', cardKey: 'hellpup' }, // Kindling
+                { row: 1, position: 'support', cardKey: 'hellpup' }  // Kindling
+            ],
+            trap: null
+        },
+        
+        // === MEDIUM (weight: 35) ===
+        {
+            id: 'stone_sentinels',
+            name: 'Stone Sentinels',
+            difficulty: 'medium',
+            weight: 35,
+            field: [
+                { row: 0, position: 'combat', cardKey: 'libraryGargoyle' },
+                { row: 0, position: 'support', cardKey: 'rooftopGargoyle' },
+                { row: 1, position: 'combat', cardKey: 'rooftopGargoyle' },
+                { row: 2, position: 'combat', cardKey: 'decayRat' }
+            ],
+            trap: 'turnToStone'
+        },
+        
+        // === HARD (weight: 15) ===
+        {
+            id: 'blood_feast',
+            name: 'Blood Feast',
+            difficulty: 'hard',
+            weight: 15,
+            field: [
+                { row: 0, position: 'combat', cardKey: 'vampireLord' },
+                { row: 0, position: 'support', cardKey: 'hellhound' },
+                { row: 1, position: 'combat', cardKey: 'redcap' },
+                { row: 1, position: 'support', cardKey: 'vampireInitiate' },
+                { row: 2, position: 'combat', cardKey: 'sewerAlligator' }
+            ],
+            trap: 'bloodCovenant'
+        }
+    ],
+    
+    // Get a random preset weighted by difficulty
+    getRandomPreset() {
+        const totalWeight = this.encounters.reduce((sum, e) => sum + e.weight, 0);
+        let roll = Math.random() * totalWeight;
+        
+        for (const encounter of this.encounters) {
+            roll -= encounter.weight;
+            if (roll <= 0) return encounter;
+        }
+        return this.encounters[0]; // Fallback
+    },
+    
+    // Get preset by ID
+    getPreset(id) {
+        return this.encounters.find(e => e.id === id);
+    }
+};
+
+// ==================== BATTLE TRANSITION ====================
+
+window.AbyssBattleTransition = {
+    overlay: null,
+    
+    init() {
+        // Create transition overlay
+        this.overlay = document.createElement('div');
+        this.overlay.id = 'abyss-battle-transition';
+        this.overlay.innerHTML = `
+            <div class="transition-flash"></div>
+            <div class="transition-slices">
+                ${Array(8).fill('<div class="slice"></div>').join('')}
+            </div>
+            <div class="transition-text">
+                <div class="encounter-name"></div>
+                <div class="encounter-warning">BATTLE!</div>
+            </div>
+        `;
+        document.body.appendChild(this.overlay);
+        
+        // Add styles
+        if (!document.getElementById('abyss-transition-styles')) {
+            const style = document.createElement('style');
+            style.id = 'abyss-transition-styles';
+            style.textContent = `
+                #abyss-battle-transition {
+                    position: fixed;
+                    inset: 0;
+                    z-index: 50000;
+                    pointer-events: none;
+                    opacity: 0;
+                }
+                #abyss-battle-transition.active {
+                    pointer-events: all;
+                    opacity: 1;
+                }
+                
+                .transition-flash {
+                    position: absolute;
+                    inset: 0;
+                    background: white;
+                    opacity: 0;
+                }
+                #abyss-battle-transition.active .transition-flash {
+                    animation: battleFlash 0.3s ease-out;
+                }
+                @keyframes battleFlash {
+                    0% { opacity: 0; }
+                    20% { opacity: 1; }
+                    100% { opacity: 0; }
+                }
+                
+                .transition-slices {
+                    position: absolute;
+                    inset: 0;
+                    display: flex;
+                    flex-direction: column;
+                }
+                .transition-slices .slice {
+                    flex: 1;
+                    background: linear-gradient(90deg, #1a0a0a, #2a1010, #1a0a0a);
+                    transform: scaleX(0);
+                    transform-origin: left;
+                }
+                .transition-slices .slice:nth-child(even) {
+                    transform-origin: right;
+                }
+                #abyss-battle-transition.active .slice {
+                    animation: sliceIn 0.4s ease-out forwards;
+                }
+                .slice:nth-child(1) { animation-delay: 0.05s; }
+                .slice:nth-child(2) { animation-delay: 0.08s; }
+                .slice:nth-child(3) { animation-delay: 0.03s; }
+                .slice:nth-child(4) { animation-delay: 0.10s; }
+                .slice:nth-child(5) { animation-delay: 0.02s; }
+                .slice:nth-child(6) { animation-delay: 0.07s; }
+                .slice:nth-child(7) { animation-delay: 0.04s; }
+                .slice:nth-child(8) { animation-delay: 0.09s; }
+                @keyframes sliceIn {
+                    0% { transform: scaleX(0); }
+                    100% { transform: scaleX(1); }
+                }
+                
+                .transition-text {
+                    position: absolute;
+                    inset: 0;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    opacity: 0;
+                    transform: scale(0.8);
+                }
+                #abyss-battle-transition.active .transition-text {
+                    animation: textReveal 0.5s ease-out 0.3s forwards;
+                }
+                @keyframes textReveal {
+                    0% { opacity: 0; transform: scale(0.8); }
+                    50% { opacity: 1; transform: scale(1.1); }
+                    100% { opacity: 1; transform: scale(1); }
+                }
+                
+                .encounter-name {
+                    font-family: 'Cinzel', serif;
+                    font-size: 24px;
+                    color: #c4a35a;
+                    letter-spacing: 4px;
+                    text-transform: uppercase;
+                    text-shadow: 0 0 20px rgba(196, 163, 90, 0.5);
+                    margin-bottom: 12px;
+                }
+                .encounter-warning {
+                    font-family: 'Cinzel', serif;
+                    font-size: 64px;
+                    font-weight: bold;
+                    color: #e85a5a;
+                    letter-spacing: 12px;
+                    text-shadow: 
+                        0 0 30px rgba(232, 90, 90, 0.8),
+                        0 0 60px rgba(232, 90, 90, 0.4);
+                    animation: battlePulse 0.5s ease-in-out infinite alternate;
+                }
+                @keyframes battlePulse {
+                    0% { transform: scale(1); text-shadow: 0 0 30px rgba(232, 90, 90, 0.8); }
+                    100% { transform: scale(1.05); text-shadow: 0 0 50px rgba(232, 90, 90, 1); }
+                }
+                
+                /* Exit animation */
+                #abyss-battle-transition.exit .slice {
+                    animation: sliceOut 0.3s ease-in forwards;
+                }
+                @keyframes sliceOut {
+                    0% { transform: scaleX(1); }
+                    100% { transform: scaleX(0); }
+                }
+                #abyss-battle-transition.exit .transition-text {
+                    animation: textExit 0.2s ease-in forwards;
+                }
+                @keyframes textExit {
+                    0% { opacity: 1; transform: scale(1); }
+                    100% { opacity: 0; transform: scale(1.2); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    },
+    
+    // Play JRPG-style battle transition
+    play(encounterName) {
+        return new Promise(resolve => {
+            if (!this.overlay) this.init();
+            
+            // Set encounter name
+            this.overlay.querySelector('.encounter-name').textContent = encounterName;
+            
+            // Reset classes
+            this.overlay.classList.remove('exit');
+            this.overlay.classList.add('active');
+            
+            // Play sound effect if available
+            if (window.SoundManager?.play) {
+                SoundManager.play('battleStart');
+            }
+            
+            // Resolve after animation
+            setTimeout(resolve, 1200);
+        });
+    },
+    
+    // Exit transition
+    exit() {
+        return new Promise(resolve => {
+            if (!this.overlay) {
+                resolve();
+                return;
+            }
+            
+            this.overlay.classList.add('exit');
+            
+            setTimeout(() => {
+                this.overlay.classList.remove('active', 'exit');
+                resolve();
+            }, 400);
+        });
+    }
+};
+
+// ==================== ABYSS BATTLE SYSTEM ====================
+
+window.AbyssBattle = {
+    config: null,
+    active: false,
+    
+    // Start a preset battle
+    start(battleConfig) {
+        console.log('[AbyssBattle] Starting preset battle');
+        this.config = battleConfig;
+        this.active = true;
+        
+        // Set battle mode flags
+        window.isAbyssBattle = true;
+        window.abyssBattleConfig = battleConfig;
+        
+        // Set up deck BEFORE initGame so it's used for drawing
+        if (battleConfig.playerDeck && battleConfig.playerDeck.length > 0) {
+            // Use Abyss player's deck
+            window.abyssPlayerDeck = battleConfig.playerDeck.map(card => ({
+                ...card,
+                id: 'abyss_' + (card.key || card.name) + '_' + Math.random().toString(36).substr(2, 9)
+            }));
+            console.log('[AbyssBattle] Player deck set:', window.abyssPlayerDeck.length, 'cards');
+        }
+        
+        // Initialize the game
+        if (typeof window.initGame === 'function') {
+            window.initGame();
+        } else {
+            console.error('[AbyssBattle] initGame not found!');
+            return;
+        }
+        
+        const game = window.game;
+        if (!game) {
+            console.error('[AbyssBattle] Game not initialized!');
+            return;
+        }
+        
+        // Clear enemy hand and deck - presets don't use cards
+        game.enemyHand = [];
+        game.enemyDeck = [];
+        game.enemyKindling = [];
+        
+        // Clean up temp deck reference
+        window.abyssPlayerDeck = null;
+        
+        // Set up the preset enemy field
+        this.setupPresetField(battleConfig.encounter);
+        
+        // Set up trap if present
+        if (battleConfig.encounter.trap) {
+            this.setupPresetTrap(battleConfig.encounter.trap);
+        }
+        
+        // Hook into death events for tracking
+        this.setupDeathTracking(battleConfig);
+        
+        // Player always goes first in presets
+        game.currentTurn = 'player';
+        game.phase = 'conjure1';
+        
+        // Show the game container (battle screen)
+        const gameContainer = document.getElementById('game-container');
+        if (gameContainer) {
+            gameContainer.style.display = 'flex';
+        }
+        
+        // Apply battlefield backgrounds
+        if (typeof window.applyBattlefieldBackgrounds === 'function') {
+            window.applyBattlefieldBackgrounds();
+        }
+        
+        // Render initial state
+        if (window.renderAll) window.renderAll();
+        if (window.updateButtons) window.updateButtons();
+        
+        // Exit the transition overlay now that battle is ready
+        AbyssBattleTransition.exit();
+        
+        // Note: Battle start animations (BATTLE banner, turn transition) are handled by initGame()
+        // No need to duplicate them here
+    },
+    
+    // Set up preset enemies on the field
+    setupPresetField(encounter) {
+        const game = window.game;
+        const combatCol = game.getCombatCol('enemy');
+        const supportCol = game.getSupportCol('enemy');
+        
+        for (const placement of encounter.field) {
+            const col = placement.position === 'combat' ? combatCol : supportCol;
+            const row = placement.row;
+            
+            // Get cryptid from CardRegistry
+            let cardData = window.CardRegistry?.getCryptid(placement.cardKey);
+            if (!cardData) {
+                cardData = window.CardRegistry?.getKindling(placement.cardKey);
+            }
+            
+            if (!cardData) {
+                console.warn('[AbyssBattle] Card not found:', placement.cardKey);
+                continue;
+            }
+            
+            // Create a copy of the card for battle
+            const cryptid = {
+                ...cardData,
+                id: 'preset_' + placement.cardKey + '_' + col + '_' + row + '_' + Date.now(),
+                owner: 'enemy',
+                col,
+                row,
+                currentHp: cardData.hp,
+                maxHp: cardData.hp,
+                currentAtk: cardData.atk,
+                baseAtk: cardData.atk,
+                baseHp: cardData.hp,
+                tapped: false,
+                canAttack: true,
+                attackedThisTurn: false,
+                justSummoned: false, // Presets start ready to attack
+                burnTurns: 0,
+                bleedTurns: 0,
+                paralyzed: false,
+                paralyzeTurns: 0,
+                curseTokens: 0,
+                protectionCharges: 0,
+                extraTapTurns: 0,
+                evolutionChain: [cardData.key],
+                auras: [],
+                latchedTo: null,
+                latchedBy: null,
+                restedThisTurn: false
+            };
+            
+            // Initialize ability flags (like Guard's guardAvailable)
+            if (cryptid.hasGuard) {
+                cryptid.guardAvailable = true;
+            }
+            
+            game.enemyField[col][row] = cryptid;
+            
+            // Register with EffectEngine for declarative effects to work
+            if (cryptid.effects && typeof window.EffectEngine !== 'undefined') {
+                window.EffectEngine.registerCryptid(cryptid, 'enemy', game);
+            }
+            
+            // Initialize activated abilities if any
+            if (game.initializeActivatedAbilities) {
+                game.initializeActivatedAbilities(cryptid);
+            }
+            
+            console.log(`[AbyssBattle] Placed ${cryptid.name} at col:${col} row:${row} (${placement.position})`);
+        }
+    },
+    
+    // Set up preset trap
+    setupPresetTrap(trapKey) {
+        const game = window.game;
+        const trapData = window.CardRegistry?.getTrap(trapKey);
+        
+        if (!trapData) {
+            console.warn('[AbyssBattle] Trap not found:', trapKey);
+            return;
+        }
+        
+        // Place trap in first available slot
+        for (let r = 0; r < 2; r++) {
+            if (!game.enemyTraps[r]) {
+                game.enemyTraps[r] = {
+                    ...trapData,
+                    id: 'preset_trap_' + trapKey,
+                    owner: 'enemy',
+                    row: r
+                };
+                console.log(`[AbyssBattle] Set trap ${trapData.name} at row ${r}`);
+                break;
+            }
+        }
+    },
+    
+    // Track deaths for Abyss mode
+    setupDeathTracking(config) {
+        // Listen for death events
+        const deathHandler = (data) => {
+            if (data.owner === 'player' && config.onCryptidDeath) {
+                config.onCryptidDeath('player');
+            }
+        };
+        
+        // Store handler for cleanup
+        this.deathUnsubscribe = window.GameEvents?.on('onDeath', deathHandler);
+    },
+    
+    // Run preset enemy AI (combat only - no card playing)
+    runPresetAI() {
+        const game = window.game;
+        if (!game || game.gameOver) return;
+        
+        console.log('[AbyssBattle] Running preset AI');
+        
+        // Skip conjure phases - go straight to combat
+        game.phase = 'combat';
+        if (window.renderAll) window.renderAll();
+        
+        // Execute attacks
+        setTimeout(() => {
+            this.executePresetCombat(() => {
+                // After combat, end turn
+                game.phase = 'conjure2'; // Brief phase for effects
+                
+                setTimeout(() => {
+                    if (game.gameOver) return;
+                    
+                    // Process end of turn effects
+                    if (window.animateTurnEndEffects) {
+                        window.animateTurnEndEffects(() => {
+                            game.endTurn();
+                            this.startPlayerTurn();
+                        });
+                    } else {
+                        game.endTurn();
+                        this.startPlayerTurn();
+                    }
+                }, 300);
+            });
+        }, 500);
+    },
+    
+    // Execute preset enemy attacks with full animations
+    executePresetCombat(onComplete) {
+        const game = window.game;
+        const TIMING = window.TIMING || { aiAttackDelay: 700, postAttackDelay: 700, deathAnim: 500 };
+        
+        const attackers = [];
+        const combatCol = game.getCombatCol('enemy');
+        
+        // Gather all enemies that can attack
+        for (let r = 0; r < 3; r++) {
+            const attacker = game.enemyField[combatCol][r];
+            if (attacker && !attacker.tapped && attacker.canAttack) {
+                const targets = game.getValidAttackTargets(attacker);
+                if (targets.length > 0) {
+                    // AI target selection - prefer low HP, killable targets
+                    targets.sort((a, b) => {
+                        if (a.isEmptyTarget && !b.isEmptyTarget) return 1;
+                        if (!a.isEmptyTarget && b.isEmptyTarget) return -1;
+                        if (a.cryptid && b.cryptid) {
+                            const damage = game.calculateAttackDamage(attacker);
+                            const aKill = game.getEffectiveHp(a.cryptid) <= damage;
+                            const bKill = game.getEffectiveHp(b.cryptid) <= damage;
+                            if (aKill && !bKill) return -1;
+                            if (bKill && !aKill) return 1;
+                            return game.getEffectiveHp(a.cryptid) - game.getEffectiveHp(b.cryptid);
+                        }
+                        return 0;
+                    });
+                    attackers.push({ attacker, row: r, target: targets[0] });
+                }
+            }
+        }
+        
+        // Process attacks sequentially with animations
+        const processAttack = (index) => {
+            if (index >= attackers.length || game.gameOver) {
+                onComplete?.();
+                return;
+            }
+            
+            const { attacker, target } = attackers[index];
+            
+            // Verify attacker can still attack
+            if (!attacker || attacker.tapped || !attacker.canAttack) {
+                processAttack(index + 1);
+                return;
+            }
+            
+            // Check if target position changed
+            const playerCombatCol = game.getCombatCol('player');
+            const currentTarget = game.getFieldCryptid('player', playerCombatCol, target.row);
+            
+            if (currentTarget) {
+                // Show attack message
+                if (window.showMessage) {
+                    window.showMessage(`${attacker.name} attacks ${currentTarget.name}!`, 800);
+                }
+                
+                // Get attacker sprite for animation
+                const attackerSprite = document.querySelector(
+                    `.cryptid-sprite[data-owner="enemy"][data-col="${combatCol}"][data-row="${attacker.row}"]`
+                );
+                
+                // Play attack animation, then perform attack on impact
+                if (typeof window.playAttackAnimation === 'function' && attackerSprite) {
+                    window.playAttackAnimation(attackerSprite, 'enemy', null, () => {
+                        this.performAttackWithEffects(attacker, currentTarget, index, processAttack);
+                    }, 3, target.row);
+                } else {
+                    // Fallback: animate with CSS class
+                    if (attackerSprite) {
+                        attackerSprite.classList.add('attacking-left');
+                        setTimeout(() => attackerSprite.classList.remove('attacking-left'), 300);
+                    }
+                    setTimeout(() => {
+                        this.performAttackWithEffects(attacker, currentTarget, index, processAttack);
+                    }, TIMING.aiAttackDelay);
+                }
+            } else if (target.isEmptyTarget) {
+                // Attack empty row (direct damage) - skip if player has cryptids elsewhere
+                if (!game.isFieldEmpty('player')) {
+                    processAttack(index + 1);
+                    return;
+                }
+                
+                if (window.showMessage) {
+                    window.showMessage(`${attacker.name} strikes!`, 800);
+                }
+                
+                const attackerSprite = document.querySelector(
+                    `.cryptid-sprite[data-owner="enemy"][data-col="${combatCol}"][data-row="${attacker.row}"]`
+                );
+                
+                if (typeof window.playAttackAnimation === 'function' && attackerSprite) {
+                    window.playAttackAnimation(attackerSprite, 'enemy', null, () => {
+                        game.attack(attacker, 'player', playerCombatCol, target.row);
+                        if (window.renderAll) window.renderAll();
+                        setTimeout(() => processAttack(index + 1), TIMING.postAttackDelay);
+                    }, 3, target.row);
+                } else {
+                    setTimeout(() => {
+                        game.attack(attacker, 'player', playerCombatCol, target.row);
+                        if (window.renderAll) window.renderAll();
+                        setTimeout(() => processAttack(index + 1), TIMING.postAttackDelay);
+                    }, TIMING.aiAttackDelay);
+                }
+            } else {
+                processAttack(index + 1);
+            }
+        };
+        
+        if (attackers.length > 0) {
+            processAttack(0);
+        } else {
+            onComplete?.();
+        }
+    },
+    
+    // Perform attack with full combat effects (damage numbers, particles, death animations)
+    performAttackWithEffects(attacker, target, index, nextCallback) {
+        const game = window.game;
+        const TIMING = window.TIMING || { postAttackDelay: 700, deathAnim: 500 };
+        
+        // Perform the attack
+        const result = game.attack(attacker, 'player', target.col, target.row);
+        
+        // Get sprites for visual effects
+        const targetSprite = document.querySelector(
+            `.cryptid-sprite[data-owner="player"][data-col="${target.col}"][data-row="${target.row}"]`
+        );
+        const attackerSprite = document.querySelector(
+            `.cryptid-sprite[data-owner="enemy"][data-col="${attacker.col}"][data-row="${attacker.row}"]`
+        );
+        
+        // Get impact position for combat effects
+        const battlefield = document.getElementById('battlefield-area');
+        let impactX = 0, impactY = 0;
+        if (targetSprite && battlefield) {
+            const targetRect = targetSprite.getBoundingClientRect();
+            const battlefieldRect = battlefield.getBoundingClientRect();
+            impactX = targetRect.left + targetRect.width/2 - battlefieldRect.left;
+            impactY = targetRect.top + targetRect.height/2 - battlefieldRect.top;
+        }
+        
+        // Handle negated attacks (Guard, counter-kill, etc.)
+        if (result.negated) {
+            console.log('[AbyssBattle] Attack negated');
+            
+            if (!result.attackerKilled && result.target) {
+                // Show shield bubble effect
+                if (window.CombatEffects?.playShieldBubble) {
+                    window.CombatEffects.playShieldBubble(result.target, '#88ccff');
+                }
+                if (window.CombatEffects) {
+                    window.CombatEffects.showDamageNumber(result.target, 0, false, true);
+                }
+                window.showMessage?.('🛡️ Attack blocked!', 800);
+            }
+            
+            // Handle attacker killed by counter
+            if (result.attackerKilled && attackerSprite) {
+                const attackerRarity = attacker?.rarity || 'common';
+                if (window.CombatEffects?.playDramaticDeath) {
+                    window.CombatEffects.playDramaticDeath(attackerSprite, 'enemy', attackerRarity);
+                }
+            }
+            
+            setTimeout(() => {
+                window.renderAll?.();
+                nextCallback(index + 1);
+            }, 900);
+            return;
+        }
+        
+        // Track dramatic death state
+        let usingDramaticDeath = false;
+        const targetRarity = result.target?.rarity || 'common';
+        
+        // Start dramatic death immediately on kill
+        if (result.killed && targetSprite && !result.protectionBlocked) {
+            if (window.CombatEffects?.playDramaticDeath) {
+                usingDramaticDeath = true;
+                window.CombatEffects.playDramaticDeath(targetSprite, 'player', targetRarity);
+            } else if (targetSprite) {
+                targetSprite.classList.add('dying-left');
+            }
+        }
+        
+        // Update health bar (skip for kills)
+        if (result.target && !result.killed && window.updateSpriteHealthBar) {
+            window.updateSpriteHealthBar('player', target.col, target.row);
+        }
+        
+        // Apply combat effects for successful hit
+        if (!result.negated && !result.protectionBlocked && window.CombatEffects) {
+            const damage = result.damage || 0;
+            const displayDamage = result.effectiveHpBefore !== undefined
+                ? Math.min(damage, result.effectiveHpBefore)
+                : damage;
+            const isCrit = displayDamage >= 5;
+            
+            // Screen shake (skip if using dramatic death)
+            if (!usingDramaticDeath) {
+                window.CombatEffects.heavyImpact(Math.max(damage, 1));
+            }
+            
+            // Impact flash and particles
+            window.CombatEffects.createImpactFlash(impactX, impactY, 80 + damage * 10);
+            window.CombatEffects.createSparks(impactX, impactY, 10 + damage * 2);
+            window.CombatEffects.createImpactParticles(impactX, impactY, result.killed ? '#ff2222' : '#ff6666', 8 + damage);
+            
+            // Show damage number (skip for dramatic deaths)
+            if (result.target && !usingDramaticDeath) {
+                window.CombatEffects.showDamageNumber(result.target, displayDamage, isCrit);
+            }
+        }
+        
+        // Hit recoil animation (only if not killed)
+        if (!result.negated && !result.protectionBlocked && !result.killed && targetSprite) {
+            if (window.playHitEffectOnSprite && result.target) {
+                window.playHitEffectOnSprite(targetSprite, result.target, { intensity: 'normal' });
+            }
+        }
+        
+        // Wait for animations then continue
+        const waitTime = result.killed ? (usingDramaticDeath ? 1200 : TIMING.deathAnim) : TIMING.postAttackDelay;
+        
+        setTimeout(() => {
+            // Handle support promotion if target was killed
+            if (result.killed && result.target) {
+                const targetRow = result.target.row;
+                const promoted = game.promoteSupport('player', targetRow);
+                
+                if (promoted && window.animateSupportPromotion) {
+                    // Animate the promotion, then continue
+                    window.animateSupportPromotion('player', targetRow, () => {
+                        window.renderAll?.();
+                        this.continueAfterAttack(nextCallback, index);
+                    });
+                    return;
+                }
+            }
+            
+            window.renderAll?.();
+            this.continueAfterAttack(nextCallback, index);
+        }, waitTime);
+    },
+    
+    // Helper to continue attack sequence after promotion/death
+    continueAfterAttack(nextCallback, index) {
+        // Check for cascading deaths
+        if (window.checkCascadingDeaths) {
+            window.checkCascadingDeaths(() => {
+                window.renderAll?.();
+                nextCallback(index + 1);
+            });
+        } else {
+            nextCallback(index + 1);
+        }
+    },
+    
+    // Start player's turn
+    startPlayerTurn() {
+        const game = window.game;
+        if (game.gameOver) return;
+        
+        if (window.animateTurnStartEffects) {
+            window.animateTurnStartEffects('player', () => {
+                if (window.setAnimating) window.setAnimating(false);
+                if (window.showMessage) window.showMessage("Your turn!", 1200);
+                if (window.renderAll) window.renderAll();
+                if (window.updateButtons) window.updateButtons();
+            });
+        } else {
+            if (window.setAnimating) window.setAnimating(false);
+            if (window.showMessage) window.showMessage("Your turn!", 1200);
+            if (window.renderAll) window.renderAll();
+            if (window.updateButtons) window.updateButtons();
+        }
+    },
+    
+    // Check for battle end conditions
+    checkBattleEnd() {
+        const game = window.game;
+        if (!game || !this.active) return false;
+        
+        // Check if all enemies are dead
+        const enemyAlive = game.enemyField.some(col => col.some(c => c !== null));
+        if (!enemyAlive) {
+            this.endBattle(true);
+            return true;
+        }
+        
+        // Check if player lost (handled by normal game over)
+        return false;
+    },
+    
+    // End the battle
+    endBattle(victory) {
+        console.log('[AbyssBattle] Battle ended:', victory ? 'VICTORY' : 'DEFEAT');
+        this.active = false;
+        window.isAbyssBattle = false;
+        
+        // Clean up death tracking
+        if (this.deathUnsubscribe) {
+            this.deathUnsubscribe();
+            this.deathUnsubscribe = null;
+        }
+        
+        // Hide game container (battle screen)
+        const gameContainer = document.getElementById('game-container');
+        if (gameContainer) {
+            gameContainer.style.display = 'none';
+        }
+        
+        // Call appropriate callback
+        if (victory && this.config?.onWin) {
+            this.config.onWin();
+        } else if (!victory && this.config?.onLose) {
+            this.config.onLose();
+        }
+        
+        this.config = null;
+    },
+    
+    // Clean up
+    cleanup() {
+        this.active = false;
+        window.isAbyssBattle = false;
+        if (this.deathUnsubscribe) {
+            this.deathUnsubscribe();
+            this.deathUnsubscribe = null;
+        }
+        this.config = null;
+    }
 };
 
 // ==================== STATE ====================
@@ -72,6 +900,7 @@ window.AbyssState = {
         this.embers = 0;
         this.totalPOIsCollected = 0;
         this.deadCryptidCount = 0;
+        this.currentEncounter = null;
     },
     
     getLanternRadius() {
@@ -248,7 +1077,7 @@ window.AbyssMap = {
 
 window.AbyssPOI = {
     TYPES: {
-        EMBER_CACHE: { name: 'Ember Cache', sprite: '🔥', instant: true },
+        EMBER_CACHE: { name: 'Ember Cache', sprite: 'sprites/embers-icon.png', isImage: true, instant: true },
         TIME_CRYSTAL: { name: 'Time Crystal', sprite: '💎', instant: true },
         CARD_SHRINE: { name: 'Card Shrine', sprite: '🃏', instant: false },
         REST_SITE: { name: 'Rest Site', sprite: '🏕️', instant: false }
@@ -329,6 +1158,16 @@ window.AbyssPOI = {
         return null;
     },
     
+    // Check if a position collides with any POI hitbox
+    checkCollision(px, py, excludeCollected = true) {
+        const hitboxRadius = AbyssConfig.POI_HITBOX_RADIUS;
+        for (const poi of AbyssState.pois) {
+            if (excludeCollected && poi.collected) continue;
+            if (Math.hypot(poi.x - px, poi.y - py) < hitboxRadius) return true;
+        }
+        return false;
+    },
+    
     collect(poi) {
         if (poi.collected) return null;
         poi.collected = true;
@@ -381,6 +1220,8 @@ window.AbyssPlayer = {
             if (key === 'd' || key === 'arrowright') this.keys.right = true;
             if (key === 'e' || key === ' ') this.tryInteract();
             if (key === 'escape') AbyssUI.togglePause();
+            // DEBUG: Press T to rapidly drain timer for testing battles
+            if (key === 't') AbyssState.timeRemaining = Math.max(0, AbyssState.timeRemaining - 10);
         };
         
         this.handleKeyUp = (e) => {
@@ -574,21 +1415,25 @@ window.AbyssPlayer = {
         const newY = AbyssState.playerY + dy * speed;
         const half = AbyssConfig.PLAYER_SIZE / 2;
         
-        // Check all four corners for X movement
-        const canMoveX = AbyssMap.isWalkable(newX - half, AbyssState.playerY - half) &&
-                         AbyssMap.isWalkable(newX + half, AbyssState.playerY - half) &&
-                         AbyssMap.isWalkable(newX - half, AbyssState.playerY + half) &&
-                         AbyssMap.isWalkable(newX + half, AbyssState.playerY + half);
-        if (canMoveX) {
+        // Check all four corners for X movement (walls)
+        const wallClearX = AbyssMap.isWalkable(newX - half, AbyssState.playerY - half) &&
+                           AbyssMap.isWalkable(newX + half, AbyssState.playerY - half) &&
+                           AbyssMap.isWalkable(newX - half, AbyssState.playerY + half) &&
+                           AbyssMap.isWalkable(newX + half, AbyssState.playerY + half);
+        // Also check POI collision for X movement
+        const poiClearX = !AbyssPOI.checkCollision(newX, AbyssState.playerY);
+        if (wallClearX && poiClearX) {
             AbyssState.playerX = newX;
         }
         
-        // Check all four corners for Y movement (using updated X if it changed)
-        const canMoveY = AbyssMap.isWalkable(AbyssState.playerX - half, newY - half) &&
-                         AbyssMap.isWalkable(AbyssState.playerX + half, newY - half) &&
-                         AbyssMap.isWalkable(AbyssState.playerX - half, newY + half) &&
-                         AbyssMap.isWalkable(AbyssState.playerX + half, newY + half);
-        if (canMoveY) {
+        // Check all four corners for Y movement (walls, using updated X if it changed)
+        const wallClearY = AbyssMap.isWalkable(AbyssState.playerX - half, newY - half) &&
+                           AbyssMap.isWalkable(AbyssState.playerX + half, newY - half) &&
+                           AbyssMap.isWalkable(AbyssState.playerX - half, newY + half) &&
+                           AbyssMap.isWalkable(AbyssState.playerX + half, newY + half);
+        // Also check POI collision for Y movement
+        const poiClearY = !AbyssPOI.checkCollision(AbyssState.playerX, newY);
+        if (wallClearY && poiClearY) {
             AbyssState.playerY = newY;
         }
         
@@ -600,7 +1445,12 @@ window.AbyssPlayer = {
         const poi = AbyssPOI.checkInteraction(AbyssState.playerX, AbyssState.playerY);
         if (poi) {
             const result = AbyssPOI.collect(poi);
-            if (result) AbyssUI.showMessage(poi.sprite + ' ' + poi.name, result.message);
+            if (result) {
+                // Use emoji fallback for image POIs in messages
+                const poiType = AbyssPOI.TYPES[poi.typeKey];
+                const displayIcon = (poiType && poiType.isImage) ? '🔥' : poi.sprite;
+                AbyssUI.showMessage(displayIcon + ' ' + poi.name, result.message);
+            }
         }
     },
     
@@ -626,15 +1476,24 @@ window.AbyssRenderer = {
     ctx: null,
     camera: { x: 0, y: 0 },
     zoom: 1,
-    spriteContainer: null,
+    
+    // Tilted layer: contains invisible position markers
+    markerContainer: null,
+    playerMarker: null,
+    poiMarkers: {},
+    
+    // Flat layer: contains visible sprites (no transform)
+    spriteOverlay: null,
     playerSprite: null,
     poiSprites: {},
     
     init(container) {
+        this.container = container;
+        
         // Calculate responsive zoom based on screen size
         this.updateZoom();
         
-        // Create wrapper for perspective transform
+        // Create wrapper for perspective transform (terrain + position markers)
         this.wrapper = document.createElement('div');
         this.wrapper.id = 'abyss-wrapper';
         this.updateWrapperStyle();
@@ -647,24 +1506,40 @@ window.AbyssRenderer = {
         
         this.wrapper.appendChild(this.canvas);
         
-        // Create sprite container inside wrapper (shares perspective transform)
-        this.spriteContainer = document.createElement('div');
-        this.spriteContainer.id = 'abyss-sprites';
-        this.spriteContainer.style.cssText = `
+        // Create marker container inside tilted wrapper (invisible, just for position tracking)
+        this.markerContainer = document.createElement('div');
+        this.markerContainer.id = 'abyss-markers';
+        this.markerContainer.style.cssText = `
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             pointer-events: none;
-            transform-style: preserve-3d;
         `;
-        this.wrapper.appendChild(this.spriteContainer);
+        this.wrapper.appendChild(this.markerContainer);
         
-        // Create player sprite element
-        this.createPlayerSprite();
+        // Create player marker (invisible, tracks position in tilted space)
+        this.createPlayerMarker();
         
         container.appendChild(this.wrapper);
+        
+        // Create FLAT sprite overlay (completely separate, NO transform)
+        this.spriteOverlay = document.createElement('div');
+        this.spriteOverlay.id = 'abyss-sprite-overlay';
+        this.spriteOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        `;
+        container.appendChild(this.spriteOverlay);
+        
+        // Create visible player sprite on flat overlay
+        this.createPlayerSprite();
         
         window.addEventListener('resize', () => {
             this.canvas.width = window.innerWidth;
@@ -674,60 +1549,82 @@ window.AbyssRenderer = {
         });
     },
     
+    // Invisible marker in tilted space (tracks where player appears after transform)
+    createPlayerMarker() {
+        this.playerMarker = document.createElement('div');
+        this.playerMarker.id = 'abyss-player-marker';
+        this.playerMarker.style.cssText = `
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            pointer-events: none;
+        `;
+        this.markerContainer.appendChild(this.playerMarker);
+    },
+    
+    // Visible sprite on flat overlay (positioned based on marker's screen position)
     createPlayerSprite() {
         this.playerSprite = document.createElement('div');
         this.playerSprite.id = 'abyss-player-sprite';
         this.playerSprite.style.cssText = `
             position: absolute;
-            width: 40px;
-            height: 40px;
-            transform: rotateX(25deg);
-            transform-origin: center center;
+            width: 64px;
+            height: 64px;
             pointer-events: none;
             display: flex;
             align-items: center;
             justify-content: center;
         `;
         this.playerSprite.innerHTML = `
-            <div style="
+            <img src="sprites/vampire-initiate.png" style="
                 width: 100%;
                 height: 100%;
-                background: radial-gradient(circle at 30% 30%, #e8c878, #9a7840);
-                border-radius: 50%;
-                border: 2px solid #5a4020;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.4);
-                position: relative;
-            ">
-                <div style="
-                    position: absolute;
-                    top: 4px;
-                    right: 4px;
-                    width: 10px;
-                    height: 10px;
-                    background: radial-gradient(circle at 40% 40%, #fff8e0, #ffdd88);
-                    border-radius: 50%;
-                    box-shadow: 0 0 8px #ffdd88;
-                "></div>
-            </div>
+                object-fit: contain;
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+            " />
         `;
-        this.spriteContainer.appendChild(this.playerSprite);
+        this.spriteOverlay.appendChild(this.playerSprite);
     },
     
+    // Create invisible POI marker in tilted space
+    createPOIMarker(poi) {
+        const marker = document.createElement('div');
+        marker.className = 'abyss-poi-marker';
+        marker.dataset.poiId = poi.id;
+        marker.style.cssText = `
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            pointer-events: none;
+        `;
+        this.markerContainer.appendChild(marker);
+        this.poiMarkers[poi.id] = marker;
+        return marker;
+    },
+    
+    // Create visible POI sprite on flat overlay
     createPOISprite(poi) {
         const sprite = document.createElement('div');
         sprite.className = 'abyss-poi-sprite';
         sprite.dataset.poiId = poi.id;
         sprite.style.cssText = `
             position: absolute;
-            transform: rotateX(25deg);
-            transform-origin: center center;
             pointer-events: none;
             text-align: center;
             opacity: 0;
             transition: opacity 0.3s ease;
         `;
+        
+        // Check if sprite is an image path or emoji
+        const poiType = AbyssPOI.TYPES[poi.typeKey];
+        const isImage = poiType && poiType.isImage;
+        
+        const spriteContent = isImage 
+            ? `<img src="${poi.sprite}" style="width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));" />`
+            : `<div style="font-size: 28px; line-height: 1;">${poi.sprite}</div>`;
+        
         sprite.innerHTML = `
-            <div style="font-size: 28px; line-height: 1;">${poi.sprite}</div>
+            ${spriteContent}
             <div style="
                 font-family: Cinzel, serif;
                 font-size: 12px;
@@ -737,7 +1634,7 @@ window.AbyssRenderer = {
                 white-space: nowrap;
             ">${poi.name}</div>
         `;
-        this.spriteContainer.appendChild(sprite);
+        this.spriteOverlay.appendChild(sprite);
         this.poiSprites[poi.id] = sprite;
         return sprite;
     },
@@ -763,7 +1660,6 @@ window.AbyssRenderer = {
             inset: 0;
             transform: perspective(1200px) rotateX(25deg) scale(${baseScale});
             transform-origin: center 60%;
-            transform-style: preserve-3d;
             overflow: hidden;
         `;
     },
@@ -902,51 +1798,99 @@ window.AbyssRenderer = {
     updateSprites() {
         const state = AbyssState;
         const cfg = AbyssConfig;
+        const containerRect = this.container.getBoundingClientRect();
         
-        // Update player sprite position
-        if (this.playerSprite) {
-            const playerScreenX = state.playerX - this.camera.x;
-            const playerScreenY = state.playerY - this.camera.y;
-            this.playerSprite.style.left = (playerScreenX - 20) + 'px';
-            this.playerSprite.style.top = (playerScreenY - 20) + 'px';
+        // Track all sprites with their Y positions for z-ordering
+        const spriteDepths = [];
+        
+        // === UPDATE PLAYER ===
+        if (this.playerMarker && this.playerSprite) {
+            // Position marker in tilted canvas space
+            const playerCanvasX = state.playerX - this.camera.x;
+            const playerCanvasY = state.playerY - this.camera.y;
+            this.playerMarker.style.left = playerCanvasX + 'px';
+            this.playerMarker.style.top = playerCanvasY + 'px';
+            
+            // Get marker's actual screen position (after tilt transform)
+            const markerRect = this.playerMarker.getBoundingClientRect();
+            const screenX = markerRect.left - containerRect.left;
+            const screenY = markerRect.top - containerRect.top;
+            
+            // Position sprite on flat overlay at that screen position
+            this.playerSprite.style.left = (screenX - 32) + 'px';
+            this.playerSprite.style.top = (screenY - 32) + 'px';
+            
+            // Track for z-ordering (use world Y for consistent depth)
+            spriteDepths.push({ element: this.playerSprite, worldY: state.playerY });
         }
         
-        // Update POI sprites
+        // === UPDATE POIs ===
         for (const poi of state.pois) {
-            // Create sprite if it doesn't exist
+            // Create marker and sprite if they don't exist
+            if (!this.poiMarkers[poi.id]) {
+                this.createPOIMarker(poi);
+            }
             if (!this.poiSprites[poi.id]) {
                 this.createPOISprite(poi);
             }
             
+            const marker = this.poiMarkers[poi.id];
             const sprite = this.poiSprites[poi.id];
-            if (!sprite) continue;
+            if (!marker || !sprite) continue;
             
             if (poi.collected) {
                 sprite.style.display = 'none';
+                marker.style.display = 'none';
                 continue;
             }
             
             sprite.style.display = 'block';
+            marker.style.display = 'block';
             
-            // Position
-            const screenX = poi.x - this.camera.x;
-            const screenY = poi.y - this.camera.y;
+            // Position marker in tilted canvas space
+            const poiCanvasX = poi.x - this.camera.x;
+            const poiCanvasY = poi.y - this.camera.y;
+            marker.style.left = poiCanvasX + 'px';
+            marker.style.top = poiCanvasY + 'px';
+            
+            // Get marker's actual screen position (after tilt transform)
+            const markerRect = marker.getBoundingClientRect();
+            const screenX = markerRect.left - containerRect.left;
+            const screenY = markerRect.top - containerRect.top;
+            
+            // Position sprite on flat overlay at that screen position
             sprite.style.left = screenX + 'px';
             sprite.style.top = screenY + 'px';
-            sprite.style.transform = `translate(-50%, -50%) rotateX(25deg)`;
+            sprite.style.transform = 'translate(-50%, -50%)';
             
             // Fade based on revealProgress
             sprite.style.opacity = poi.revealProgress;
+            
+            // Track for z-ordering (use world Y for consistent depth)
+            spriteDepths.push({ element: sprite, worldY: poi.y });
         }
+        
+        // === APPLY Z-ORDERING ===
+        // Objects with higher Y (lower on screen / "in front") get higher z-index
+        spriteDepths.sort((a, b) => a.worldY - b.worldY);
+        spriteDepths.forEach((item, index) => {
+            item.element.style.zIndex = index + 1;
+        });
     },
     
     cleanup() {
         if (this.wrapper && this.wrapper.parentNode) {
             this.wrapper.parentNode.removeChild(this.wrapper);
         }
+        if (this.spriteOverlay && this.spriteOverlay.parentNode) {
+            this.spriteOverlay.parentNode.removeChild(this.spriteOverlay);
+        }
         this.poiSprites = {};
+        this.poiMarkers = {};
         this.playerSprite = null;
-        this.spriteContainer = null;
+        this.playerMarker = null;
+        this.markerContainer = null;
+        this.spriteOverlay = null;
     }
 };
 
@@ -1129,6 +2073,9 @@ window.AbyssEngine = {
         AbyssState.isActive = true;
         AbyssState.deckArchetype = deck;
         
+        // Initialize starter deck based on chosen archetype
+        this.initializeStarterDeck(deck);
+        
         AbyssMap.init();
         AbyssShroud.init();
         AbyssPOI.generate();
@@ -1142,6 +2089,65 @@ window.AbyssEngine = {
         
         this.lastTime = performance.now();
         this.gameLoop();
+    },
+    
+    // Initialize starter deck for a new run
+    initializeStarterDeck(deckType) {
+        const starterCards = [];
+        
+        // Define starter decks for each archetype
+        const starterDecks = {
+            'city-of-flesh': [
+                'vampireInitiate', 'vampireInitiate',
+                'rooftopGargoyle', 'rooftopGargoyle',
+                'hellpup', 'hellpup', 'hellpup',
+                'wakingNightmare', 'wakingNightmare',
+                'faceOff'
+            ],
+            'forests-of-fear': [
+                // Placeholder - add forest cryptids when available
+                'rooftopGargoyle', 'rooftopGargoyle',
+                'vampireInitiate', 'vampireInitiate',
+                'hellpup', 'hellpup',
+                'wakingNightmare', 'wakingNightmare'
+            ],
+            'abhorrent-armory': [
+                // Placeholder - add armory cryptids when available
+                'rooftopGargoyle', 'rooftopGargoyle',
+                'vampireInitiate', 'vampireInitiate',
+                'hellpup', 'hellpup',
+                'wakingNightmare', 'wakingNightmare'
+            ],
+            'putrid-swamp': [
+                // Placeholder - add swamp cryptids when available
+                'rooftopGargoyle', 'rooftopGargoyle',
+                'vampireInitiate', 'vampireInitiate',
+                'hellpup', 'hellpup',
+                'wakingNightmare', 'wakingNightmare'
+            ]
+        };
+        
+        const deckKeys = starterDecks[deckType] || starterDecks['city-of-flesh'];
+        
+        for (const key of deckKeys) {
+            // Try to get card from different registries
+            let card = window.CardRegistry?.getCryptid(key);
+            if (!card) card = window.CardRegistry?.getKindling(key);
+            if (!card) card = window.CardRegistry?.getBurst(key);
+            if (!card) card = window.CardRegistry?.getInstant(key);
+            if (!card) card = window.CardRegistry?.getTrap(key);
+            if (!card) card = window.CardRegistry?.getAura(key);
+            if (!card) card = window.CardRegistry?.getPyre(key);
+            
+            if (card) {
+                starterCards.push({ ...card });
+            } else {
+                console.warn('[ABYSS] Starter card not found:', key);
+            }
+        }
+        
+        AbyssState.starterCards = starterCards;
+        console.log('[ABYSS] Starter deck initialized:', starterCards.length, 'cards');
     },
     
     gameLoop() {
@@ -1167,21 +2173,107 @@ window.AbyssEngine = {
         this.animFrame = requestAnimationFrame(() => this.gameLoop());
     },
     
-    triggerBattle() {
+    async triggerBattle() {
         console.log('[ABYSS] Battle triggered!');
         AbyssState.savedPlayerX = AbyssState.playerX;
         AbyssState.savedPlayerY = AbyssState.playerY;
         AbyssState.isPaused = true;
         cancelAnimationFrame(this.animFrame);
+        
+        // Get random preset encounter
+        const preset = AbyssPresets.getRandomPreset();
+        AbyssState.currentEncounter = preset;
+        console.log('[ABYSS] Selected encounter:', preset.name, '(' + preset.difficulty + ')');
+        
+        // Play JRPG battle transition
+        await AbyssBattleTransition.play(preset.name);
+        
+        // Hide abyss UI
         AbyssUI.hide();
         
-        // For now, simulate battle win after 2 seconds
-        setTimeout(() => this.onBattleWin(), 2000);
+        // Start the actual battle
+        this.startPresetBattle(preset);
     },
     
-    onBattleWin() {
+    startPresetBattle(preset) {
+        console.log('[ABYSS] Starting preset battle:', preset.id);
+        
+        // Configure battle settings for preset mode
+        const battleConfig = {
+            mode: 'preset',
+            playerFirst: true, // Player always goes first in presets
+            encounter: preset,
+            playerDeck: AbyssState.getBattleDeck(),
+            onWin: () => this.onBattleWin(),
+            onLose: () => this.onBattleLose(),
+            onCryptidDeath: (owner) => {
+                if (owner === 'player') {
+                    AbyssState.deadCryptidCount++;
+                    console.log('[ABYSS] Player cryptid died. Deaths:', AbyssState.deadCryptidCount);
+                    if (AbyssState.isDefeated()) {
+                        console.log('[ABYSS] Max deaths reached!');
+                    }
+                }
+            }
+        };
+        
+        // Check if initGame is available
+        if (typeof window.initGame === 'function') {
+            AbyssBattle.start(battleConfig);
+        } else {
+            // Fallback: simulate battle for testing
+            console.log('[ABYSS] Battle system not available. Simulating...');
+            this.showBattleSimulation(preset);
+        }
+    },
+    
+    // Temporary battle simulation for testing
+    showBattleSimulation(preset) {
+        const simOverlay = document.createElement('div');
+        simOverlay.id = 'abyss-battle-sim';
+        simOverlay.style.cssText = `
+            position: fixed; inset: 0; z-index: 60000;
+            background: linear-gradient(180deg, #1a0a0a, #0a0505);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-family: Cinzel, serif; color: #c4a35a;
+        `;
+        
+        const enemyList = preset.field.map(e => {
+            const card = CardRegistry?.getCryptid(e.cardKey) || CardRegistry?.getKindling(e.cardKey);
+            return card ? `${card.name} (${e.position})` : e.cardKey;
+        }).join('<br>');
+        
+        simOverlay.innerHTML = `
+            <div style="font-size: 32px; color: #e85a5a; margin-bottom: 20px;">${preset.name}</div>
+            <div style="font-size: 14px; color: #888; margin-bottom: 30px;">Difficulty: ${preset.difficulty}</div>
+            <div style="font-size: 16px; margin-bottom: 30px; text-align: center; line-height: 1.8;">
+                <div style="color: #e85a5a; margin-bottom: 10px;">ENEMIES:</div>
+                ${enemyList}
+                ${preset.trap ? `<br><br><span style="color: #a060a0;">Trap: ${preset.trap}</span>` : ''}
+            </div>
+            <div style="display: flex; gap: 20px;">
+                <button id="sim-win" style="padding: 12px 30px; font-family: Cinzel, serif; font-size: 16px; background: #2a4a2a; border: 2px solid #4a8a4a; color: #8aca8a; cursor: pointer; border-radius: 6px;">Simulate Win</button>
+                <button id="sim-lose" style="padding: 12px 30px; font-family: Cinzel, serif; font-size: 16px; background: #4a2a2a; border: 2px solid #8a4a4a; color: #ca8a8a; cursor: pointer; border-radius: 6px;">Simulate Loss</button>
+            </div>
+        `;
+        document.body.appendChild(simOverlay);
+        
+        document.getElementById('sim-win').onclick = () => {
+            simOverlay.remove();
+            this.onBattleWin();
+        };
+        document.getElementById('sim-lose').onclick = () => {
+            simOverlay.remove();
+            this.onBattleLose();
+        };
+    },
+    
+    async onBattleWin() {
         console.log('[ABYSS] Battle won!');
         AbyssState.battlesCompleted++;
+        
+        // Exit transition
+        await AbyssBattleTransition.exit();
         
         if (AbyssState.battlesCompleted >= AbyssConfig.BATTLES_PER_FLOOR) {
             this.completeFloor();
@@ -1193,6 +2285,25 @@ window.AbyssEngine = {
         console.log('[ABYSS] Timer refreshed to', Math.round(refresh * 100) + '%');
         
         this.returnToMap();
+    },
+    
+    async onBattleLose() {
+        console.log('[ABYSS] Battle lost!');
+        
+        // Exit transition
+        await AbyssBattleTransition.exit();
+        
+        // Check if player has too many deaths
+        if (AbyssState.isDefeated()) {
+            this.endRun(false);
+        } else {
+            // Still have lives - return to map but timer continues from where it was
+            AbyssState.battlesCompleted++;
+            const refresh = AbyssState.getTimerRefresh();
+            AbyssState.timeRemaining = AbyssState.maxTime * refresh * 0.5; // Penalty: only 50% timer on loss
+            
+            this.returnToMap();
+        }
     },
     
     completeFloor() {

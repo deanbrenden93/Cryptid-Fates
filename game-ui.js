@@ -208,6 +208,39 @@ function initGame() {
         for (let i = 0; i < 7; i++) {
             game.drawCard('enemy');
         }
+    } else if (window.isAbyssBattle && window.abyssPlayerDeck) {
+        // Abyss preset battle: Use Abyss player's collected deck
+        console.log('[Abyss Battle] Setting up with custom deck');
+        
+        // Separate kindling from main deck
+        const mainDeck = [];
+        const kindlingDeck = [];
+        
+        for (const card of window.abyssPlayerDeck) {
+            if (card.type === 'kindling' || card.isKindling) {
+                kindlingDeck.push({ ...card, isKindling: true });
+            } else {
+                mainDeck.push({ ...card });
+            }
+        }
+        
+        // Shuffle both decks
+        const shuffledDeck = mainDeck.sort(() => Math.random() - 0.5);
+        const shuffledKindling = kindlingDeck.sort(() => Math.random() - 0.5);
+        
+        game.deck = shuffledDeck;
+        game.playerDeck = shuffledDeck;
+        game.playerKindling = shuffledKindling;
+        
+        console.log('[Abyss Battle] Main deck:', mainDeck.length, 'Kindling:', kindlingDeck.length);
+        
+        // Draw 6 cards for player only (enemy has no deck in presets)
+        for (let i = 0; i < 6; i++) {
+            game.drawCard('player', 'initial');
+        }
+        
+        // Give player some starting pyre
+        game.playerPyre = 3;
     } else {
         // Normal mode: Draw 6 cards initially (first turn draws 1 more = 7 total)
         for (let i = 0; i < 6; i++) {
@@ -225,8 +258,8 @@ function initGame() {
         }
     }
     
-    // Determine who goes first based on main menu coin flip
-    const firstPlayer = window.playerGoesFirst !== false ? 'player' : 'enemy';
+    // Determine who goes first based on main menu coin flip (Abyss always player first)
+    const firstPlayer = window.isAbyssBattle ? 'player' : (window.playerGoesFirst !== false ? 'player' : 'enemy');
     game.startTurn(firstPlayer);
     
     // Check if we should animate the starting hand (skip for test mode and tutorials)
@@ -4778,6 +4811,20 @@ document.getElementById('end-turn-btn').onclick = () => {
                     isAnimating = false;
                     renderAll(); updateButtons();
                     // The tutorial will advance and call TutorialBattle.executeEnemyTurn
+                    return;
+                }
+                
+                // Check if this is an Abyss preset battle
+                if (window.isAbyssBattle && window.AbyssBattle?.active) {
+                    // Preset battle: enemy only attacks, no card playing
+                    animateTurnStartEffects('enemy', () => {
+                        showMessage("Enemies attack!", TIMING.messageDisplay);
+                        renderAll(); updateButtons();
+                        setTimeout(() => {
+                            isAnimating = false;
+                            window.AbyssBattle.runPresetAI();
+                        }, TIMING.messageDisplay + 200);
+                    });
                     return;
                 }
                 
