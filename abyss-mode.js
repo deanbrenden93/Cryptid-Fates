@@ -296,18 +296,28 @@ window.AbyssPOI = {
                     instant: type.instant,
                     collected: false,
                     visible: false,
-                    inRange: false
+                    inRange: false,
+                    revealProgress: 0 // 0 to 1 for smooth fade-in animation
                 });
             }
         }
     },
     
-    updateVisibility(px, py, radius) {
+    updateVisibility(px, py, radius, dt = 0.016) {
         for (const poi of AbyssState.pois) {
             if (poi.collected) continue;
             const dist = Math.hypot(poi.x - px, poi.y - py);
             poi.visible = dist < radius + AbyssConfig.POI_GLOW_RADIUS;
             poi.inRange = dist < radius;
+            
+            // Animate reveal progress
+            const targetReveal = poi.inRange ? 1 : (poi.visible ? 0.3 : 0);
+            const revealSpeed = 3.0; // Speed of fade animation
+            if (poi.revealProgress < targetReveal) {
+                poi.revealProgress = Math.min(targetReveal, poi.revealProgress + revealSpeed * dt);
+            } else if (poi.revealProgress > targetReveal) {
+                poi.revealProgress = Math.max(targetReveal, poi.revealProgress - revealSpeed * dt);
+            }
         }
     },
     
@@ -564,15 +574,26 @@ window.AbyssPlayer = {
         const newY = AbyssState.playerY + dy * speed;
         const half = AbyssConfig.PLAYER_SIZE / 2;
         
-        if (AbyssMap.isWalkable(newX - half, AbyssState.playerY) && AbyssMap.isWalkable(newX + half, AbyssState.playerY)) {
+        // Check all four corners for X movement
+        const canMoveX = AbyssMap.isWalkable(newX - half, AbyssState.playerY - half) &&
+                         AbyssMap.isWalkable(newX + half, AbyssState.playerY - half) &&
+                         AbyssMap.isWalkable(newX - half, AbyssState.playerY + half) &&
+                         AbyssMap.isWalkable(newX + half, AbyssState.playerY + half);
+        if (canMoveX) {
             AbyssState.playerX = newX;
         }
-        if (AbyssMap.isWalkable(AbyssState.playerX, newY - half) && AbyssMap.isWalkable(AbyssState.playerX, newY + half)) {
+        
+        // Check all four corners for Y movement (using updated X if it changed)
+        const canMoveY = AbyssMap.isWalkable(AbyssState.playerX - half, newY - half) &&
+                         AbyssMap.isWalkable(AbyssState.playerX + half, newY - half) &&
+                         AbyssMap.isWalkable(AbyssState.playerX - half, newY + half) &&
+                         AbyssMap.isWalkable(AbyssState.playerX + half, newY + half);
+        if (canMoveY) {
             AbyssState.playerY = newY;
         }
         
         AbyssShroud.eraseAt(AbyssState.playerX, AbyssState.playerY, AbyssState.getLanternRadius());
-        AbyssPOI.updateVisibility(AbyssState.playerX, AbyssState.playerY, AbyssState.getLanternRadius());
+        AbyssPOI.updateVisibility(AbyssState.playerX, AbyssState.playerY, AbyssState.getLanternRadius(), dt);
     },
     
     tryInteract() {
@@ -605,6 +626,9 @@ window.AbyssRenderer = {
     ctx: null,
     camera: { x: 0, y: 0 },
     zoom: 1,
+    spriteContainer: null,
+    playerSprite: null,
+    poiSprites: {},
     
     init(container) {
         // Calculate responsive zoom based on screen size
@@ -622,6 +646,24 @@ window.AbyssRenderer = {
         this.ctx = this.canvas.getContext('2d');
         
         this.wrapper.appendChild(this.canvas);
+        
+        // Create sprite container inside wrapper (shares perspective transform)
+        this.spriteContainer = document.createElement('div');
+        this.spriteContainer.id = 'abyss-sprites';
+        this.spriteContainer.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            transform-style: preserve-3d;
+        `;
+        this.wrapper.appendChild(this.spriteContainer);
+        
+        // Create player sprite element
+        this.createPlayerSprite();
+        
         container.appendChild(this.wrapper);
         
         window.addEventListener('resize', () => {
@@ -630,6 +672,74 @@ window.AbyssRenderer = {
             this.updateZoom();
             this.updateWrapperStyle();
         });
+    },
+    
+    createPlayerSprite() {
+        this.playerSprite = document.createElement('div');
+        this.playerSprite.id = 'abyss-player-sprite';
+        this.playerSprite.style.cssText = `
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            transform: rotateX(25deg);
+            transform-origin: center center;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        this.playerSprite.innerHTML = `
+            <div style="
+                width: 100%;
+                height: 100%;
+                background: radial-gradient(circle at 30% 30%, #e8c878, #9a7840);
+                border-radius: 50%;
+                border: 2px solid #5a4020;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+                position: relative;
+            ">
+                <div style="
+                    position: absolute;
+                    top: 4px;
+                    right: 4px;
+                    width: 10px;
+                    height: 10px;
+                    background: radial-gradient(circle at 40% 40%, #fff8e0, #ffdd88);
+                    border-radius: 50%;
+                    box-shadow: 0 0 8px #ffdd88;
+                "></div>
+            </div>
+        `;
+        this.spriteContainer.appendChild(this.playerSprite);
+    },
+    
+    createPOISprite(poi) {
+        const sprite = document.createElement('div');
+        sprite.className = 'abyss-poi-sprite';
+        sprite.dataset.poiId = poi.id;
+        sprite.style.cssText = `
+            position: absolute;
+            transform: rotateX(25deg);
+            transform-origin: center center;
+            pointer-events: none;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        `;
+        sprite.innerHTML = `
+            <div style="font-size: 28px; line-height: 1;">${poi.sprite}</div>
+            <div style="
+                font-family: Cinzel, serif;
+                font-size: 12px;
+                color: #e8a93e;
+                margin-top: 4px;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+                white-space: nowrap;
+            ">${poi.name}</div>
+        `;
+        this.spriteContainer.appendChild(sprite);
+        this.poiSprites[poi.id] = sprite;
+        return sprite;
     },
     
     updateZoom() {
@@ -653,6 +763,7 @@ window.AbyssRenderer = {
             inset: 0;
             transform: perspective(1200px) rotateX(25deg) scale(${baseScale});
             transform-origin: center 60%;
+            transform-style: preserve-3d;
             overflow: hidden;
         `;
     },
@@ -708,29 +819,27 @@ window.AbyssRenderer = {
             }
         }
         
-        // Draw POIs
+        // Draw POI glows on canvas (glows can be tilted, sprites will be DOM elements)
         for (const poi of state.pois) {
-            if (poi.collected || !poi.visible) continue;
-            if (poi.inRange) {
-                ctx.font = '28px serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(poi.sprite, poi.x, poi.y);
-                ctx.font = '12px Cinzel, serif';
-                ctx.fillStyle = '#e8a93e';
-                ctx.fillText(poi.name, poi.x, poi.y + 28);
-            } else {
-                // Glow only
-                const grad = ctx.createRadialGradient(poi.x, poi.y, 0, poi.x, poi.y, 30);
-                grad.addColorStop(0, 'rgba(232,169,62,0.3)');
-                grad.addColorStop(1, 'rgba(232,169,62,0)');
-                ctx.fillStyle = grad;
-                ctx.beginPath();
-                ctx.arc(poi.x, poi.y, 30, 0, Math.PI * 2);
-                ctx.fill();
-            }
+            if (poi.collected || poi.revealProgress <= 0) continue;
+            
+            ctx.save();
+            ctx.globalAlpha = poi.revealProgress;
+            
+            // Glow effect on canvas
+            const glowAlpha = 0.3 * poi.revealProgress;
+            const grad = ctx.createRadialGradient(poi.x, poi.y, 0, poi.x, poi.y, 35);
+            grad.addColorStop(0, `rgba(232,169,62,${glowAlpha})`);
+            grad.addColorStop(1, 'rgba(232,169,62,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(poi.x, poi.y, 35, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
         }
         
-        // Draw lantern glow FIRST (under player)
+        // Draw lantern glow (under player)
         const radius = state.getLanternRadius();
         
         // Outer ambient glow
@@ -753,40 +862,13 @@ window.AbyssRenderer = {
         ctx.arc(state.playerX, state.playerY, 60, 0, Math.PI * 2);
         ctx.fill();
         
-        // Player shadow
+        // Player shadow on canvas
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
         ctx.beginPath();
         ctx.ellipse(state.playerX + 4, state.playerY + cfg.PLAYER_SIZE / 2 + 4, cfg.PLAYER_SIZE / 2, cfg.PLAYER_SIZE / 4, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // Player body
-        const playerGrad = ctx.createRadialGradient(
-            state.playerX - 4, state.playerY - 4, 0,
-            state.playerX, state.playerY, cfg.PLAYER_SIZE / 2
-        );
-        playerGrad.addColorStop(0, '#e8c878');
-        playerGrad.addColorStop(1, '#9a7840');
-        ctx.fillStyle = playerGrad;
-        ctx.beginPath();
-        ctx.arc(state.playerX, state.playerY, cfg.PLAYER_SIZE / 2, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Player outline
-        ctx.strokeStyle = '#5a4020';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        
-        // Lantern on player (small glowing orb)
-        ctx.fillStyle = '#ffdd88';
-        ctx.beginPath();
-        ctx.arc(state.playerX + 10, state.playerY - 8, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#fff8e0';
-        ctx.beginPath();
-        ctx.arc(state.playerX + 9, state.playerY - 9, 2, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Draw shroud on top of everything
+        // Draw shroud on top
         ctx.drawImage(AbyssShroud.getCanvas(), 0, 0);
         
         ctx.restore();
@@ -813,15 +895,58 @@ window.AbyssRenderer = {
         ctx.fillStyle = warmGlow;
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
-        return; // Early return since we already restored context
+        // Update DOM sprite positions (these are counter-rotated to appear flat)
+        this.updateSprites();
+    },
+    
+    updateSprites() {
+        const state = AbyssState;
+        const cfg = AbyssConfig;
         
-        ctx.restore();
+        // Update player sprite position
+        if (this.playerSprite) {
+            const playerScreenX = state.playerX - this.camera.x;
+            const playerScreenY = state.playerY - this.camera.y;
+            this.playerSprite.style.left = (playerScreenX - 20) + 'px';
+            this.playerSprite.style.top = (playerScreenY - 20) + 'px';
+        }
+        
+        // Update POI sprites
+        for (const poi of state.pois) {
+            // Create sprite if it doesn't exist
+            if (!this.poiSprites[poi.id]) {
+                this.createPOISprite(poi);
+            }
+            
+            const sprite = this.poiSprites[poi.id];
+            if (!sprite) continue;
+            
+            if (poi.collected) {
+                sprite.style.display = 'none';
+                continue;
+            }
+            
+            sprite.style.display = 'block';
+            
+            // Position
+            const screenX = poi.x - this.camera.x;
+            const screenY = poi.y - this.camera.y;
+            sprite.style.left = screenX + 'px';
+            sprite.style.top = screenY + 'px';
+            sprite.style.transform = `translate(-50%, -50%) rotateX(25deg)`;
+            
+            // Fade based on revealProgress
+            sprite.style.opacity = poi.revealProgress;
+        }
     },
     
     cleanup() {
         if (this.wrapper && this.wrapper.parentNode) {
             this.wrapper.parentNode.removeChild(this.wrapper);
         }
+        this.poiSprites = {};
+        this.playerSprite = null;
+        this.spriteContainer = null;
     }
 };
 
