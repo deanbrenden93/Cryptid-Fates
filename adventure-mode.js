@@ -549,6 +549,20 @@ window.IsometricEngine = {
     // Dust particles for rising walls
     dustParticles: [],
     
+    // Ember particles (for mining burst effect)
+    emberParticles: [],
+    
+    // Mining state
+    mining: {
+        active: false,
+        poi: null,
+        progress: 0,        // 0 to 1
+        duration: 2.0,      // seconds
+        worldX: 0,
+        worldY: 0
+    },
+    miningTouchActive: false,  // For mobile touch hold
+    
     // Interactables (POIs on the map)
     interactables: [],
     nearbyInteractable: null,
@@ -653,18 +667,23 @@ window.IsometricEngine = {
     handleKeyDown(e) {
         if (!this.isRunning) return;
         
+        // Allow action key during mining to continue gathering
+        const isMining = AdventureState.phase === 'mining';
+        
         // Block all gameplay input during dialogue or non-interactive phases
         const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
-        if (blockedPhases.includes(AdventureState.phase)) return;
+        if (blockedPhases.includes(AdventureState.phase) && !isMining) return;
         
         switch(e.key.toLowerCase()) {
-            case 'w': case 'arrowup': this.keys.up = true; break;
-            case 's': case 'arrowdown': this.keys.down = true; break;
-            case 'a': case 'arrowleft': this.keys.left = true; break;
-            case 'd': case 'arrowright': this.keys.right = true; break;
+            case 'w': case 'arrowup': if (!isMining) this.keys.up = true; break;
+            case 's': case 'arrowdown': if (!isMining) this.keys.down = true; break;
+            case 'a': case 'arrowleft': if (!isMining) this.keys.left = true; break;
+            case 'd': case 'arrowright': if (!isMining) this.keys.right = true; break;
             case 'e': case ' ': case 'enter': 
                 this.keys.action = true;
-                this.tryInteract();
+                if (!isMining) {
+                    this.tryInteract();
+                }
                 break;
         }
     },
@@ -675,7 +694,10 @@ window.IsometricEngine = {
             case 's': case 'arrowdown': this.keys.down = false; break;
             case 'a': case 'arrowleft': this.keys.left = false; break;
             case 'd': case 'arrowright': this.keys.right = false; break;
-            case 'e': case ' ': case 'enter': this.keys.action = false; break;
+            case 'e': case ' ': case 'enter': 
+                this.keys.action = false;
+                // Mining will be cancelled in updateMining when it checks keys.action
+                break;
         }
     },
     
@@ -847,6 +869,178 @@ window.IsometricEngine = {
         }
     },
     
+    // ==================== MINING SYSTEM ====================
+    
+    // Start mining an ember site
+    startMining(obj) {
+        if (this.mining.active) return;
+        
+        console.log('[Mining] Starting to mine ember site', obj);
+        
+        // Get position - could be a POI (has x,y) or room interactable (has x,y too)
+        const pos = this.tileToScreen(obj.x, obj.y);
+        
+        this.mining = {
+            active: true,
+            target: obj,           // The POI or interactable being mined
+            progress: 0,
+            duration: 2.0,
+            worldX: pos.x,
+            worldY: pos.y
+        };
+        
+        // Block player movement during mining
+        AdventureState.phase = 'mining';
+    },
+    
+    // Cancel mining (if player moves or releases)
+    cancelMining() {
+        if (!this.mining.active) return;
+        
+        console.log('[Mining] Mining cancelled');
+        this.mining.active = false;
+        this.mining.target = null;
+        this.mining.progress = 0;
+        
+        // Restore exploration phase
+        AdventureState.phase = 'exploring';
+    },
+    
+    // Update mining progress
+    updateMining(dt) {
+        if (!this.mining.active) return;
+        
+        // Check if player is still holding action key/button
+        if (!this.keys.action && !this.miningTouchActive) {
+            this.cancelMining();
+            return;
+        }
+        
+        // Update progress
+        this.mining.progress += dt / this.mining.duration;
+        
+        // Spawn small sparkles while mining
+        if (Math.random() < 0.3) {
+            this.spawnMiningSparkle();
+        }
+        
+        if (this.mining.progress >= 1) {
+            this.completeMining();
+        }
+    },
+    
+    // Spawn small sparkle during mining
+    spawnMiningSparkle() {
+        const m = this.mining;
+        this.emberParticles.push({
+            x: m.worldX + (Math.random() - 0.5) * 40,
+            y: m.worldY - 20 + (Math.random() - 0.5) * 30,
+            vx: (Math.random() - 0.5) * 20,
+            vy: -30 - Math.random() * 20,
+            life: 0.5,
+            maxLife: 0.5,
+            size: 2 + Math.random() * 2,
+            phase: 'sparkle',
+            hue: 30 + Math.random() * 30 // Orange-yellow
+        });
+    },
+    
+    // Complete mining and trigger reward
+    completeMining() {
+        console.log('[Mining] Mining complete!');
+        const target = this.mining.target;
+        
+        // Spawn the satisfying ember burst
+        this.spawnEmberBurst(this.mining.worldX, this.mining.worldY);
+        
+        // Reset mining state
+        this.mining.active = false;
+        this.mining.target = null;
+        this.mining.progress = 0;
+        
+        // Award the embers (handled by AdventureUI after particles finish)
+        setTimeout(() => {
+            AdventureUI.completeMiningReward(target);
+        }, 800); // Delay reward until particles fly to player
+    },
+    
+    // Spawn the burst of ember particles
+    spawnEmberBurst(x, y) {
+        const numParticles = 25 + Math.floor(Math.random() * 15);
+        
+        for (let i = 0; i < numParticles; i++) {
+            const angle = (Math.PI * 2 * i / numParticles) + (Math.random() - 0.5) * 0.5;
+            const speed = 80 + Math.random() * 120;
+            const size = 3 + Math.random() * 5;
+            
+            this.emberParticles.push({
+                x: x + (Math.random() - 0.5) * 20,
+                y: y - 20,
+                vx: Math.cos(angle) * speed * 0.3,
+                vy: -Math.abs(Math.sin(angle)) * speed - 50, // Burst upward
+                life: 1.5,
+                maxLife: 1.5,
+                size: size,
+                phase: 'burst',      // Phase 1: burst upward
+                phaseTime: 0,
+                targetX: this.player.worldX,
+                targetY: this.player.worldY - 20,
+                hue: 20 + Math.random() * 40, // Orange-red-yellow range
+                brightness: 0.8 + Math.random() * 0.2
+            });
+        }
+    },
+    
+    // Update ember particles
+    updateEmberParticles(dt) {
+        const playerX = this.player.worldX;
+        const playerY = this.player.worldY - 20;
+        
+        for (let i = this.emberParticles.length - 1; i >= 0; i--) {
+            const p = this.emberParticles[i];
+            p.life -= dt;
+            p.phaseTime = (p.phaseTime || 0) + dt;
+            
+            if (p.life <= 0) {
+                this.emberParticles.splice(i, 1);
+                continue;
+            }
+            
+            if (p.phase === 'sparkle') {
+                // Simple upward float with fade
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vy += 20 * dt; // Slight gravity
+            } else if (p.phase === 'burst') {
+                // Phase 1: Burst upward (first 0.4 seconds)
+                if (p.phaseTime < 0.4) {
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    p.vy += 150 * dt; // Gravity slows upward motion
+                } else {
+                    // Phase 2: Arc toward player
+                    p.phase = 'collect';
+                }
+            } else if (p.phase === 'collect') {
+                // Home in on player
+                const dx = playerX - p.x;
+                const dy = playerY - p.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > 5) {
+                    const speed = 300 + (1 - p.life / p.maxLife) * 400; // Accelerate over time
+                    p.vx = (dx / dist) * speed;
+                    p.vy = (dy / dist) * speed;
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                } else {
+                    // Reached player - remove
+                    this.emberParticles.splice(i, 1);
+                }
+            }
+        }
+    },
+    
     // Check if player stepped on a POI
     checkPOIInteraction(x, y) {
         const map = AdventureState.floorMap;
@@ -854,11 +1048,15 @@ window.IsometricEngine = {
         
         const tile = map.tiles[y]?.[x];
         if (tile && tile.poi && !tile.poi.cleared) {
-            // Found a POI - trigger interaction
             const poi = tile.poi;
-            console.log(`[Adventure] Reached POI: ${poi.type}`);
             
-            // Handle different POI types
+            // Treasure requires manual mining (hold E) - don't auto-trigger
+            if (poi.type === 'treasure') {
+                console.log(`[Adventure] Near ember site - hold [E] to gather`);
+                return;
+            }
+            
+            console.log(`[Adventure] Reached POI: ${poi.type}`);
             AdventureUI.handlePOIEncounter(poi);
         }
     },
@@ -866,14 +1064,52 @@ window.IsometricEngine = {
     // ==================== INTERACTION ====================
     
     tryInteract() {
+        console.log('[tryInteract] Called. Phase:', AdventureState.phase, 'Mining active:', this.mining.active);
+        
         const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
-        if (blockedPhases.includes(AdventureState.phase)) return;
+        if (blockedPhases.includes(AdventureState.phase)) {
+            console.log('[tryInteract] Blocked by phase');
+            return;
+        }
+        
+        // If already mining, don't start new interaction
+        if (this.mining.active) {
+            console.log('[tryInteract] Already mining');
+            return;
+        }
+        
+        console.log('[tryInteract] nearbyInteractable:', this.nearbyInteractable);
         
         if (this.nearbyInteractable) {
             const obj = this.nearbyInteractable;
-            if (obj.onInteract) {
-                obj.onInteract(obj);
+            
+            console.log('[tryInteract] Object details:', {
+                type: obj.type,
+                label: obj.label,
+                isTreasure: obj.isTreasure,
+                cleared: obj.cleared,
+                hasOnInteract: !!obj.onInteract
+            });
+            
+            // Check if this is a treasure/ember site - requires mining
+            // Check both type === 'treasure' (POI) and isTreasure flag (room interactable)
+            if ((obj.type === 'treasure' || obj.isTreasure) && !obj.cleared) {
+                console.log('[tryInteract] >>> STARTING MINING <<<');
+                this.startMining(obj);
+                return;
             }
+            
+            // Regular interaction
+            if (obj.onInteract) {
+                console.log('[tryInteract] Calling onInteract');
+                obj.onInteract(obj);
+            } else if (obj.type) {
+                console.log('[tryInteract] Calling handlePOIEncounter');
+                // POI without onInteract - let AdventureUI handle it
+                AdventureUI.handlePOIEncounter(obj);
+            }
+        } else {
+            console.log('[tryInteract] No nearby interactable');
         }
     },
     
@@ -975,7 +1211,7 @@ window.IsometricEngine = {
         const map = AdventureState.floorMap;
         
         // Block movement during dialogue or non-interactive phases
-        const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle'];
+        const blockedPhases = ['dialogue', 'awakening', 'inactive', 'battle', 'mining'];
         const canAcceptInput = !blockedPhases.includes(AdventureState.phase);
         
         // Grid-based movement (Pokemon style)
@@ -1038,6 +1274,10 @@ window.IsometricEngine = {
             this.updateRisingWalls(dt);
             this.updateDustParticles(dt);
         }
+        
+        // Update mining and ember particles (always)
+        this.updateMining(dt);
+        this.updateEmberParticles(dt);
         
         // Update world position from visual tile position
         const worldPos = this.tileToScreen(p.visualX, p.visualY);
@@ -1117,13 +1357,19 @@ window.IsometricEngine = {
         // Draw dust particles
         this.renderDustParticles();
         
+        // Draw ember particles
+        this.renderEmberParticles();
+        
         ctx.restore();
         
         // Apply lighting overlay
         this.renderLighting();
         
+        // Render mining bar (on top of lighting)
+        this.renderMiningBar();
+        
         // Render interaction prompt
-        if (this.nearbyInteractable) {
+        if (this.nearbyInteractable && !this.mining.active) {
             this.renderInteractionPrompt();
         }
         
@@ -1367,6 +1613,93 @@ window.IsometricEngine = {
         }
     },
     
+    renderEmberParticles() {
+        const ctx = this.ctx;
+        
+        for (const p of this.emberParticles) {
+            const lifeRatio = p.life / p.maxLife;
+            const alpha = Math.min(1, lifeRatio * 1.5);
+            
+            // Glowing ember effect
+            const hue = p.hue || 30;
+            const brightness = p.brightness || 1;
+            const size = p.size * (0.5 + lifeRatio * 0.5);
+            
+            // Outer glow
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, size * 2, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${hue}, 100%, ${50 * brightness}%, ${alpha * 0.3})`;
+            ctx.fill();
+            
+            // Core
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${hue}, 100%, ${70 * brightness}%, ${alpha})`;
+            ctx.fill();
+            
+            // Bright center
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, size * 0.5, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${hue + 10}, 100%, ${90 * brightness}%, ${alpha})`;
+            ctx.fill();
+        }
+    },
+    
+    renderMiningBar() {
+        if (!this.mining.active) return;
+        
+        const ctx = this.ctx;
+        const m = this.mining;
+        
+        // Position above the mining site
+        const screenX = m.worldX - this.camera.x;
+        const screenY = m.worldY - this.camera.y - 60;
+        
+        const barWidth = 80;
+        const barHeight = 12;
+        const progress = Math.min(1, m.progress);
+        
+        // Background
+        ctx.fillStyle = 'rgba(10, 10, 15, 0.9)';
+        ctx.strokeStyle = 'rgba(232, 169, 62, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(screenX - barWidth/2 - 4, screenY - barHeight/2 - 4, barWidth + 8, barHeight + 8, 4);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Progress bar background
+        ctx.fillStyle = 'rgba(40, 30, 20, 0.8)';
+        ctx.fillRect(screenX - barWidth/2, screenY - barHeight/2, barWidth, barHeight);
+        
+        // Progress bar fill with gradient
+        const gradient = ctx.createLinearGradient(
+            screenX - barWidth/2, 0, 
+            screenX - barWidth/2 + barWidth * progress, 0
+        );
+        gradient.addColorStop(0, '#e85a00');
+        gradient.addColorStop(0.5, '#ffa030');
+        gradient.addColorStop(1, '#ffe080');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(screenX - barWidth/2, screenY - barHeight/2, barWidth * progress, barHeight);
+        
+        // Shimmer effect
+        const shimmerPos = (performance.now() % 1000) / 1000;
+        const shimmerX = screenX - barWidth/2 + barWidth * progress * shimmerPos;
+        if (progress > 0.1) {
+            ctx.fillStyle = 'rgba(255, 255, 200, 0.4)';
+            ctx.fillRect(shimmerX - 3, screenY - barHeight/2, 6, barHeight);
+        }
+        
+        // Label
+        ctx.font = '10px "Cinzel", serif';
+        ctx.fillStyle = '#d4c4a8';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Gathering...', screenX, screenY + barHeight + 8);
+    },
+    
     renderObject(obj) {
         const ctx = this.ctx;
         const pos = this.tileToScreen(obj.x, obj.y);
@@ -1493,7 +1826,12 @@ window.IsometricEngine = {
         ctx.strokeStyle = 'rgba(232, 169, 62, 0.6)';
         ctx.lineWidth = 2;
         
-        const text = obj.promptText || '[E] Interact';
+        // Special prompt for treasure/ember sites
+        let text = obj.promptText || '[E] Interact';
+        if ((obj.type === 'treasure' || obj.isTreasure) && !obj.cleared) {
+            text = 'Hold [E] to Gather';
+        }
+        
         ctx.font = '14px "Cinzel", serif';
         const metrics = ctx.measureText(text);
         const padding = 12;
@@ -1681,13 +2019,14 @@ window.IsometricEngine = {
                 x: 5, y: 3,
                 sprite: '✨',
                 size: 40,
-                label: 'Treasure',
-                promptText: '[E] Open',
+                label: 'Ember Cache',
+                promptText: 'Hold [E] to Gather',  // Updated for mining
                 glow: true,
                 glowColor: '#e8a93e',
                 float: true,
                 floatPhase: Math.random() * Math.PI * 2,
-                onInteract: () => AdventureUI.openTreasure(roomData)
+                isTreasure: true,  // Flag for mining system
+                roomData: roomData  // Store reference for clearing
             });
         }
     },
@@ -2867,8 +3206,27 @@ window.AdventureUI = {
             });
         });
         
-        document.getElementById('mobile-action-btn').addEventListener('click', () => {
+        // Mobile action button with hold support for mining
+        const actionBtn = document.getElementById('mobile-action-btn');
+        actionBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            IsometricEngine.keys.action = true;
+            IsometricEngine.miningTouchActive = true;
             IsometricEngine.tryInteract();
+        });
+        actionBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            IsometricEngine.keys.action = false;
+            IsometricEngine.miningTouchActive = false;
+        });
+        actionBtn.addEventListener('mousedown', () => {
+            IsometricEngine.keys.action = true;
+            IsometricEngine.miningTouchActive = true;
+            IsometricEngine.tryInteract();
+        });
+        actionBtn.addEventListener('mouseup', () => {
+            IsometricEngine.keys.action = false;
+            IsometricEngine.miningTouchActive = false;
         });
     },
     
@@ -3130,7 +3488,9 @@ window.AdventureUI = {
                 break;
                 
             case 'treasure':
-                this.openPOITreasure(poi);
+                // Treasure requires mining - handled by IsometricEngine.startMining
+                // This case is only reached if somehow triggered directly
+                console.log('[Adventure] Treasure should be mined, not clicked');
                 break;
                 
             case 'shop':
@@ -3167,17 +3527,48 @@ window.AdventureUI = {
         }, 500);
     },
     
-    openPOITreasure(poi) {
-        console.log('[Adventure] Opening POI treasure...');
-        poi.cleared = true;
+    // Called after mining completes and particles fly to player
+    completeMiningReward(target) {
+        console.log('[Adventure] Mining reward collected!', target);
+        
+        // Mark as cleared
+        target.cleared = true;
+        
+        // Handle corridor POI
         const map = AdventureState.floorMap;
-        if (map && map.tiles[poi.y]?.[poi.x]) {
-            map.tiles[poi.y][poi.x].poi.cleared = true;
+        if (map && map.tiles && target.y !== undefined && target.x !== undefined) {
+            if (map.tiles[target.y]?.[target.x]?.poi) {
+                map.tiles[target.y][target.x].poi.cleared = true;
+            }
         }
-        AdventureState.embers += 100;
+        
+        // Handle room-based treasure (has roomData)
+        if (target.roomData) {
+            target.roomData.cleared = true;
+            // Remove the interactable from the room
+            const idx = IsometricEngine.interactables.indexOf(target);
+            if (idx > -1) {
+                IsometricEngine.interactables.splice(idx, 1);
+            }
+        }
+        
+        // Award embers
+        const emberAmount = 75 + Math.floor(Math.random() * 50); // 75-125 embers
+        AdventureState.embers += emberAmount;
         AdventureState.itemsFound++;
         this.updateHUD();
-        DialogueSystem.show("You found 100 embers!");
+        
+        // Restore exploration phase
+        AdventureState.phase = 'exploring';
+        
+        // Show reward message
+        DialogueSystem.show(`Gathered ${emberAmount} embers from the cache.`);
+    },
+    
+    // Legacy function kept for compatibility
+    openPOITreasure(poi) {
+        // Now redirects to mining system
+        IsometricEngine.startMining(poi);
     },
     
     usePOIRest(poi) {

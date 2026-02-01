@@ -1114,7 +1114,14 @@ window.AbyssPOI = {
             }
             
             if (valid) {
-                const typeKey = typeKeys[i % typeKeys.length];
+                // Weighted POI selection - ember caches much more frequent for testing
+                const weightedTypes = [
+                    'EMBER_CACHE', 'EMBER_CACHE', 'EMBER_CACHE', 'EMBER_CACHE', 'EMBER_CACHE', // 5x weight
+                    'TIME_CRYSTAL',
+                    'CARD_SHRINE', 
+                    'REST_SITE'
+                ];
+                const typeKey = weightedTypes[Math.floor(Math.random() * weightedTypes.length)];
                 const type = this.TYPES[typeKey];
                 state.pois.push({
                     id: 'poi_' + i,
@@ -1203,12 +1210,24 @@ window.AbyssPOI = {
 // ==================== PLAYER ====================
 
 window.AbyssPlayer = {
-    keys: { up: false, down: false, left: false, right: false },
+    keys: { up: false, down: false, left: false, right: false, action: false },
     touchActive: false,
     touchStartX: 0,
     touchStartY: 0,
     joystickX: 0,
     joystickY: 0,
+    
+    // Mining state
+    mining: {
+        active: false,
+        poi: null,
+        progress: 0,
+        duration: 2.0
+    },
+    
+    // Ember particles for mining effect
+    emberParticles: [],
+    miningTouchActive: false,
     
     init() {
         this.handleKeyDown = (e) => {
@@ -1218,7 +1237,10 @@ window.AbyssPlayer = {
             if (key === 's' || key === 'arrowdown') this.keys.down = true;
             if (key === 'a' || key === 'arrowleft') this.keys.left = true;
             if (key === 'd' || key === 'arrowright') this.keys.right = true;
-            if (key === 'e' || key === ' ') this.tryInteract();
+            if (key === 'e' || key === ' ') {
+                this.keys.action = true;
+                this.tryInteract();
+            }
             if (key === 'escape') AbyssUI.togglePause();
             // DEBUG: Press T to rapidly drain timer for testing battles
             if (key === 't') AbyssState.timeRemaining = Math.max(0, AbyssState.timeRemaining - 10);
@@ -1230,6 +1252,7 @@ window.AbyssPlayer = {
             if (key === 's' || key === 'arrowdown') this.keys.down = false;
             if (key === 'a' || key === 'arrowleft') this.keys.left = false;
             if (key === 'd' || key === 'arrowright') this.keys.right = false;
+            if (key === 'e' || key === ' ') this.keys.action = false;
         };
         
         document.addEventListener('keydown', this.handleKeyDown);
@@ -1374,10 +1397,17 @@ window.AbyssPlayer = {
         joystickBase.addEventListener('touchend', endTouch);
         joystickBase.addEventListener('touchcancel', endTouch);
         
-        // Interact button
+        // Interact button - with hold support for mining
         this.interactBtn.addEventListener('touchstart', (e) => {
             e.preventDefault();
+            this.keys.action = true;
+            this.miningTouchActive = true;
             this.tryInteract();
+        });
+        this.interactBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.keys.action = false;
+            this.miningTouchActive = false;
         });
         
         // Pause button
@@ -1439,17 +1469,275 @@ window.AbyssPlayer = {
         
         AbyssShroud.eraseAt(AbyssState.playerX, AbyssState.playerY, AbyssState.getLanternRadius());
         AbyssPOI.updateVisibility(AbyssState.playerX, AbyssState.playerY, AbyssState.getLanternRadius(), dt);
+        
+        // Update mining and ember particles
+        this.updateMining(dt);
+        this.updateEmberParticles(dt);
     },
     
     tryInteract() {
+        // If already mining, don't start new interaction
+        if (this.mining.active) return;
+        
         const poi = AbyssPOI.checkInteraction(AbyssState.playerX, AbyssState.playerY);
         if (poi) {
+            // Ember caches require mining (holding E)
+            if (poi.typeKey === 'EMBER_CACHE') {
+                this.startMining(poi);
+                return;
+            }
+            
+            // Other POIs collect instantly
             const result = AbyssPOI.collect(poi);
             if (result) {
                 // Use emoji fallback for image POIs in messages
                 const poiType = AbyssPOI.TYPES[poi.typeKey];
                 const displayIcon = (poiType && poiType.isImage) ? '🔥' : poi.sprite;
                 AbyssUI.showMessage(displayIcon + ' ' + poi.name, result.message);
+            }
+        }
+    },
+    
+    // Start mining an ember cache
+    startMining(poi) {
+        console.log('[Abyss] Starting to mine ember cache');
+        this.mining = {
+            active: true,
+            poi: poi,
+            progress: 0,
+            duration: 2.0
+        };
+    },
+    
+    // Cancel mining if player releases key or moves
+    cancelMining() {
+        if (!this.mining.active) return;
+        console.log('[Abyss] Mining cancelled');
+        this.mining.active = false;
+        this.mining.poi = null;
+        this.mining.progress = 0;
+    },
+    
+    // Update mining progress
+    updateMining(dt) {
+        if (!this.mining.active) return;
+        
+        // Cancel if player stopped holding action key
+        if (!this.keys.action && !this.miningTouchActive) {
+            this.cancelMining();
+            return;
+        }
+        
+        // Check if still near the POI
+        const poi = this.mining.poi;
+        if (!poi || poi.collected) {
+            this.cancelMining();
+            return;
+        }
+        
+        const dist = Math.hypot(poi.x - AbyssState.playerX, poi.y - AbyssState.playerY);
+        if (dist > AbyssConfig.POI_COLLECT_RADIUS * 1.5) {
+            this.cancelMining();
+            return;
+        }
+        
+        // Update progress
+        this.mining.progress += dt / this.mining.duration;
+        
+        // Spawn sparkles while mining
+        if (Math.random() < 0.4) {
+            this.spawnMiningSparkle(poi.x, poi.y);
+        }
+        
+        if (this.mining.progress >= 1) {
+            this.completeMining();
+        }
+    },
+    
+    // Spawn tiny sparkles during mining - subtle effect
+    spawnMiningSparkle(x, y) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * 12;
+        
+        this.emberParticles.push({
+            x: x + Math.cos(angle) * dist,
+            y: y + Math.sin(angle) * dist - 5,
+            vx: (Math.random() - 0.5) * 20,
+            vy: -30 - Math.random() * 20,
+            life: 0.4 + Math.random() * 0.3,
+            maxLife: 0.7,
+            size: 1 + Math.random() * 1.5,
+            phase: 'sparkle',
+            hue: 25 + Math.random() * 35,
+            flicker: Math.random() * Math.PI * 2
+        });
+    },
+    
+    // Complete mining - shatter the resource and spawn reward particles
+    completeMining() {
+        console.log('[Abyss] Mining complete!');
+        const poi = this.mining.poi;
+        
+        // Hide the mining ring
+        AbyssRenderer.hideMiningRing();
+        
+        // Screen shake on burst!
+        AbyssRenderer.triggerScreenShake(6);
+        
+        // Calculate ember reward
+        const baseEmbers = 8 + Math.floor(Math.random() * 8); // 8-15 embers
+        
+        // Spawn shatter particles (visual debris)
+        this.spawnShatterEffect(poi.x, poi.y);
+        
+        // Spawn ember particles that will grant rewards
+        this.spawnEmberRewardParticles(poi.x, poi.y, baseEmbers);
+        
+        // Mark POI as collected (hide it)
+        poi.collected = true;
+        poi.shattered = true;
+        
+        // Reset mining state
+        this.mining.active = false;
+        this.mining.poi = null;
+        this.mining.progress = 0;
+    },
+    
+    // Visual shatter/debris effect
+    spawnShatterEffect(x, y) {
+        // Shatter fragments - visual only, no reward
+        const numFragments = 12 + Math.floor(Math.random() * 8);
+        for (let i = 0; i < numFragments; i++) {
+            const angle = (Math.PI * 2 * i / numFragments) + (Math.random() - 0.5) * 0.5;
+            const speed = 80 + Math.random() * 120;
+            
+            this.emberParticles.push({
+                x: x + (Math.random() - 0.5) * 10,
+                y: y - 10,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 60,
+                life: 0.4 + Math.random() * 0.3,
+                maxLife: 0.7,
+                size: 2 + Math.random() * 3,
+                phase: 'debris',
+                hue: 20 + Math.random() * 20,
+                brightness: 0.6 + Math.random() * 0.4,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 15
+            });
+        }
+        
+        // Bright flash
+        this.emberParticles.push({
+            x: x,
+            y: y - 10,
+            vx: 0,
+            vy: 0,
+            life: 0.15,
+            maxLife: 0.15,
+            size: 40,
+            phase: 'flash',
+            hue: 40
+        });
+    },
+    
+    // Spawn ember particles that grant rewards when reaching player
+    spawnEmberRewardParticles(x, y, totalEmbers) {
+        const numParticles = totalEmbers;
+        
+        for (let i = 0; i < numParticles; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 150 + Math.random() * 100;
+            const delay = i * 0.015; // Slight stagger
+            
+            this.emberParticles.push({
+                x: x + (Math.random() - 0.5) * 12,
+                y: y - 10,
+                vx: Math.cos(angle) * speed * 0.5,
+                vy: -Math.abs(Math.sin(angle)) * speed - 80,
+                life: 1.5,
+                maxLife: 1.5,
+                size: 2.5 + Math.random() * 2,
+                phase: 'burst',
+                phaseTime: -delay,
+                hue: 20 + Math.random() * 40,
+                brightness: 0.8 + Math.random() * 0.2,
+                flicker: Math.random() * Math.PI * 2,
+                emberValue: 1,
+                collected: false
+            });
+        }
+    },
+    
+    // Update ember particles - fast and responsive
+    updateEmberParticles(dt) {
+        const playerX = AbyssState.playerX;
+        const playerY = AbyssState.playerY;
+        const time = performance.now() * 0.001;
+        
+        for (let i = this.emberParticles.length - 1; i >= 0; i--) {
+            const p = this.emberParticles[i];
+            p.life -= dt;
+            p.phaseTime = (p.phaseTime || 0) + dt;
+            
+            if (p.life <= 0) {
+                this.emberParticles.splice(i, 1);
+                continue;
+            }
+            
+            // Skip if delay hasn't passed
+            if (p.phaseTime < 0) continue;
+            
+            // Flicker effect
+            p.currentFlicker = 0.7 + 0.3 * Math.sin(time * 12 + (p.flicker || 0));
+            
+            if (p.phase === 'flash') {
+                continue;
+            } else if (p.phase === 'debris') {
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vy += 400 * dt;
+                p.vx *= 0.96;
+                p.rotation = (p.rotation || 0) + (p.rotationSpeed || 0) * dt;
+            } else if (p.phase === 'sparkle') {
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vx *= 0.95;
+                p.vy += 40 * dt;
+            } else if (p.phase === 'burst') {
+                // Quick burst up
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vx *= 0.95;
+                p.vy += 400 * dt; // Strong gravity to arc fast
+                
+                // Quickly transition to collect
+                if (p.phaseTime > 0.12) {
+                    p.phase = 'collect';
+                }
+            } else if (p.phase === 'collect') {
+                // FAST homing toward player
+                const dx = playerX - p.x;
+                const dy = (playerY - 15) - p.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > 12) {
+                    // Direct, fast movement toward player
+                    const speed = 800 + (1.5 - p.life) * 600; // Gets faster over time
+                    p.vx = (dx / dist) * speed;
+                    p.vy = (dy / dist) * speed;
+                    
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                } else if (!p.collected && p.emberValue) {
+                    // Grant ember
+                    p.collected = true;
+                    AbyssState.embers = (AbyssState.embers || 0) + p.emberValue;
+                    const emberEl = document.getElementById('abyss-embers');
+                    if (emberEl) emberEl.textContent = AbyssState.embers;
+                    
+                    this.emberParticles.splice(i, 1);
+                }
             }
         }
     },
@@ -1667,6 +1955,9 @@ window.AbyssRenderer = {
     render() {
         if (!AbyssState.isActive) return;
         
+        // Update screen shake
+        this.updateScreenShake();
+        
         const ctx = this.ctx;
         const cfg = AbyssConfig;
         const state = AbyssState;
@@ -1682,7 +1973,7 @@ window.AbyssRenderer = {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         ctx.save();
-        ctx.translate(-this.camera.x, -this.camera.y);
+        ctx.translate(-this.camera.x + this.screenShake.x, -this.camera.y + this.screenShake.y);
         
         // Draw terrain
         const ts = cfg.TILE_SIZE;
@@ -1791,8 +2082,223 @@ window.AbyssRenderer = {
         ctx.fillStyle = warmGlow;
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
+        // Render ember particles (screen space)
+        this.renderEmberParticles(ctx);
+        
+        // Render mining bar if active
+        this.renderMiningBar(ctx);
+        
         // Update DOM sprite positions (these are counter-rotated to appear flat)
         this.updateSprites();
+    },
+    
+    renderEmberParticles(ctx) {
+        const particles = AbyssPlayer.emberParticles;
+        if (!particles || particles.length === 0) return;
+        
+        ctx.save();
+        
+        for (const p of particles) {
+            const screenX = p.x - this.camera.x;
+            const screenY = p.y - this.camera.y;
+            
+            const lifeRatio = p.life / p.maxLife;
+            const flicker = p.currentFlicker || 1;
+            const alpha = Math.min(1, lifeRatio * 2) * flicker;
+            const hue = p.hue || 30;
+            const brightness = (p.brightness || 1) * flicker;
+            
+            if (p.phase === 'flash') {
+                // Bright explosion flash
+                const flashAlpha = lifeRatio;
+                const glow = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, p.size);
+                glow.addColorStop(0, `hsla(${hue}, 100%, 95%, ${flashAlpha * 0.8})`);
+                glow.addColorStop(0.3, `hsla(${hue}, 100%, 70%, ${flashAlpha * 0.4})`);
+                glow.addColorStop(0.7, `hsla(${hue - 10}, 100%, 50%, ${flashAlpha * 0.1})`);
+                glow.addColorStop(1, `hsla(${hue - 10}, 100%, 40%, 0)`);
+                ctx.fillStyle = glow;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, p.size * (1 + (1 - lifeRatio) * 0.5), 0, Math.PI * 2);
+                ctx.fill();
+            } else if (p.phase === 'debris') {
+                // Shatter fragments - angular shapes
+                const size = p.size * (0.3 + lifeRatio * 0.7);
+                ctx.save();
+                ctx.translate(screenX, screenY);
+                ctx.rotate(p.rotation || 0);
+                
+                // Glowing fragment
+                const fragGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 2);
+                fragGlow.addColorStop(0, `hsla(${hue}, 90%, ${60 * brightness}%, ${alpha * 0.5})`);
+                fragGlow.addColorStop(1, `hsla(${hue}, 90%, 40%, 0)`);
+                ctx.fillStyle = fragGlow;
+                ctx.beginPath();
+                ctx.arc(0, 0, size * 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Angular shard shape
+                ctx.fillStyle = `hsla(${hue}, 80%, ${50 * brightness}%, ${alpha})`;
+                ctx.beginPath();
+                ctx.moveTo(-size * 0.5, -size);
+                ctx.lineTo(size * 0.7, -size * 0.3);
+                ctx.lineTo(size * 0.4, size * 0.8);
+                ctx.lineTo(-size * 0.6, size * 0.5);
+                ctx.closePath();
+                ctx.fill();
+                
+                ctx.restore();
+            } else {
+                // Ember particles (sparkle, burst, collect)
+                const baseSize = p.size * (0.5 + lifeRatio * 0.5);
+                
+                // Soft outer glow
+                const glowSize = baseSize * 3;
+                const glow = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, glowSize);
+                glow.addColorStop(0, `hsla(${hue}, 100%, ${70 * brightness}%, ${alpha * 0.6})`);
+                glow.addColorStop(0.4, `hsla(${hue}, 100%, ${55 * brightness}%, ${alpha * 0.2})`);
+                glow.addColorStop(1, `hsla(${hue}, 100%, 45%, 0)`);
+                ctx.fillStyle = glow;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, glowSize, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Core
+                ctx.fillStyle = `hsla(${hue}, 100%, ${75 * brightness}%, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, baseSize, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Hot bright center
+                ctx.fillStyle = `hsla(${hue + 15}, 100%, 92%, ${alpha * 0.8})`;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, baseSize * 0.35, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        ctx.restore();
+    },
+    
+    // Mining progress ring - DOM element for crisp rendering
+    miningRingElement: null,
+    screenShake: { x: 0, y: 0, intensity: 0, decay: 0.9 },
+    
+    createMiningRing() {
+        if (this.miningRingElement) return;
+        
+        const ring = document.createElement('div');
+        ring.className = 'mining-ring';
+        ring.innerHTML = `
+            <svg viewBox="0 0 36 36" class="mining-ring-svg">
+                <defs>
+                    <linearGradient id="mining-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#ffee88"/>
+                        <stop offset="50%" style="stop-color:#ff9933"/>
+                        <stop offset="100%" style="stop-color:#ff5500"/>
+                    </linearGradient>
+                </defs>
+                <circle class="mining-track" cx="18" cy="18" r="15.5" fill="none" stroke="rgba(20,15,10,0.9)" stroke-width="3"/>
+                <circle class="mining-progress" cx="18" cy="18" r="15.5" fill="none" stroke="url(#mining-gradient)" stroke-width="2.5" stroke-linecap="round"
+                    stroke-dasharray="97.4" stroke-dashoffset="97.4" transform="rotate(-90 18 18)"/>
+            </svg>
+        `;
+        
+        // Inject styles if not present
+        if (!document.getElementById('mining-ring-styles')) {
+            const style = document.createElement('style');
+            style.id = 'mining-ring-styles';
+            style.textContent = `
+                .mining-ring {
+                    position: fixed;
+                    width: 40px;
+                    height: 40px;
+                    pointer-events: none;
+                    z-index: 9999;
+                    transform: translate(-50%, -50%);
+                    display: none;
+                }
+                .mining-ring.active {
+                    display: block;
+                }
+                .mining-ring-svg {
+                    width: 100%;
+                    height: 100%;
+                    filter: drop-shadow(0 0 6px rgba(255, 120, 40, 0.7));
+                }
+                .mining-progress {
+                    transition: stroke-dashoffset 0.05s linear;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        document.body.appendChild(ring);
+        this.miningRingElement = ring;
+    },
+    
+    updateMiningRing(screenX, screenY, progress, active) {
+        if (!this.miningRingElement) this.createMiningRing();
+        
+        const ring = this.miningRingElement;
+        
+        if (!active) {
+            ring.classList.remove('active');
+            return;
+        }
+        
+        ring.classList.add('active');
+        ring.style.left = screenX + 'px';
+        ring.style.top = screenY + 'px';
+        
+        // Update progress (stroke-dashoffset: 97.4 = 0%, 0 = 100%)
+        const circumference = 97.4;
+        const offset = circumference * (1 - progress);
+        const progressCircle = ring.querySelector('.mining-progress');
+        if (progressCircle) {
+            progressCircle.style.strokeDashoffset = offset;
+        }
+    },
+    
+    hideMiningRing() {
+        if (this.miningRingElement) {
+            this.miningRingElement.classList.remove('active');
+        }
+    },
+    
+    triggerScreenShake(intensity = 5) {
+        this.screenShake.intensity = intensity;
+    },
+    
+    updateScreenShake() {
+        const shake = this.screenShake;
+        if (shake.intensity > 0.1) {
+            shake.x = (Math.random() - 0.5) * shake.intensity * 2;
+            shake.y = (Math.random() - 0.5) * shake.intensity * 2;
+            shake.intensity *= shake.decay;
+        } else {
+            shake.x = 0;
+            shake.y = 0;
+            shake.intensity = 0;
+        }
+    },
+    
+    renderMiningBar(ctx) {
+        // Update position of DOM ring element
+        const mining = AbyssPlayer.mining;
+        
+        if (!mining || !mining.active) {
+            this.hideMiningRing();
+            return;
+        }
+        
+        const poi = mining.poi;
+        if (!poi) return;
+        
+        // Calculate screen position
+        const screenX = poi.x - this.camera.x;
+        const screenY = poi.y - this.camera.y - 45;
+        
+        this.updateMiningRing(screenX, screenY, mining.progress, true);
     },
     
     updateSprites() {
