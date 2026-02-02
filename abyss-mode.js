@@ -1114,11 +1114,11 @@ window.AbyssPOI = {
             }
             
             if (valid) {
-                // Weighted POI selection - ember caches much more frequent for testing
+                // Weighted POI selection - Card Shrine 5x for testing
                 const weightedTypes = [
-                    'EMBER_CACHE', 'EMBER_CACHE', 'EMBER_CACHE', 'EMBER_CACHE', 'EMBER_CACHE', // 5x weight
+                    'EMBER_CACHE',
                     'TIME_CRYSTAL',
-                    'CARD_SHRINE', 
+                    'CARD_SHRINE', 'CARD_SHRINE', 'CARD_SHRINE', 'CARD_SHRINE', 'CARD_SHRINE', // 5x weight for testing
                     'REST_SITE'
                 ];
                 const typeKey = weightedTypes[Math.floor(Math.random() * weightedTypes.length)];
@@ -1195,8 +1195,8 @@ window.AbyssPOI = {
             msg = 'Healed 3 deaths!';
             if (!poi.instant) AbyssState.timerPaused = true;
         } else if (poi.typeKey === 'CARD_SHRINE') {
-            msg = 'Card selection coming soon!';
-            if (!poi.instant) AbyssState.timerPaused = true;
+            // Card Shrine opens the discovery UI - don't collect yet
+            return { openCardShrine: true };
         }
         
         return { message: msg };
@@ -1204,6 +1204,1038 @@ window.AbyssPOI = {
     
     resumeTimer() {
         AbyssState.timerPaused = false;
+    }
+};
+
+// ==================== CARD SHRINE SYSTEM ====================
+
+window.AbyssCardShrine = {
+    isOpen: false,
+    currentPOI: null,
+    offeredCards: [],
+    selectedIndex: -1, // Track which card is selected
+    container: null,
+    
+    // Get all eligible cards from the player's chosen series
+    getEligibleCards() {
+        const series = AbyssState.deckArchetype || 'city-of-flesh';
+        const eligibleCards = [];
+        
+        // Get cards already in the Abyss deck
+        const deckCardCounts = {};
+        for (const card of AbyssState.starterCards) {
+            const key = card.key;
+            deckCardCounts[key] = (deckCardCounts[key] || 0) + 1;
+        }
+        for (const card of AbyssState.discoveredCards) {
+            const key = card.key;
+            deckCardCounts[key] = (deckCardCounts[key] || 0) + 1;
+        }
+        
+        // Helper to check if card belongs to the current series
+        const getCardSeries = (cardKey) => {
+            const forestsOfFearKeys = [
+                'newbornWendigo', 'matureWendigo', 'primalWendigo',
+                'stormhawk', 'thunderbird',
+                'adolescentBigfoot', 'adultBigfoot',
+                'cursedHybrid', 'werewolf', 'lycanthrope',
+                'deerWoman', 'snipe',
+                'rogueRazorback', 'notDeer', 'jerseyDevil', 'babaYaga', 'skinwalker',
+                'burialGround', 'cursedWoods', 'animalPelts',
+                'dauntingPresence', 'sproutWings', 'weaponizedTree', 'insatiableHunger',
+                'terrify', 'hunt', 'fullMoon'
+            ];
+            
+            const putridSwampKeys = [
+                'feuFollet', 'swampRat', 'bayouSprite', 'voodooDoll', 'platEyePup',
+                'zombie', 'crawfishHorror', 'letiche', 'haint',
+                'ignisFatuus', 'plagueRat', 'swampHag', 'effigy', 'platEye',
+                'spiritFire', 'booHag', 'revenant', 'rougarou', 'swampStalker',
+                'mamaBrigitte', 'loupGarou', 'draugrLord',
+                'baronSamedi', 'honeyIslandMonster',
+                'grisGrisBag', 'swampGas', 'curseVessel', 'hungryGround', 'hexCurse'
+            ];
+            
+            if (forestsOfFearKeys.includes(cardKey)) return 'forests-of-fear';
+            if (putridSwampKeys.includes(cardKey)) return 'putrid-swamp';
+            return 'city-of-flesh';
+        };
+        
+        // Helper to check if card can be added
+        const canAddCard = (card, key) => {
+            const inDeck = deckCardCounts[key] || 0;
+            const maxCopies = card.mythical ? 1 : 3;
+            return inDeck < maxCopies;
+        };
+        
+        // Gather all cards from CardRegistry
+        const addIfEligible = (card, key) => {
+            if (!card) return;
+            if (getCardSeries(key) !== series) return;
+            if (!canAddCard(card, key)) return;
+            eligibleCards.push({ ...card, key });
+        };
+        
+        // Cryptids
+        if (CardRegistry) {
+            CardRegistry.getAllCryptidKeys().forEach(key => {
+                addIfEligible(CardRegistry.getCryptid(key), key);
+            });
+            
+            // Kindling
+            CardRegistry.getAllKindlingKeys().forEach(key => {
+                const k = CardRegistry.getKindling(key);
+                if (k) addIfEligible({ ...k, isKindling: true }, key);
+            });
+            
+            // Spells
+            CardRegistry.getAllBurstKeys().forEach(key => {
+                addIfEligible(CardRegistry.getBurst(key), key);
+            });
+            
+            CardRegistry.getAllTrapKeys().forEach(key => {
+                addIfEligible(CardRegistry.getTrap(key), key);
+            });
+            
+            CardRegistry.getAllAuraKeys().forEach(key => {
+                addIfEligible(CardRegistry.getAura(key), key);
+            });
+        }
+        
+        return eligibleCards;
+    },
+    
+    // Pick 3 random cards from eligible pool
+    pickThreeCards() {
+        const eligible = this.getEligibleCards();
+        
+        if (eligible.length === 0) {
+            console.warn('[CardShrine] No eligible cards found!');
+            return [];
+        }
+        
+        // Shuffle and pick up to 3
+        const shuffled = eligible.sort(() => Math.random() - 0.5);
+        return shuffled.slice(0, Math.min(3, shuffled.length));
+    },
+    
+    // Open the card selection UI
+    open(poi) {
+        if (this.isOpen) return;
+        
+        this.isOpen = true;
+        this.currentPOI = poi;
+        AbyssState.timerPaused = true;
+        
+        // Pick cards to offer
+        this.offeredCards = this.pickThreeCards();
+        
+        if (this.offeredCards.length === 0) {
+            this.close();
+            AbyssUI.showMessage('🃏 Card Shrine', 'No cards available!');
+            return;
+        }
+        
+        this.createUI();
+        this.animateOpen();
+    },
+    
+    createUI() {
+        // Remove existing if any
+        if (this.container) this.container.remove();
+        this.selectedIndex = -1;
+        
+        // Create overlay container
+        this.container = document.createElement('div');
+        this.container.id = 'abyss-card-shrine';
+        this.container.innerHTML = `
+            <div class="shrine-backdrop"></div>
+            <div class="shrine-main">
+                <div class="shrine-content">
+                    <div class="shrine-title">
+                        <span class="shrine-icon">🃏</span>
+                        <span class="shrine-text">Card Shrine</span>
+                    </div>
+                    <div class="shrine-subtitle">Select a card to view details, then acquire it</div>
+                    <div class="shrine-cards">
+                        ${this.offeredCards.map((card, i) => this.renderCardHTML(card, i)).join('')}
+                    </div>
+                    <div class="shrine-buttons">
+                        <button class="shrine-btn shrine-nevermind-btn">Nevermind</button>
+                        <button class="shrine-btn shrine-acquire-btn" disabled>Acquire</button>
+                    </div>
+                </div>
+                <div class="shrine-detail-panel">
+                    <div class="shrine-detail-content">
+                        <div class="shrine-detail-placeholder">
+                            <span>👆</span>
+                            <p>Select a card to view details</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add styles
+        if (!document.getElementById('shrine-styles')) {
+            const style = document.createElement('style');
+            style.id = 'shrine-styles';
+            style.textContent = this.getStyles();
+            document.head.appendChild(style);
+        }
+        
+        document.body.appendChild(this.container);
+        
+        // Add event listeners
+        this.container.querySelectorAll('.shrine-card-wrapper').forEach((el, i) => {
+            el.onclick = () => this.previewCard(i);
+        });
+        
+        this.container.querySelector('.shrine-nevermind-btn').onclick = () => this.skip();
+        this.container.querySelector('.shrine-acquire-btn').onclick = () => this.acquireCard();
+    },
+    
+    renderCardHTML(card, index) {
+        const isCryptid = card.type === 'cryptid';
+        const cardTypeClass = isCryptid ? 'cryptid-card' : 'spell-card';
+        const elementClass = card.element ? `element-${card.element}` : '';
+        const mythicalClass = card.mythical ? 'mythical' : '';
+        const rarityClass = card.rarity || 'common';
+        
+        // Card type label
+        let cardTypeLabel;
+        if (isCryptid) {
+            cardTypeLabel = card.isKindling ? 'Kindling' : 'Cryptid';
+        } else {
+            const spellTypeLabels = { trap: 'Trap', aura: 'Aura', pyre: 'Pyre', burst: 'Burst' };
+            cardTypeLabel = spellTypeLabels[card.type] || 'Spell';
+        }
+        
+        // Stats display
+        let statsHTML = '';
+        if (isCryptid) {
+            statsHTML = `
+                <span class="gc-stat atk">${card.atk}</span>
+                <span class="gc-stat hp">${card.hp}</span>
+            `;
+        } else {
+            const typeNames = { burst: 'Burst', trap: 'Trap', aura: 'Aura', pyre: 'Pyre' };
+            statsHTML = `<span class="gc-stat-type">${typeNames[card.type] || 'Spell'}</span>`;
+        }
+        
+        // Rarity gems
+        const rarityGems = `<span class="gc-rarity ${rarityClass}"></span>`;
+        
+        // Sprite rendering
+        const spriteHTML = this.renderSprite(card.sprite, card.cardSpriteScale);
+        
+        return `
+            <div class="shrine-card-wrapper" data-index="${index}">
+                <div class="game-card shrine-card ${cardTypeClass} ${elementClass} ${rarityClass} ${mythicalClass}"
+                     data-card-key="${card.key}">
+                    <span class="gc-cost">${card.cost}</span>
+                    <div class="gc-header"><span class="gc-name">${card.name}</span></div>
+                    <div class="gc-art">${spriteHTML}</div>
+                    <div class="gc-stats">${statsHTML}</div>
+                    <div class="gc-card-type">${cardTypeLabel}</div>
+                    ${rarityGems}
+                </div>
+                <div class="shrine-card-glow"></div>
+            </div>
+        `;
+    },
+    
+    renderSprite(sprite, scale = 1) {
+        if (!sprite) return '';
+        
+        const scaleVal = scale || 1;
+        
+        // Check if it's an image path
+        if (typeof sprite === 'string' && (sprite.includes('/') || sprite.includes('.png') || sprite.includes('.jpg') || sprite.includes('.webp'))) {
+            return `<img src="${sprite}" style="transform: scale(${scaleVal}); width: 100%; height: 100%; object-fit: contain;" onerror="this.style.display='none'" />`;
+        }
+        // Emoji or text
+        return `<span style="font-size: ${32 * scaleVal}px; line-height: 1;">${sprite}</span>`;
+    },
+    
+    // Preview a card (show details, highlight selection)
+    previewCard(index) {
+        if (!this.isOpen) return;
+        
+        this.selectedIndex = index;
+        const card = this.offeredCards[index];
+        if (!card) return;
+        
+        // Update card selection visual
+        this.container.querySelectorAll('.shrine-card-wrapper').forEach((el, i) => {
+            el.classList.toggle('selected', i === index);
+        });
+        
+        // Enable acquire button
+        const acquireBtn = this.container.querySelector('.shrine-acquire-btn');
+        acquireBtn.disabled = false;
+        
+        // Show card details
+        this.showCardDetails(card);
+    },
+    
+    // Show card details in the side panel
+    showCardDetails(card) {
+        const panel = this.container.querySelector('.shrine-detail-content');
+        
+        const isCryptid = card.type === 'cryptid';
+        const elementNames = { void: 'Void', blood: 'Blood', water: 'Water', steel: 'Steel', nature: 'Nature' };
+        const elementColors = { void: '#9b59b6', blood: '#e74c3c', water: '#3498db', steel: '#95a5a6', nature: '#27ae60' };
+        const elementEmojis = { void: '🟣', blood: '🔴', water: '🔵', steel: '⚪', nature: '🟢' };
+        
+        // Card type label
+        let typeLabel;
+        if (isCryptid) {
+            typeLabel = card.isKindling ? 'Kindling' : 'Cryptid';
+        } else {
+            const spellTypes = { trap: 'Trap Spell', aura: 'Aura Spell', pyre: 'Pyre Spell', burst: 'Burst Spell' };
+            typeLabel = spellTypes[card.type] || 'Spell';
+        }
+        
+        // Build abilities HTML
+        let abilitiesHTML = '';
+        const triggerLabels = {
+            'onSummon': '⚡ On Summon',
+            'onAttack': '⚔️ On Attack',
+            'onBeforeAttack': '⚔️ Before Attack',
+            'onDamaged': '🛡️ When Damaged',
+            'onDeath': '💀 On Death',
+            'onTurnStart': '🌅 Turn Start',
+            'onTurnEnd': '🌙 Turn End',
+            'onPlay': '▶️ On Play',
+            'passive': '✨ Passive',
+            'onKill': '☠️ On Kill',
+            'onHeal': '💚 On Heal',
+            'onAllyDeath': '💀 Ally Death',
+            'onEnemyDeath': '☠️ Enemy Death'
+        };
+        
+        if (card.effects && card.effects.length > 0) {
+            abilitiesHTML = card.effects.map(effect => {
+                const triggerLabel = triggerLabels[effect.trigger] || this.formatTriggerName(effect.trigger);
+                // Get the description - try multiple sources
+                let desc = effect.description || this.buildEffectDescription(effect) || 'Special ability';
+                return `<div class="shrine-ability">
+                    <span class="shrine-ability-trigger">${triggerLabel}</span>
+                    <span class="shrine-ability-desc">${desc}</span>
+                </div>`;
+            }).join('');
+        } else if (card.ability) {
+            abilitiesHTML = `<div class="shrine-ability">
+                <span class="shrine-ability-desc">${card.ability}</span>
+            </div>`;
+        } else {
+            abilitiesHTML = `<div class="shrine-ability"><span class="shrine-ability-desc" style="opacity: 0.5;">No special abilities</span></div>`;
+        }
+        
+        // Stats section
+        let statsHTML = '';
+        if (isCryptid) {
+            statsHTML = `
+                <div class="shrine-detail-stats">
+                    <div class="shrine-stat">
+                        <span class="shrine-stat-label">ATK</span>
+                        <span class="shrine-stat-value atk">${card.atk}</span>
+                    </div>
+                    <div class="shrine-stat">
+                        <span class="shrine-stat-label">HP</span>
+                        <span class="shrine-stat-value hp">${card.hp}</span>
+                    </div>
+                    <div class="shrine-stat">
+                        <span class="shrine-stat-label">Cost</span>
+                        <span class="shrine-stat-value cost">${card.cost}</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            statsHTML = `
+                <div class="shrine-detail-stats">
+                    <div class="shrine-stat">
+                        <span class="shrine-stat-label">Cost</span>
+                        <span class="shrine-stat-value cost">${card.cost}</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Element display
+        const elementHTML = card.element ? `
+            <div class="shrine-detail-element" style="color: ${elementColors[card.element] || '#888'}">
+                ${elementEmojis[card.element] || ''} ${elementNames[card.element] || card.element}
+            </div>
+        ` : '';
+        
+        // Rarity display
+        const rarityLabels = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', mythical: 'Mythical' };
+        const rarityColors = { common: '#9ca3af', uncommon: '#22c55e', rare: '#3b82f6', mythical: '#f59e0b' };
+        const rarity = card.mythical ? 'mythical' : (card.rarity || 'common');
+        
+        panel.innerHTML = `
+            <div class="shrine-detail-header">
+                <h3 class="shrine-detail-name">${card.name}</h3>
+                <span class="shrine-detail-type">${typeLabel}</span>
+            </div>
+            ${elementHTML}
+            <div class="shrine-detail-rarity" style="color: ${rarityColors[rarity]}">
+                ${rarityLabels[rarity]}
+            </div>
+            ${statsHTML}
+            <div class="shrine-detail-abilities">
+                <h4>Abilities</h4>
+                ${abilitiesHTML}
+            </div>
+        `;
+        
+        // Animate in
+        panel.classList.add('show');
+    },
+    
+    // Format trigger name from camelCase to readable text
+    formatTriggerName(trigger) {
+        if (!trigger) return 'Passive';
+        // Convert camelCase to spaced words
+        return trigger
+            .replace(/([A-Z])/g, ' $1')
+            .replace(/^./, str => str.toUpperCase())
+            .trim();
+    },
+    
+    // Build a description from effect actions
+    buildEffectDescription(effect) {
+        if (!effect || !effect.actions || effect.actions.length === 0) return null;
+        
+        const descriptions = effect.actions.map(action => {
+            const type = action.type;
+            const value = action.value || action.amount || '';
+            const target = action.target || '';
+            
+            switch(type) {
+                case 'damage':
+                    return `Deal ${value} damage${target ? ' to ' + target : ''}`;
+                case 'heal':
+                    return `Heal ${value} HP${target ? ' to ' + target : ''}`;
+                case 'buff':
+                    return `Grant +${value} ${action.stat || 'stats'}${target ? ' to ' + target : ''}`;
+                case 'debuff':
+                    return `Reduce ${value} ${action.stat || 'stats'}${target ? ' on ' + target : ''}`;
+                case 'draw':
+                    return `Draw ${value} card${value > 1 ? 's' : ''}`;
+                case 'gainEmber':
+                case 'addEmber':
+                    return `Gain ${value} Ember`;
+                case 'summon':
+                    return `Summon a ${action.creature || 'creature'}`;
+                case 'destroy':
+                    return `Destroy ${target || 'target'}`;
+                case 'stun':
+                    return `Stun ${target || 'target'}`;
+                case 'silence':
+                    return `Silence ${target || 'target'}`;
+                case 'burn':
+                    return `Apply ${value || ''} Burn`;
+                case 'poison':
+                    return `Apply ${value || ''} Poison`;
+                case 'shield':
+                case 'addShield':
+                    return `Gain ${value} Shield`;
+                case 'lifesteal':
+                    return `Lifesteal: Heal for damage dealt`;
+                case 'taunt':
+                    return `Taunt: Enemies must attack this`;
+                case 'stealth':
+                    return `Stealth: Cannot be targeted`;
+                case 'modifyStats':
+                    const atkMod = action.atk ? `${action.atk > 0 ? '+' : ''}${action.atk} ATK` : '';
+                    const hpMod = action.hp ? `${action.hp > 0 ? '+' : ''}${action.hp} HP` : '';
+                    return [atkMod, hpMod].filter(Boolean).join(', ') || 'Modify stats';
+                default:
+                    // Try to make something readable from the type
+                    return type.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+            }
+        });
+        
+        return descriptions.join('. ');
+    },
+    
+    getStyles() {
+        return `
+            #abyss-card-shrine {
+                position: fixed;
+                inset: 0;
+                z-index: 20000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.4s ease;
+            }
+            
+            #abyss-card-shrine.open {
+                opacity: 1;
+                pointer-events: all;
+            }
+            
+            #abyss-card-shrine.closing {
+                opacity: 0;
+                pointer-events: none;
+            }
+            
+            .shrine-backdrop {
+                position: absolute;
+                inset: 0;
+                background: radial-gradient(ellipse at center, rgba(20, 15, 30, 0.9) 0%, rgba(5, 5, 15, 0.98) 100%);
+                backdrop-filter: blur(8px);
+            }
+            
+            .shrine-main {
+                position: relative;
+                display: flex;
+                gap: 30px;
+                align-items: stretch;
+            }
+            
+            .shrine-content {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 20px;
+                padding: 30px 40px;
+                transform: scale(0.8) translateY(30px);
+                opacity: 0;
+                transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease;
+            }
+            
+            #abyss-card-shrine.open .shrine-content {
+                transform: scale(1) translateY(0);
+                opacity: 1;
+            }
+            
+            #abyss-card-shrine.closing .shrine-content {
+                transform: scale(0.9) translateY(20px);
+                opacity: 0;
+            }
+            
+            .shrine-title {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                font-family: Cinzel, serif;
+                font-size: 32px;
+                font-weight: 700;
+                color: #e8a93e;
+                text-shadow: 0 0 20px rgba(232, 169, 62, 0.5), 0 2px 4px rgba(0,0,0,0.8);
+            }
+            
+            .shrine-icon {
+                font-size: 40px;
+                animation: shrineIconFloat 2s ease-in-out infinite;
+            }
+            
+            @keyframes shrineIconFloat {
+                0%, 100% { transform: translateY(0) rotate(-5deg); }
+                50% { transform: translateY(-5px) rotate(5deg); }
+            }
+            
+            .shrine-subtitle {
+                font-family: Cinzel, serif;
+                font-size: 14px;
+                color: #a89060;
+                margin-top: -10px;
+            }
+            
+            .shrine-cards {
+                display: flex;
+                gap: 25px;
+                margin: 15px 0;
+            }
+            
+            .shrine-card-wrapper {
+                position: relative;
+                cursor: pointer;
+                transform: translateY(60px) scale(0.7);
+                opacity: 0;
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+            }
+            
+            #abyss-card-shrine.open .shrine-card-wrapper {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+            
+            #abyss-card-shrine.open .shrine-card-wrapper:nth-child(1) { transition-delay: 0.2s; }
+            #abyss-card-shrine.open .shrine-card-wrapper:nth-child(2) { transition-delay: 0.35s; }
+            #abyss-card-shrine.open .shrine-card-wrapper:nth-child(3) { transition-delay: 0.5s; }
+            
+            #abyss-card-shrine.closing .shrine-card-wrapper {
+                transform: translateY(30px) scale(0.8);
+                opacity: 0;
+                transition-delay: 0s !important;
+            }
+            
+            .shrine-card-wrapper:hover {
+                transform: translateY(-8px) scale(1.05) !important;
+            }
+            
+            .shrine-card-wrapper.selected {
+                transform: translateY(-12px) scale(1.08) !important;
+            }
+            
+            .shrine-card-wrapper.selected .shrine-card-glow {
+                opacity: 1;
+                background: radial-gradient(ellipse at center, rgba(74, 222, 128, 0.5) 0%, transparent 70%);
+            }
+            
+            .shrine-card-wrapper.selected .shrine-card {
+                box-shadow: 0 0 35px rgba(74, 222, 128, 0.7), 0 8px 25px rgba(0, 0, 0, 0.5);
+            }
+            
+            .shrine-card-wrapper:hover .shrine-card-glow {
+                opacity: 0.7;
+            }
+            
+            .shrine-card-glow {
+                position: absolute;
+                inset: -15px;
+                background: radial-gradient(ellipse at center, rgba(232, 169, 62, 0.4) 0%, transparent 70%);
+                border-radius: 16px;
+                opacity: 0;
+                transition: opacity 0.3s ease, background 0.3s ease;
+                pointer-events: none;
+                z-index: -1;
+            }
+            
+            .shrine-card.game-card {
+                --gc-width: 120px;
+                --gc-height: calc(var(--gc-width) * 1.4);
+                cursor: pointer;
+                transition: box-shadow 0.3s ease;
+            }
+            
+            .shrine-card-wrapper:hover .shrine-card {
+                box-shadow: 0 0 25px rgba(232, 169, 62, 0.5), 0 8px 20px rgba(0, 0, 0, 0.5);
+            }
+            
+            /* Buttons */
+            .shrine-buttons {
+                display: flex;
+                gap: 15px;
+                margin-top: 10px;
+            }
+            
+            .shrine-btn {
+                font-family: Cinzel, serif;
+                font-size: 15px;
+                padding: 12px 30px;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                border: 1px solid;
+            }
+            
+            .shrine-nevermind-btn {
+                background: linear-gradient(180deg, rgba(60, 50, 50, 0.9) 0%, rgba(40, 35, 35, 0.95) 100%);
+                border-color: rgba(120, 100, 100, 0.4);
+                color: #a08080;
+            }
+            
+            .shrine-nevermind-btn:hover:not(:disabled) {
+                background: linear-gradient(180deg, rgba(80, 60, 60, 0.9) 0%, rgba(55, 40, 40, 0.95) 100%);
+                border-color: rgba(160, 120, 120, 0.6);
+                color: #c0a0a0;
+                transform: scale(1.03);
+            }
+            
+            .shrine-acquire-btn {
+                background: linear-gradient(180deg, rgba(40, 80, 50, 0.9) 0%, rgba(30, 60, 40, 0.95) 100%);
+                border-color: rgba(80, 160, 100, 0.4);
+                color: #80c090;
+            }
+            
+            .shrine-acquire-btn:hover:not(:disabled) {
+                background: linear-gradient(180deg, rgba(50, 100, 60, 0.9) 0%, rgba(40, 80, 50, 0.95) 100%);
+                border-color: rgba(100, 200, 120, 0.6);
+                color: #a0e0b0;
+                transform: scale(1.05);
+                box-shadow: 0 0 20px rgba(74, 222, 128, 0.3);
+            }
+            
+            .shrine-btn:disabled {
+                opacity: 0.4;
+                cursor: not-allowed;
+                transform: none !important;
+            }
+            
+            /* Detail Panel */
+            .shrine-detail-panel {
+                width: 280px;
+                background: linear-gradient(180deg, rgba(25, 20, 30, 0.95) 0%, rgba(15, 12, 20, 0.98) 100%);
+                border: 1px solid rgba(140, 120, 90, 0.3);
+                border-radius: 12px;
+                padding: 20px;
+                transform: translateX(30px);
+                opacity: 0;
+                transition: transform 0.4s ease, opacity 0.4s ease;
+                transition-delay: 0.3s;
+            }
+            
+            #abyss-card-shrine.open .shrine-detail-panel {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            
+            #abyss-card-shrine.closing .shrine-detail-panel {
+                transform: translateX(30px);
+                opacity: 0;
+                transition-delay: 0s;
+            }
+            
+            .shrine-detail-content {
+                min-height: 300px;
+            }
+            
+            .shrine-detail-placeholder {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 300px;
+                color: #706050;
+                text-align: center;
+            }
+            
+            .shrine-detail-placeholder span {
+                font-size: 48px;
+                margin-bottom: 15px;
+                opacity: 0.5;
+            }
+            
+            .shrine-detail-placeholder p {
+                font-family: Cinzel, serif;
+                font-size: 14px;
+            }
+            
+            .shrine-detail-header {
+                margin-bottom: 15px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid rgba(140, 120, 90, 0.2);
+            }
+            
+            .shrine-detail-name {
+                font-family: Cinzel, serif;
+                font-size: 22px;
+                font-weight: 700;
+                color: #e8a93e;
+                margin: 0 0 5px 0;
+                text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+            }
+            
+            .shrine-detail-type {
+                font-family: Cinzel, serif;
+                font-size: 12px;
+                color: #a89060;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            
+            .shrine-detail-element {
+                font-family: Cinzel, serif;
+                font-size: 14px;
+                margin-bottom: 8px;
+            }
+            
+            .shrine-detail-rarity {
+                font-family: Cinzel, serif;
+                font-size: 13px;
+                margin-bottom: 15px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            
+            .shrine-detail-stats {
+                display: flex;
+                gap: 15px;
+                margin-bottom: 20px;
+                padding: 12px;
+                background: rgba(0, 0, 0, 0.3);
+                border-radius: 8px;
+            }
+            
+            .shrine-stat {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                flex: 1;
+            }
+            
+            .shrine-stat-label {
+                font-family: Cinzel, serif;
+                font-size: 10px;
+                color: #706050;
+                text-transform: uppercase;
+                margin-bottom: 4px;
+            }
+            
+            .shrine-stat-value {
+                font-family: Cinzel, serif;
+                font-size: 24px;
+                font-weight: 700;
+            }
+            
+            .shrine-stat-value.atk { color: #e74c3c; }
+            .shrine-stat-value.hp { color: #4ade80; }
+            .shrine-stat-value.cost { color: #e8a93e; }
+            
+            .shrine-detail-abilities h4 {
+                font-family: Cinzel, serif;
+                font-size: 14px;
+                color: #a89060;
+                margin: 0 0 10px 0;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            
+            .shrine-ability {
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 6px;
+                padding: 10px 12px;
+                margin-bottom: 8px;
+            }
+            
+            .shrine-ability-trigger {
+                display: block;
+                font-family: Cinzel, serif;
+                font-size: 11px;
+                color: #e8a93e;
+                margin-bottom: 4px;
+                font-weight: 600;
+            }
+            
+            .shrine-ability-desc {
+                font-size: 13px;
+                color: #c4b896;
+                line-height: 1.4;
+            }
+            
+            /* Card acquiring animation */
+            .shrine-card-wrapper.acquiring {
+                animation: cardAcquiring 0.6s ease-out forwards;
+            }
+            
+            .shrine-card-wrapper.not-selected {
+                animation: cardNotSelected 0.4s ease-out forwards;
+            }
+            
+            @keyframes cardAcquiring {
+                0% { transform: scale(1.08) translateY(-12px); }
+                30% { transform: scale(1.25) translateY(-25px); }
+                100% { transform: scale(0.1) translateY(-100px); opacity: 0; }
+            }
+            
+            @keyframes cardNotSelected {
+                0% { transform: scale(1); opacity: 1; }
+                100% { transform: scale(0.8) translateY(20px); opacity: 0; }
+            }
+            
+            /* Success message */
+            .shrine-success {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) scale(0);
+                font-family: Cinzel, serif;
+                font-size: 28px;
+                color: #4ade80;
+                text-shadow: 0 0 20px rgba(74, 222, 128, 0.6), 0 2px 4px rgba(0,0,0,0.8);
+                white-space: nowrap;
+                opacity: 0;
+                z-index: 10;
+            }
+            
+            .shrine-success.show {
+                animation: successPop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            }
+            
+            @keyframes successPop {
+                0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+                50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+                100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            }
+            
+            /* Particles effect */
+            .shrine-particle {
+                position: absolute;
+                width: 8px;
+                height: 8px;
+                background: radial-gradient(circle, #4ade80 0%, #22c55e 100%);
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 20001;
+            }
+            
+            /* Mobile responsive */
+            @media (max-width: 900px) {
+                .shrine-main {
+                    flex-direction: column;
+                    align-items: center;
+                }
+                
+                .shrine-detail-panel {
+                    width: 90%;
+                    max-width: 350px;
+                    transform: translateY(20px);
+                }
+                
+                #abyss-card-shrine.open .shrine-detail-panel {
+                    transform: translateY(0);
+                }
+                
+                .shrine-cards {
+                    gap: 15px;
+                }
+                
+                .shrine-card.game-card {
+                    --gc-width: 100px;
+                }
+            }
+        `;
+    },
+    
+    animateOpen() {
+        requestAnimationFrame(() => {
+            this.container.classList.add('open');
+        });
+    },
+    
+    // Called when Acquire button is clicked
+    acquireCard() {
+        if (!this.isOpen || this.selectedIndex < 0) return;
+        
+        const card = this.offeredCards[this.selectedIndex];
+        if (!card) return;
+        
+        // Animate selection
+        const wrappers = this.container.querySelectorAll('.shrine-card-wrapper');
+        wrappers.forEach((w, i) => {
+            if (i === this.selectedIndex) {
+                w.classList.remove('selected');
+                w.classList.add('acquiring');
+            } else {
+                w.classList.add('not-selected');
+            }
+        });
+        
+        // Disable buttons during animation
+        this.container.querySelector('.shrine-acquire-btn').disabled = true;
+        this.container.querySelector('.shrine-nevermind-btn').disabled = true;
+        
+        // Spawn particles from selected card
+        this.spawnSelectionParticles(wrappers[this.selectedIndex]);
+        
+        // Add card to discovered cards
+        setTimeout(() => {
+            AbyssState.discoveredCards.push({ ...card });
+            console.log('[CardShrine] Added card:', card.name);
+            
+            // Show success message
+            this.showSuccess(card.name);
+            
+            // Close after animation - consumed = true since card was acquired
+            setTimeout(() => this.close(true), 1200);
+        }, 400);
+    },
+    
+    spawnSelectionParticles(wrapper) {
+        const rect = wrapper.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        for (let i = 0; i < 20; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'shrine-particle';
+            particle.style.left = centerX + 'px';
+            particle.style.top = centerY + 'px';
+            
+            const angle = (Math.PI * 2 * i / 20) + (Math.random() - 0.5) * 0.5;
+            const speed = 100 + Math.random() * 150;
+            const vx = Math.cos(angle) * speed;
+            const vy = Math.sin(angle) * speed;
+            
+            document.body.appendChild(particle);
+            
+            let life = 0;
+            const animate = () => {
+                life += 16;
+                const progress = life / 800;
+                
+                if (progress >= 1) {
+                    particle.remove();
+                    return;
+                }
+                
+                const x = centerX + vx * progress;
+                const y = centerY + vy * progress - 50 * progress;
+                const scale = 1 - progress * 0.8;
+                const opacity = 1 - progress;
+                
+                particle.style.left = x + 'px';
+                particle.style.top = y + 'px';
+                particle.style.transform = `scale(${scale})`;
+                particle.style.opacity = opacity;
+                
+                requestAnimationFrame(animate);
+            };
+            
+            setTimeout(() => requestAnimationFrame(animate), i * 20);
+        }
+    },
+    
+    showSuccess(cardName) {
+        const success = document.createElement('div');
+        success.className = 'shrine-success';
+        success.textContent = `✓ ${cardName} added!`;
+        this.container.querySelector('.shrine-content').appendChild(success);
+        
+        requestAnimationFrame(() => success.classList.add('show'));
+    },
+    
+    skip() {
+        if (!this.isOpen) return;
+        // Close without acquiring - don't consume the shrine
+        this.close(false);
+    },
+    
+    close(consumed = true) {
+        if (!this.isOpen) return;
+        
+        // Add closing class for exit animation
+        this.container.classList.add('closing');
+        this.container.classList.remove('open');
+        
+        // Only mark POI as collected if a card was acquired
+        if (consumed && this.currentPOI) {
+            this.currentPOI.collected = true;
+            AbyssState.totalPOIsCollected++;
+        }
+        
+        setTimeout(() => {
+            if (this.container) {
+                this.container.remove();
+                this.container = null;
+            }
+            
+            this.isOpen = false;
+            this.currentPOI = null;
+            this.offeredCards = [];
+            this.selectedIndex = -1;
+            AbyssState.timerPaused = false;
+        }, 600);
     }
 };
 
@@ -1227,6 +2259,8 @@ window.AbyssPlayer = {
     
     // Ember particles for mining effect
     emberParticles: [],
+    // Floating reward numbers that appear when particles are collected
+    floatingNumbers: [],
     miningTouchActive: false,
     
     init() {
@@ -1420,6 +2454,17 @@ window.AbyssPlayer = {
     update(dt) {
         if (!AbyssState.isActive || AbyssState.isPaused) return;
         
+        // Don't allow movement while mining
+        if (this.mining.active) {
+            // Still update mining progress and particles
+            AbyssShroud.eraseAt(AbyssState.playerX, AbyssState.playerY, AbyssState.getLanternRadius());
+            AbyssPOI.updateVisibility(AbyssState.playerX, AbyssState.playerY, AbyssState.getLanternRadius(), dt);
+            this.updateMining(dt);
+            this.updateEmberParticles(dt);
+            this.updateFloatingNumbers(dt);
+            return;
+        }
+        
         let dx = 0, dy = 0;
         
         // Keyboard input
@@ -1473,17 +2518,27 @@ window.AbyssPlayer = {
         // Update mining and ember particles
         this.updateMining(dt);
         this.updateEmberParticles(dt);
+        this.updateFloatingNumbers(dt);
     },
     
     tryInteract() {
         // If already mining, don't start new interaction
         if (this.mining.active) return;
         
+        // If card shrine is open, don't interact
+        if (AbyssCardShrine.isOpen) return;
+        
         const poi = AbyssPOI.checkInteraction(AbyssState.playerX, AbyssState.playerY);
         if (poi) {
-            // Ember caches require mining (holding E)
-            if (poi.typeKey === 'EMBER_CACHE') {
+            // Ember caches and Time Crystals require mining (holding E)
+            if (poi.typeKey === 'EMBER_CACHE' || poi.typeKey === 'TIME_CRYSTAL') {
                 this.startMining(poi);
+                return;
+            }
+            
+            // Card Shrine opens special UI
+            if (poi.typeKey === 'CARD_SHRINE') {
+                AbyssCardShrine.open(poi);
                 return;
             }
             
@@ -1544,9 +2599,10 @@ window.AbyssPlayer = {
         // Update progress
         this.mining.progress += dt / this.mining.duration;
         
-        // Spawn sparkles while mining
+        // Spawn sparkles while mining (pass POI id for screen position and color scheme)
         if (Math.random() < 0.4) {
-            this.spawnMiningSparkle(poi.x, poi.y);
+            const colorScheme = poi.typeKey === 'TIME_CRYSTAL' ? 'crystal' : 'ember';
+            this.spawnMiningSparkle(poi.x, poi.y, poi.id, colorScheme);
         }
         
         if (this.mining.progress >= 1) {
@@ -1554,10 +2610,16 @@ window.AbyssPlayer = {
         }
     },
     
-    // Spawn tiny sparkles during mining - subtle effect
-    spawnMiningSparkle(x, y) {
+    // Spawn tiny sparkles during mining - uses world coordinates
+    // colorScheme: 'ember' (orange/yellow) or 'crystal' (blue/cyan)
+    spawnMiningSparkle(x, y, poiId, colorScheme = 'ember') {
         const angle = Math.random() * Math.PI * 2;
         const dist = Math.random() * 12;
+        
+        // Color based on type: ember = orange (25-60), crystal = blue (190-220)
+        const hue = colorScheme === 'crystal' 
+            ? 190 + Math.random() * 30  // Blue/cyan
+            : 25 + Math.random() * 35;   // Orange/yellow
         
         this.emberParticles.push({
             x: x + Math.cos(angle) * dist,
@@ -1566,10 +2628,11 @@ window.AbyssPlayer = {
             vy: -30 - Math.random() * 20,
             life: 0.4 + Math.random() * 0.3,
             maxLife: 0.7,
-            size: 1 + Math.random() * 1.5,
+            size: (1 + Math.random() * 1.5) * 1.15, // 15% bigger
             phase: 'sparkle',
-            hue: 25 + Math.random() * 35,
-            flicker: Math.random() * Math.PI * 2
+            hue: hue,
+            flicker: Math.random() * Math.PI * 2,
+            useScreenCoords: false // World coordinates
         });
     },
     
@@ -1584,14 +2647,21 @@ window.AbyssPlayer = {
         // Screen shake on burst!
         AbyssRenderer.triggerScreenShake(6);
         
-        // Calculate ember reward
-        const baseEmbers = 8 + Math.floor(Math.random() * 8); // 8-15 embers
+        // Determine color scheme and reward based on POI type
+        const isTimeCrystal = poi.typeKey === 'TIME_CRYSTAL';
+        const colorScheme = isTimeCrystal ? 'crystal' : 'ember';
+        const rewardType = isTimeCrystal ? 'time' : 'ember';
         
-        // Spawn shatter particles (visual debris)
-        this.spawnShatterEffect(poi.x, poi.y);
+        // Calculate reward amount
+        const rewardAmount = isTimeCrystal 
+            ? 5 + Math.floor(Math.random() * 6)   // 5-10 seconds for time crystals
+            : 8 + Math.floor(Math.random() * 8);  // 8-15 embers for ember caches
         
-        // Spawn ember particles that will grant rewards
-        this.spawnEmberRewardParticles(poi.x, poi.y, baseEmbers);
+        // Spawn shatter particles (visual debris) - use screen coordinates
+        this.spawnShatterEffect(poi.x, poi.y, poi.id, colorScheme);
+        
+        // Spawn reward particles (pass color scheme and reward type)
+        this.spawnRewardParticles(poi.x, poi.y, rewardAmount, poi.id, colorScheme, rewardType);
         
         // Mark POI as collected (hide it)
         poi.collected = true;
@@ -1603,8 +2673,13 @@ window.AbyssPlayer = {
         this.mining.progress = 0;
     },
     
-    // Visual shatter/debris effect
-    spawnShatterEffect(x, y) {
+    // Visual shatter/debris effect - uses world coordinates
+    // colorScheme: 'ember' (orange/yellow) or 'crystal' (blue/cyan)
+    spawnShatterEffect(x, y, poiId, colorScheme = 'ember') {
+        // Color based on type
+        const baseHue = colorScheme === 'crystal' ? 200 : 20;
+        const flashHue = colorScheme === 'crystal' ? 210 : 40;
+        
         // Shatter fragments - visual only, no reward
         const numFragments = 12 + Math.floor(Math.random() * 8);
         for (let i = 0; i < numFragments; i++) {
@@ -1618,12 +2693,13 @@ window.AbyssPlayer = {
                 vy: Math.sin(angle) * speed - 60,
                 life: 0.4 + Math.random() * 0.3,
                 maxLife: 0.7,
-                size: 2 + Math.random() * 3,
+                size: (2 + Math.random() * 3) * 1.15, // 15% bigger
                 phase: 'debris',
-                hue: 20 + Math.random() * 20,
+                hue: baseHue + Math.random() * 20,
                 brightness: 0.6 + Math.random() * 0.4,
                 rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 15
+                rotationSpeed: (Math.random() - 0.5) * 15,
+                useScreenCoords: false // World coordinates
             });
         }
         
@@ -1635,15 +2711,23 @@ window.AbyssPlayer = {
             vy: 0,
             life: 0.15,
             maxLife: 0.15,
-            size: 40,
+            size: 46, // 15% bigger (was 40)
             phase: 'flash',
-            hue: 40
+            hue: flashHue,
+            useScreenCoords: false // World coordinates
         });
     },
     
-    // Spawn ember particles that grant rewards when reaching player
-    spawnEmberRewardParticles(x, y, totalEmbers) {
-        const numParticles = totalEmbers;
+    // Spawn reward particles that grant rewards when reaching player
+    // Uses world coordinates so particles stay anchored in the world
+    // colorScheme: 'ember' (orange/yellow) or 'crystal' (blue/cyan)
+    // rewardType: 'ember' or 'time' to determine what resource to grant
+    spawnRewardParticles(x, y, totalParticles, poiId, colorScheme = 'ember', rewardType = 'ember') {
+        const numParticles = totalParticles;
+        
+        // Color based on type
+        const baseHue = colorScheme === 'crystal' ? 190 : 20;
+        const hueRange = colorScheme === 'crystal' ? 30 : 40;
         
         for (let i = 0; i < numParticles; i++) {
             const angle = Math.random() * Math.PI * 2;
@@ -1657,22 +2741,22 @@ window.AbyssPlayer = {
                 vy: -Math.abs(Math.sin(angle)) * speed - 80,
                 life: 1.5,
                 maxLife: 1.5,
-                size: 2.5 + Math.random() * 2,
+                size: (2.5 + Math.random() * 2) * 1.15, // 15% bigger
                 phase: 'burst',
                 phaseTime: -delay,
-                hue: 20 + Math.random() * 40,
+                hue: baseHue + Math.random() * hueRange,
                 brightness: 0.8 + Math.random() * 0.2,
                 flicker: Math.random() * Math.PI * 2,
-                emberValue: 1,
-                collected: false
+                rewardValue: 1,
+                rewardType: rewardType, // 'ember' or 'time'
+                collected: false,
+                useScreenCoords: false // World coordinates - particles stay in world space
             });
         }
     },
     
     // Update ember particles - fast and responsive
     updateEmberParticles(dt) {
-        const playerX = AbyssState.playerX;
-        const playerY = AbyssState.playerY;
         const time = performance.now() * 0.001;
         
         for (let i = this.emberParticles.length - 1; i >= 0; i--) {
@@ -1705,20 +2789,22 @@ window.AbyssPlayer = {
                 p.vx *= 0.95;
                 p.vy += 40 * dt;
             } else if (p.phase === 'burst') {
-                // Quick burst up
+                // Burst outward and arc down
                 p.x += p.vx * dt;
                 p.y += p.vy * dt;
                 p.vx *= 0.95;
-                p.vy += 400 * dt; // Strong gravity to arc fast
+                p.vy += 400 * dt; // Gravity to create arc
                 
-                // Quickly transition to collect
-                if (p.phaseTime > 0.12) {
+                // Give particles time to spread out before collecting (0.6 seconds)
+                if (p.phaseTime > 0.6) {
                     p.phase = 'collect';
                 }
             } else if (p.phase === 'collect') {
-                // FAST homing toward player
-                const dx = playerX - p.x;
-                const dy = (playerY - 15) - p.y;
+                // FAST homing toward player in world space
+                const targetX = AbyssState.playerX;
+                const targetY = AbyssState.playerY - 15;
+                const dx = targetX - p.x;
+                const dy = targetY - p.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 
                 if (dist > 12) {
@@ -1729,15 +2815,63 @@ window.AbyssPlayer = {
                     
                     p.x += p.vx * dt;
                     p.y += p.vy * dt;
-                } else if (!p.collected && p.emberValue) {
-                    // Grant ember
+                } else if (!p.collected && p.rewardValue) {
+                    // Grant reward based on type
                     p.collected = true;
-                    AbyssState.embers = (AbyssState.embers || 0) + p.emberValue;
-                    const emberEl = document.getElementById('abyss-embers');
-                    if (emberEl) emberEl.textContent = AbyssState.embers;
+                    
+                    // Spawn floating number at collection point
+                    this.spawnFloatingNumber(p.x, p.y, p.rewardValue, p.rewardType);
+                    
+                    if (p.rewardType === 'time') {
+                        // Grant time (add seconds to lantern, capped at maxTime)
+                        AbyssState.timeRemaining = Math.min(
+                            AbyssState.timeRemaining + p.rewardValue,
+                            AbyssState.maxTime
+                        );
+                        const timerEl = document.getElementById('abyss-timer');
+                        if (timerEl) timerEl.textContent = Math.ceil(AbyssState.timeRemaining);
+                    } else {
+                        // Grant ember (default)
+                        AbyssState.embers = (AbyssState.embers || 0) + p.rewardValue;
+                        const emberEl = document.getElementById('abyss-embers');
+                        if (emberEl) emberEl.textContent = AbyssState.embers;
+                    }
                     
                     this.emberParticles.splice(i, 1);
                 }
+            }
+        }
+    },
+    
+    // Spawn a floating number when a particle grants a reward (world coordinates)
+    spawnFloatingNumber(x, y, value, rewardType) {
+        // Slight random offset to prevent stacking
+        const offsetX = (Math.random() - 0.5) * 20;
+        
+        this.floatingNumbers.push({
+            x: x + offsetX,
+            y: y,
+            value: value,
+            rewardType: rewardType, // 'ember' or 'time'
+            life: 1.0,
+            maxLife: 1.0,
+            vy: -40, // Rise speed (pixels per second)
+            useScreenCoords: false // World coordinates
+        });
+    },
+    
+    // Update floating numbers
+    updateFloatingNumbers(dt) {
+        for (let i = this.floatingNumbers.length - 1; i >= 0; i--) {
+            const n = this.floatingNumbers[i];
+            n.life -= dt;
+            n.y += n.vy * dt;
+            
+            // Slow down as it rises
+            n.vy *= 0.98;
+            
+            if (n.life <= 0) {
+                this.floatingNumbers.splice(i, 1);
             }
         }
     },
@@ -1774,6 +2908,10 @@ window.AbyssRenderer = {
     spriteOverlay: null,
     playerSprite: null,
     poiSprites: {},
+    
+    // Particle canvas (flat, above sprites)
+    particleCanvas: null,
+    particleCtx: null,
     
     init(container) {
         this.container = container;
@@ -1826,14 +2964,55 @@ window.AbyssRenderer = {
         `;
         container.appendChild(this.spriteOverlay);
         
+        // Create TILTED particle wrapper (same transform as main wrapper, but above sprites)
+        this.particleWrapper = document.createElement('div');
+        this.particleWrapper.id = 'abyss-particle-wrapper';
+        // Will be styled by updateParticleWrapperStyle()
+        this.updateParticleWrapperStyle();
+        
+        // Create particle canvas inside tilted wrapper (inherits tilt for correct alignment)
+        this.particleCanvas = document.createElement('canvas');
+        this.particleCanvas.id = 'abyss-particle-canvas';
+        this.particleCanvas.width = window.innerWidth;
+        this.particleCanvas.height = window.innerHeight;
+        this.particleCanvas.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        `;
+        this.particleCtx = this.particleCanvas.getContext('2d');
+        this.particleWrapper.appendChild(this.particleCanvas);
+        container.appendChild(this.particleWrapper);
+        
+        // Create flat overlay for floating numbers (above everything, no tilt)
+        this.numberOverlay = document.createElement('canvas');
+        this.numberOverlay.id = 'abyss-number-overlay';
+        this.numberOverlay.width = window.innerWidth;
+        this.numberOverlay.height = window.innerHeight;
+        this.numberOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 100;
+        `;
+        this.numberCtx = this.numberOverlay.getContext('2d');
+        container.appendChild(this.numberOverlay);
+        
         // Create visible player sprite on flat overlay
         this.createPlayerSprite();
         
         window.addEventListener('resize', () => {
             this.canvas.width = window.innerWidth;
             this.canvas.height = window.innerHeight;
+            this.particleCanvas.width = window.innerWidth;
+            this.particleCanvas.height = window.innerHeight;
+            this.numberOverlay.width = window.innerWidth;
+            this.numberOverlay.height = window.innerHeight;
             this.updateZoom();
             this.updateWrapperStyle();
+            this.updateParticleWrapperStyle();
         });
     },
     
@@ -1949,6 +3128,19 @@ window.AbyssRenderer = {
             transform: perspective(1200px) rotateX(25deg) scale(${baseScale});
             transform-origin: center 60%;
             overflow: hidden;
+        `;
+    },
+    
+    updateParticleWrapperStyle() {
+        const baseScale = 1.15 * this.zoom;
+        this.particleWrapper.style.cssText = `
+            position: absolute;
+            inset: 0;
+            transform: perspective(1200px) rotateX(25deg) scale(${baseScale});
+            transform-origin: center 60%;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 20;
         `;
     },
     
@@ -2082,14 +3274,23 @@ window.AbyssRenderer = {
         ctx.fillStyle = warmGlow;
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Render ember particles (screen space)
-        this.renderEmberParticles(ctx);
+        // Update DOM sprite positions (so markers are positioned correctly)
+        this.updateSprites();
         
-        // Render mining bar if active
+        // Render mining bar if active (needs marker positions from updateSprites)
         this.renderMiningBar(ctx);
         
-        // Update DOM sprite positions (these are counter-rotated to appear flat)
-        this.updateSprites();
+        // Render ember particles on tilted particle canvas (above sprites, correct alignment)
+        if (this.particleCtx) {
+            this.particleCtx.clearRect(0, 0, this.particleCanvas.width, this.particleCanvas.height);
+            this.renderEmberParticles(this.particleCtx);
+        }
+        
+        // Render floating numbers on flat overlay (above everything, crisp UI)
+        if (this.numberCtx) {
+            this.numberCtx.clearRect(0, 0, this.numberOverlay.width, this.numberOverlay.height);
+            this.renderFloatingNumbers(this.numberCtx);
+        }
     },
     
     renderEmberParticles(ctx) {
@@ -2099,8 +3300,9 @@ window.AbyssRenderer = {
         ctx.save();
         
         for (const p of particles) {
-            const screenX = p.x - this.camera.x;
-            const screenY = p.y - this.camera.y;
+            // Screen-space particles use coords directly, world-space subtract camera
+            const screenX = p.useScreenCoords ? p.x : (p.x - this.camera.x);
+            const screenY = p.useScreenCoords ? p.y : (p.y - this.camera.y);
             
             const lifeRatio = p.life / p.maxLife;
             const flicker = p.currentFlicker || 1;
@@ -2179,6 +3381,56 @@ window.AbyssRenderer = {
         ctx.restore();
     },
     
+    // Render floating reward numbers
+    renderFloatingNumbers(ctx) {
+        const numbers = AbyssPlayer.floatingNumbers;
+        if (!numbers || numbers.length === 0) return;
+        
+        ctx.save();
+        
+        for (const n of numbers) {
+            // Convert world coordinates to screen coordinates
+            const screenX = n.x - this.camera.x;
+            const screenY = n.y - this.camera.y;
+            
+            const lifeRatio = n.life / n.maxLife;
+            
+            // Fade out over time (quick fade at the end)
+            const alpha = Math.min(1, lifeRatio * 2);
+            
+            // Color based on reward type
+            const isTime = n.rewardType === 'time';
+            const color = isTime 
+                ? `rgba(100, 200, 255, ${alpha})`   // Blue for time
+                : `rgba(255, 180, 80, ${alpha})`;   // Orange for ember
+            const glowColor = isTime
+                ? `rgba(50, 150, 255, ${alpha * 0.5})`
+                : `rgba(255, 120, 30, ${alpha * 0.5})`;
+            
+            // Format text
+            const text = '+' + n.value;
+            
+            // Set font
+            ctx.font = 'bold 14px Cinzel, serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Draw glow/shadow
+            ctx.shadowColor = glowColor;
+            ctx.shadowBlur = 6;
+            ctx.fillStyle = color;
+            ctx.fillText(text, screenX, screenY);
+            
+            // Draw again for brightness
+            ctx.shadowBlur = 3;
+            ctx.fillText(text, screenX, screenY);
+            
+            ctx.shadowBlur = 0;
+        }
+        
+        ctx.restore();
+    },
+    
     // Mining progress ring - DOM element for crisp rendering
     miningRingElement: null,
     screenShake: { x: 0, y: 0, intensity: 0, decay: 0.9 },
@@ -2209,13 +3461,17 @@ window.AbyssRenderer = {
             style.id = 'mining-ring-styles';
             style.textContent = `
                 .mining-ring {
-                    position: fixed;
-                    width: 40px;
-                    height: 40px;
+                    position: absolute;
+                    width: 25px;
+                    height: 25px;
                     pointer-events: none;
                     z-index: 9999;
                     transform: translate(-50%, -50%);
                     display: none;
+                    background: rgba(0, 0, 0, 0.5);
+                    border-radius: 50%;
+                    padding: 2px;
+                    box-sizing: border-box;
                 }
                 .mining-ring.active {
                     display: block;
@@ -2232,7 +3488,8 @@ window.AbyssRenderer = {
             document.head.appendChild(style);
         }
         
-        document.body.appendChild(ring);
+        // Append to container instead of body for proper stacking
+        this.container.appendChild(ring);
         this.miningRingElement = ring;
     },
     
@@ -2291,14 +3548,18 @@ window.AbyssRenderer = {
             return;
         }
         
-        const poi = mining.poi;
-        if (!poi) return;
-        
-        // Calculate screen position
-        const screenX = poi.x - this.camera.x;
-        const screenY = poi.y - this.camera.y - 45;
-        
-        this.updateMiningRing(screenX, screenY, mining.progress, true);
+        // Position over the player sprite (the actor performing the mining)
+        if (this.playerMarker && this.container) {
+            const containerRect = this.container.getBoundingClientRect();
+            const markerRect = this.playerMarker.getBoundingClientRect();
+            // Mining ring uses position: absolute within container
+            const screenX = markerRect.left - containerRect.left + markerRect.width / 2;
+            const screenY = markerRect.top - containerRect.top - 35; // Position above the player
+            
+            this.updateMiningRing(screenX, screenY, mining.progress, true);
+        } else {
+            this.hideMiningRing();
+        }
     },
     
     updateSprites() {
@@ -2384,6 +3645,29 @@ window.AbyssRenderer = {
         });
     },
     
+    // Get screen position for a POI (used by particle system)
+    getPOIScreenPosition(poiId) {
+        const marker = this.poiMarkers[poiId];
+        if (!marker || !this.container) return null;
+        const containerRect = this.container.getBoundingClientRect();
+        const markerRect = marker.getBoundingClientRect();
+        return {
+            x: markerRect.left - containerRect.left + markerRect.width / 2,
+            y: markerRect.top - containerRect.top + markerRect.height / 2
+        };
+    },
+    
+    // Get player screen position (used by particle system)
+    getPlayerScreenPosition() {
+        if (!this.playerMarker || !this.container) return null;
+        const containerRect = this.container.getBoundingClientRect();
+        const markerRect = this.playerMarker.getBoundingClientRect();
+        return {
+            x: markerRect.left - containerRect.left + markerRect.width / 2,
+            y: markerRect.top - containerRect.top + markerRect.height / 2
+        };
+    },
+    
     cleanup() {
         if (this.wrapper && this.wrapper.parentNode) {
             this.wrapper.parentNode.removeChild(this.wrapper);
@@ -2391,12 +3675,27 @@ window.AbyssRenderer = {
         if (this.spriteOverlay && this.spriteOverlay.parentNode) {
             this.spriteOverlay.parentNode.removeChild(this.spriteOverlay);
         }
+        if (this.particleWrapper && this.particleWrapper.parentNode) {
+            this.particleWrapper.parentNode.removeChild(this.particleWrapper);
+        }
+        if (this.numberOverlay && this.numberOverlay.parentNode) {
+            this.numberOverlay.parentNode.removeChild(this.numberOverlay);
+        }
+        if (this.miningRingElement && this.miningRingElement.parentNode) {
+            this.miningRingElement.parentNode.removeChild(this.miningRingElement);
+            this.miningRingElement = null;
+        }
         this.poiSprites = {};
         this.poiMarkers = {};
         this.playerSprite = null;
         this.playerMarker = null;
         this.markerContainer = null;
         this.spriteOverlay = null;
+        this.particleWrapper = null;
+        this.particleCanvas = null;
+        this.particleCtx = null;
+        this.numberOverlay = null;
+        this.numberCtx = null;
     }
 };
 
