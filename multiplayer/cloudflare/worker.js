@@ -228,11 +228,13 @@ export class GameRoom {
             // Get attachment data set when WebSocket was accepted
             const attachment = ws.deserializeAttachment();
             if (attachment && attachment.role) {
+              // Get deckData from playerSlots (attachments are limited to 2KB, can't store full deck)
+              const slotData = this.playerSlots?.[attachment.role];
               this.players.set(ws, {
                 role: attachment.role,
                 connected: true,
-                deckSelected: attachment.deckSelected || false,
-                deckData: attachment.deckData || null
+                deckSelected: attachment.deckSelected || slotData?.deckSelected || false,
+                deckData: slotData?.deckData || null
               });
               
               // Update playerSlots to mark this player as connected
@@ -533,10 +535,11 @@ export class GameRoom {
       await this.saveStateToStorage();
       
       // Accept the WebSocket with attachment for hibernation recovery
+      // NOTE: Attachments are limited to 2048 bytes, so don't store deckData here
+      // deckData is stored in playerSlots which is persisted to storage
       server.serializeAttachment({
         role: role,
-        deckSelected: playerData.deckSelected,
-        deckData: playerData.deckData
+        deckSelected: playerData.deckSelected
       });
       this.state.acceptWebSocket(server);
       
@@ -652,10 +655,11 @@ export class GameRoom {
     player.deckData = deckData;
     
     // Update WebSocket attachment for hibernation recovery
+    // NOTE: Attachments are limited to 2048 bytes, so don't store deckData here
+    // deckData is stored in playerSlots which is persisted to storage
     ws.serializeAttachment({
       role: player.role,
-      deckSelected: true,
-      deckData: deckData
+      deckSelected: true
     });
     
     // Also update playerSlots (persisted state)
