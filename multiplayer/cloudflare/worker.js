@@ -349,10 +349,12 @@ export class GameRoom {
     this.players.set(server, {
       role,
       connected: true,
-      joinedAt: Date.now()
+      joinedAt: Date.now(),
+      deckSelected: false,
+      deckData: null
     });
     
-    console.log(`Player joined as ${role}, total players: ${this.players.size}`);
+    console.log(`[GameRoom] Player joined as ${role}, total players: ${this.players.size}`);
     
     // Send welcome message
     server.send(JSON.stringify({
@@ -362,15 +364,95 @@ export class GameRoom {
       waitingForOpponent: this.players.size < 2
     }));
     
-    // If both players are now connected, start the game
-    if (this.players.size === 2 && !this.matchStarted) {
-      this.startMatch();
+    // If both players are now connected, notify them (but don't start the game yet - wait for deck selection)
+    if (this.players.size === 2) {
+      console.log('[GameRoom] Both players connected, notifying...');
+      this.notifyBothPlayersConnected();
     }
     
     return new Response(null, {
       status: 101,
       webSocket: client,
     });
+  }
+  
+  notifyBothPlayersConnected() {
+    // Tell both players that they're both in the room
+    for (const [ws, player] of this.players) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'BOTH_PLAYERS_CONNECTED',
+          yourRole: player.role === 'player1' ? 'player' : 'enemy',
+          message: 'Both players connected! Select your deck.'
+        }));
+      } catch (e) {
+        console.error('[GameRoom] Failed to notify player:', e);
+      }
+    }
+  }
+  
+  handleDeckSelected(ws, player, deckData) {
+    console.log(`[GameRoom] Player ${player.role} selected deck:`, deckData);
+    
+    player.deckSelected = true;
+    player.deckData = deckData;
+    
+    // Notify opponent that this player is ready
+    for (const [otherWs, otherPlayer] of this.players) {
+      if (otherWs !== ws) {
+        try {
+          otherWs.send(JSON.stringify({
+            type: 'OPPONENT_DECK_SELECTED',
+            message: 'Opponent has selected their deck!'
+          }));
+        } catch (e) {
+          console.error('[GameRoom] Failed to notify opponent:', e);
+        }
+      }
+    }
+    
+    // Check if both players have selected decks
+    const allReady = [...this.players.values()].every(p => p.deckSelected);
+    
+    if (allReady && !this.matchStarted) {
+      console.log('[GameRoom] Both players have selected decks, starting match!');
+      this.startMatchWithDecks();
+    }
+  }
+  
+  startMatchWithDecks() {
+    this.matchStarted = true;
+    
+    // Randomly determine who goes first
+    const firstPlayer = Math.random() < 0.5 ? 'player' : 'enemy';
+    
+    console.log(`[GameRoom] First player: ${firstPlayer}`);
+    
+    // Initialize game state
+    this.gameState = this.createInitialGameState();
+    this.gameState.currentTurn = firstPlayer;
+    
+    // Send game start to both players
+    for (const [ws, player] of this.players) {
+      const yourRole = player.role === 'player1' ? 'player' : 'enemy';
+      const isYourTurn = firstPlayer === yourRole;
+      
+      try {
+        ws.send(JSON.stringify({
+          type: 'BOTH_DECKS_SELECTED',
+          yourRole: yourRole,
+          firstPlayer: firstPlayer,
+          isYourTurn: isYourTurn,
+          initialState: this.gameState,
+          message: 'Both players ready! Starting game...'
+        }));
+      } catch (e) {
+        console.error('[GameRoom] Failed to send game start:', e);
+      }
+    }
+    
+    // Start turn timer for first player
+    this.startTurnTimer();
   }
   
   // Handle WebSocket messages
@@ -397,6 +479,21 @@ export class GameRoom {
     
     const player = this.players.get(ws);
     if (!player) return;
+    
+    // Parse message first for pre-game messages
+    let data;
+    try {
+      data = JSON.parse(message);
+    } catch (e) {
+      console.error('[GameRoom] Failed to parse message:', e);
+      return;
+    }
+    
+    // Handle deck selection (before game starts)
+    if (data.type === 'DECK_SELECTED' && !this.matchStarted) {
+      this.handleDeckSelected(ws, player, data.deck);
+      return;
+    }
     
     try {
       const data = JSON.parse(message);

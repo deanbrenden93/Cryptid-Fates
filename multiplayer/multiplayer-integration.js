@@ -142,6 +142,44 @@ window.MultiplayerManager = {
   },
   
   /**
+   * Connect to the actual game room after matchmaking
+   */
+  async connectToGameRoom(matchId) {
+    console.log('[MP] Connecting to game room:', matchId);
+    
+    if (!this.client) this.init();
+    
+    // Disconnect from lobby if still connected
+    this.client.disconnect();
+    
+    // Small delay to ensure clean disconnect
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Connect to the game room
+    await this.client.connect(matchId, 'player-token');
+    
+    this.matchId = matchId;
+    this.isMultiplayer = true;
+    window.isMultiplayer = true;
+    
+    console.log('[MP] Connected to game room:', matchId);
+  },
+  
+  /**
+   * Send deck selection to server
+   */
+  sendDeckSelected(deckData) {
+    console.log('[MP] Sending deck selection:', deckData);
+    
+    if (this.client && this.client.socket) {
+      this.client.socket.send(JSON.stringify({
+        type: 'DECK_SELECTED',
+        deck: deckData
+      }));
+    }
+  },
+  
+  /**
    * Create a new match (host)
    */
   async createMatch() {

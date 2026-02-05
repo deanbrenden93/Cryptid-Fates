@@ -784,7 +784,260 @@ window.HomeScreen = {
         const roleText = window.multiplayerRole === 'player' ? 'Player 1 (goes first)' : 'Player 2';
         console.log(`[Multiplayer] You are: ${roleText}`);
         
-        this.startGame();
+        // Show "Connecting to game room..." while we establish the connection
+        this.showMultiplayerConnecting(matchData);
+    },
+    
+    showMultiplayerConnecting(matchData) {
+        // Create connecting overlay
+        let overlay = document.getElementById('mp-connecting-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'mp-connecting-overlay';
+            overlay.className = 'mp-connecting-overlay';
+            overlay.innerHTML = `
+                <div class="mp-connecting-content">
+                    <div class="mm-spinner"></div>
+                    <div class="mp-connecting-text">Connecting to game room...</div>
+                    <div class="mp-connecting-status" id="mp-connect-status"></div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+        
+        requestAnimationFrame(() => overlay.classList.add('show'));
+        
+        // Connect to the actual game room
+        this.connectToGameRoom(matchData);
+    },
+    
+    async connectToGameRoom(matchData) {
+        const statusEl = document.getElementById('mp-connect-status');
+        const self = this;
+        
+        try {
+            // Ensure client is initialized
+            if (!MultiplayerManager.client) {
+                MultiplayerManager.init();
+            }
+            
+            // Set up handlers BEFORE connecting to avoid race conditions
+            MultiplayerManager.client.onBothPlayersConnected = () => {
+                console.log('[Multiplayer] Both players connected!');
+                self.hideMultiplayerConnecting();
+                self.startMultiplayerDeckSelection(matchData);
+            };
+            
+            MultiplayerManager.client.onOpponentReady = () => {
+                console.log('[Multiplayer] Opponent has selected their deck');
+                self.updateWaitingStatus('Opponent ready! Waiting for you...');
+            };
+            
+            MultiplayerManager.client.onMultiplayerGameStart = (data) => {
+                console.log('[Multiplayer] Both players ready, starting game!', data);
+                self.startMultiplayerBattle(data);
+            };
+            
+            // Now connect to the game room
+            if (statusEl) statusEl.textContent = 'Joining game room...';
+            
+            await MultiplayerManager.connectToGameRoom(matchData.matchId);
+            
+            if (statusEl) statusEl.textContent = 'Connected! Waiting for opponent...';
+            
+        } catch (error) {
+            console.error('[Multiplayer] Failed to connect to game room:', error);
+            if (statusEl) statusEl.textContent = 'Connection failed: ' + error.message;
+            
+            setTimeout(() => {
+                self.hideMultiplayerConnecting();
+                self.showMatchmakingError('Failed to connect to game room. Please try again.');
+            }, 2000);
+        }
+    },
+    
+    hideMultiplayerConnecting() {
+        const overlay = document.getElementById('mp-connecting-overlay');
+        if (overlay) {
+            overlay.classList.remove('show');
+            setTimeout(() => overlay.remove(), 300);
+        }
+    },
+    
+    startMultiplayerDeckSelection(matchData) {
+        console.log('[Multiplayer] Opening deck selection for multiplayer');
+        
+        // Store match data for later
+        this.pendingMultiplayerMatch = matchData;
+        
+        // Close home screen and show deck selection
+        this.close();
+        this.openMultiplayerDeckSelection();
+    },
+    
+    openMultiplayerDeckSelection() {
+        // Similar to regular deck selection, but with multiplayer waiting logic
+        const validDecks = PlayerData.decks.filter(d => {
+            const validation = PlayerData.validateDeck(d);
+            return validation.valid;
+        });
+        
+        // Remove existing screen if present
+        document.getElementById('mp-deck-selection-screen')?.remove();
+        
+        const screen = document.createElement('div');
+        screen.id = 'mp-deck-selection-screen';
+        screen.className = 'deck-selection-screen mp-deck-selection';
+        
+        let decksHTML = '';
+        validDecks.forEach((deck, index) => {
+            decksHTML += `
+                <div class="ds-deck-option" data-deck-index="${index}">
+                    <div class="ds-deck-name">${deck.name}</div>
+                    <div class="ds-deck-cards">${deck.cards.length} cards</div>
+                </div>
+            `;
+        });
+        
+        screen.innerHTML = `
+            <div class="ds-backdrop"></div>
+            <div class="ds-content">
+                <div class="ds-header">
+                    <div class="ds-title">⚔️ Select Your Deck</div>
+                    <div class="ds-subtitle">Multiplayer Match</div>
+                </div>
+                
+                <div class="mp-opponent-status" id="mp-opponent-deck-status">
+                    <span class="status-icon">⏳</span>
+                    <span class="status-text">Waiting for opponent to select deck...</span>
+                </div>
+                
+                <div class="ds-decks-container">
+                    ${decksHTML || '<div class="ds-no-decks">No valid decks available!</div>'}
+                </div>
+                
+                <div class="mp-your-status" id="mp-your-deck-status" style="display: none;">
+                    <span class="status-icon">✓</span>
+                    <span class="status-text">Deck selected! Waiting for opponent...</span>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(screen);
+        
+        // Bind deck selection events
+        screen.querySelectorAll('.ds-deck-option').forEach(option => {
+            option.addEventListener('click', () => {
+                const deckIndex = parseInt(option.dataset.deckIndex);
+                this.selectMultiplayerDeck(deckIndex, validDecks[deckIndex]);
+            });
+        });
+        
+        requestAnimationFrame(() => screen.classList.add('open'));
+    },
+    
+    selectMultiplayerDeck(deckIndex, deck) {
+        console.log('[Multiplayer] Deck selected:', deck.name);
+        
+        // Store selected deck
+        window.selectedPlayerDeck = deck;
+        window.testMode = false;
+        
+        // Visual feedback
+        document.querySelectorAll('.ds-deck-option').forEach(opt => {
+            opt.classList.remove('selected');
+            opt.style.pointerEvents = 'none';
+            opt.style.opacity = '0.5';
+        });
+        document.querySelector(`[data-deck-index="${deckIndex}"]`)?.classList.add('selected');
+        document.querySelector(`[data-deck-index="${deckIndex}"]`).style.opacity = '1';
+        
+        // Show waiting status
+        const yourStatus = document.getElementById('mp-your-deck-status');
+        if (yourStatus) yourStatus.style.display = 'flex';
+        
+        // Send deck selection to server
+        MultiplayerManager.sendDeckSelected({
+            deckName: deck.name,
+            cardCount: deck.cards.length
+        });
+    },
+    
+    updateWaitingStatus(text) {
+        const statusEl = document.getElementById('mp-opponent-deck-status');
+        if (statusEl) {
+            statusEl.querySelector('.status-icon').textContent = '✓';
+            statusEl.querySelector('.status-text').textContent = text;
+            statusEl.classList.add('ready');
+        }
+    },
+    
+    startMultiplayerBattle(data) {
+        console.log('[Multiplayer] Starting battle!', data);
+        
+        // Close deck selection
+        const deckScreen = document.getElementById('mp-deck-selection-screen');
+        if (deckScreen) {
+            deckScreen.classList.remove('open');
+            setTimeout(() => deckScreen.remove(), 300);
+        }
+        
+        // Store game data from server
+        window.multiplayerGameData = data;
+        window.multiplayerFirstPlayer = data.firstPlayer;
+        
+        // Ensure turn order overlay exists
+        if (typeof MainMenu !== 'undefined' && !document.getElementById('turn-order-overlay')) {
+            MainMenu.createTurnOrderOverlay();
+        }
+        const turnOrderOverlay = document.getElementById('turn-order-overlay');
+        
+        // Show coin flip / turn order animation
+        TransitionEngine.slide(() => {
+            // At hidden point: show turn order overlay
+            if (turnOrderOverlay) {
+                turnOrderOverlay.classList.add('active');
+            }
+        }).then(() => {
+            // After transition reveals coin flip, start the animation
+            if (typeof MainMenu !== 'undefined') {
+                // Force the result based on server's firstPlayer decision
+                MainMenu.showTurnOrderAnimation(() => {
+                    // Show game container
+                    document.getElementById('game-container').style.display = 'flex';
+                    if (typeof applyBattlefieldBackgrounds === 'function') {
+                        applyBattlefieldBackgrounds();
+                    }
+                    
+                    setTimeout(() => {
+                        if (turnOrderOverlay) {
+                            turnOrderOverlay.classList.remove('active');
+                        }
+                        
+                        // Initialize multiplayer game
+                        setTimeout(() => {
+                            this.initMultiplayerGame(data);
+                        }, 400);
+                    }, 50);
+                }, data.firstPlayer); // Pass server's decision
+            } else {
+                document.getElementById('game-container').style.display = 'flex';
+                this.initMultiplayerGame(data);
+            }
+        });
+    },
+    
+    initMultiplayerGame(data) {
+        console.log('[Multiplayer] Initializing game with server state');
+        
+        // Call the regular initGame but in multiplayer mode
+        if (typeof initGame === 'function') {
+            initGame();
+        }
+        
+        // The game is now running - actions will be sent through MultiplayerManager
+        console.log('[Multiplayer] Game initialized. You are:', window.multiplayerRole);
+        console.log('[Multiplayer] First player:', data.firstPlayer);
     },
     
     cancelMatchmaking() {

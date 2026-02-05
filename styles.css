@@ -5239,3 +5239,98 @@ body {
     border-color: rgba(130, 180, 230, 0.5);
     box-shadow: 0 0 20px rgba(100, 150, 200, 0.3);
 }
+
+/* Multiplayer Connecting Overlay */
+.mp-connecting-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100002;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.mp-connecting-overlay.show {
+    opacity: 1;
+}
+
+.mp-connecting-content {
+    text-align: center;
+    color: #e8e0d5;
+    font-family: 'Cinzel', serif;
+}
+
+.mp-connecting-content .mm-spinner {
+    margin: 0 auto 20px;
+}
+
+.mp-connecting-text {
+    font-size: 24px;
+    color: #ffc866;
+    margin-bottom: 10px;
+}
+
+.mp-connecting-status {
+    font-size: 14px;
+    color: #888;
+}
+
+/* Multiplayer Deck Selection */
+.mp-deck-selection .mp-opponent-status,
+.mp-deck-selection .mp-your-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 15px 25px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(139, 90, 43, 0.3);
+    border-radius: 8px;
+    margin: 0 auto 20px;
+    max-width: 400px;
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    color: #888;
+}
+
+.mp-deck-selection .mp-opponent-status.ready {
+    border-color: rgba(126, 205, 115, 0.5);
+    color: #7ecd73;
+}
+
+.mp-deck-selection .mp-your-status {
+    border-color: rgba(126, 205, 115, 0.5);
+    color: #7ecd73;
+    margin-top: 20px;
+}
+
+.mp-deck-selection .status-icon {
+    font-size: 18px;
+}
+
+.mp-deck-selection .ds-subtitle {
+    font-size: 14px;
+    color: #888;
+    margin-top: 5px;
+}
+
+.mp-deck-selection .ds-deck-option {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mp-deck-selection .ds-deck-option.selected {
+    border-color: rgba(126, 205, 115, 0.6) !important;
+    background: rgba(126, 205, 115, 0.1) !important;
+}
+
+.mp-deck-selection .ds-deck-option.selected::after {
+    content: '✓ Selected';
+    display: block;
+    color: #7ecd73;
+    font-size: 12px;
+    margin-top: 5px;
+}

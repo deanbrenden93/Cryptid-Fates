@@ -48,6 +48,11 @@ class MultiplayerClient {
         this.onMatchFound = null;
         this.onMatchStart = null;
         
+        // Game room callbacks
+        this.onBothPlayersConnected = null;
+        this.onOpponentReady = null;
+        this.onMultiplayerGameStart = null;
+        
         // Timing
         this.serverTimeOffset = 0; // Difference between server and client time
         this.latency = 0;
@@ -175,6 +180,21 @@ class MultiplayerClient {
                 // From game room - both players connected, game begins
                 this.handleGameStarted(message);
                 break;
+            
+            case 'BOTH_PLAYERS_CONNECTED':
+                // Both players are now in the game room
+                this.handleBothPlayersConnected(message);
+                break;
+                
+            case 'OPPONENT_DECK_SELECTED':
+                // Opponent has selected their deck
+                this.handleOpponentDeckSelected(message);
+                break;
+                
+            case 'BOTH_DECKS_SELECTED':
+                // Both players ready, start the game
+                this.handleBothDecksSelected(message);
+                break;
                 
             case 'ACTION_RESULT':
                 this.handleActionResult(message);
@@ -280,7 +300,8 @@ class MultiplayerClient {
     
     handleGameStartFromLobby(message) {
         // This is sent from the matchmaking lobby when a match is found
-        // We need to: 1) store the match info, 2) notify the UI, 3) reconnect to game room
+        // We need to: 1) store the match info, 2) notify the UI
+        // NOTE: The UI (home-screen.js) will handle the reconnection to the game room
         console.log('[MP Client] Game start from lobby:', message);
         
         this.playerRole = message.yourRole;
@@ -292,35 +313,16 @@ class MultiplayerClient {
         
         // Immediately notify that match was found (so UI updates)
         // The onGameStart callback will resolve the findMatch promise
+        // The UI will then handle connecting to the game room
         this.onGameStart?.({
             yourRole: role,
             matchId: matchId,
             role: role,
-            fromLobby: true
+            fromLobby: true,
+            reconnectRequired: message.reconnectRequired
         });
         
-        // If reconnect is required, do it after a short delay to let UI update
-        if (message.reconnectRequired) {
-            setTimeout(() => {
-                console.log('[MP Client] Reconnecting to game room:', matchId);
-                
-                // Close lobby connection
-                if (this.socket) {
-                    this.socket.close(1000, 'Joining game room');
-                }
-                
-                // Connect to game room after socket closes
-                setTimeout(async () => {
-                    try {
-                        await this.connect(matchId, this.authToken);
-                        console.log('[MP Client] Connected to game room:', matchId);
-                    } catch (error) {
-                        console.error('[MP Client] Failed to connect to game room:', error);
-                        this.onError?.(error);
-                    }
-                }, 300);
-            }, 100);
-        }
+        // Don't reconnect here - let the UI handle it via MultiplayerManager.connectToGameRoom()
     }
     
     handleGameStarted(message) {
@@ -344,6 +346,21 @@ class MultiplayerClient {
     handleError(message) {
         console.error('[MP Client] Server error:', message.message);
         this.onError?.(message);
+    }
+    
+    handleBothPlayersConnected(message) {
+        console.log('[MP Client] Both players connected to game room');
+        this.onBothPlayersConnected?.(message);
+    }
+    
+    handleOpponentDeckSelected(message) {
+        console.log('[MP Client] Opponent selected their deck');
+        this.onOpponentReady?.(message);
+    }
+    
+    handleBothDecksSelected(message) {
+        console.log('[MP Client] Both decks selected, starting game!', message);
+        this.onMultiplayerGameStart?.(message);
     }
     
     handleActionResult(message) {
