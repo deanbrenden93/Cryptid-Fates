@@ -15,12 +15,15 @@
  * so the client can play animations and the server can validate/broadcast.
  */
 
+(function() {
+'use strict';
+
 // Schema import for phases
-let GamePhases;
+let _GamePhases;
 if (typeof require !== 'undefined') {
     try {
         const schema = require('./schema.js');
-        GamePhases = schema.GamePhases;
+        _GamePhases = schema.GamePhases;
     } catch (e) {
         // Running in browser
     }
@@ -47,7 +50,7 @@ function createTurnProcessor(options = {}) {
     let trapSystem = options.trapSystem;
     
     // Get phases from browser or server
-    const Phases = GamePhases || (typeof window !== 'undefined' && window.SharedEffectSchema?.GamePhases) || {
+    const Phases = _GamePhases || (typeof window !== 'undefined' && window.SharedEffectSchema?.GamePhases) || {
         CONJURE_1: 'conjure1',
         CONJURE_2: 'conjure2',
         DEPLOY: 'deploy',
@@ -661,3 +664,5 @@ if (typeof window !== 'undefined') {
         createTurnProcessor
     };
 }
+
+})(); // End IIFE

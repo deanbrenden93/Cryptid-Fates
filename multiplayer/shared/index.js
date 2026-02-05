@@ -13,125 +13,128 @@
  *   const { createGameEvents, createCardRegistry, EffectSchema } = window.CryptidShared;
  */
 
+(function() {
+'use strict';
+
 // ==================== IMPORTS ====================
 
 // Detect environment
-const isNode = typeof module !== 'undefined' && module.exports;
-const isBrowser = typeof window !== 'undefined';
+const _isNode = typeof module !== 'undefined' && module.exports;
+const _isBrowser = typeof window !== 'undefined';
 
 // Import modules based on environment
-let eventsModule, schemaModule, cardRegistryModule, effectResolverModule;
-let gameStateModule, combatEngineModule, trapSystemModule, turnProcessorModule;
+let _eventsModule, _schemaModule, _cardRegistryModule, _effectResolverModule;
+let _gameStateModule, _combatEngineModule, _trapSystemModule, _turnProcessorModule;
 
-if (isNode) {
-    eventsModule = require('./events.js');
-    schemaModule = require('./schema.js');
-    cardRegistryModule = require('./card-registry.js');
-    effectResolverModule = require('./effect-resolver.js');
-    gameStateModule = require('./game-state.js');
-    combatEngineModule = require('./combat-engine.js');
-    trapSystemModule = require('./trap-system.js');
-    turnProcessorModule = require('./turn-processor.js');
+if (_isNode) {
+    _eventsModule = require('./events.js');
+    _schemaModule = require('./schema.js');
+    _cardRegistryModule = require('./card-registry.js');
+    _effectResolverModule = require('./effect-resolver.js');
+    _gameStateModule = require('./game-state.js');
+    _combatEngineModule = require('./combat-engine.js');
+    _trapSystemModule = require('./trap-system.js');
+    _turnProcessorModule = require('./turn-processor.js');
 }
 
 // ==================== RE-EXPORTS ====================
 
 // Events
-const createGameEvents = isNode 
-    ? eventsModule.createGameEvents 
-    : (isBrowser && window.SharedGameEvents?.createGameEvents);
+const _createGameEvents = _isNode 
+    ? _eventsModule.createGameEvents 
+    : (_isBrowser && window.SharedGameEvents?.createGameEvents);
 
-const GameEventTypes = isNode 
-    ? eventsModule.GameEventTypes 
-    : (isBrowser && window.SharedGameEvents?.GameEventTypes);
+const _GameEventTypes = _isNode 
+    ? _eventsModule.GameEventTypes 
+    : (_isBrowser && window.SharedGameEvents?.GameEventTypes);
 
 // Schema
-const EffectSchema = isNode 
-    ? schemaModule.EffectSchema 
-    : (isBrowser && window.SharedEffectSchema);
+const _EffectSchema = _isNode 
+    ? _schemaModule.EffectSchema 
+    : (_isBrowser && window.SharedEffectSchema);
 
-const EffectTriggers = isNode ? schemaModule.EffectTriggers : EffectSchema?.Triggers;
-const EffectActions = isNode ? schemaModule.EffectActions : EffectSchema?.Actions;
-const EffectTargets = isNode ? schemaModule.EffectTargets : EffectSchema?.Targets;
-const EffectConditions = isNode ? schemaModule.EffectConditions : EffectSchema?.Conditions;
-const EffectCalculations = isNode ? schemaModule.EffectCalculations : EffectSchema?.Calculations;
-const Keywords = isNode ? schemaModule.Keywords : EffectSchema?.Keywords;
-const Auras = isNode ? schemaModule.Auras : EffectSchema?.Auras;
-const Ailments = isNode ? schemaModule.Ailments : EffectSchema?.Ailments;
-const GamePhases = isNode ? schemaModule.GamePhases : EffectSchema?.Phases;
-const CardTypes = isNode ? schemaModule.CardTypes : EffectSchema?.CardTypes;
-const Rarities = isNode ? schemaModule.Rarities : EffectSchema?.Rarities;
-const Elements = isNode ? schemaModule.Elements : EffectSchema?.Elements;
+const _EffectTriggers = _isNode ? _schemaModule.EffectTriggers : _EffectSchema?.Triggers;
+const _EffectActions = _isNode ? _schemaModule.EffectActions : _EffectSchema?.Actions;
+const _EffectTargets = _isNode ? _schemaModule.EffectTargets : _EffectSchema?.Targets;
+const _EffectConditions = _isNode ? _schemaModule.EffectConditions : _EffectSchema?.Conditions;
+const _EffectCalculations = _isNode ? _schemaModule.EffectCalculations : _EffectSchema?.Calculations;
+const _Keywords = _isNode ? _schemaModule.Keywords : _EffectSchema?.Keywords;
+const _Auras = _isNode ? _schemaModule.Auras : _EffectSchema?.Auras;
+const _Ailments = _isNode ? _schemaModule.Ailments : _EffectSchema?.Ailments;
+const _GamePhases = _isNode ? _schemaModule.GamePhases : _EffectSchema?.Phases;
+const _CardTypes = _isNode ? _schemaModule.CardTypes : _EffectSchema?.CardTypes;
+const _Rarities = _isNode ? _schemaModule.Rarities : _EffectSchema?.Rarities;
+const _Elements = _isNode ? _schemaModule.Elements : _EffectSchema?.Elements;
 
 // Card Registry
-const createCardRegistry = isNode 
-    ? cardRegistryModule.createCardRegistry 
-    : (isBrowser && window.SharedCardRegistry?.createCardRegistry);
+const _createCardRegistry = _isNode 
+    ? _cardRegistryModule.createCardRegistry 
+    : (_isBrowser && window.SharedCardRegistry?.createCardRegistry);
 
 // Effect Resolver
-const createEffectResolver = isNode 
-    ? effectResolverModule.createEffectResolver 
-    : (isBrowser && window.SharedEffectResolver?.createEffectResolver);
+const _createEffectResolver = _isNode 
+    ? _effectResolverModule.createEffectResolver 
+    : (_isBrowser && window.SharedEffectResolver?.createEffectResolver);
 
 // Game State
-const createGameState = isNode 
-    ? gameStateModule.createGameState 
-    : (isBrowser && window.SharedGameState?.createGameState);
+const _createGameState = _isNode 
+    ? _gameStateModule.createGameState 
+    : (_isBrowser && window.SharedGameState?.createGameState);
 
 // Combat Engine
-const createCombatEngine = isNode 
-    ? combatEngineModule.createCombatEngine 
-    : (isBrowser && window.SharedCombatEngine?.createCombatEngine);
+const _createCombatEngine = _isNode 
+    ? _combatEngineModule.createCombatEngine 
+    : (_isBrowser && window.SharedCombatEngine?.createCombatEngine);
 
 // Trap System
-const createTrapSystem = isNode 
-    ? trapSystemModule.createTrapSystem 
-    : (isBrowser && window.SharedTrapSystem?.createTrapSystem);
+const _createTrapSystem = _isNode 
+    ? _trapSystemModule.createTrapSystem 
+    : (_isBrowser && window.SharedTrapSystem?.createTrapSystem);
 
 // Turn Processor
-const createTurnProcessor = isNode 
-    ? turnProcessorModule.createTurnProcessor 
-    : (isBrowser && window.SharedTurnProcessor?.createTurnProcessor);
+const _createTurnProcessor = _isNode 
+    ? _turnProcessorModule.createTurnProcessor 
+    : (_isBrowser && window.SharedTurnProcessor?.createTurnProcessor);
 
 // ==================== COMBINED EXPORT ====================
 
 const CryptidShared = {
     // Events
-    createGameEvents,
-    GameEventTypes,
+    createGameEvents: _createGameEvents,
+    GameEventTypes: _GameEventTypes,
     
     // Schema
-    EffectSchema,
-    EffectTriggers,
-    EffectActions,
-    EffectTargets,
-    EffectConditions,
-    EffectCalculations,
-    Keywords,
-    Auras,
-    Ailments,
-    GamePhases,
-    CardTypes,
-    Rarities,
-    Elements,
+    EffectSchema: _EffectSchema,
+    EffectTriggers: _EffectTriggers,
+    EffectActions: _EffectActions,
+    EffectTargets: _EffectTargets,
+    EffectConditions: _EffectConditions,
+    EffectCalculations: _EffectCalculations,
+    Keywords: _Keywords,
+    Auras: _Auras,
+    Ailments: _Ailments,
+    GamePhases: _GamePhases,
+    CardTypes: _CardTypes,
+    Rarities: _Rarities,
+    Elements: _Elements,
     
     // Card Registry
-    createCardRegistry,
+    createCardRegistry: _createCardRegistry,
     
     // Effect Resolver
-    createEffectResolver,
+    createEffectResolver: _createEffectResolver,
     
     // Game State
-    createGameState,
+    createGameState: _createGameState,
     
     // Combat Engine
-    createCombatEngine,
+    createCombatEngine: _createCombatEngine,
     
     // Trap System
-    createTrapSystem,
+    createTrapSystem: _createTrapSystem,
     
     // Turn Processor
-    createTurnProcessor,
+    createTurnProcessor: _createTurnProcessor,
     
     // Version info
     version: '2.0.0', // Updated for Phase 5
@@ -151,12 +154,12 @@ const CryptidShared = {
         const logger = options.logger || console.log;
         
         // Create core systems
-        const events = createGameEvents({ debug, logger });
-        const registry = createCardRegistry({ debug, logger });
-        const resolver = createEffectResolver({ events, debug, logger });
+        const events = _createGameEvents({ debug, logger });
+        const registry = _createCardRegistry({ debug, logger });
+        const resolver = _createEffectResolver({ events, debug, logger });
         
         // Create game state with events integration
-        const gameState = createGameState({ 
+        const gameState = _createGameState({ 
             events, 
             debug, 
             logger,
@@ -164,14 +167,14 @@ const CryptidShared = {
         });
         
         // Create combat engine
-        const combatEngine = createCombatEngine({ 
+        const combatEngine = _createCombatEngine({ 
             gameState, 
             debug, 
             logger 
         });
         
         // Create trap system
-        const trapSystem = createTrapSystem({ 
+        const trapSystem = _createTrapSystem({ 
             gameState, 
             events, 
             debug, 
@@ -179,7 +182,7 @@ const CryptidShared = {
         });
         
         // Create turn processor with all dependencies
-        const turnProcessor = createTurnProcessor({ 
+        const turnProcessor = _createTurnProcessor({ 
             gameState, 
             events, 
             combatEngine,
@@ -232,11 +235,13 @@ const CryptidShared = {
 // ==================== EXPORTS ====================
 
 // CommonJS export (for Node.js / Cloudflare Worker)
-if (isNode) {
+if (_isNode) {
     module.exports = CryptidShared;
 }
 
 // Browser global export
-if (isBrowser) {
+if (_isBrowser) {
     window.CryptidShared = CryptidShared;
 }
+
+})(); // End IIFE

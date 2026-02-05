@@ -15,12 +15,15 @@
  * NO DOM operations, NO animations - those are handled by the caller.
  */
 
+(function() {
+'use strict';
+
 // Import dependencies if in Node.js environment
-let eventsModule, schemaModule;
+let _eventsModule, _schemaModule;
 if (typeof require !== 'undefined') {
     try {
-        eventsModule = require('./events.js');
-        schemaModule = require('./schema.js');
+        _eventsModule = require('./events.js');
+        _schemaModule = require('./schema.js');
     } catch (e) {
         // Running in browser, modules will be on window
     }
@@ -42,7 +45,7 @@ function createGameState(options = {}) {
     // Get events from options or create new
     let events = options.events;
     if (!events) {
-        const createGameEvents = eventsModule?.createGameEvents || 
+        const createGameEvents = _eventsModule?.createGameEvents || 
             (typeof window !== 'undefined' && window.SharedGameEvents?.createGameEvents);
         if (createGameEvents) {
             events = createGameEvents({ debug, logger });
@@ -50,7 +53,7 @@ function createGameState(options = {}) {
     }
     
     // Get schema constants
-    const GamePhases = schemaModule?.GamePhases || 
+    const GamePhases = _schemaModule?.GamePhases || 
         (typeof window !== 'undefined' && window.SharedEffectSchema?.Phases) ||
         { CONJURE1: 'conjure1', COMBAT: 'combat', CONJURE2: 'conjure2', END: 'end' };
     
@@ -1476,3 +1479,5 @@ if (typeof window !== 'undefined') {
         createGameState
     };
 }
+
+})(); // End IIFE

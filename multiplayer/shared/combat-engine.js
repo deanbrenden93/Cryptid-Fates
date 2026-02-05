@@ -15,11 +15,14 @@
  * so the client can play animations and the server can validate/broadcast.
  */
 
+(function() {
+'use strict';
+
 // Import dependencies if in Node.js environment
-let gameStateModule;
+let _gameStateModule;
 if (typeof require !== 'undefined') {
     try {
-        gameStateModule = require('./game-state.js');
+        _gameStateModule = require('./game-state.js');
     } catch (e) {
         // Running in browser, modules will be on window
     }
@@ -591,3 +594,5 @@ if (typeof window !== 'undefined') {
         createCombatEngine
     };
 }
+
+})(); // End IIFE

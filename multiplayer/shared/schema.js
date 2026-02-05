@@ -14,10 +14,13 @@
  * This module is used identically on client and server.
  */
 
+(function() {
+'use strict';
+
 // ==================== EFFECT TRIGGERS ====================
 // These define WHEN an effect activates
 
-const EffectTriggers = {
+const SharedEffectTriggers = {
     // Summon/Position Triggers
     onSummon: 'onSummon',                    // When card enters the field (any position)
     onEnterCombat: 'onEnterCombat',          // When card enters combat column
@@ -75,7 +78,7 @@ const EffectTriggers = {
 // ==================== EFFECT ACTIONS ====================
 // These define WHAT happens when an effect triggers
 
-const EffectActions = {
+const SharedEffectActions = {
     // Damage Actions
     dealDamage: 'dealDamage',                // Deal damage to target(s)
     dealDamagePerStack: 'dealDamagePerStack',// Deal damage based on ailment stacks
@@ -178,7 +181,7 @@ const EffectActions = {
 // ==================== EFFECT TARGETS ====================
 // These define WHO/WHAT is affected by an effect
 
-const EffectTargets = {
+const SharedEffectTargets = {
     // Self
     self: 'self',                            // The card with this effect
     
@@ -230,7 +233,7 @@ const EffectTargets = {
 // ==================== EFFECT CONDITIONS ====================
 // These define IF an effect should activate (beyond just the trigger)
 
-const EffectConditions = {
+const SharedEffectConditions = {
     // HP Conditions
     selfHpBelow: 'selfHpBelow',              // Self HP is below X or X%
     selfHpAbove: 'selfHpAbove',              // Self HP is above X or X%
@@ -300,7 +303,7 @@ const EffectConditions = {
 // ==================== EFFECT CALCULATIONS ====================
 // These define HOW amounts are calculated dynamically
 
-const EffectCalculations = {
+const SharedEffectCalculations = {
     flat: 'flat',                            // Fixed number: { calc: 'flat', value: 3 }
     
     // Stack-based
@@ -338,7 +341,7 @@ const EffectCalculations = {
 // ==================== KEYWORDS ====================
 // Standard keywords that can be granted/checked
 
-const Keywords = {
+const SharedKeywords = {
     flight: 'flight',                        // Can attack any enemy
     destroyer: 'destroyer',                  // Overkill damage hits support
     guardian: 'guardian',                    // Takes hits for adjacent allies
@@ -357,7 +360,7 @@ const Keywords = {
 // ==================== AURAS ====================
 // Continuous effects that persist while conditions are met
 
-const Auras = {
+const SharedAuras = {
     ailmentImmunity: 'ailmentImmunity',      // Immune to ailments
     damageImmunity: 'damageImmunity',        // Immune to damage
     attackBoost: 'attackBoost',              // +X ATK to affected
@@ -370,7 +373,7 @@ const Auras = {
 // ==================== AILMENTS ====================
 // Status effects that can be applied
 
-const Ailments = {
+const SharedAilments = {
     burn: 'burn',                            // Damage at turn end
     bleed: 'bleed',                          // Damage when attacking
     paralyze: 'paralyze',                    // Skip next attack
@@ -384,7 +387,7 @@ const Ailments = {
 // ==================== ACTIVATED ABILITIES ====================
 // These define player-clickable abilities that appear as buttons in tooltips
 
-const ActivatedAbilityTypes = {
+const SharedActivatedAbilityTypes = {
     // Ability availability positions
     positions: {
         support: 'support',      // Only available in support column
@@ -404,7 +407,7 @@ const ActivatedAbilityTypes = {
 };
 
 // Common activated ability effects that the engine handles
-const ActivatedAbilityEffects = {
+const SharedActivatedAbilityEffects = {
     // Combat-related
     killCombatant: 'killCombatant',      // Kill the combatant in same row
     damageCombatant: 'damageCombatant',  // Deal damage to combatant
@@ -429,7 +432,7 @@ const ActivatedAbilityEffects = {
 // ==================== GAME PHASES ====================
 // Turn structure phases
 
-const GamePhases = {
+const SharedGamePhases = {
     CONJURE1: 'conjure1',     // First conjure phase (summon/play cards)
     COMBAT: 'combat',         // Combat phase (attacks)
     CONJURE2: 'conjure2',     // Second conjure phase
@@ -439,7 +442,7 @@ const GamePhases = {
 // ==================== CARD TYPES ====================
 // Types of cards in the game
 
-const CardTypes = {
+const SharedCardTypes = {
     CRYPTID: 'cryptid',
     KINDLING: 'kindling',
     PYRE: 'pyre',
@@ -451,7 +454,7 @@ const CardTypes = {
 
 // ==================== RARITIES ====================
 
-const Rarities = {
+const SharedRarities = {
     COMMON: 'common',
     UNCOMMON: 'uncommon',
     RARE: 'rare',
@@ -460,7 +463,7 @@ const Rarities = {
 
 // ==================== ELEMENTS ====================
 
-const Elements = {
+const SharedElements = {
     BLOOD: 'blood',
     STEEL: 'steel',
     VOID: 'void',
@@ -479,19 +482,19 @@ const Elements = {
 function validateEffect(effect) {
     const errors = [];
     
-    if (!effect.trigger || !EffectTriggers[effect.trigger]) {
+    if (!effect.trigger || !SharedEffectTriggers[effect.trigger]) {
         errors.push(`Invalid trigger: ${effect.trigger}`);
     }
-    if (!effect.action || !EffectActions[effect.action]) {
+    if (!effect.action || !SharedEffectActions[effect.action]) {
         // Allow arrays of actions
         if (!effect.actions || !Array.isArray(effect.actions)) {
             errors.push(`Invalid action: ${effect.action}`);
         }
     }
-    if (effect.target && !EffectTargets[effect.target]) {
+    if (effect.target && !SharedEffectTargets[effect.target]) {
         errors.push(`Invalid target: ${effect.target}`);
     }
-    if (effect.condition?.check && !EffectConditions[effect.condition.check]) {
+    if (effect.condition?.check && !SharedEffectConditions[effect.condition.check]) {
         errors.push(`Invalid condition: ${effect.condition.check}`);
     }
     
@@ -521,21 +524,21 @@ function validateActivatedAbility(ability) {
 
 // ==================== COMBINED EXPORT ====================
 
-const EffectSchema = {
-    Triggers: EffectTriggers,
-    Actions: EffectActions,
-    Targets: EffectTargets,
-    Conditions: EffectConditions,
-    Calculations: EffectCalculations,
-    Keywords,
-    Auras,
-    Ailments,
-    ActivatedAbility: ActivatedAbilityTypes,
-    ActivatedEffects: ActivatedAbilityEffects,
-    Phases: GamePhases,
-    CardTypes,
-    Rarities,
-    Elements,
+const SharedEffectSchema = {
+    Triggers: SharedEffectTriggers,
+    Actions: SharedEffectActions,
+    Targets: SharedEffectTargets,
+    Conditions: SharedEffectConditions,
+    Calculations: SharedEffectCalculations,
+    Keywords: SharedKeywords,
+    Auras: SharedAuras,
+    Ailments: SharedAilments,
+    ActivatedAbility: SharedActivatedAbilityTypes,
+    ActivatedEffects: SharedActivatedAbilityEffects,
+    Phases: SharedGamePhases,
+    CardTypes: SharedCardTypes,
+    Rarities: SharedRarities,
+    Elements: SharedElements,
     validateEffect,
     validateActivatedAbility,
 };
@@ -545,21 +548,21 @@ const EffectSchema = {
 // CommonJS export (for Node.js / Cloudflare Worker)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-        EffectSchema,
-        EffectTriggers,
-        EffectActions,
-        EffectTargets,
-        EffectConditions,
-        EffectCalculations,
-        Keywords,
-        Auras,
-        Ailments,
-        ActivatedAbilityTypes,
-        ActivatedAbilityEffects,
-        GamePhases,
-        CardTypes,
-        Rarities,
-        Elements,
+        EffectSchema: SharedEffectSchema,
+        EffectTriggers: SharedEffectTriggers,
+        EffectActions: SharedEffectActions,
+        EffectTargets: SharedEffectTargets,
+        EffectConditions: SharedEffectConditions,
+        EffectCalculations: SharedEffectCalculations,
+        Keywords: SharedKeywords,
+        Auras: SharedAuras,
+        Ailments: SharedAilments,
+        ActivatedAbilityTypes: SharedActivatedAbilityTypes,
+        ActivatedAbilityEffects: SharedActivatedAbilityEffects,
+        GamePhases: SharedGamePhases,
+        CardTypes: SharedCardTypes,
+        Rarities: SharedRarities,
+        Elements: SharedElements,
         validateEffect,
         validateActivatedAbility,
     };
@@ -567,5 +570,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // Browser global export
 if (typeof window !== 'undefined') {
-    window.SharedEffectSchema = EffectSchema;
+    window.SharedEffectSchema = SharedEffectSchema;
 }
+
+})(); // End IIFE

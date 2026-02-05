@@ -10,6 +10,9 @@
  * - Effect resolution (onEffectAboutToResolve, onEffectResolved)
  */
 
+(function() {
+'use strict';
+
 /**
  * Create a new GameEvents instance
  * @param {Object} options - Configuration options
@@ -236,7 +239,7 @@ function createGameEvents(options = {}) {
 // These are the canonical event names used throughout the game.
 // Define them here for consistency between client and server.
 
-const GameEventTypes = {
+const _SharedGameEventTypes = {
     // Summon/Position Events
     ON_SUMMON: 'onSummon',
     ON_ENTER_COMBAT: 'onEnterCombat',
@@ -296,7 +299,7 @@ const GameEventTypes = {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         createGameEvents,
-        GameEventTypes
+        GameEventTypes: _SharedGameEventTypes
     };
 }
 
@@ -304,6 +307,8 @@ if (typeof module !== 'undefined' && module.exports) {
 if (typeof window !== 'undefined') {
     window.SharedGameEvents = {
         createGameEvents,
-        GameEventTypes
+        GameEventTypes: _SharedGameEventTypes
     };
 }
+
+})(); // End IIFE
