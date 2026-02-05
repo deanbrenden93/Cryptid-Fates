@@ -303,13 +303,13 @@ class MultiplayerClient {
             return;
         }
         
-        // Check if game is starting (both players connected)
-        if (!message.waitingForOpponent) {
-            // Initialize game with the provided state
-            this.initializeGame(message.initialState);
-            this.onGameStart?.(message);
-        } else {
+        // MATCH_JOINED just means we're in the room - NOT that the game has started.
+        // Don't call onGameStart here - wait for BOTH_DECKS_SELECTED.
+        // The BOTH_PLAYERS_CONNECTED message will trigger deck selection.
+        if (message.waitingForOpponent) {
             console.log('[MP Client] Waiting for opponent...');
+        } else {
+            console.log('[MP Client] Both players in room, waiting for deck selection');
         }
     }
     

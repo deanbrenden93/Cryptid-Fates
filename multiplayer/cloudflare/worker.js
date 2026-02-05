@@ -294,14 +294,21 @@ const CryptidShared = (function() {
             return support;
         }
 
-        // Serialize a card for storage - only include JSON-safe primitive/object data
+        // Serialize a card for storage - strip functions, symbols, and large static arrays
+        // Effects/abilities are static card definitions (~500 bytes each) that never change.
+        // With 160 cards, effects alone = ~80KB, pushing gameState over the 128KB DO limit.
+        // The server doesn't need effects for game logic; clients reconstruct from card key.
         function serializeCard(c) {
             if (!c) return null;
             const card = {};
             for (const key of Object.keys(c)) {
                 const val = c[key];
-                // Skip functions and symbols - they can't be stored
+                // Skip functions and symbols
                 if (typeof val === 'function' || typeof val === 'symbol') continue;
+                // Skip large static arrays that can be reconstructed from card key
+                if (key === 'effects' || key === 'activeAbilities' || key === 'abilities') continue;
+                // Skip verbose text descriptions
+                if (key === 'combatAbility' || key === 'supportAbility' || key === 'otherAbility') continue;
                 card[key] = val;
             }
             return card;
@@ -718,6 +725,21 @@ function generateMatchId() {
 
 // ==================== GAME ROOM DURABLE OBJECT ====================
 
+// Utility: strip functions/symbols/large static arrays from card objects
+// Used both in game context (for storage export) and in startMatchWithDecks (for initial state)
+function cleanCardForStorage(c) {
+  if (!c) return null;
+  const card = {};
+  for (const key of Object.keys(c)) {
+    const val = c[key];
+    if (typeof val === 'function' || typeof val === 'symbol') continue;
+    if (key === 'effects' || key === 'activeAbilities' || key === 'abilities') continue;
+    if (key === 'combatAbility' || key === 'supportAbility' || key === 'otherAbility') continue;
+    card[key] = val;
+  }
+  return card;
+}
+
 export class GameRoom {
   constructor(state, env) {
     this.state = state;
@@ -748,16 +770,17 @@ export class GameRoom {
     
     try {
       const stored = await this.state.storage.get([
-        'gameState', 'matchStarted', 'matchEnded', 'sequence', 'playerSlots'
+        'gameStateJson', 'matchStarted', 'matchEnded', 'sequence', 'playerSlots'
       ]);
       
       if (stored && stored.get) {
-        if (stored.get('gameState') && !this.gameContext) {
-          // Restore game context with saved state
+        // Restore game state from JSON string
+        const gsJson = stored.get('gameStateJson');
+        if (gsJson && !this.gameContext) {
           try {
             this.gameContext = CryptidShared.createGameContext({ debug: false });
-            this.gameContext.importState(stored.get('gameState'));
-            console.log('[GameRoom] Restored gameState from storage');
+            this.gameContext.importState(JSON.parse(gsJson));
+            console.log('[GameRoom] Restored gameState from storage, JSON size:', gsJson.length);
           } catch (importError) {
             console.error('[GameRoom] Error importing game state:', importError);
             this.gameContext = null;
@@ -782,6 +805,7 @@ export class GameRoom {
       }
       
       // Restore WebSocket connections from hibernated state
+      const activeWsRoles = new Set();
       try {
         const webSockets = this.state.getWebSockets();
         for (const ws of webSockets) {
@@ -794,6 +818,7 @@ export class GameRoom {
                 connected: true,
                 deckSelected: attachment.deckSelected || slotData?.deckSelected || false
               });
+              activeWsRoles.add(attachment.role);
               if (this.playerSlots[attachment.role]) {
                 this.playerSlots[attachment.role].connected = true;
               }
@@ -804,6 +829,16 @@ export class GameRoom {
         }
       } catch (wsError) {
         console.log('[GameRoom] No hibernated WebSockets');
+      }
+      
+      // CRITICAL: Fix stale 'connected' flags for slots that have no active WebSocket.
+      // After a DO crash/restart, storage may show slots as 'connected' but the actual
+      // WebSockets are gone. Without this fix, reconnecting players get "Room is full".
+      for (const slotRole of ['player1', 'player2']) {
+        if (this.playerSlots[slotRole] && this.playerSlots[slotRole].connected && !activeWsRoles.has(slotRole)) {
+          console.log(`[GameRoom] Fixing stale connected flag for ${slotRole}`);
+          this.playerSlots[slotRole].connected = false;
+        }
       }
       
     } catch (error) {
@@ -824,18 +859,21 @@ export class GameRoom {
         }
       }
       
-      // Export game state (if game is running)
-      let gameState = null;
+      // Export game state as JSON STRING to avoid structured clone issues
+      // and to stay well under the 128KB per-value DO storage limit
+      let gameStateJson = null;
       if (this.gameContext) {
         try {
-          gameState = this.gameContext.exportState();
+          const exported = this.gameContext.exportState();
+          gameStateJson = JSON.stringify(exported);
+          console.log('[GameRoom] State exported, size:', gameStateJson.length, 'bytes');
         } catch (exportError) {
           console.error('[GameRoom] Error exporting state:', exportError);
         }
       }
       
       await this.state.storage.put({
-        gameState,
+        gameStateJson,  // Stored as string - avoids structured clone limits
         matchStarted: this.matchStarted,
         matchEnded: this.matchEnded,
         sequence: this.sequence,
@@ -847,11 +885,16 @@ export class GameRoom {
   }
   
   async fetch(request) {
-    await this.loadStateFromStorage();
+    try {
+      await this.loadStateFromStorage();
+    } catch (e) {
+      console.error('[GameRoom] loadStateFromStorage failed in fetch:', e);
+    }
     
     try {
       const url = new URL(request.url);
       const matchId = url.pathname.split('/')[2];
+      console.log('[GameRoom] fetch:', matchId, 'isLobby:', matchId?.startsWith('QUEUE_'));
       
       if (matchId && matchId.startsWith('QUEUE_')) {
         this.isLobby = true;
@@ -938,10 +981,10 @@ export class GameRoom {
       if (!role) {
         if (!this.playerSlots.player1) {
           role = 'player1';
-          this.playerSlots.player1 = { connected: true, deckSelected: false, deckData: null, joinedAt: Date.now() };
+          this.playerSlots.player1 = { connected: true, deckSelected: false, joinedAt: Date.now() };
         } else if (!this.playerSlots.player2) {
           role = 'player2';
-          this.playerSlots.player2 = { connected: true, deckSelected: false, deckData: null, joinedAt: Date.now() };
+          this.playerSlots.player2 = { connected: true, deckSelected: false, joinedAt: Date.now() };
         } else if (!this.playerSlots.player1.connected) {
           role = 'player1';
           isReconnect = true;
@@ -967,8 +1010,7 @@ export class GameRoom {
       this.players.set(server, {
         role,
         connected: true,
-        deckSelected: this.playerSlots[role]?.deckSelected || false,
-        deckData: this.playerSlots[role]?.deckData || null
+        deckSelected: this.playerSlots[role]?.deckSelected || false
       });
       
       await this.saveStateToStorage();
@@ -1077,14 +1119,17 @@ export class GameRoom {
   
   async startMatchWithDecks() {
     const connectedPlayers = [...this.players.values()].filter(p => p.connected);
+    console.log('[GameRoom] startMatchWithDecks called, connected:', connectedPlayers.length);
     if (connectedPlayers.length < 2) return;
     
     this.matchStarted = true;
     
     try {
       // Create game context using shared modules
+      console.log('[GameRoom] Creating game context...');
       this.gameContext = CryptidShared.createGameContext({ debug: false });
       const gs = this.gameContext.gameState.state;
+      console.log('[GameRoom] Game context created successfully');
       
       // Randomly determine first player
       const firstPlayer = Math.random() < 0.5 ? 'player' : 'enemy';
@@ -1097,6 +1142,8 @@ export class GameRoom {
         const role = player.role === 'player1' ? 'player' : 'enemy';
         const deckData = player.deckData || {};
         
+        // Filter deck cards - keep full data in memory for wire protocol (effects, etc.)
+        // The serializeCard function in exportState() handles stripping for storage
         const mainCards = (deckData.cards || []).filter(c => !c.isKindling && c.type !== 'kindling');
         const kindlingCards = (deckData.kindling || []).map(k => ({ ...k, isKindling: true }));
         
@@ -1134,8 +1181,9 @@ export class GameRoom {
       
       // Save state BEFORE sending messages to clients
       // This ensures state persists even if DO hibernates after sending
+      console.log('[GameRoom] Saving state to storage...');
       await this.saveStateToStorage();
-      console.log('[GameRoom] State saved successfully');
+      console.log('[GameRoom] State saved successfully. Sending game start to players...');
       
       // Send game start to both players
       for (const [ws, player] of this.players) {
@@ -1180,8 +1228,14 @@ export class GameRoom {
   }
   
   // Handle WebSocket messages
+  // CRITICAL: Top-level try/catch to prevent unhandled errors from crashing the DO
   async webSocketMessage(ws, message) {
-    await this.loadStateFromStorage();
+    try {
+      await this.loadStateFromStorage();
+    } catch (loadError) {
+      console.error('[GameRoom] FATAL: loadStateFromStorage failed:', loadError);
+      // Don't crash - continue with whatever state we have
+    }
     
     if (this.isLobby) {
       try {
@@ -1196,16 +1250,22 @@ export class GameRoom {
     }
     
     const player = this.players.get(ws);
-    if (!player) return;
+    if (!player) {
+      console.warn('[GameRoom] Message from unknown WebSocket, players count:', this.players.size);
+      return;
+    }
     
     let data;
     try {
       data = JSON.parse(message);
     } catch (e) {
+      console.error('[GameRoom] Failed to parse message');
       return;
     }
     
     try {
+      console.log('[GameRoom] Processing:', data.type, 'from', player.role);
+      
       switch (data.type) {
         case 'DECK_SELECTED':
           if (!this.matchStarted) {
@@ -1232,15 +1292,28 @@ export class GameRoom {
         case 'KEEPALIVE':
           ws.send(JSON.stringify({ type: 'KEEPALIVE_ACK' }));
           break;
+          
+        default:
+          console.log('[GameRoom] Unknown message type:', data.type);
       }
     } catch (error) {
-      console.error('[GameRoom] Error handling message:', error);
-      ws.send(JSON.stringify({ type: 'ERROR', message: error.message }));
+      console.error('[GameRoom] Error handling message:', data?.type, error);
+      try {
+        ws.send(JSON.stringify({ type: 'ERROR', message: error.message }));
+      } catch (sendError) {
+        console.error('[GameRoom] Failed to send error to client');
+      }
     }
   }
   
   async webSocketClose(ws, code, reason) {
-    await this.loadStateFromStorage();
+    console.log('[GameRoom] WebSocket closed:', code, reason);
+    
+    try {
+      await this.loadStateFromStorage();
+    } catch (e) {
+      console.error('[GameRoom] loadStateFromStorage failed in webSocketClose:', e);
+    }
     
     if (this.isLobby) {
       this.removeFromQueue(ws);
@@ -1249,10 +1322,16 @@ export class GameRoom {
     
     const player = this.players.get(ws);
     if (player) {
+      console.log('[GameRoom] Player disconnected:', player.role);
+      
       if (this.playerSlots[player.role]) {
         this.playerSlots[player.role].connected = false;
         this.playerSlots[player.role].disconnectedAt = Date.now();
-        await this.saveStateToStorage();
+        try {
+          await this.saveStateToStorage();
+        } catch (e) {
+          console.error('[GameRoom] Failed to save disconnect state:', e);
+        }
       }
       
       this.players.delete(ws);
@@ -1260,9 +1339,13 @@ export class GameRoom {
       
       const disconnectedRole = player.role;
       setTimeout(async () => {
-        await this.loadStateFromStorage();
-        if (this.playerSlots?.[disconnectedRole] && !this.playerSlots[disconnectedRole].connected) {
-          this.handleForfeit(disconnectedRole);
+        try {
+          await this.loadStateFromStorage();
+          if (this.playerSlots?.[disconnectedRole] && !this.playerSlots[disconnectedRole].connected) {
+            this.handleForfeit(disconnectedRole);
+          }
+        } catch (e) {
+          console.error('[GameRoom] Error in forfeit timeout:', e);
         }
       }, 60000);
     }
