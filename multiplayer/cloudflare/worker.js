@@ -1013,7 +1013,8 @@ export class GameRoom {
         deckSelected: this.playerSlots[role]?.deckSelected || false
       });
       
-      await this.saveStateToStorage();
+      // Non-blocking save - don't let storage issues block the WebSocket setup
+      this.saveStateToStorage().catch(e => console.error('[GameRoom] Save error on connect:', e));
       
       const yourRole = role === 'player1' ? 'player' : 'enemy';
       
@@ -1179,13 +1180,8 @@ export class GameRoom {
         delete player.deckData;
       }
       
-      // Save state BEFORE sending messages to clients
-      // This ensures state persists even if DO hibernates after sending
-      console.log('[GameRoom] Saving state to storage...');
-      await this.saveStateToStorage();
-      console.log('[GameRoom] State saved successfully. Sending game start to players...');
-      
-      // Send game start to both players
+      // Send game start to both players FIRST - don't let storage block the game
+      console.log('[GameRoom] Sending game start to players...');
       for (const [ws, player] of this.players) {
         const yourRole = player.role === 'player1' ? 'player' : 'enemy';
         const isYourTurn = firstPlayer === yourRole;
@@ -1197,13 +1193,30 @@ export class GameRoom {
             firstPlayer,
             isYourTurn,
             initialState: this.getStateForPlayer(yourRole),
-            message: 'Both players ready! Starting game...'
+            message: 'Both players ready! Starting game...',
+            serverVersion: 'v3.1-diag'  // Verify deployment reached client
           }));
           console.log('[GameRoom] Sent game start to', player.role, '(', yourRole, ')');
         } catch (e) {
           console.error('[GameRoom] Failed to send game start:', e);
         }
       }
+      
+      // Send server heartbeat after 2 seconds to verify connection is still alive
+      setTimeout(() => {
+        for (const [ws, player] of this.players) {
+          try {
+            ws.send(JSON.stringify({ type: 'SERVER_HEARTBEAT', time: Date.now() }));
+            console.log('[GameRoom] Heartbeat sent to', player.role);
+          } catch (e) {
+            console.error('[GameRoom] Heartbeat FAILED for', player.role, ':', e.message);
+          }
+        }
+      }, 2000);
+      
+      // Save state in background - DON'T block on this
+      // If storage.put() is what's crashing the DO, this prevents it from killing connections
+      this.saveStateToStorage().catch(e => console.error('[GameRoom] Background save failed:', e));
       
       this.startTurnTimer();
       console.log('[GameRoom] Match started successfully');
@@ -1399,7 +1412,7 @@ export class GameRoom {
     });
     
     this.broadcastActionResult(action.actionId, playerRole, result.events);
-    await this.saveStateToStorage();
+    this.saveStateToStorage().catch(e => console.error('[GameRoom] Save error after action:', e));
     this.checkGameOver();
     
     if (this.requiresTurn(action.actionType)) {
@@ -2066,7 +2079,14 @@ export class GameRoom {
   
   startTurnTimer() {
     this.clearTurnTimer();
-    this.turnTimerTimeout = setTimeout(() => this.handleTurnTimeout(), this.turnTimeLimit);
+    // Use DO alarm instead of setTimeout - works correctly with WebSocket Hibernation
+    try {
+      this.state.storage.setAlarm(Date.now() + this.turnTimeLimit);
+      console.log('[GameRoom] Turn timer set via alarm for', this.turnTimeLimit, 'ms');
+    } catch (e) {
+      console.error('[GameRoom] Failed to set alarm, falling back to setTimeout:', e);
+      this.turnTimerTimeout = setTimeout(() => this.handleTurnTimeout(), this.turnTimeLimit);
+    }
   }
   
   resetTurnTimer() {
@@ -2074,9 +2094,24 @@ export class GameRoom {
   }
   
   clearTurnTimer() {
+    // Clear both alarm and timeout
+    try {
+      this.state.storage.deleteAlarm();
+    } catch (e) {}
     if (this.turnTimerTimeout) {
       clearTimeout(this.turnTimerTimeout);
       this.turnTimerTimeout = null;
+    }
+  }
+  
+  // DO alarm handler - called when the turn timer fires
+  async alarm() {
+    console.log('[GameRoom] Alarm fired - checking turn timeout');
+    try {
+      await this.loadStateFromStorage();
+      this.handleTurnTimeout();
+    } catch (e) {
+      console.error('[GameRoom] Error in alarm handler:', e);
     }
   }
   

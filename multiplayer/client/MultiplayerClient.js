@@ -280,6 +280,10 @@ class MultiplayerClient {
                 // Server acknowledged keepalive, connection is healthy
                 break;
                 
+            case 'SERVER_HEARTBEAT':
+                console.log('[MP Client] ✓ Server heartbeat received - connection alive at', new Date(message.time).toLocaleTimeString());
+                break;
+                
             case 'ERROR':
                 this.handleError(message);
                 break;
@@ -412,6 +416,11 @@ class MultiplayerClient {
     
     handleBothDecksSelected(message) {
         console.log('[MP Client] Both decks selected, starting game!', message);
+        if (message.serverVersion) {
+            console.log('[MP Client] Server version:', message.serverVersion);
+        } else {
+            console.warn('[MP Client] ⚠️ No serverVersion in message - OLD worker may be deployed!');
+        }
         this.onMultiplayerGameStart?.(message);
     }
     
