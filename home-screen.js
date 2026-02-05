@@ -956,11 +956,73 @@ window.HomeScreen = {
         const yourStatus = document.getElementById('mp-your-deck-status');
         if (yourStatus) yourStatus.style.display = 'flex';
         
-        // Send deck selection to server
-        MultiplayerManager.sendDeckSelected({
+        // Send deck selection to server - include full card data
+        // The server needs the actual cards to build the game state
+        const deckData = {
             deckName: deck.name,
-            cardCount: deck.cards.length
+            cardCount: deck.cards.length,
+            // Send the actual card data for server to build decks
+            cards: deck.cards.map(card => ({
+                id: card.id || `${card.key || card.name}_${Math.random().toString(36).substr(2, 9)}`,
+                key: card.key,
+                name: card.name,
+                type: card.type || 'cryptid',
+                cost: card.cost || 0,
+                hp: card.hp || 1,
+                atk: card.atk || card.attack || 0,
+                attack: card.atk || card.attack || 0,
+                element: card.element,
+                rarity: card.rarity,
+                abilities: card.abilities || [],
+                effects: card.effects || [],
+                art: card.art
+            })),
+            // Also send kindling - get from the deck's kindling or build default
+            kindling: (deck.kindling || this.getDefaultKindling()).map(k => ({
+                id: k.id || `kindling_${Math.random().toString(36).substr(2, 9)}`,
+                key: k.key,
+                name: k.name || 'Kindling',
+                type: 'kindling',
+                hp: k.hp || 1,
+                atk: k.atk || k.attack || 1,
+                attack: k.atk || k.attack || 1,
+                isKindling: true
+            }))
+        };
+        
+        console.log('[Multiplayer] Sending deck with', deckData.cards.length, 'cards and', deckData.kindling.length, 'kindling');
+        MultiplayerManager.sendDeckSelected(deckData);
+    },
+    
+    getDefaultKindling() {
+        // Build a default kindling pool if deck doesn't have one
+        const kindlingTypes = [];
+        
+        // Try to get kindling from card sources
+        if (typeof CityOfFleshCards !== 'undefined' && CityOfFleshCards.kindling) {
+            kindlingTypes.push(...CityOfFleshCards.kindling);
+        }
+        if (typeof ForestsOfFearCards !== 'undefined' && ForestsOfFearCards.kindling) {
+            kindlingTypes.push(...ForestsOfFearCards.kindling);
+        }
+        if (typeof PutridSwampCards !== 'undefined' && PutridSwampCards.kindling) {
+            kindlingTypes.push(...PutridSwampCards.kindling);
+        }
+        
+        // Build pool with 2 of each type
+        const pool = [];
+        kindlingTypes.forEach(k => {
+            for (let i = 0; i < 2; i++) {
+                pool.push({
+                    ...k,
+                    id: `kindling_${k.key || k.name}_${i}_${Date.now()}`
+                });
+            }
         });
+        
+        return pool.length > 0 ? pool : [
+            { name: 'Basic Kindling', hp: 1, atk: 1, type: 'kindling', isKindling: true }
+        ];
     },
     
     updateWaitingStatus(text) {

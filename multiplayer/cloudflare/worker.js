@@ -147,15 +147,22 @@ export class GameRoom {
     this.state = state;
     this.env = env;
     
-    // Connected players
+    // Connected players - will be restored from WebSockets on wake
     this.players = new Map(); // WebSocket -> { role: 'player1'|'player2', info: {...} }
     
-    // Game state
+    // Player slots - persisted to storage, survives WebSocket close
+    // This tracks which roles are filled and their state, independent of WebSocket lifecycle
+    this.playerSlots = {
+      player1: null, // { connected: bool, deckSelected: bool, deckData: obj, joinedAt: timestamp }
+      player2: null
+    };
+    
+    // Game state - persisted to storage
     this.gameState = null;
     this.sequence = 0;
     this.actionHistory = [];
     
-    // Match state
+    // Match state - persisted to storage
     this.matchStarted = false;
     this.matchEnded = false;
     
@@ -166,21 +173,127 @@ export class GameRoom {
     // Matchmaking lobby mode
     this.isLobby = false;
     this.matchmakingQueue = []; // Array of { ws, joinedAt }
+    
+    // Note: blockConcurrencyWhile doesn't work in constructor
+    // State will be loaded lazily when needed
+  }
+  
+  // Load persisted state from storage (called on wake from hibernation)
+  async loadStateFromStorage() {
+    // Only load once
+    if (this._stateLoaded) return;
+    this._stateLoaded = true;
+    
+    try {
+      const stored = await this.state.storage.get([
+        'gameState', 'matchStarted', 'matchEnded', 'sequence',
+        'playerSlots' // Store player slot info separately
+      ]);
+      
+      if (stored && stored.get) {
+        if (stored.get('gameState')) {
+          this.gameState = stored.get('gameState');
+          console.log('[GameRoom] Restored gameState from storage');
+        }
+        if (stored.get('matchStarted') !== undefined) {
+          this.matchStarted = stored.get('matchStarted');
+        }
+        if (stored.get('matchEnded') !== undefined) {
+          this.matchEnded = stored.get('matchEnded');
+        }
+        if (stored.get('sequence') !== undefined) {
+          this.sequence = stored.get('sequence');
+        }
+        // Restore player slots info
+        if (stored.get('playerSlots')) {
+          this.playerSlots = stored.get('playerSlots');
+          console.log('[GameRoom] Restored playerSlots:', this.playerSlots);
+        }
+      }
+      
+      // Initialize playerSlots if not present
+      if (!this.playerSlots) {
+        this.playerSlots = {
+          player1: null, // { connected: bool, deckSelected: bool, deckData: obj }
+          player2: null
+        };
+      }
+      
+      // Restore player connections from hibernated WebSockets
+      try {
+        const webSockets = this.state.getWebSockets();
+        
+        for (const ws of webSockets) {
+          try {
+            // Get attachment data set when WebSocket was accepted
+            const attachment = ws.deserializeAttachment();
+            if (attachment && attachment.role) {
+              this.players.set(ws, {
+                role: attachment.role,
+                connected: true,
+                deckSelected: attachment.deckSelected || false,
+                deckData: attachment.deckData || null
+              });
+              
+              // Update playerSlots to mark this player as connected
+              if (this.playerSlots[attachment.role]) {
+                this.playerSlots[attachment.role].connected = true;
+              }
+              
+              console.log(`[GameRoom] Restored player ${attachment.role} from hibernation`);
+            }
+          } catch (wsError) {
+            console.error('[GameRoom] Error restoring WebSocket:', wsError);
+          }
+        }
+      } catch (wsError) {
+        console.log('[GameRoom] No hibernated WebSockets to restore');
+      }
+      
+      console.log(`[GameRoom] State loaded. Players: ${this.players.size}, Match started: ${this.matchStarted}`);
+    } catch (error) {
+      console.error('[GameRoom] Error loading state from storage:', error);
+    }
+  }
+  
+  // Save state to storage (call after important changes)
+  async saveStateToStorage() {
+    try {
+      await this.state.storage.put({
+        gameState: this.gameState,
+        matchStarted: this.matchStarted,
+        matchEnded: this.matchEnded,
+        sequence: this.sequence,
+        playerSlots: this.playerSlots
+      });
+    } catch (error) {
+      console.error('[GameRoom] Error saving state to storage:', error);
+    }
   }
   
   // Handle incoming WebSocket connections
   async fetch(request) {
-    const url = new URL(request.url);
-    const matchId = url.pathname.split('/')[2];
+    // Load state from storage if waking from hibernation
+    await this.loadStateFromStorage();
     
-    // Check if this is the matchmaking lobby
-    if (matchId && matchId.startsWith('QUEUE_')) {
-      this.isLobby = true;
-      return this.handleLobbyConnection(request);
+    try {
+      const url = new URL(request.url);
+      const matchId = url.pathname.split('/')[2];
+      
+      console.log(`[GameRoom] Fetch received for matchId: ${matchId}`);
+      
+      // Check if this is the matchmaking lobby
+      if (matchId && matchId.startsWith('QUEUE_')) {
+        this.isLobby = true;
+        return this.handleLobbyConnection(request);
+      }
+      
+      // Regular game room handling
+      return this.handleGameRoomConnection(request);
+    } catch (error) {
+      console.error('[GameRoom] Error in fetch handler:', error);
+      return new Response(`Server error: ${error.message}`, { status: 500 });
     }
-    
-    // Regular game room handling
-    return this.handleGameRoomConnection(request);
   }
   
   // Handle matchmaking lobby connections
@@ -325,106 +438,196 @@ export class GameRoom {
   
   // Handle regular game room connections
   async handleGameRoomConnection(request) {
-    const webSocketPair = new WebSocketPair();
-    const [client, server] = Object.values(webSocketPair);
-    
-    // Accept the WebSocket
-    this.state.acceptWebSocket(server);
-    
-    // Check for reconnecting players first
-    let reconnectedPlayer = null;
-    for (const [oldWs, player] of this.players) {
-      if (!player.connected) {
-        // This player was disconnected - this could be them reconnecting
-        reconnectedPlayer = { oldWs, player };
-        break;
+    try {
+      const webSocketPair = new WebSocketPair();
+      const [client, server] = Object.values(webSocketPair);
+      
+      console.log(`[GameRoom] Creating WebSocket pair for game room`);
+      
+      // Initialize playerSlots if not present
+      if (!this.playerSlots) {
+        this.playerSlots = {
+          player1: null,
+          player2: null
+        };
       }
-    }
-    
-    let role;
-    let isReconnect = false;
-    
-    if (reconnectedPlayer) {
-      // Handle reconnection
-      role = reconnectedPlayer.player.role;
-      isReconnect = true;
       
-      // Remove old websocket entry
-      this.players.delete(reconnectedPlayer.oldWs);
+      // Check for reconnecting players using playerSlots (persisted state)
+      // This survives WebSocket close and DO hibernation
+      let disconnectedRole = null;
+      for (const role of ['player1', 'player2']) {
+        const slot = this.playerSlots[role];
+        if (slot && !slot.connected) {
+          disconnectedRole = role;
+          console.log(`[GameRoom] Found disconnected player slot: ${role}`);
+          break;
+        }
+      }
       
-      // Restore player with new websocket
-      this.players.set(server, {
-        ...reconnectedPlayer.player,
-        connected: true,
-        reconnectedAt: Date.now()
-      });
+      let role;
+      let isReconnect = false;
+      let playerData;
       
-      console.log(`[GameRoom] Player ${role} reconnected`);
-    } else {
-      // New connection - determine player role
-      const connectedCount = [...this.players.values()].filter(p => p.connected).length;
-      
-      if (connectedCount === 0) {
-        role = 'player1';
-      } else if (connectedCount === 1) {
-        role = 'player2';
+      if (disconnectedRole) {
+        // Handle reconnection - player is rejoining their slot
+        role = disconnectedRole;
+        isReconnect = true;
+        
+        const slotData = this.playerSlots[role];
+        playerData = {
+          role,
+          connected: true,
+          reconnectedAt: Date.now(),
+          deckSelected: slotData.deckSelected || false,
+          deckData: slotData.deckData || null
+        };
+        
+        // Update the slot to show connected
+        this.playerSlots[role].connected = true;
+        this.playerSlots[role].reconnectedAt = Date.now();
+        
+        console.log(`[GameRoom] Player ${role} reconnected`);
       } else {
-        // Room is full - reject
-        server.close(4000, 'Room is full');
-        return new Response(null, { status: 400 });
+        // New connection - determine player role from playerSlots
+        // Count how many slots are filled
+        const player1Filled = this.playerSlots.player1 !== null;
+        const player2Filled = this.playerSlots.player2 !== null;
+        
+        console.log(`[GameRoom] New connection. Slots: player1=${player1Filled}, player2=${player2Filled}`);
+        
+        if (!player1Filled) {
+          role = 'player1';
+        } else if (!player2Filled) {
+          role = 'player2';
+        } else {
+          // Both slots filled and no disconnected players - room is full
+          console.log(`[GameRoom] Room is full, rejecting connection`);
+          this.state.acceptWebSocket(server);
+          server.close(4000, 'Room is full');
+          return new Response(null, {
+            status: 101,
+            webSocket: client,
+          });
+        }
+        
+        playerData = {
+          role,
+          connected: true,
+          joinedAt: Date.now(),
+          deckSelected: false,
+          deckData: null
+        };
+        
+        // Fill the slot
+        this.playerSlots[role] = {
+          connected: true,
+          joinedAt: Date.now(),
+          deckSelected: false,
+          deckData: null
+        };
+        
+        console.log(`[GameRoom] Player joined as ${role}`);
       }
       
-      // Store player info
-      this.players.set(server, {
-        role,
-        connected: true,
-        joinedAt: Date.now(),
-        deckSelected: false,
-        deckData: null
+      // Save the updated playerSlots to storage
+      await this.saveStateToStorage();
+      
+      // Accept the WebSocket with attachment for hibernation recovery
+      server.serializeAttachment({
+        role: role,
+        deckSelected: playerData.deckSelected,
+        deckData: playerData.deckData
       });
+      this.state.acceptWebSocket(server);
       
-      console.log(`[GameRoom] Player joined as ${role}, total players: ${this.players.size}`);
-    }
-    
-    const yourRole = role === 'player1' ? 'player' : 'enemy';
-    
-    // If match already started and this is a reconnect, send game state
-    if (this.matchStarted && isReconnect && this.gameState) {
-      console.log(`[GameRoom] Sending reconnect state to ${role}`);
-      server.send(JSON.stringify({
-        type: 'RECONNECTED',
-        yourRole: yourRole,
-        gameState: this.getStateForPlayer(yourRole),
-        matchStarted: true,
-        isYourTurn: this.gameState.currentTurn === yourRole
-      }));
+      // Store player info in memory
+      this.players.set(server, playerData);
+      console.log(`[GameRoom] Total players: ${this.players.size}`);
       
-      // Notify opponent of reconnection
-      this.broadcastToOthers(server, {
-        type: 'OPPONENT_RECONNECTED'
-      });
-    } else {
-      // Send welcome message for new connection
-      server.send(JSON.stringify({
-        type: 'MATCH_JOINED',
-        yourRole: yourRole,
-        playersConnected: this.players.size,
-        waitingForOpponent: this.players.size < 2,
-        matchStarted: this.matchStarted
-      }));
+      const yourRole = role === 'player1' ? 'player' : 'enemy';
       
-      // If both players are now connected, notify them (but don't start the game yet - wait for deck selection)
-      const connectedPlayers = [...this.players.values()].filter(p => p.connected).length;
-      if (connectedPlayers === 2 && !this.matchStarted) {
-        console.log('[GameRoom] Both players connected, notifying...');
-        this.notifyBothPlayersConnected();
+      // Send initial message
+      try {
+        // If match already started and this is a reconnect, send game state
+        if (this.matchStarted && isReconnect && this.gameState) {
+          console.log(`[GameRoom] Sending reconnect state to ${role}`);
+          server.send(JSON.stringify({
+            type: 'RECONNECTED',
+            yourRole: yourRole,
+            gameState: this.getStateForPlayer(yourRole),
+            matchStarted: true,
+            isYourTurn: this.gameState.currentTurn === yourRole
+          }));
+          
+          // Notify opponent of reconnection
+          this.broadcastToOthers(server, {
+            type: 'OPPONENT_RECONNECTED'
+          });
+        } else if (isReconnect && !this.matchStarted) {
+          // Reconnecting during deck selection phase
+          console.log(`[GameRoom] Player ${role} reconnecting during deck selection`);
+          
+          // Check if this player had already selected a deck before disconnecting
+          const hadDeckSelected = this.playerSlots[role]?.deckSelected || false;
+          
+          server.send(JSON.stringify({
+            type: 'RECONNECTED',
+            yourRole: yourRole,
+            matchStarted: false,
+            deckSelected: hadDeckSelected,
+            message: hadDeckSelected ? 'Reconnected! Waiting for opponent.' : 'Reconnected! Please select your deck.'
+          }));
+          
+          // Notify opponent of reconnection
+          this.broadcastToOthers(server, {
+            type: 'OPPONENT_RECONNECTED'
+          });
+          
+          // Check if both players are now connected again
+          const bothConnected = this.playerSlots.player1?.connected && this.playerSlots.player2?.connected;
+          if (bothConnected) {
+            console.log('[GameRoom] Both players reconnected during deck selection');
+            
+            // Check if both players had already selected decks - if so, start the match
+            const bothHaveDecks = this.playerSlots.player1?.deckSelected && this.playerSlots.player2?.deckSelected;
+            if (bothHaveDecks) {
+              console.log('[GameRoom] Both players already have decks, starting match!');
+              this.startMatchWithDecks();
+            } else {
+              this.notifyBothPlayersConnected();
+            }
+          }
+        } else {
+          // Send welcome message for new connection
+          server.send(JSON.stringify({
+            type: 'MATCH_JOINED',
+            yourRole: yourRole,
+            playersConnected: this.players.size,
+            waitingForOpponent: this.players.size < 2,
+            matchStarted: this.matchStarted
+          }));
+          
+          // If both players are now connected, notify them (but don't start the game yet - wait for deck selection)
+          const bothConnected = this.playerSlots.player1?.connected && this.playerSlots.player2?.connected;
+          if (bothConnected && !this.matchStarted) {
+            console.log('[GameRoom] Both players connected, notifying...');
+            this.notifyBothPlayersConnected();
+          }
+        }
+      } catch (sendError) {
+        console.error('[GameRoom] Error sending initial message:', sendError);
       }
+      
+      console.log(`[GameRoom] Returning WebSocket response`);
+      return new Response(null, {
+        status: 101,
+        webSocket: client,
+      });
+      
+    } catch (error) {
+      console.error('[GameRoom] Error in handleGameRoomConnection:', error);
+      return new Response(`Error: ${error.message}`, { status: 500 });
     }
-    
-    return new Response(null, {
-      status: 101,
-      webSocket: client,
-    });
   }
   
   notifyBothPlayersConnected() {
@@ -448,6 +651,20 @@ export class GameRoom {
     player.deckSelected = true;
     player.deckData = deckData;
     
+    // Update WebSocket attachment for hibernation recovery
+    ws.serializeAttachment({
+      role: player.role,
+      deckSelected: true,
+      deckData: deckData
+    });
+    
+    // Also update playerSlots (persisted state)
+    if (this.playerSlots && this.playerSlots[player.role]) {
+      this.playerSlots[player.role].deckSelected = true;
+      this.playerSlots[player.role].deckData = deckData;
+      this.saveStateToStorage(); // Persist the change
+    }
+    
     // Notify opponent that this player is ready
     for (const [otherWs, otherPlayer] of this.players) {
       if (otherWs !== ws) {
@@ -462,16 +679,30 @@ export class GameRoom {
       }
     }
     
-    // Check if both players have selected decks
-    const allReady = [...this.players.values()].every(p => p.deckSelected);
+    // Check if both players have selected decks AND are connected
+    let allReady = false;
+    if (this.playerSlots) {
+      const p1Ready = this.playerSlots.player1?.deckSelected && this.playerSlots.player1?.connected;
+      const p2Ready = this.playerSlots.player2?.deckSelected && this.playerSlots.player2?.connected;
+      allReady = p1Ready && p2Ready;
+    } else {
+      allReady = [...this.players.values()].every(p => p.deckSelected && p.connected);
+    }
     
     if (allReady && !this.matchStarted) {
-      console.log('[GameRoom] Both players have selected decks, starting match!');
+      console.log('[GameRoom] Both players have selected decks and are connected, starting match!');
       this.startMatchWithDecks();
     }
   }
   
   startMatchWithDecks() {
+    // Safety check - ensure both players are connected
+    const connectedPlayers = [...this.players.values()].filter(p => p.connected);
+    if (connectedPlayers.length < 2) {
+      console.log('[GameRoom] Cannot start match - not all players connected');
+      return;
+    }
+    
     this.matchStarted = true;
     
     // Randomly determine who goes first
@@ -529,6 +760,9 @@ export class GameRoom {
       }
     }
     
+    // Save state to storage for hibernation recovery
+    this.saveStateToStorage();
+    
     // Start turn timer for first player
     this.startTurnTimer();
   }
@@ -544,6 +778,9 @@ export class GameRoom {
   
   // Handle WebSocket messages
   async webSocketMessage(ws, message) {
+    // Load state from storage if waking from hibernation
+    await this.loadStateFromStorage();
+    
     // Handle lobby mode messages
     if (this.isLobby) {
       try {
@@ -624,6 +861,9 @@ export class GameRoom {
   
   // Handle WebSocket close
   async webSocketClose(ws, code, reason) {
+    // Load state from storage if waking from hibernation
+    await this.loadStateFromStorage();
+    
     // Handle lobby mode disconnections
     if (this.isLobby) {
       this.removeFromQueue(ws);
@@ -635,9 +875,17 @@ export class GameRoom {
     if (player) {
       console.log(`Player ${player.role} disconnected: ${code} ${reason}`);
       
-      // Mark as disconnected but don't remove yet (allow reconnect)
-      player.connected = false;
-      player.disconnectedAt = Date.now();
+      // Mark as disconnected in playerSlots (persisted)
+      if (this.playerSlots && this.playerSlots[player.role]) {
+        this.playerSlots[player.role].connected = false;
+        this.playerSlots[player.role].disconnectedAt = Date.now();
+        // Save to storage so reconnection can find this player
+        await this.saveStateToStorage();
+        console.log(`[GameRoom] Saved disconnected state for ${player.role}`);
+      }
+      
+      // Remove from the WebSocket-based players map
+      this.players.delete(ws);
       
       // Notify other player
       this.broadcastToOthers(ws, {
@@ -646,9 +894,14 @@ export class GameRoom {
       });
       
       // Set timeout to forfeit if no reconnect
-      setTimeout(() => {
-        if (!player.connected) {
-          this.handleForfeit(player.role);
+      // Note: This won't survive hibernation, but the client can also timeout
+      const disconnectedRole = player.role;
+      setTimeout(async () => {
+        await this.loadStateFromStorage();
+        // Check if player is still disconnected using playerSlots
+        if (this.playerSlots && this.playerSlots[disconnectedRole] && 
+            !this.playerSlots[disconnectedRole].connected) {
+          this.handleForfeit(disconnectedRole);
         }
       }, 60000);
     }
@@ -802,6 +1055,9 @@ export class GameRoom {
     
     // Broadcast results to both players
     this.broadcastActionResult(action.actionId, playerRole, result.events);
+    
+    // Save state after action
+    this.saveStateToStorage();
     
     // Check for game over
     this.checkGameOver();

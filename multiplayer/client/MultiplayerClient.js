@@ -522,9 +522,31 @@ class MultiplayerClient {
         // Update role from server
         if (message.yourRole) {
             window.multiplayerRole = message.yourRole;
+            this.playerRole = message.yourRole;
         }
         
-        // Apply game state from server
+        // Handle reconnect during deck selection (matchStarted = false)
+        if (message.matchStarted === false) {
+            console.log('[MP Client] Reconnected during deck selection');
+            
+            this.hideReconnectingUI();
+            
+            // If deck was already selected before disconnect, just show waiting message
+            if (message.deckSelected) {
+                if (typeof showMessage === 'function') {
+                    showMessage('Reconnected! Waiting for opponent deck selection...', 3000);
+                }
+            } else {
+                // Need to select deck - trigger deck selection UI
+                if (typeof showMessage === 'function') {
+                    showMessage('Reconnected! Please select your deck.', 3000);
+                }
+                // The BOTH_PLAYERS_CONNECTED message should arrive shortly to show deck selection
+            }
+            return;
+        }
+        
+        // Apply game state from server (match is in progress)
         if (message.gameState && window.game) {
             // Use HomeScreen's applyServerState if available
             if (typeof HomeScreen !== 'undefined' && HomeScreen.applyServerState) {
