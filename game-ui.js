@@ -264,11 +264,15 @@ function initGame() {
     }
     
     // Determine who goes first based on main menu coin flip (Abyss always player first)
-    // In multiplayer, the server controls turn order via applyServerState()
+    // In multiplayer, the server controls turn order via applyServerState(), but we still need
+    // firstPlayer for the turn transition animation
+    let firstPlayer;
     if (window.isMultiplayer) {
-        console.log('[Multiplayer] Skipping local turn start - server controls turn order');
+        // In multiplayer, get firstPlayer from the server data or game.currentTurn
+        firstPlayer = game.currentTurn || 'player';
+        console.log('[Multiplayer] Skipping local turn start - server controls turn order. firstPlayer:', firstPlayer);
     } else {
-        const firstPlayer = window.isAbyssBattle ? 'player' : (window.playerGoesFirst !== false ? 'player' : 'enemy');
+        firstPlayer = window.isAbyssBattle ? 'player' : (window.playerGoesFirst !== false ? 'player' : 'enemy');
         game.startTurn(firstPlayer);
     }
     

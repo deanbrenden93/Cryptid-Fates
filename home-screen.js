@@ -1004,9 +1004,8 @@ window.HomeScreen = {
             deckName: deck.name,
             cardCount: mainDeckCards.length,
             cards: mainDeckCards,
-            // Also send kindling - preserve ALL properties including element, art, rarity
+            // Also send kindling - only include SERIALIZABLE properties (no functions!)
             kindling: this.getDefaultKindling().map(k => ({
-                ...k, // Preserve all original properties (element, art, rarity, etc.)
                 id: `kindling_${k.key || k.name}_${Math.random().toString(36).substr(2, 9)}`,
                 key: k.key,
                 name: k.name || 'Kindling',
@@ -1014,6 +1013,16 @@ window.HomeScreen = {
                 hp: k.hp || 1,
                 atk: k.atk || k.attack || 1,
                 attack: k.atk || k.attack || 1,
+                cost: k.cost || 0,
+                // Visual properties
+                element: k.element,
+                rarity: k.rarity || 'common',
+                sprite: k.sprite,
+                spriteScale: k.spriteScale,
+                art: k.art,
+                // Evolution info
+                evolvesInto: k.evolvesInto,
+                // Flags (but NOT functions!)
                 isKindling: true
             }))
         };
