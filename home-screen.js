@@ -156,6 +156,32 @@ window.HomeScreen = {
                         </div>
                     </div>
                 </div>
+                
+                <div class="qp-section">
+                    <div class="qp-section-title">👥 Multiplayer</div>
+                    <div class="qp-mode qp-mode-multiplayer" id="qp-quickmatch">
+                        <div class="qp-mode-main">
+                            <div class="qp-mode-icon">⚔️</div>
+                            <div class="qp-mode-info">
+                                <div class="qp-mode-name">Quick Match</div>
+                                <div class="qp-mode-desc">Find an opponent online</div>
+                            </div>
+                        </div>
+                        <div class="qp-mode-rewards">
+                            <span class="reward-item">🏆 Ranked</span>
+                            <span class="reward-item"><img src="sprites/embers-icon.png" class="embers-img" alt=""> Bonus Rewards</span>
+                        </div>
+                    </div>
+                    <div class="qp-mode qp-mode-private" id="qp-private">
+                        <div class="qp-mode-main">
+                            <div class="qp-mode-icon">🔗</div>
+                            <div class="qp-mode-info">
+                                <div class="qp-mode-name">Private Match</div>
+                                <div class="qp-mode-desc">Create or join with a code</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
         document.body.appendChild(modal);
@@ -368,6 +394,8 @@ window.HomeScreen = {
         document.getElementById('qp-abyss')?.addEventListener('click', () => this.startAbyss());
         document.getElementById('qp-ai')?.addEventListener('click', () => this.startAIGame());
         document.getElementById('qp-cheat')?.addEventListener('click', () => this.startCheatBattle());
+        document.getElementById('qp-quickmatch')?.addEventListener('click', () => this.startQuickMatch());
+        document.getElementById('qp-private')?.addEventListener('click', () => this.openPrivateMatch());
         
         document.getElementById('btn-settings').onclick = () => this.openSettings();
         document.getElementById('btn-help').onclick = () => this.openHelp();
@@ -510,6 +538,400 @@ window.HomeScreen = {
                 CheatMode.start();
             }
         }, 200);
+    },
+    
+    // ==================== MULTIPLAYER MATCHMAKING ====================
+    
+    matchmakingState: {
+        isSearching: false,
+        startTime: null,
+        timerInterval: null,
+        matchId: null
+    },
+    
+    startQuickMatch() {
+        console.log('[QuickPlay] Starting Quick Match...');
+        
+        // Check if multiplayer is available
+        if (typeof MultiplayerManager === 'undefined') {
+            this.showMatchmakingError('Multiplayer system not loaded. Please refresh the page.');
+            return;
+        }
+        
+        // Show matchmaking screen
+        this.showMatchmakingScreen();
+        
+        // Start searching for a match
+        this.beginMatchmaking();
+    },
+    
+    openPrivateMatch() {
+        console.log('[QuickPlay] Opening Private Match...');
+        this.showPrivateMatchScreen();
+    },
+    
+    showMatchmakingScreen() {
+        // Remove existing if present
+        document.getElementById('matchmaking-screen')?.remove();
+        
+        const screen = document.createElement('div');
+        screen.id = 'matchmaking-screen';
+        screen.className = 'matchmaking-screen';
+        screen.innerHTML = `
+            <div class="mm-backdrop"></div>
+            <div class="mm-content">
+                <div class="mm-header">
+                    <div class="mm-title">⚔️ Quick Match</div>
+                </div>
+                
+                <div class="mm-status">
+                    <div class="mm-spinner"></div>
+                    <div class="mm-status-text" id="mm-status-text">Searching for opponent...</div>
+                    <div class="mm-timer" id="mm-timer">0:00</div>
+                </div>
+                
+                <div class="mm-info">
+                    <div class="mm-info-item">
+                        <span class="mm-info-label">Players in Queue:</span>
+                        <span class="mm-info-value" id="mm-queue-count">--</span>
+                    </div>
+                </div>
+                
+                <div class="mm-actions">
+                    <button class="mm-cancel-btn" id="mm-cancel">Cancel</button>
+                </div>
+                
+                <div class="mm-tips">
+                    <div class="mm-tip">💡 Tip: Build a balanced deck with both cryptids and spells!</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(screen);
+        
+        // Bind cancel button
+        document.getElementById('mm-cancel').onclick = () => this.cancelMatchmaking();
+        
+        // Animate in
+        requestAnimationFrame(() => {
+            screen.classList.add('open');
+        });
+    },
+    
+    showPrivateMatchScreen() {
+        // Remove existing if present
+        document.getElementById('private-match-screen')?.remove();
+        
+        const screen = document.createElement('div');
+        screen.id = 'private-match-screen';
+        screen.className = 'matchmaking-screen';
+        screen.innerHTML = `
+            <div class="mm-backdrop"></div>
+            <div class="mm-content mm-content-private">
+                <div class="mm-header">
+                    <div class="mm-title">🔗 Private Match</div>
+                    <button class="mm-close-btn" id="pm-close">×</button>
+                </div>
+                
+                <div class="pm-tabs">
+                    <button class="pm-tab active" id="pm-tab-create">Create Match</button>
+                    <button class="pm-tab" id="pm-tab-join">Join Match</button>
+                </div>
+                
+                <div class="pm-panel" id="pm-panel-create">
+                    <div class="pm-desc">Create a private room and share the code with a friend.</div>
+                    <button class="pm-action-btn" id="pm-create-btn">Create Room</button>
+                    <div class="pm-code-display hidden" id="pm-code-display">
+                        <div class="pm-code-label">Room Code:</div>
+                        <div class="pm-code" id="pm-room-code">----</div>
+                        <button class="pm-copy-btn" id="pm-copy-code">📋 Copy</button>
+                    </div>
+                    <div class="pm-waiting hidden" id="pm-waiting">
+                        <div class="mm-spinner"></div>
+                        <div>Waiting for opponent...</div>
+                        <div class="mm-timer" id="pm-timer">0:00</div>
+                    </div>
+                </div>
+                
+                <div class="pm-panel hidden" id="pm-panel-join">
+                    <div class="pm-desc">Enter a room code to join your friend's game.</div>
+                    <div class="pm-input-group">
+                        <input type="text" id="pm-join-code" class="pm-code-input" placeholder="Enter code" maxlength="6">
+                        <button class="pm-action-btn" id="pm-join-btn">Join</button>
+                    </div>
+                    <div class="pm-join-status hidden" id="pm-join-status">
+                        <div class="mm-spinner"></div>
+                        <div>Connecting...</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(screen);
+        
+        // Bind events
+        document.getElementById('pm-close').onclick = () => this.closePrivateMatch();
+        document.getElementById('pm-tab-create').onclick = () => this.switchPrivateTab('create');
+        document.getElementById('pm-tab-join').onclick = () => this.switchPrivateTab('join');
+        document.getElementById('pm-create-btn').onclick = () => this.createPrivateRoom();
+        document.getElementById('pm-join-btn').onclick = () => this.joinPrivateRoom();
+        document.getElementById('pm-copy-code').onclick = () => this.copyRoomCode();
+        
+        // Auto-uppercase input
+        document.getElementById('pm-join-code').addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        });
+        
+        // Animate in
+        requestAnimationFrame(() => {
+            screen.classList.add('open');
+        });
+    },
+    
+    switchPrivateTab(tab) {
+        const createTab = document.getElementById('pm-tab-create');
+        const joinTab = document.getElementById('pm-tab-join');
+        const createPanel = document.getElementById('pm-panel-create');
+        const joinPanel = document.getElementById('pm-panel-join');
+        
+        if (tab === 'create') {
+            createTab.classList.add('active');
+            joinTab.classList.remove('active');
+            createPanel.classList.remove('hidden');
+            joinPanel.classList.add('hidden');
+        } else {
+            joinTab.classList.add('active');
+            createTab.classList.remove('active');
+            joinPanel.classList.remove('hidden');
+            createPanel.classList.add('hidden');
+        }
+    },
+    
+    async beginMatchmaking() {
+        this.matchmakingState.isSearching = true;
+        this.matchmakingState.startTime = Date.now();
+        
+        // Start timer
+        this.matchmakingState.timerInterval = setInterval(() => {
+            this.updateMatchmakingTimer();
+        }, 1000);
+        
+        try {
+            // Connect to matchmaking server
+            const result = await MultiplayerManager.findMatch();
+            
+            if (result.success) {
+                this.matchmakingState.matchId = result.matchId;
+                this.onMatchFound(result);
+            }
+        } catch (error) {
+            console.error('[Matchmaking] Error:', error);
+            if (this.matchmakingState.isSearching) {
+                this.showMatchmakingError(error.message || 'Failed to connect to server');
+            }
+        }
+    },
+    
+    updateMatchmakingTimer() {
+        if (!this.matchmakingState.startTime) return;
+        
+        const elapsed = Math.floor((Date.now() - this.matchmakingState.startTime) / 1000);
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        
+        const timerEl = document.getElementById('mm-timer') || document.getElementById('pm-timer');
+        if (timerEl) {
+            timerEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+    },
+    
+    onMatchFound(result) {
+        console.log('[Matchmaking] Match found!', result);
+        
+        // Update UI to show match found
+        const statusEl = document.getElementById('mm-status-text');
+        if (statusEl) {
+            statusEl.textContent = 'Match found! Starting game...';
+            statusEl.classList.add('match-found');
+        }
+        
+        // Stop timer
+        if (this.matchmakingState.timerInterval) {
+            clearInterval(this.matchmakingState.timerInterval);
+        }
+        
+        // Delay to show "match found" then start game
+        setTimeout(() => {
+            this.closeMatchmaking();
+            this.closeQuickPlay();
+            this.close();
+            this.startMultiplayerGame(result);
+        }, 1500);
+    },
+    
+    startMultiplayerGame(matchData) {
+        console.log('[Multiplayer] Starting game with match data:', matchData);
+        
+        // Start the game in multiplayer mode
+        window.isMultiplayer = true;
+        window.multiplayerMatchId = matchData.matchId;
+        window.multiplayerRole = matchData.role;
+        
+        this.startGame();
+    },
+    
+    cancelMatchmaking() {
+        console.log('[Matchmaking] Cancelled by user');
+        
+        this.matchmakingState.isSearching = false;
+        
+        if (this.matchmakingState.timerInterval) {
+            clearInterval(this.matchmakingState.timerInterval);
+            this.matchmakingState.timerInterval = null;
+        }
+        
+        // Disconnect from matchmaking
+        if (typeof MultiplayerManager !== 'undefined') {
+            MultiplayerManager.cancelSearch();
+        }
+        
+        this.closeMatchmaking();
+    },
+    
+    closeMatchmaking() {
+        const screen = document.getElementById('matchmaking-screen');
+        if (screen) {
+            screen.classList.add('closing');
+            setTimeout(() => screen.remove(), 300);
+        }
+        
+        this.matchmakingState = {
+            isSearching: false,
+            startTime: null,
+            timerInterval: null,
+            matchId: null
+        };
+    },
+    
+    closePrivateMatch() {
+        // Cancel any pending operations
+        this.cancelMatchmaking();
+        
+        const screen = document.getElementById('private-match-screen');
+        if (screen) {
+            screen.classList.add('closing');
+            setTimeout(() => screen.remove(), 300);
+        }
+    },
+    
+    async createPrivateRoom() {
+        console.log('[Private] Creating room...');
+        
+        const createBtn = document.getElementById('pm-create-btn');
+        const codeDisplay = document.getElementById('pm-code-display');
+        const waiting = document.getElementById('pm-waiting');
+        
+        createBtn.disabled = true;
+        createBtn.textContent = 'Creating...';
+        
+        try {
+            const result = await MultiplayerManager.createMatch();
+            
+            if (result.success) {
+                // Show room code
+                createBtn.classList.add('hidden');
+                codeDisplay.classList.remove('hidden');
+                document.getElementById('pm-room-code').textContent = result.matchCode;
+                
+                // Show waiting indicator
+                waiting.classList.remove('hidden');
+                
+                // Start timer
+                this.matchmakingState.startTime = Date.now();
+                this.matchmakingState.isSearching = true;
+                this.matchmakingState.matchId = result.matchId;
+                this.matchmakingState.timerInterval = setInterval(() => {
+                    this.updateMatchmakingTimer();
+                }, 1000);
+                
+                // Wait for opponent
+                this.waitForOpponent(result.matchId);
+            }
+        } catch (error) {
+            console.error('[Private] Create error:', error);
+            createBtn.disabled = false;
+            createBtn.textContent = 'Create Room';
+            this.showMatchmakingError(error.message || 'Failed to create room');
+        }
+    },
+    
+    async joinPrivateRoom() {
+        const codeInput = document.getElementById('pm-join-code');
+        const code = codeInput.value.trim().toUpperCase();
+        
+        if (code.length < 4) {
+            codeInput.classList.add('error');
+            setTimeout(() => codeInput.classList.remove('error'), 500);
+            return;
+        }
+        
+        console.log('[Private] Joining room:', code);
+        
+        const joinBtn = document.getElementById('pm-join-btn');
+        const joinStatus = document.getElementById('pm-join-status');
+        
+        joinBtn.disabled = true;
+        joinStatus.classList.remove('hidden');
+        
+        try {
+            const result = await MultiplayerManager.joinMatch(code);
+            
+            if (result.success) {
+                this.onMatchFound(result);
+            }
+        } catch (error) {
+            console.error('[Private] Join error:', error);
+            joinBtn.disabled = false;
+            joinStatus.classList.add('hidden');
+            this.showMatchmakingError(error.message || 'Failed to join room');
+        }
+    },
+    
+    async waitForOpponent(matchId) {
+        // This would be handled by WebSocket events from MultiplayerClient
+        // For now, set up a listener for match start
+        if (typeof MultiplayerClient !== 'undefined' && window.multiplayerClient) {
+            window.multiplayerClient.onMatchStart = (data) => {
+                this.onMatchFound({ matchId, role: data.role, success: true });
+            };
+        }
+    },
+    
+    copyRoomCode() {
+        const code = document.getElementById('pm-room-code').textContent;
+        navigator.clipboard.writeText(code).then(() => {
+            const btn = document.getElementById('pm-copy-code');
+            btn.textContent = '✓ Copied!';
+            setTimeout(() => {
+                btn.textContent = '📋 Copy';
+            }, 2000);
+        });
+    },
+    
+    showMatchmakingError(message) {
+        this.closeMatchmaking();
+        
+        const error = document.createElement('div');
+        error.className = 'mm-error-popup';
+        error.innerHTML = `
+            <div class="mm-error-content">
+                <div class="mm-error-icon">⚠️</div>
+                <div class="mm-error-title">Connection Error</div>
+                <div class="mm-error-msg">${message}</div>
+                <button class="mm-error-btn" onclick="this.parentElement.parentElement.remove()">OK</button>
+            </div>
+        `;
+        document.body.appendChild(error);
+        
+        requestAnimationFrame(() => error.classList.add('show'));
     },
     
     startAbyss() {

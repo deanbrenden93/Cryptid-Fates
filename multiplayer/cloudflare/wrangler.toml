@@ -1,0 +1,26 @@
+# Cloudflare Wrangler Configuration
+# Run: wrangler deploy (from this folder)
+
+name = "cryptid-new"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Durable Objects binding
+[[durable_objects.bindings]]
+name = "GAME_ROOMS"
+class_name = "GameRoom"
+
+# Durable Objects migrations (required for first deployment)
+[[migrations]]
+tag = "v1"
+new_classes = ["GameRoom"]
+
+# Optional: Custom domain (configure in Cloudflare dashboard)
+# routes = [
+#   { pattern = "multiplayer.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"

@@ -4764,3 +4764,478 @@ body {
         filter: brightness(1);
     }
 }
+
+/* ==================== MULTIPLAYER MATCHMAKING STYLES ==================== */
+
+.matchmaking-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.matchmaking-screen.open {
+    opacity: 1;
+}
+
+.matchmaking-screen.closing {
+    opacity: 0;
+}
+
+.mm-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+}
+
+.mm-content {
+    position: relative;
+    background: linear-gradient(180deg, #1a1520 0%, #0d0a10 100%);
+    border: 2px solid rgba(139, 90, 43, 0.6);
+    border-radius: 16px;
+    padding: 40px 50px;
+    min-width: 400px;
+    max-width: 500px;
+    box-shadow: 
+        0 0 40px rgba(139, 90, 43, 0.3),
+        0 20px 60px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transform: scale(0.9) translateY(20px);
+    transition: transform 0.3s ease;
+}
+
+.matchmaking-screen.open .mm-content {
+    transform: scale(1) translateY(0);
+}
+
+.mm-header {
+    text-align: center;
+    margin-bottom: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mm-title {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 28px;
+    color: #ffd700;
+    text-shadow: 0 0 20px rgba(255, 200, 100, 0.4);
+}
+
+.mm-close-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 28px;
+    cursor: pointer;
+    transition: color 0.2s;
+    line-height: 1;
+}
+
+.mm-close-btn:hover {
+    color: #e57373;
+}
+
+.mm-status {
+    text-align: center;
+    padding: 30px 0;
+}
+
+.mm-spinner {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto 20px;
+    border: 3px solid rgba(139, 90, 43, 0.3);
+    border-top-color: #ffc866;
+    border-radius: 50%;
+    animation: mmSpin 1s linear infinite;
+}
+
+@keyframes mmSpin {
+    to { transform: rotate(360deg); }
+}
+
+.mm-status-text {
+    font-family: 'Cinzel', serif;
+    font-size: 18px;
+    color: #e8e0d5;
+    margin-bottom: 10px;
+    transition: all 0.3s ease;
+}
+
+.mm-status-text.match-found {
+    color: #7ecd73;
+    font-size: 22px;
+    text-shadow: 0 0 20px rgba(126, 205, 115, 0.5);
+}
+
+.mm-timer {
+    font-family: 'Courier New', monospace;
+    font-size: 36px;
+    color: #ffc866;
+    letter-spacing: 4px;
+    text-shadow: 0 0 15px rgba(255, 200, 100, 0.3);
+}
+
+.mm-info {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 15px 20px;
+    margin: 20px 0;
+}
+
+.mm-info-item {
+    display: flex;
+    justify-content: space-between;
+    color: #888;
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+}
+
+.mm-info-value {
+    color: #e8e0d5;
+}
+
+.mm-actions {
+    text-align: center;
+    margin-top: 25px;
+}
+
+.mm-cancel-btn {
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    padding: 12px 40px;
+    background: linear-gradient(180deg, #4a3030 0%, #2a1818 100%);
+    border: 2px solid rgba(229, 115, 115, 0.4);
+    border-radius: 8px;
+    color: #e57373;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mm-cancel-btn:hover {
+    background: linear-gradient(180deg, #5a3535 0%, #3a2020 100%);
+    border-color: rgba(229, 115, 115, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(229, 115, 115, 0.2);
+}
+
+.mm-tips {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(139, 90, 43, 0.2);
+}
+
+.mm-tip {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    color: #666;
+    text-align: center;
+    font-style: italic;
+}
+
+/* Private Match Styles */
+.mm-content-private {
+    min-width: 450px;
+}
+
+.pm-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 25px;
+}
+
+.pm-tab {
+    flex: 1;
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(139, 90, 43, 0.3);
+    border-radius: 8px;
+    color: #888;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.pm-tab:hover {
+    border-color: rgba(139, 90, 43, 0.5);
+    color: #e8e0d5;
+}
+
+.pm-tab.active {
+    background: rgba(139, 90, 43, 0.2);
+    border-color: rgba(255, 200, 100, 0.5);
+    color: #ffc866;
+}
+
+.pm-panel {
+    min-height: 180px;
+}
+
+.pm-panel.hidden {
+    display: none;
+}
+
+.pm-desc {
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    color: #888;
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.pm-action-btn {
+    display: block;
+    width: 100%;
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    padding: 14px;
+    background: linear-gradient(180deg, #4a3820 0%, #2a1c0f 100%);
+    border: 2px solid rgba(139, 90, 43, 0.5);
+    border-radius: 8px;
+    color: #ffc866;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.pm-action-btn:hover:not(:disabled) {
+    background: linear-gradient(180deg, #5a4428 0%, #3a2412 100%);
+    border-color: rgba(255, 200, 100, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(255, 200, 100, 0.2);
+}
+
+.pm-action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.pm-action-btn.hidden {
+    display: none;
+}
+
+.pm-code-display {
+    text-align: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.pm-code-display.hidden {
+    display: none;
+}
+
+.pm-code-label {
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 10px;
+}
+
+.pm-code {
+    font-family: 'Courier New', monospace;
+    font-size: 42px;
+    color: #ffd700;
+    letter-spacing: 8px;
+    text-shadow: 0 0 20px rgba(255, 200, 100, 0.4);
+    margin-bottom: 15px;
+}
+
+.pm-copy-btn {
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    padding: 8px 20px;
+    background: rgba(139, 90, 43, 0.2);
+    border: 1px solid rgba(139, 90, 43, 0.4);
+    border-radius: 6px;
+    color: #e8e0d5;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.pm-copy-btn:hover {
+    background: rgba(139, 90, 43, 0.3);
+    border-color: rgba(255, 200, 100, 0.5);
+}
+
+.pm-waiting {
+    text-align: center;
+    padding: 20px 0;
+    color: #888;
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+}
+
+.pm-waiting.hidden {
+    display: none;
+}
+
+.pm-waiting .mm-spinner {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 15px;
+}
+
+.pm-waiting .mm-timer {
+    font-size: 24px;
+    margin-top: 10px;
+}
+
+.pm-input-group {
+    display: flex;
+    gap: 10px;
+}
+
+.pm-code-input {
+    flex: 1;
+    font-family: 'Courier New', monospace;
+    font-size: 24px;
+    padding: 12px 20px;
+    text-align: center;
+    letter-spacing: 6px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 2px solid rgba(139, 90, 43, 0.4);
+    border-radius: 8px;
+    color: #ffd700;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.pm-code-input::placeholder {
+    color: #444;
+    letter-spacing: 2px;
+}
+
+.pm-code-input:focus {
+    border-color: rgba(255, 200, 100, 0.6);
+}
+
+.pm-code-input.error {
+    animation: inputShake 0.4s ease;
+    border-color: #e57373;
+}
+
+@keyframes inputShake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-5px); }
+    40%, 80% { transform: translateX(5px); }
+}
+
+.pm-input-group .pm-action-btn {
+    width: auto;
+    padding: 12px 30px;
+}
+
+.pm-join-status {
+    text-align: center;
+    padding: 20px 0;
+    color: #888;
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+}
+
+.pm-join-status.hidden {
+    display: none;
+}
+
+.pm-join-status .mm-spinner {
+    width: 30px;
+    height: 30px;
+    margin-bottom: 10px;
+}
+
+/* Error Popup */
+.mm-error-popup {
+    position: fixed;
+    inset: 0;
+    z-index: 100001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.mm-error-popup.show {
+    opacity: 1;
+}
+
+.mm-error-content {
+    background: linear-gradient(180deg, #2a1818 0%, #1a0d0d 100%);
+    border: 2px solid rgba(229, 115, 115, 0.5);
+    border-radius: 12px;
+    padding: 30px 40px;
+    text-align: center;
+    max-width: 350px;
+}
+
+.mm-error-icon {
+    font-size: 48px;
+    margin-bottom: 15px;
+}
+
+.mm-error-title {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 20px;
+    color: #e57373;
+    margin-bottom: 10px;
+}
+
+.mm-error-msg {
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 20px;
+}
+
+.mm-error-btn {
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    padding: 10px 40px;
+    background: rgba(229, 115, 115, 0.2);
+    border: 1px solid rgba(229, 115, 115, 0.4);
+    border-radius: 6px;
+    color: #e57373;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mm-error-btn:hover {
+    background: rgba(229, 115, 115, 0.3);
+    border-color: rgba(229, 115, 115, 0.6);
+}
+
+/* Multiplayer Mode Button Styles in Quick Play */
+.qp-mode-multiplayer {
+    background: linear-gradient(180deg, rgba(90, 60, 120, 0.3) 0%, rgba(50, 30, 80, 0.5) 100%);
+    border-color: rgba(147, 112, 219, 0.4);
+}
+
+.qp-mode-multiplayer:hover {
+    background: linear-gradient(180deg, rgba(100, 70, 140, 0.4) 0%, rgba(60, 40, 100, 0.5) 100%);
+    border-color: rgba(200, 160, 255, 0.5);
+    box-shadow: 0 0 20px rgba(147, 112, 219, 0.3);
+}
+
+.qp-mode-private {
+    background: linear-gradient(180deg, rgba(60, 90, 120, 0.3) 0%, rgba(30, 50, 80, 0.5) 100%);
+    border-color: rgba(100, 150, 200, 0.4);
+}
+
+.qp-mode-private:hover {
+    background: linear-gradient(180deg, rgba(70, 100, 140, 0.4) 0%, rgba(40, 60, 100, 0.5) 100%);
+    border-color: rgba(130, 180, 230, 0.5);
+    box-shadow: 0 0 20px rgba(100, 150, 200, 0.3);
+}
