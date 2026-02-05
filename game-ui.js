@@ -241,6 +241,11 @@ function initGame() {
         
         // Give player some starting pyre
         game.playerPyre = 3;
+    } else if (window.isMultiplayer) {
+        // MULTIPLAYER MODE: Do NOT draw cards locally - server will provide state
+        console.log('[Multiplayer] Skipping local card draw - server controls initial state');
+        // Don't draw any cards - applyServerState() will set the hand
+        // Don't start turn - server controls turn order
     } else {
         // Normal mode: Draw 6 cards initially (first turn draws 1 more = 7 total)
         for (let i = 0; i < 6; i++) {
@@ -259,8 +264,13 @@ function initGame() {
     }
     
     // Determine who goes first based on main menu coin flip (Abyss always player first)
-    const firstPlayer = window.isAbyssBattle ? 'player' : (window.playerGoesFirst !== false ? 'player' : 'enemy');
-    game.startTurn(firstPlayer);
+    // In multiplayer, the server controls turn order via applyServerState()
+    if (window.isMultiplayer) {
+        console.log('[Multiplayer] Skipping local turn start - server controls turn order');
+    } else {
+        const firstPlayer = window.isAbyssBattle ? 'player' : (window.playerGoesFirst !== false ? 'player' : 'enemy');
+        game.startTurn(firstPlayer);
+    }
     
     // Check if we should animate the starting hand (skip for test mode and tutorials)
     const shouldAnimateHand = window.CombatEffects?.playStartingHandAnimation && !window.testMode && !window.isTutorial;

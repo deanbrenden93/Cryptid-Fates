@@ -300,6 +300,8 @@ const CryptidShared = (function() {
                 enemyField: state.enemyField.map(col => col.map(c => c ? { ...c } : null)),
                 playerHand: state.playerHand.map(c => ({ ...c })),
                 enemyHand: state.enemyHand.map(c => ({ ...c })),
+                playerDeck: state.playerDeck.map(c => ({ ...c })),
+                enemyDeck: state.enemyDeck.map(c => ({ ...c })),
                 playerKindling: state.playerKindling.map(c => ({ ...c })),
                 enemyKindling: state.enemyKindling.map(c => ({ ...c })),
                 playerPyre: state.playerPyre,
@@ -1810,6 +1812,8 @@ export class GameRoom {
         pyreBurnUsed: gs.playerPyreBurnUsed
       };
     } else {
+      // IMPORTANT: Don't invert currentTurn - the client handles perspective mapping
+      // The client uses server's raw 'player'/'enemy' value to compare with myRole
       return {
         playerField: this.serializeField(gs.enemyField),
         enemyField: this.serializeField(gs.playerField),
@@ -1819,7 +1823,7 @@ export class GameRoom {
         enemyPyre: gs.playerPyre,
         playerDeaths: gs.enemyDeaths,
         enemyDeaths: gs.playerDeaths,
-        currentTurn: gs.currentTurn === 'player' ? 'enemy' : 'player',
+        currentTurn: gs.currentTurn,  // Don't invert - client needs raw server value
         phase: gs.phase,
         turnNumber: gs.turnNumber,
         yourTraps: gs.enemyTraps,

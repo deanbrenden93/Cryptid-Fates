@@ -1292,9 +1292,15 @@ class MultiplayerClient {
         game.playerDeaths = state.playerDeaths ?? game.playerDeaths;
         game.enemyDeaths = state.enemyDeaths ?? game.enemyDeaths;
         
-        // Apply turn state - map server's currentTurn to local perspective
-        // Server sends currentTurn as 'player' or 'enemy' from OUR perspective
-        game.currentTurn = state.currentTurn ?? game.currentTurn;
+        // Apply turn state - map server's raw currentTurn to local perspective
+        // Server sends raw currentTurn ('player' or 'enemy' from server perspective)
+        // Client expects: 'player' = my turn, 'enemy' = opponent's turn
+        if (state.currentTurn !== undefined) {
+            const myRole = this.playerRole || window.multiplayerRole || 'player';
+            const isMyTurn = state.currentTurn === myRole;
+            game.currentTurn = isMyTurn ? 'player' : 'enemy';
+            console.log('[MP Client] Mapped currentTurn - server:', state.currentTurn, 'myRole:', myRole, 'local:', game.currentTurn);
+        }
         game.phase = state.phase ?? game.phase;
         game.turnNumber = state.turnNumber ?? game.turnNumber;
         

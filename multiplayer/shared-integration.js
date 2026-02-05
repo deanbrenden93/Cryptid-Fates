@@ -115,7 +115,11 @@
             if (serverState.enemyPyre !== undefined) gs.enemyPyre = serverState.enemyPyre;
             if (serverState.playerDeaths !== undefined) gs.playerDeaths = serverState.playerDeaths;
             if (serverState.enemyDeaths !== undefined) gs.enemyDeaths = serverState.enemyDeaths;
-            if (serverState.currentTurn) gs.currentTurn = serverState.currentTurn;
+            // Map server's raw currentTurn to local perspective
+            if (serverState.currentTurn) {
+                const isMyTurn = serverState.currentTurn === this.myRole;
+                gs.currentTurn = isMyTurn ? 'player' : 'enemy';
+            }
             if (serverState.phase) gs.phase = serverState.phase;
             if (serverState.turnNumber !== undefined) gs.turnNumber = serverState.turnNumber;
             if (serverState.yourKindling) {

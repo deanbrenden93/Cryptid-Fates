@@ -769,20 +769,20 @@ window.HomeScreen = {
     
     startMultiplayerGame(matchData) {
         console.log('[Multiplayer] Starting game with match data:', matchData);
-        console.log('[Multiplayer] Your role:', matchData.role);
+        console.log('[Multiplayer] Initial slot:', matchData.yourRole);
         console.log('[Multiplayer] Match ID:', matchData.matchId);
         
         // Start the game in multiplayer mode
         window.isMultiplayer = true;
         window.multiplayerMatchId = matchData.matchId;
-        window.multiplayerRole = matchData.role || matchData.yourRole;
+        // Store the slot role (player1/player2) temporarily - will be updated to game role (player/enemy) later
+        window.multiplayerSlot = matchData.yourRole || matchData.role;
+        window.multiplayerRole = null; // Will be set by BOTH_DECKS_SELECTED
         
         // Store multiplayer manager reference
         window.multiplayerManager = MultiplayerManager;
         
-        // Show which role the player has
-        const roleText = window.multiplayerRole === 'player' ? 'Player 1 (goes first)' : 'Player 2';
-        console.log(`[Multiplayer] You are: ${roleText}`);
+        console.log('[Multiplayer] Connecting to game room...');
         
         // Show "Connecting to game room..." while we establish the connection
         this.showMultiplayerConnecting(matchData);
@@ -1004,8 +1004,9 @@ window.HomeScreen = {
             deckName: deck.name,
             cardCount: mainDeckCards.length,
             cards: mainDeckCards,
-            // Also send kindling - get from the deck's kindling or build default
+            // Also send kindling - preserve ALL properties including element, art, rarity
             kindling: this.getDefaultKindling().map(k => ({
+                ...k, // Preserve all original properties (element, art, rarity, etc.)
                 id: `kindling_${k.key || k.name}_${Math.random().toString(36).substr(2, 9)}`,
                 key: k.key,
                 name: k.name || 'Kindling',
@@ -1067,6 +1068,13 @@ window.HomeScreen = {
     startMultiplayerBattle(data) {
         console.log('[Multiplayer] Starting battle!', data);
         console.log('[Multiplayer] Server says first player is:', data.firstPlayer);
+        
+        // CRITICAL: Update role from server's BOTH_DECKS_SELECTED message
+        // The server sends 'player' or 'enemy', not 'player1'/'player2'
+        if (data.yourRole) {
+            window.multiplayerRole = data.yourRole;
+            console.log('[Multiplayer] Updated role from server:', data.yourRole);
+        }
         console.log('[Multiplayer] Your role is:', window.multiplayerRole);
         
         // Close deck selection
@@ -1232,13 +1240,16 @@ window.HomeScreen = {
             game.enemyDeaths = serverState.enemyDeaths;
         }
         
-        // Apply turn info - use isYourTurn boolean if available (more reliable)
-        // The server already handles perspective mapping
+        // Apply turn info - map server's currentTurn to local perspective
+        // Server sends raw currentTurn ('player' or 'enemy' from server perspective)
+        // Client expects: 'player' = my turn, 'enemy' = opponent's turn
         if (serverState.currentTurn !== undefined) {
-            // Server sends currentTurn already perspective-mapped:
-            // 'player' means it's OUR turn, 'enemy' means it's opponent's turn
-            game.currentTurn = serverState.currentTurn;
-            console.log('[Multiplayer] Set currentTurn:', game.currentTurn);
+            const myRole = window.multiplayerRole || 'player';
+            // If server's currentTurn matches my role, it's my turn (local 'player')
+            // If server's currentTurn doesn't match my role, it's opponent's turn (local 'enemy')
+            const isMyTurn = serverState.currentTurn === myRole;
+            game.currentTurn = isMyTurn ? 'player' : 'enemy';
+            console.log('[Multiplayer] Set currentTurn:', game.currentTurn, '(server raw:', serverState.currentTurn, ', myRole:', myRole, ')');
         }
         if (serverState.phase) {
             game.phase = serverState.phase;
