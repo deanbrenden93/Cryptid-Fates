@@ -997,16 +997,19 @@ window.HomeScreen = {
             }
         });
         
+        // Filter out any kindling from main deck cards (just in case)
+        const mainDeckCards = resolvedCards.filter(c => !c.isKindling && c.type !== 'kindling');
+        
         const deckData = {
             deckName: deck.name,
-            cardCount: resolvedCards.length,
-            cards: resolvedCards,
+            cardCount: mainDeckCards.length,
+            cards: mainDeckCards,
             // Also send kindling - get from the deck's kindling or build default
             kindling: this.getDefaultKindling().map(k => ({
                 id: `kindling_${k.key || k.name}_${Math.random().toString(36).substr(2, 9)}`,
                 key: k.key,
                 name: k.name || 'Kindling',
-                type: 'kindling',
+                type: 'cryptid', // Type is cryptid for gameplay, but marked as kindling
                 hp: k.hp || 1,
                 atk: k.atk || k.attack || 1,
                 attack: k.atk || k.attack || 1,
@@ -1036,8 +1039,8 @@ window.HomeScreen = {
                             ...kindling,
                             key: key,
                             id: `kindling_${key}_${i}_${Date.now()}`,
-                            type: 'cryptid',
-                            isKindling: true
+                            type: 'cryptid', // Type is cryptid for gameplay purposes
+                            isKindling: true  // But marked as kindling for resource handling
                         });
                     }
                 }
@@ -1046,7 +1049,8 @@ window.HomeScreen = {
         
         console.log('[Multiplayer] Built kindling pool with', pool.length, 'kindling');
         
-        return pool.length > 0 ? pool : [
+        // Ensure all kindling cards are properly marked
+        return pool.length > 0 ? pool.map(k => ({ ...k, isKindling: true })) : [
             { key: 'basicKindling', name: 'Basic Kindling', hp: 1, atk: 1, type: 'cryptid', isKindling: true }
         ];
     },
@@ -1192,10 +1196,16 @@ window.HomeScreen = {
         // - playerField/enemyField: field state
         // - playerPyre/enemyPyre: pyre amounts
         
-        // Apply hand
+        // Apply hand - filter out any kindling that might have slipped in
         if (serverState.yourHand) {
-            game.playerHand = serverState.yourHand;
+            game.playerHand = serverState.yourHand.filter(c => !c.isKindling && c.type !== 'kindling');
             console.log('[Multiplayer] Set player hand:', game.playerHand.length, 'cards');
+            
+            // Log warning if any kindling was filtered
+            const kindlingInHand = serverState.yourHand.filter(c => c.isKindling || c.type === 'kindling');
+            if (kindlingInHand.length > 0) {
+                console.warn('[Multiplayer] Filtered', kindlingInHand.length, 'kindling cards from hand');
+            }
         }
         
         // Apply fields

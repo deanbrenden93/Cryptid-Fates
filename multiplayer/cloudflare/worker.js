@@ -502,14 +502,58 @@ export class GameRoom {
         } else if (!player2Filled) {
           role = 'player2';
         } else {
-          // Both slots filled and no disconnected players - room is full
-          console.log(`[GameRoom] Room is full, rejecting connection`);
-          this.state.acceptWebSocket(server);
-          server.close(4000, 'Room is full');
-          return new Response(null, {
-            status: 101,
-            webSocket: client,
-          });
+          // Both slots filled - check if any are disconnected (stale state)
+          // This can happen if the previous disconnect wasn't properly recorded
+          const p1Connected = this.playerSlots.player1?.connected;
+          const p2Connected = this.playerSlots.player2?.connected;
+          
+          console.log(`[GameRoom] Both slots filled. P1 connected: ${p1Connected}, P2 connected: ${p2Connected}`);
+          
+          // Check if either player has a stale connection (WebSocket no longer in players map)
+          let staleRole = null;
+          for (const [ws, player] of this.players) {
+            // If we have a WebSocket but it's closed, mark as stale
+            try {
+              if (ws.readyState !== 1) { // 1 = OPEN
+                staleRole = player.role;
+                console.log(`[GameRoom] Found stale WebSocket for ${player.role}`);
+                this.players.delete(ws);
+                if (this.playerSlots[player.role]) {
+                  this.playerSlots[player.role].connected = false;
+                }
+              }
+            } catch (e) {
+              // WebSocket may be in bad state
+              staleRole = player.role;
+              this.players.delete(ws);
+              if (this.playerSlots[player.role]) {
+                this.playerSlots[player.role].connected = false;
+              }
+            }
+          }
+          
+          // If we found a stale connection, allow this player to take that slot
+          if (staleRole) {
+            role = staleRole;
+            console.log(`[GameRoom] Reassigning stale slot ${staleRole} to new connection`);
+          } else if (!p1Connected) {
+            // Slot exists but marked disconnected - allow reconnection
+            role = 'player1';
+            console.log(`[GameRoom] player1 slot exists but disconnected, allowing reconnect`);
+          } else if (!p2Connected) {
+            role = 'player2';
+            console.log(`[GameRoom] player2 slot exists but disconnected, allowing reconnect`);
+          } else {
+            // Truly full - reject without accepting the WebSocket
+            console.log(`[GameRoom] Room is truly full, rejecting connection`);
+            // DON'T accept the WebSocket - just return an error response
+            // The client will see the connection fail
+            server.close(4000, 'Room is full');
+            return new Response(null, {
+              status: 101,
+              webSocket: client,
+            });
+          }
         }
         
         playerData = {
@@ -742,9 +786,15 @@ export class GameRoom {
         kindlingCount: deckData.kindling?.length || 0
       });
       
+      // Filter out any kindling from main deck cards (in case they got mixed in)
+      const mainCards = (deckData.cards || []).filter(c => !c.isKindling && c.type !== 'kindling');
+      const kindlingCards = (deckData.kindling || []).map(k => ({ ...k, isKindling: true, type: 'cryptid' }));
+      
+      console.log(`[GameRoom] ${player.role} filtered: ${mainCards.length} main cards, ${kindlingCards.length} kindling`);
+      
       // Shuffle and set deck
-      const mainDeck = this.shuffleDeck([...(deckData.cards || [])]);
-      const kindlingDeck = [...(deckData.kindling || [])];
+      const mainDeck = this.shuffleDeck([...mainCards]);
+      const kindlingDeck = [...kindlingCards];
       
       if (role === 'player') {
         this.gameState.playerDeck = mainDeck;
@@ -1826,9 +1876,9 @@ export class GameRoom {
   
   isValidForPhase(actionType, phase) {
     const phaseActions = {
-      conjure1: ['SUMMON_CRYPTID', 'SUMMON_KINDLING', 'PLAY_BURST', 'PLAY_TRAP', 'PLAY_AURA', 'EVOLVE_CRYPTID', 'PYRE_BURN', 'END_CONJURE1', 'CONCEDE'],
+      conjure1: ['SUMMON_CRYPTID', 'SUMMON_KINDLING', 'PLAY_BURST', 'PLAY_TRAP', 'PLAY_AURA', 'EVOLVE_CRYPTID', 'PYRE_BURN', 'PLAY_PYRE_CARD', 'END_CONJURE1', 'CONCEDE'],
       combat: ['ATTACK', 'USE_ABILITY', 'PLAY_BURST', 'END_COMBAT', 'CONCEDE'],
-      conjure2: ['SUMMON_CRYPTID', 'SUMMON_KINDLING', 'PLAY_BURST', 'PLAY_TRAP', 'PLAY_AURA', 'EVOLVE_CRYPTID', 'PYRE_BURN', 'END_TURN', 'CONCEDE']
+      conjure2: ['SUMMON_CRYPTID', 'SUMMON_KINDLING', 'PLAY_BURST', 'PLAY_TRAP', 'PLAY_AURA', 'EVOLVE_CRYPTID', 'PYRE_BURN', 'PLAY_PYRE_CARD', 'END_TURN', 'CONCEDE']
     };
     
     return phaseActions[phase]?.includes(actionType) ?? false;

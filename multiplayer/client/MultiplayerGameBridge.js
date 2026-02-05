@@ -79,6 +79,44 @@ window.MultiplayerGameBridge = {
     },
     
     /**
+     * Check if WebSocket is connected and ready
+     */
+    isSocketReady() {
+        return this.client && 
+               this.client.socket && 
+               this.client.socket.readyState === WebSocket.OPEN;
+    },
+    
+    /**
+     * Safely send a message through the WebSocket
+     */
+    safeSend(message) {
+        if (!this.isSocketReady()) {
+            console.warn('[MPBridge] WebSocket not connected, cannot send message');
+            this.showConnectionError();
+            return false;
+        }
+        
+        try {
+            this.client.socket.send(JSON.stringify(message));
+            return true;
+        } catch (error) {
+            console.error('[MPBridge] Failed to send message:', error);
+            this.showConnectionError();
+            return false;
+        }
+    },
+    
+    /**
+     * Show connection error message
+     */
+    showConnectionError() {
+        if (typeof showMessage === 'function') {
+            showMessage('Connection lost. Please wait for reconnection...', 3000);
+        }
+    },
+    
+    /**
      * Summon a cryptid - routes through server in multiplayer
      */
     summonCryptid(cardId, col, row, cardData = null) {
@@ -96,7 +134,7 @@ window.MultiplayerGameBridge = {
         console.log('[MPBridge] Sending summon action:', cardId, col, row);
         
         // Send to server in expected format
-        this.client.socket.send(JSON.stringify({
+        const sent = this.safeSend({
             type: 'ACTION',
             actionId: this.generateActionId(),
             actionType: 'SUMMON_CRYPTID',
@@ -106,9 +144,9 @@ window.MultiplayerGameBridge = {
                 row: row,
                 cardData: cardData // Include card data for server
             }
-        }));
+        });
         
-        return true; // Action sent (not yet confirmed)
+        return sent; // Action sent (not yet confirmed)
     },
     
     /**
@@ -126,7 +164,7 @@ window.MultiplayerGameBridge = {
         
         console.log('[MPBridge] Sending kindling summon:', cardId, col, row);
         
-        this.client.socket.send(JSON.stringify({
+        return this.safeSend({
             type: 'ACTION',
             actionId: this.generateActionId(),
             actionType: 'SUMMON_KINDLING',
@@ -135,9 +173,7 @@ window.MultiplayerGameBridge = {
                 col: col,
                 row: row
             }
-        }));
-        
-        return true;
+        });
     },
     
     /**
@@ -155,7 +191,7 @@ window.MultiplayerGameBridge = {
         
         console.log('[MPBridge] Sending attack:', attackerCol, attackerRow, '->', targetCol, targetRow);
         
-        this.client.socket.send(JSON.stringify({
+        return this.safeSend({
             type: 'ACTION',
             actionId: this.generateActionId(),
             actionType: 'ATTACK',
@@ -165,9 +201,7 @@ window.MultiplayerGameBridge = {
                 targetCol: targetCol,
                 targetRow: targetRow
             }
-        }));
-        
-        return true;
+        });
     },
     
     /**
@@ -192,14 +226,12 @@ window.MultiplayerGameBridge = {
         else if (currentPhase === 'combat') actionType = 'END_COMBAT';
         else if (currentPhase === 'conjure2') actionType = 'END_TURN';
         
-        this.client.socket.send(JSON.stringify({
+        return this.safeSend({
             type: 'ACTION',
             actionId: this.generateActionId(),
             actionType: actionType,
             payload: {}
-        }));
-        
-        return true;
+        });
     },
     
     /**
@@ -217,14 +249,12 @@ window.MultiplayerGameBridge = {
         
         console.log('[MPBridge] Sending end turn');
         
-        this.client.socket.send(JSON.stringify({
+        return this.safeSend({
             type: 'ACTION',
             actionId: this.generateActionId(),
             actionType: 'END_TURN',
             payload: {}
-        }));
-        
-        return true;
+        });
     },
     
     /**
@@ -242,16 +272,14 @@ window.MultiplayerGameBridge = {
         
         console.log('[MPBridge] Sending pyre burn:', cardIndex);
         
-        this.client.socket.send(JSON.stringify({
+        return this.safeSend({
             type: 'ACTION',
             actionId: this.generateActionId(),
             actionType: 'PYRE_BURN',
             payload: {
                 cardIndex: cardIndex
             }
-        }));
-        
-        return true;
+        });
     },
     
     /**
@@ -269,7 +297,7 @@ window.MultiplayerGameBridge = {
         
         console.log('[MPBridge] Sending play pyre card:', cardId, cardData?.name);
         
-        this.client.socket.send(JSON.stringify({
+        const sent = this.safeSend({
             type: 'ACTION',
             actionId: this.generateActionId(),
             actionType: 'PLAY_PYRE_CARD',
@@ -277,10 +305,13 @@ window.MultiplayerGameBridge = {
                 cardId: cardId,
                 cardName: cardData?.name
             }
-        }));
+        });
         
-        // Return a mock result for the UI (server will confirm)
-        return { pyreGained: 1 };
+        // Only return success if message was actually sent
+        if (sent) {
+            return { pyreGained: 1 }; // Mock result for the UI (server will confirm)
+        }
+        return false;
     },
     
     executeLocalPlayPyreCard(cardId, cardData) {
