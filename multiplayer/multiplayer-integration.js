@@ -60,14 +60,14 @@ window.MultiplayerManager = {
       window.isMultiplayer = true;
       
       // Wait for match to be found (handled by server)
-      // The server will pair players and send GAME_START event
+      // The server will pair players and send MATCH_FOUND event
       return new Promise((resolve, reject) => {
         let abortCheckInterval = null;
         
         // Set up match found handler
-        const originalGameStart = this.client.onGameStart;
-        this.client.onGameStart = (data) => {
-          console.log('[Matchmaking] Game start received:', data);
+        const originalMatchFound = this.client.onMatchFound;
+        this.client.onMatchFound = (data) => {
+          console.log('[Matchmaking] Match found received:', data);
           this.isSearching = false;
           this.matchId = data.matchId;
           
@@ -75,7 +75,7 @@ window.MultiplayerManager = {
           if (abortCheckInterval) clearInterval(abortCheckInterval);
           
           // Restore original handler
-          this.client.onGameStart = originalGameStart;
+          this.client.onMatchFound = originalMatchFound;
           
           resolve({
             success: true,
@@ -85,7 +85,7 @@ window.MultiplayerManager = {
           });
           
           // Also call original handler
-          if (originalGameStart) originalGameStart(data);
+          if (originalMatchFound) originalMatchFound(data);
         };
         
         // Set up error/abort handling
