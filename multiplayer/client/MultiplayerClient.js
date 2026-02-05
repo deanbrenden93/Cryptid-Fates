@@ -295,6 +295,14 @@ class MultiplayerClient {
         this.playerRole = message.yourRole;
         this.opponentInfo = message.opponent;
         
+        // If match already started, this is likely a reconnect that wasn't detected
+        // Don't trigger deck selection again
+        if (message.matchStarted) {
+            console.log('[MP Client] Match already started, requesting state sync');
+            this.requestStateSync();
+            return;
+        }
+        
         // Check if game is starting (both players connected)
         if (!message.waitingForOpponent) {
             // Initialize game with the provided state
@@ -465,7 +473,7 @@ class MultiplayerClient {
     }
     
     handleStateSync(message) {
-        console.log('[MP Client] State sync received');
+        console.log('[MP Client] State sync received:', message);
         
         // Apply full state
         this.applyFullState(message.fullState);
@@ -473,9 +481,18 @@ class MultiplayerClient {
         // Update sequence counter
         this.lastSequence = message.sequence;
         
+        // Update turn state in bridge
+        if (typeof MultiplayerGameBridge !== 'undefined' && message.isYourTurn !== undefined) {
+            MultiplayerGameBridge.isMyTurn = message.isYourTurn;
+            MultiplayerGameBridge.updateTurnUI();
+        }
+        
         // Re-render
         if (typeof renderAll === 'function') {
             renderAll();
+        }
+        if (typeof renderHand === 'function') {
+            renderHand();
         }
     }
     
@@ -500,10 +517,41 @@ class MultiplayerClient {
     }
     
     handleReconnected(message) {
-        console.log('[MP Client] Reconnection successful');
+        console.log('[MP Client] Reconnection successful:', message);
         
-        // Apply full state from server
-        this.applyFullState(message.matchState);
+        // Update role from server
+        if (message.yourRole) {
+            window.multiplayerRole = message.yourRole;
+        }
+        
+        // Apply game state from server
+        if (message.gameState && window.game) {
+            // Use HomeScreen's applyServerState if available
+            if (typeof HomeScreen !== 'undefined' && HomeScreen.applyServerState) {
+                HomeScreen.applyServerState(message.gameState);
+            } else {
+                // Manual state application
+                const game = window.game;
+                const state = message.gameState;
+                
+                if (state.yourHand) game.playerHand = state.yourHand;
+                if (state.playerField) game.playerField = state.playerField;
+                if (state.enemyField) game.enemyField = state.enemyField;
+                if (state.playerPyre !== undefined) game.playerPyre = state.playerPyre;
+                if (state.enemyPyre !== undefined) game.enemyPyre = state.enemyPyre;
+                if (state.playerDeaths !== undefined) game.playerDeaths = state.playerDeaths;
+                if (state.enemyDeaths !== undefined) game.enemyDeaths = state.enemyDeaths;
+                if (state.phase) game.phase = state.phase;
+                if (state.turnNumber !== undefined) game.turnNumber = state.turnNumber;
+            }
+        }
+        
+        // Update turn state
+        if (typeof MultiplayerGameBridge !== 'undefined') {
+            MultiplayerGameBridge.isMyTurn = message.isYourTurn;
+            MultiplayerGameBridge.updateTurnUI();
+        }
+        
         this.lastSequence = message.lastSequence;
         
         if (typeof renderAll === 'function') {
@@ -1191,14 +1239,19 @@ class MultiplayerClient {
     applyFullState(state) {
         if (!state) return;
         
-        // Apply field state (perspective-mapped)
+        console.log('[MP Client] Applying full state:', state);
+        
+        // Server already maps state to our perspective, so:
+        // - state.playerField = OUR field (from our view)
+        // - state.enemyField = OPPONENT's field (from our view)
+        // No flipping needed!
+        
+        // Apply field state (already perspective-mapped by server)
         if (state.playerField) {
-            const mappedPlayerField = this.playerRole === 'player' ? state.playerField : state.enemyField;
-            game.playerField = this.deserializeField(mappedPlayerField, 'player');
+            game.playerField = this.deserializeField(state.playerField, 'player');
         }
         if (state.enemyField) {
-            const mappedEnemyField = this.playerRole === 'player' ? state.enemyField : state.playerField;
-            game.enemyField = this.deserializeField(mappedEnemyField, 'enemy');
+            game.enemyField = this.deserializeField(state.enemyField, 'enemy');
         }
         
         // Apply hand (we only see our own cards)
@@ -1206,24 +1259,24 @@ class MultiplayerClient {
             game.playerHand = state.yourHand.map(c => this.deserializeCryptid(c));
         }
         
-        // Apply resources
-        if (this.playerRole === 'player') {
-            game.playerPyre = state.playerPyre ?? game.playerPyre;
-            game.enemyPyre = state.enemyPyre ?? game.enemyPyre;
-            game.playerDeaths = state.playerDeaths ?? game.playerDeaths;
-            game.enemyDeaths = state.enemyDeaths ?? game.enemyDeaths;
-        } else {
-            // Flip perspective
-            game.playerPyre = state.enemyPyre ?? game.playerPyre;
-            game.enemyPyre = state.playerPyre ?? game.enemyPyre;
-            game.playerDeaths = state.enemyDeaths ?? game.playerDeaths;
-            game.enemyDeaths = state.playerDeaths ?? game.enemyDeaths;
+        // Apply kindling pool
+        if (state.yourKindling) {
+            game.playerKindling = state.yourKindling.map(c => this.deserializeCryptid(c));
         }
         
-        // Apply turn state
-        game.currentTurn = this.mapOwner(state.currentTurn);
+        // Apply resources - server already sends from our perspective
+        game.playerPyre = state.playerPyre ?? game.playerPyre;
+        game.enemyPyre = state.enemyPyre ?? game.enemyPyre;
+        game.playerDeaths = state.playerDeaths ?? game.playerDeaths;
+        game.enemyDeaths = state.enemyDeaths ?? game.enemyDeaths;
+        
+        // Apply turn state - map server's currentTurn to local perspective
+        // Server sends currentTurn as 'player' or 'enemy' from OUR perspective
+        game.currentTurn = state.currentTurn ?? game.currentTurn;
         game.phase = state.phase ?? game.phase;
         game.turnNumber = state.turnNumber ?? game.turnNumber;
+        
+        console.log('[MP Client] State applied - Hand:', game.playerHand?.length, 'Pyre:', game.playerPyre);
     }
     
     deserializeField(fieldData, owner) {
@@ -1231,10 +1284,28 @@ class MultiplayerClient {
         
         if (!fieldData) return field;
         
-        // fieldData can be array of cryptid info with positions
-        if (Array.isArray(fieldData)) {
+        // Handle both formats:
+        // 1. 2D array: fieldData[col][row] = cryptid or null
+        // 2. Flat array of cryptids with positions
+        
+        if (Array.isArray(fieldData) && fieldData.length === 2 && Array.isArray(fieldData[0])) {
+            // 2D array format from server's serializeField
+            for (let col = 0; col < 2; col++) {
+                for (let row = 0; row < 3; row++) {
+                    const cryptidData = fieldData[col]?.[row];
+                    if (cryptidData) {
+                        const cryptid = this.deserializeCryptid(cryptidData);
+                        cryptid.owner = owner;
+                        cryptid.col = col;
+                        cryptid.row = row;
+                        field[col][row] = cryptid;
+                    }
+                }
+            }
+        } else if (Array.isArray(fieldData)) {
+            // Flat array format (legacy)
             fieldData.forEach(cryptidInfo => {
-                if (cryptidInfo) {
+                if (cryptidInfo && cryptidInfo.col !== undefined && cryptidInfo.row !== undefined) {
                     const cryptid = this.deserializeCryptid(cryptidInfo);
                     cryptid.owner = owner;
                     field[cryptidInfo.col][cryptidInfo.row] = cryptid;

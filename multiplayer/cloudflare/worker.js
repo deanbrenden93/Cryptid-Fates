@@ -331,43 +331,94 @@ export class GameRoom {
     // Accept the WebSocket
     this.state.acceptWebSocket(server);
     
-    // Determine player role
-    const existingPlayers = [...this.players.values()];
-    let role;
-    
-    if (existingPlayers.length === 0) {
-      role = 'player1';
-    } else if (existingPlayers.length === 1) {
-      role = 'player2';
-    } else {
-      // Room is full - reject
-      server.close(4000, 'Room is full');
-      return new Response(null, { status: 400 });
+    // Check for reconnecting players first
+    let reconnectedPlayer = null;
+    for (const [oldWs, player] of this.players) {
+      if (!player.connected) {
+        // This player was disconnected - this could be them reconnecting
+        reconnectedPlayer = { oldWs, player };
+        break;
+      }
     }
     
-    // Store player info
-    this.players.set(server, {
-      role,
-      connected: true,
-      joinedAt: Date.now(),
-      deckSelected: false,
-      deckData: null
-    });
+    let role;
+    let isReconnect = false;
     
-    console.log(`[GameRoom] Player joined as ${role}, total players: ${this.players.size}`);
+    if (reconnectedPlayer) {
+      // Handle reconnection
+      role = reconnectedPlayer.player.role;
+      isReconnect = true;
+      
+      // Remove old websocket entry
+      this.players.delete(reconnectedPlayer.oldWs);
+      
+      // Restore player with new websocket
+      this.players.set(server, {
+        ...reconnectedPlayer.player,
+        connected: true,
+        reconnectedAt: Date.now()
+      });
+      
+      console.log(`[GameRoom] Player ${role} reconnected`);
+    } else {
+      // New connection - determine player role
+      const connectedCount = [...this.players.values()].filter(p => p.connected).length;
+      
+      if (connectedCount === 0) {
+        role = 'player1';
+      } else if (connectedCount === 1) {
+        role = 'player2';
+      } else {
+        // Room is full - reject
+        server.close(4000, 'Room is full');
+        return new Response(null, { status: 400 });
+      }
+      
+      // Store player info
+      this.players.set(server, {
+        role,
+        connected: true,
+        joinedAt: Date.now(),
+        deckSelected: false,
+        deckData: null
+      });
+      
+      console.log(`[GameRoom] Player joined as ${role}, total players: ${this.players.size}`);
+    }
     
-    // Send welcome message
-    server.send(JSON.stringify({
-      type: 'MATCH_JOINED',
-      yourRole: role === 'player1' ? 'player' : 'enemy',
-      playersConnected: this.players.size,
-      waitingForOpponent: this.players.size < 2
-    }));
+    const yourRole = role === 'player1' ? 'player' : 'enemy';
     
-    // If both players are now connected, notify them (but don't start the game yet - wait for deck selection)
-    if (this.players.size === 2) {
-      console.log('[GameRoom] Both players connected, notifying...');
-      this.notifyBothPlayersConnected();
+    // If match already started and this is a reconnect, send game state
+    if (this.matchStarted && isReconnect && this.gameState) {
+      console.log(`[GameRoom] Sending reconnect state to ${role}`);
+      server.send(JSON.stringify({
+        type: 'RECONNECTED',
+        yourRole: yourRole,
+        gameState: this.getStateForPlayer(yourRole),
+        matchStarted: true,
+        isYourTurn: this.gameState.currentTurn === yourRole
+      }));
+      
+      // Notify opponent of reconnection
+      this.broadcastToOthers(server, {
+        type: 'OPPONENT_RECONNECTED'
+      });
+    } else {
+      // Send welcome message for new connection
+      server.send(JSON.stringify({
+        type: 'MATCH_JOINED',
+        yourRole: yourRole,
+        playersConnected: this.players.size,
+        waitingForOpponent: this.players.size < 2,
+        matchStarted: this.matchStarted
+      }));
+      
+      // If both players are now connected, notify them (but don't start the game yet - wait for deck selection)
+      const connectedPlayers = [...this.players.values()].filter(p => p.connected).length;
+      if (connectedPlayers === 2 && !this.matchStarted) {
+        console.log('[GameRoom] Both players connected, notifying...');
+        this.notifyBothPlayersConnected();
+      }
     }
     
     return new Response(null, {
@@ -712,6 +763,12 @@ export class GameRoom {
   // Handle player action
   handleAction(ws, player, action) {
     const playerRole = player.role === 'player1' ? 'player' : 'enemy';
+    
+    // Check if game state exists
+    if (!this.gameState) {
+      console.error('[GameRoom] handleAction called but gameState is null');
+      return this.rejectAction(ws, action.actionId, 'GAME_NOT_INITIALIZED');
+    }
     
     // Check if game is active
     if (!this.matchStarted || this.matchEnded) {
@@ -1487,15 +1544,39 @@ export class GameRoom {
   sendStateSync(ws, player) {
     const playerRole = player.role === 'player1' ? 'player' : 'enemy';
     
+    // Check if game state exists
+    if (!this.gameState) {
+      console.warn('[GameRoom] sendStateSync called but game not started');
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Game not started yet'
+      }));
+      return;
+    }
+    
+    const fullState = this.getStateForPlayer(playerRole);
+    if (!fullState) {
+      console.error('[GameRoom] Failed to get state for player');
+      return;
+    }
+    
     ws.send(JSON.stringify({
       type: 'STATE_SYNC',
       sequence: this.sequence,
-      fullState: this.getStateForPlayer(playerRole)
+      fullState: fullState,
+      matchStarted: this.matchStarted,
+      isYourTurn: this.gameState.currentTurn === playerRole
     }));
   }
   
   getStateForPlayer(playerRole) {
     const gs = this.gameState;
+    
+    // Return null if game state not initialized
+    if (!gs) {
+      console.error('[GameRoom] getStateForPlayer called but gameState is null');
+      return null;
+    }
     
     // Map perspective - player always sees themselves as 'player'
     if (playerRole === 'player') {
@@ -1601,11 +1682,11 @@ export class GameRoom {
       type: 'GAME_ENDED',
       winner,
       reason,
-      finalState: {
+      finalState: this.gameState ? {
         playerDeaths: this.gameState.playerDeaths,
         enemyDeaths: this.gameState.enemyDeaths,
         turnNumber: this.gameState.turnNumber
-      }
+      } : null
     });
   }
   
@@ -1636,7 +1717,7 @@ export class GameRoom {
   }
   
   handleTurnTimeout() {
-    if (this.matchEnded) return;
+    if (this.matchEnded || !this.gameState) return;
     
     const currentPlayer = this.gameState.currentTurn;
     

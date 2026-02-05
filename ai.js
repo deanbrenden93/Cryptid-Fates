@@ -19,6 +19,12 @@ window.runEnemyAI = function() {
     const game = window.game;
     const TIMING = window.TIMING;
     
+    // Don't run AI in multiplayer mode - opponent actions come from server
+    if (window.isMultiplayer) {
+        console.log('[AI] Skipping AI - multiplayer mode active');
+        return;
+    }
+    
     if (game.gameOver) return;
     
     aiPlayCards(() => {
