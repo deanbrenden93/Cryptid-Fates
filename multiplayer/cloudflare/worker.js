@@ -7,30 +7,602 @@
  * Features:
  * - WebSocket connections for real-time gameplay
  * - Durable Object maintains game state
- * - Validates all player actions server-side
+ * - Validates all player actions server-side using SHARED game logic
  * - Broadcasts events to both players
+ * 
+ * IMPORTANT: This version uses the shared game logic module for consistent
+ * game state management between client and server.
  */
 
+// ==================== SHARED GAME LOGIC (INLINE BUNDLE) ====================
+// This is the bundled shared module - same logic runs on client and server
+
+const CryptidShared = (function() {
+    'use strict';
+
+    // Events Module
+    function createGameEvents(options = {}) {
+        const debug = options.debug || false;
+        const logger = options.logger || console.log;
+        const listeners = new Map();
+
+        function log(...args) { if (debug) logger('[Events]', ...args); }
+
+        function on(eventType, callback) {
+            if (!listeners.has(eventType)) listeners.set(eventType, new Set());
+            listeners.get(eventType).add(callback);
+            return () => off(eventType, callback);
+        }
+
+        function off(eventType, callback) {
+            const set = listeners.get(eventType);
+            if (set) set.delete(callback);
+        }
+
+        function emit(eventType, data = {}) {
+            log('Emit:', eventType);
+            const set = listeners.get(eventType);
+            if (set) {
+                for (const callback of set) {
+                    try { callback(data); } catch (e) { console.error('Event error:', e); }
+                }
+            }
+        }
+
+        function clear() { listeners.clear(); }
+
+        return { on, off, emit, clear };
+    }
+
+    // Schema Constants
+    const GamePhases = {
+        CONJURE_1: 'conjure1',
+        DEPLOY: 'deploy',
+        CONJURE_2: 'conjure2',
+        COMBAT: 'combat',
+        END_PHASE: 'endPhase'
+    };
+
+    // Game State Module
+    function createGameState(options = {}) {
+        const debug = options.debug || false;
+        const logger = options.logger || console.log;
+        let events = options.events;
+
+        function log(...args) { if (debug) logger('[GameState]', ...args); }
+
+        const state = {
+            playerField: [[null, null, null], [null, null, null]],
+            enemyField: [[null, null, null], [null, null, null]],
+            playerHand: [],
+            enemyHand: [],
+            playerKindling: [],
+            enemyKindling: [],
+            playerDeck: [],
+            enemyDeck: [],
+            playerPyre: 0,
+            enemyPyre: 0,
+            playerDeaths: 0,
+            enemyDeaths: 0,
+            playerTraps: [null, null],
+            enemyTraps: [null, null],
+            traps: { player: [], enemy: [] },
+            currentTurn: 'player',
+            phase: GamePhases.CONJURE_1,
+            turnNumber: 0,
+            gameOver: false,
+            winner: null,
+            playerKindlingPlayedThisTurn: false,
+            enemyKindlingPlayedThisTurn: false,
+            playerPyreCardPlayedThisTurn: false,
+            enemyPyreCardPlayedThisTurn: false,
+            playerPyreBurnUsed: false,
+            enemyPyreBurnUsed: false
+        };
+
+        function getCombatCol(owner) { return owner === 'player' ? 1 : 0; }
+        function getSupportCol(owner) { return owner === 'player' ? 0 : 1; }
+        function getField(owner) { return owner === 'player' ? state.playerField : state.enemyField; }
+        
+        function getFieldCryptid(owner, col, row) {
+            const field = getField(owner);
+            return field[col]?.[row] || null;
+        }
+        
+        function setFieldCryptid(owner, col, row, cryptid) {
+            const field = getField(owner);
+            if (field[col]) {
+                field[col][row] = cryptid;
+                if (cryptid) {
+                    cryptid.owner = owner;
+                    cryptid.col = col;
+                    cryptid.row = row;
+                }
+            }
+        }
+
+        function getSupport(cryptid) {
+            if (!cryptid) return null;
+            const { owner, row } = cryptid;
+            if (cryptid.col === getCombatCol(owner)) {
+                return getFieldCryptid(owner, getSupportCol(owner), row);
+            }
+            return null;
+        }
+
+        function isInCombat(cryptid) {
+            return cryptid && cryptid.col === getCombatCol(cryptid.owner);
+        }
+
+        function getAllCryptids(owner) {
+            const field = getField(owner);
+            const cryptids = [];
+            for (let col = 0; col < 2; col++) {
+                for (let row = 0; row < 3; row++) {
+                    if (field[col][row]) cryptids.push(field[col][row]);
+                }
+            }
+            return cryptids;
+        }
+
+        function isFieldEmpty(owner) {
+            return getAllCryptids(owner).length === 0;
+        }
+
+        function hasAilments(cryptid) {
+            if (!cryptid) return false;
+            return (cryptid.burnTurns > 0 || cryptid.bleedTurns > 0 || 
+                    cryptid.paralyzed || cryptid.calamityCounters > 0 || cryptid.curseTokens > 0);
+        }
+
+        function getEffectiveAtk(cryptid) {
+            let atk = cryptid?.currentAtk ?? cryptid?.atk ?? 0;
+            if (cryptid?.curseTokens > 0) atk = Math.max(0, atk - cryptid.curseTokens);
+            return atk;
+        }
+
+        function isSupportNegated(support) {
+            return support?.paralyzed || support?.negated;
+        }
+
+        function getPyre(owner) {
+            return owner === 'player' ? state.playerPyre : state.enemyPyre;
+        }
+
+        function modifyPyre(owner, amount) {
+            if (owner === 'player') {
+                state.playerPyre = Math.max(0, state.playerPyre + amount);
+            } else {
+                state.enemyPyre = Math.max(0, state.enemyPyre + amount);
+            }
+            if (events) events.emit('onPyreChange', { owner, amount, newPyre: getPyre(owner) });
+        }
+
+        function getHand(owner) {
+            return owner === 'player' ? state.playerHand : state.enemyHand;
+        }
+
+        function getDeck(owner) {
+            return owner === 'player' ? state.playerDeck : state.enemyDeck;
+        }
+
+        function getKindling(owner) {
+            return owner === 'player' ? state.playerKindling : state.enemyKindling;
+        }
+
+        function drawCard(owner) {
+            const deck = getDeck(owner);
+            const hand = getHand(owner);
+            if (deck.length === 0) return null;
+            const card = deck.shift();
+            hand.push(card);
+            if (events) events.emit('onCardDrawn', { card, owner });
+            return card;
+        }
+
+        function removeFromHand(owner, cardIdOrIndex) {
+            const hand = getHand(owner);
+            let index = typeof cardIdOrIndex === 'number' ? cardIdOrIndex : 
+                        hand.findIndex(c => c.id === cardIdOrIndex);
+            if (index >= 0 && index < hand.length) {
+                return hand.splice(index, 1)[0];
+            }
+            return null;
+        }
+
+        function findCardInHand(owner, cardId) {
+            const hand = getHand(owner);
+            return hand.find(c => c.id === cardId) || null;
+        }
+
+        function summonCryptid(owner, col, row, cardData) {
+            const field = getField(owner);
+            if (col < 0 || col > 1 || row < 0 || row > 2) {
+                return { success: false, error: 'INVALID_SLOT' };
+            }
+            if (field[col][row] !== null) {
+                return { success: false, error: 'SLOT_OCCUPIED' };
+            }
+            
+            const cryptid = {
+                ...cardData,
+                owner,
+                col,
+                row,
+                currentHp: cardData.currentHp ?? cardData.hp ?? 1,
+                maxHp: cardData.maxHp ?? cardData.hp ?? 1,
+                currentAtk: cardData.currentAtk ?? cardData.atk ?? cardData.attack ?? 0,
+                baseAtk: cardData.baseAtk ?? cardData.atk ?? cardData.attack ?? 0,
+                tapped: false,
+                canAttack: false,
+                justSummoned: true,
+                burnTurns: 0,
+                bleedTurns: 0,
+                paralyzed: false,
+                calamityCounters: 0,
+                curseTokens: 0
+            };
+            
+            field[col][row] = cryptid;
+            
+            if (events) {
+                events.emit('onSummon', { cryptid, owner, col, row });
+            }
+            
+            log('Cryptid summoned:', cryptid.name, 'at', col, row);
+            return { success: true, cryptid };
+        }
+
+        function applyDamage(cryptid, amount) {
+            if (!cryptid || amount <= 0) return { dealt: 0, died: false };
+            const actualDamage = Math.min(amount, cryptid.currentHp);
+            cryptid.currentHp -= actualDamage;
+            if (events) events.emit('onDamage', { cryptid, damage: actualDamage });
+            return { dealt: actualDamage, died: cryptid.currentHp <= 0 };
+        }
+
+        function killCryptid(cryptid, killerOwner = null) {
+            if (!cryptid) return null;
+            const { owner, col, row } = cryptid;
+            const field = getField(owner);
+            field[col][row] = null;
+            
+            if (owner === 'player') state.playerDeaths++;
+            else state.enemyDeaths++;
+            
+            if (events) events.emit('onDeath', { cryptid, owner, col, row, killerOwner });
+            
+            log('Cryptid killed:', cryptid.name);
+            return { cryptid, owner, col, row };
+        }
+
+        function promoteSupport(owner, row) {
+            const combatCol = getCombatCol(owner);
+            const supportCol = getSupportCol(owner);
+            const field = getField(owner);
+            
+            if (field[combatCol][row]) return null;
+            const support = field[supportCol][row];
+            if (!support) return null;
+            
+            field[supportCol][row] = null;
+            field[combatCol][row] = support;
+            support.col = combatCol;
+            support.canAttack = true;
+            support.tapped = false;
+            
+            return support;
+        }
+
+        function exportState() {
+            return {
+                playerField: state.playerField.map(col => col.map(c => c ? { ...c } : null)),
+                enemyField: state.enemyField.map(col => col.map(c => c ? { ...c } : null)),
+                playerHand: state.playerHand.map(c => ({ ...c })),
+                enemyHand: state.enemyHand.map(c => ({ ...c })),
+                playerKindling: state.playerKindling.map(c => ({ ...c })),
+                enemyKindling: state.enemyKindling.map(c => ({ ...c })),
+                playerPyre: state.playerPyre,
+                enemyPyre: state.enemyPyre,
+                playerDeaths: state.playerDeaths,
+                enemyDeaths: state.enemyDeaths,
+                currentTurn: state.currentTurn,
+                phase: state.phase,
+                turnNumber: state.turnNumber,
+                gameOver: state.gameOver,
+                winner: state.winner,
+                playerTraps: state.playerTraps.map(t => t ? { ...t } : null),
+                enemyTraps: state.enemyTraps.map(t => t ? { ...t } : null),
+                playerKindlingPlayedThisTurn: state.playerKindlingPlayedThisTurn,
+                enemyKindlingPlayedThisTurn: state.enemyKindlingPlayedThisTurn,
+                playerPyreCardPlayedThisTurn: state.playerPyreCardPlayedThisTurn,
+                enemyPyreCardPlayedThisTurn: state.enemyPyreCardPlayedThisTurn,
+                playerPyreBurnUsed: state.playerPyreBurnUsed,
+                enemyPyreBurnUsed: state.enemyPyreBurnUsed
+            };
+        }
+
+        function importState(data) {
+            Object.assign(state, data);
+            for (const owner of ['player', 'enemy']) {
+                const field = getField(owner);
+                for (let col = 0; col < 2; col++) {
+                    for (let row = 0; row < 3; row++) {
+                        const cryptid = field[col]?.[row];
+                        if (cryptid) {
+                            cryptid.owner = owner;
+                            cryptid.col = col;
+                            cryptid.row = row;
+                        }
+                    }
+                }
+            }
+        }
+
+        return {
+            state,
+            getCombatCol, getSupportCol, getField, getFieldCryptid, setFieldCryptid,
+            getSupport, isInCombat, getAllCryptids, isFieldEmpty, hasAilments,
+            getEffectiveAtk, isSupportNegated, getPyre, modifyPyre,
+            getHand, getDeck, getKindling, drawCard, removeFromHand, findCardInHand,
+            summonCryptid, applyDamage, killCryptid, promoteSupport,
+            exportState, importState, events
+        };
+    }
+
+    // Combat Engine
+    function createCombatEngine(options = {}) {
+        let gameState = options.gameState;
+
+        function setGameState(gs) { gameState = gs; }
+
+        function validateAttack(attacker, target) {
+            if (!attacker) return { valid: false, reason: 'NO_ATTACKER' };
+            if (!target) return { valid: false, reason: 'NO_TARGET' };
+            if (!gameState) return { valid: false, reason: 'NO_GAME_STATE' };
+            if (!gameState.isInCombat(attacker)) return { valid: false, reason: 'ATTACKER_NOT_IN_COMBAT' };
+            if (attacker.owner === target.owner) return { valid: false, reason: 'SAME_TEAM' };
+            if (attacker.tapped) return { valid: false, reason: 'ATTACKER_TAPPED' };
+            if (attacker.paralyzed) return { valid: false, reason: 'ATTACKER_PARALYZED' };
+            return { valid: true };
+        }
+
+        function calculateDamage(attacker, target) {
+            if (!gameState) return { finalDamage: 0 };
+            
+            let damage = gameState.getEffectiveAtk(attacker);
+            
+            // Support bonus
+            const support = gameState.getSupport(attacker);
+            if (support && !gameState.isSupportNegated(support)) {
+                damage += support.currentAtk ?? support.atk ?? 0;
+            }
+            
+            // Bleed doubles damage
+            if (target.bleedTurns > 0) damage *= 2;
+            
+            return { finalDamage: Math.max(0, damage) };
+        }
+
+        function resolveAttack(attacker, targetOwner, targetCol, targetRow) {
+            if (!gameState) return { success: false, error: 'NO_GAME_STATE' };
+            
+            const target = gameState.getFieldCryptid(targetOwner, targetCol, targetRow);
+            const validation = validateAttack(attacker, target);
+            if (!validation.valid) return { success: false, error: validation.reason };
+            
+            const damageCalc = calculateDamage(attacker, target);
+            
+            // Apply damage
+            target.currentHp -= damageCalc.finalDamage;
+            
+            // Tap attacker
+            attacker.tapped = true;
+            attacker.canAttack = false;
+            
+            const result = {
+                success: true,
+                attacker: { id: attacker.id, name: attacker.name, owner: attacker.owner, col: attacker.col, row: attacker.row },
+                target: { id: target.id, name: target.name, owner: target.owner, col: target.col, row: target.row },
+                damage: damageCalc.finalDamage,
+                targetDied: target.currentHp <= 0
+            };
+            
+            // Process death
+            if (result.targetDied) {
+                gameState.killCryptid(target, attacker.owner);
+                // Auto-promote support
+                gameState.promoteSupport(targetOwner, targetRow);
+            }
+            
+            return result;
+        }
+
+        return { setGameState, validateAttack, calculateDamage, resolveAttack };
+    }
+
+    // Turn Processor
+    function createTurnProcessor(options = {}) {
+        let gameState = options.gameState;
+        let events = options.events;
+
+        function setGameState(gs) { gameState = gs; }
+        function setEvents(ev) { events = ev; }
+
+        function processStartTurn(turnOwner) {
+            if (!gameState) return { success: false };
+            
+            gameState.state.turnNumber++;
+            gameState.state.currentTurn = turnOwner;
+            gameState.state.phase = GamePhases.CONJURE_1;
+            
+            // Reset flags
+            if (turnOwner === 'player') {
+                gameState.state.playerKindlingPlayedThisTurn = false;
+                gameState.state.playerPyreCardPlayedThisTurn = false;
+                gameState.state.playerPyreBurnUsed = false;
+            } else {
+                gameState.state.enemyKindlingPlayedThisTurn = false;
+                gameState.state.enemyPyreCardPlayedThisTurn = false;
+                gameState.state.enemyPyreBurnUsed = false;
+            }
+            
+            // Untap cryptids
+            const cryptids = gameState.getAllCryptids(turnOwner);
+            for (const cryptid of cryptids) {
+                if (!cryptid.paralyzed) {
+                    cryptid.tapped = false;
+                    cryptid.canAttack = true;
+                }
+                cryptid.justSummoned = false;
+                if (cryptid.paralyzed) {
+                    cryptid.paralyzed = false;
+                }
+            }
+            
+            // Gain pyre
+            gameState.modifyPyre(turnOwner, 1);
+            
+            // Draw card
+            gameState.drawCard(turnOwner);
+            
+            if (events) events.emit('onTurnStart', { turn: gameState.state.turnNumber, owner: turnOwner });
+            
+            return { success: true, turnNumber: gameState.state.turnNumber };
+        }
+
+        function processEndTurn(turnOwner) {
+            if (!gameState) return { success: false };
+            
+            // Process burn/bleed
+            const cryptids = gameState.getAllCryptids(turnOwner);
+            const deaths = [];
+            
+            for (const cryptid of cryptids) {
+                if (cryptid.burnTurns > 0) {
+                    cryptid.currentHp -= 2;
+                    cryptid.burnTurns--;
+                    if (cryptid.currentHp <= 0) deaths.push(cryptid);
+                }
+                if (cryptid.bleedTurns > 0) {
+                    cryptid.currentHp -= 1;
+                    cryptid.bleedTurns--;
+                    if (cryptid.currentHp <= 0 && !deaths.includes(cryptid)) deaths.push(cryptid);
+                }
+                if (cryptid.calamityCounters > 0) {
+                    cryptid.calamityCounters--;
+                    if (cryptid.calamityCounters <= 0) {
+                        cryptid.currentHp = 0;
+                        if (!deaths.includes(cryptid)) deaths.push(cryptid);
+                    }
+                }
+            }
+            
+            // Process deaths
+            for (const cryptid of deaths) {
+                gameState.killCryptid(cryptid);
+                gameState.promoteSupport(cryptid.owner, cryptid.row);
+            }
+            
+            if (events) events.emit('onTurnEnd', { turn: gameState.state.turnNumber, owner: turnOwner });
+            
+            return { success: true, deaths: deaths.length };
+        }
+
+        function advancePhase() {
+            if (!gameState) return { success: false };
+            
+            const current = gameState.state.phase;
+            let next;
+            
+            switch (current) {
+                case GamePhases.CONJURE_1: next = GamePhases.COMBAT; break;
+                case GamePhases.COMBAT: next = GamePhases.CONJURE_2; break;
+                case GamePhases.CONJURE_2: next = GamePhases.END_PHASE; break;
+                default: next = GamePhases.CONJURE_1;
+            }
+            
+            gameState.state.phase = next;
+            if (events) events.emit('onPhaseChange', { from: current, to: next });
+            
+            return { success: true, previousPhase: current, currentPhase: next };
+        }
+
+        function checkGameOver() {
+            if (!gameState) return { gameOver: false };
+            
+            if (gameState.state.playerDeaths >= 10) {
+                return { gameOver: true, winner: 'enemy', reason: 'DEATHS' };
+            }
+            if (gameState.state.enemyDeaths >= 10) {
+                return { gameOver: true, winner: 'player', reason: 'DEATHS' };
+            }
+            return { gameOver: false };
+        }
+
+        return { setGameState, setEvents, processStartTurn, processEndTurn, advancePhase, checkGameOver };
+    }
+
+    // Create Game Context
+    function createGameContext(options = {}) {
+        const events = createGameEvents(options);
+        const gameState = createGameState({ ...options, events });
+        const combatEngine = createCombatEngine({ gameState });
+        const turnProcessor = createTurnProcessor({ gameState, events });
+        
+        return {
+            events,
+            gameState,
+            combatEngine,
+            turnProcessor,
+            GamePhases,
+            
+            reset() {
+                gameState.state.playerField = [[null, null, null], [null, null, null]];
+                gameState.state.enemyField = [[null, null, null], [null, null, null]];
+                gameState.state.playerHand = [];
+                gameState.state.enemyHand = [];
+                gameState.state.playerDeck = [];
+                gameState.state.enemyDeck = [];
+                gameState.state.playerKindling = [];
+                gameState.state.enemyKindling = [];
+                gameState.state.playerPyre = 0;
+                gameState.state.enemyPyre = 0;
+                gameState.state.playerDeaths = 0;
+                gameState.state.enemyDeaths = 0;
+                gameState.state.turnNumber = 0;
+                gameState.state.gameOver = false;
+                gameState.state.winner = null;
+            },
+            
+            exportState() {
+                return gameState.exportState();
+            },
+            
+            importState(data) {
+                gameState.importState(data);
+            }
+        };
+    }
+
+    return { createGameContext, createGameState, createCombatEngine, createTurnProcessor, GamePhases };
+})();
+
 // ==================== MAIN WORKER ====================
-// Routes incoming requests to the appropriate handler
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return handleCORS();
     }
     
-    // Route based on path
     if (url.pathname.startsWith('/match/')) {
-      // WebSocket connection to a game room
       return handleMatchConnection(request, env, url);
     }
     
     if (url.pathname === '/matchmaking') {
-      // Matchmaking queue
       return handleMatchmaking(request, env);
     }
     
@@ -38,10 +610,9 @@ export default {
       return new Response('OK', { status: 200 });
     }
     
-    // Default: return API info
     return new Response(JSON.stringify({
       name: 'Cryptid Fates Multiplayer Server',
-      version: '1.0.0',
+      version: '2.0.0 (Shared Logic)',
       endpoints: {
         '/match/:matchId': 'WebSocket - Connect to a game room',
         '/matchmaking': 'POST - Find or create a match',
@@ -68,36 +639,29 @@ function handleCORS() {
 // ==================== MATCH CONNECTION ====================
 
 async function handleMatchConnection(request, env, url) {
-  // Extract match ID from URL: /match/abc123
   const matchId = url.pathname.split('/')[2];
   
   if (!matchId) {
     return new Response('Match ID required', { status: 400 });
   }
   
-  // Check for WebSocket upgrade
   const upgradeHeader = request.headers.get('Upgrade');
   if (upgradeHeader !== 'websocket') {
     return new Response('Expected WebSocket', { status: 426 });
   }
   
-  // Check if this is a quick matchmaking request (QUEUE_ prefix)
   if (matchId.startsWith('QUEUE_')) {
-    // Route to the matchmaking lobby
     const lobbyId = env.GAME_ROOMS.idFromName('__MATCHMAKING_LOBBY__');
     const lobby = env.GAME_ROOMS.get(lobbyId);
     return lobby.fetch(request);
   }
   
-  // Get the Durable Object for this match
   const roomId = env.GAME_ROOMS.idFromName(matchId);
   const room = env.GAME_ROOMS.get(roomId);
-  
-  // Forward the WebSocket request to the Durable Object
   return room.fetch(request);
 }
 
-// ==================== SIMPLE MATCHMAKING ====================
+// ==================== MATCHMAKING ====================
 
 async function handleMatchmaking(request, env) {
   if (request.method !== 'POST') {
@@ -106,7 +670,7 @@ async function handleMatchmaking(request, env) {
   
   try {
     const body = await request.json();
-    const { playerId, playerName } = body;
+    const { playerId } = body;
     
     if (!playerId) {
       return new Response(JSON.stringify({ error: 'playerId required' }), {
@@ -115,8 +679,6 @@ async function handleMatchmaking(request, env) {
       });
     }
     
-    // Simple matchmaking: generate a random match ID
-    // In production, you'd use a separate Durable Object to manage a queue
     const matchId = generateMatchId();
     
     return new Response(JSON.stringify({
@@ -140,59 +702,44 @@ function generateMatchId() {
 }
 
 // ==================== GAME ROOM DURABLE OBJECT ====================
-// This is where the magic happens - each match is a Durable Object
 
 export class GameRoom {
   constructor(state, env) {
     this.state = state;
     this.env = env;
     
-    // Connected players - will be restored from WebSockets on wake
-    this.players = new Map(); // WebSocket -> { role: 'player1'|'player2', info: {...} }
+    this.players = new Map();
+    this.playerSlots = { player1: null, player2: null };
     
-    // Player slots - persisted to storage, survives WebSocket close
-    // This tracks which roles are filled and their state, independent of WebSocket lifecycle
-    this.playerSlots = {
-      player1: null, // { connected: bool, deckSelected: bool, deckData: obj, joinedAt: timestamp }
-      player2: null
-    };
-    
-    // Game state - persisted to storage
-    this.gameState = null;
+    // Game context using shared modules
+    this.gameContext = null;
     this.sequence = 0;
     this.actionHistory = [];
     
-    // Match state - persisted to storage
     this.matchStarted = false;
     this.matchEnded = false;
     
-    // Turn timer
     this.turnTimerTimeout = null;
-    this.turnTimeLimit = 90000; // 90 seconds per turn
+    this.turnTimeLimit = 90000;
     
-    // Matchmaking lobby mode
     this.isLobby = false;
-    this.matchmakingQueue = []; // Array of { ws, joinedAt }
-    
-    // Note: blockConcurrencyWhile doesn't work in constructor
-    // State will be loaded lazily when needed
+    this.matchmakingQueue = [];
   }
   
-  // Load persisted state from storage (called on wake from hibernation)
   async loadStateFromStorage() {
-    // Only load once
     if (this._stateLoaded) return;
     this._stateLoaded = true;
     
     try {
       const stored = await this.state.storage.get([
-        'gameState', 'matchStarted', 'matchEnded', 'sequence',
-        'playerSlots' // Store player slot info separately
+        'gameState', 'matchStarted', 'matchEnded', 'sequence', 'playerSlots'
       ]);
       
       if (stored && stored.get) {
         if (stored.get('gameState')) {
-          this.gameState = stored.get('gameState');
+          // Restore game context with saved state
+          this.gameContext = CryptidShared.createGameContext({ debug: false });
+          this.gameContext.importState(stored.get('gameState'));
           console.log('[GameRoom] Restored gameState from storage');
         }
         if (stored.get('matchStarted') !== undefined) {
@@ -204,31 +751,22 @@ export class GameRoom {
         if (stored.get('sequence') !== undefined) {
           this.sequence = stored.get('sequence');
         }
-        // Restore player slots info
         if (stored.get('playerSlots')) {
           this.playerSlots = stored.get('playerSlots');
-          console.log('[GameRoom] Restored playerSlots:', this.playerSlots);
         }
       }
       
-      // Initialize playerSlots if not present
       if (!this.playerSlots) {
-        this.playerSlots = {
-          player1: null, // { connected: bool, deckSelected: bool, deckData: obj }
-          player2: null
-        };
+        this.playerSlots = { player1: null, player2: null };
       }
       
-      // Restore player connections from hibernated WebSockets
+      // Restore WebSocket connections
       try {
         const webSockets = this.state.getWebSockets();
-        
         for (const ws of webSockets) {
           try {
-            // Get attachment data set when WebSocket was accepted
             const attachment = ws.deserializeAttachment();
             if (attachment && attachment.role) {
-              // Get deckData from playerSlots (attachments are limited to 2KB, can't store full deck)
               const slotData = this.playerSlots?.[attachment.role];
               this.players.set(ws, {
                 role: attachment.role,
@@ -236,86 +774,69 @@ export class GameRoom {
                 deckSelected: attachment.deckSelected || slotData?.deckSelected || false,
                 deckData: slotData?.deckData || null
               });
-              
-              // Update playerSlots to mark this player as connected
               if (this.playerSlots[attachment.role]) {
                 this.playerSlots[attachment.role].connected = true;
               }
-              
-              console.log(`[GameRoom] Restored player ${attachment.role} from hibernation`);
             }
           } catch (wsError) {
             console.error('[GameRoom] Error restoring WebSocket:', wsError);
           }
         }
       } catch (wsError) {
-        console.log('[GameRoom] No hibernated WebSockets to restore');
+        console.log('[GameRoom] No hibernated WebSockets');
       }
       
-      console.log(`[GameRoom] State loaded. Players: ${this.players.size}, Match started: ${this.matchStarted}`);
     } catch (error) {
-      console.error('[GameRoom] Error loading state from storage:', error);
+      console.error('[GameRoom] Error loading state:', error);
     }
   }
   
-  // Save state to storage (call after important changes)
   async saveStateToStorage() {
     try {
       await this.state.storage.put({
-        gameState: this.gameState,
+        gameState: this.gameContext ? this.gameContext.exportState() : null,
         matchStarted: this.matchStarted,
         matchEnded: this.matchEnded,
         sequence: this.sequence,
         playerSlots: this.playerSlots
       });
     } catch (error) {
-      console.error('[GameRoom] Error saving state to storage:', error);
+      console.error('[GameRoom] Error saving state:', error);
     }
   }
   
-  // Handle incoming WebSocket connections
   async fetch(request) {
-    // Load state from storage if waking from hibernation
     await this.loadStateFromStorage();
     
     try {
       const url = new URL(request.url);
       const matchId = url.pathname.split('/')[2];
       
-      console.log(`[GameRoom] Fetch received for matchId: ${matchId}`);
-      
-      // Check if this is the matchmaking lobby
       if (matchId && matchId.startsWith('QUEUE_')) {
         this.isLobby = true;
         return this.handleLobbyConnection(request);
       }
       
-      // Regular game room handling
       return this.handleGameRoomConnection(request);
     } catch (error) {
-      console.error('[GameRoom] Error in fetch handler:', error);
-      return new Response(`Server error: ${error.message}`, { status: 500 });
+      console.error('[GameRoom] Error in fetch:', error);
+      return new Response(`Error: ${error.message}`, { status: 500 });
     }
   }
   
-  // Handle matchmaking lobby connections
   async handleLobbyConnection(request) {
     const webSocketPair = new WebSocketPair();
     const [client, server] = Object.values(webSocketPair);
     
     this.state.acceptWebSocket(server);
     
-    // Add to matchmaking queue
     const queueEntry = {
       ws: server,
       joinedAt: Date.now(),
-      id: Math.random().toString(36).substring(2, 8) // For debugging
+      id: Math.random().toString(36).substring(2, 8)
     };
     this.matchmakingQueue.push(queueEntry);
     
-    console.log(`[Lobby] Player ${queueEntry.id} joined queue. Queue size: ${this.matchmakingQueue.length}`);
-    
-    // Send queue status after a small delay to ensure socket is ready
     try {
       server.send(JSON.stringify({
         type: 'QUEUE_JOINED',
@@ -327,358 +848,145 @@ export class GameRoom {
       console.error('[Lobby] Failed to send QUEUE_JOINED:', e);
     }
     
-    // Try to match players (with small delay to ensure both sockets are ready)
-    setTimeout(() => {
-      this.tryMatchPlayers();
-    }, 100);
+    setTimeout(() => this.tryMatchPlayers(), 100);
     
-    return new Response(null, {
-      status: 101,
-      webSocket: client,
-    });
+    return new Response(null, { status: 101, webSocket: client });
   }
   
-  // Try to pair players in the queue
   tryMatchPlayers() {
-    console.log(`[Lobby] tryMatchPlayers called. Queue size: ${this.matchmakingQueue.length}`);
+    if (this.matchmakingQueue.length < 2) return;
     
-    // Need at least 2 players
-    if (this.matchmakingQueue.length < 2) {
-      console.log('[Lobby] Not enough players to match');
-      return;
+    const player1 = this.matchmakingQueue.shift();
+    const player2 = this.matchmakingQueue.shift();
+    
+    const matchId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    const matchInfo = {
+      type: 'MATCH_FOUND',
+      matchId,
+      message: 'Match found! Connecting...'
+    };
+    
+    try {
+      player1.ws.send(JSON.stringify({ ...matchInfo, yourRole: 'player1' }));
+      player2.ws.send(JSON.stringify({ ...matchInfo, yourRole: 'player2' }));
+    } catch (e) {
+      console.error('[Lobby] Failed to send match info:', e);
     }
-    
-    while (this.matchmakingQueue.length >= 2) {
-      const player1 = this.matchmakingQueue.shift();
-      const player2 = this.matchmakingQueue.shift();
-      
-      console.log(`[Lobby] Attempting to match players: ${player1.id} vs ${player2.id}`);
-      
-      try {
-        // Generate a new match ID
-        const matchId = this.generateQuickMatchId();
-        
-        console.log(`[Lobby] Generated match ID: ${matchId}`);
-        
-        // Send GAME_START directly to both players with all needed info
-        const host = this.env.WORKER_HOST || 'cryptid-new.brenden-6ce.workers.dev';
-        
-        // Player 1 is "player" (goes first), Player 2 is "enemy"
-        const player1StartMsg = JSON.stringify({
-          type: 'GAME_START',
-          matchId: matchId,
-          yourRole: 'player',
-          wsUrl: `wss://${host}/match/${matchId}`,
-          reconnectRequired: true
-        });
-        
-        const player2StartMsg = JSON.stringify({
-          type: 'GAME_START',
-          matchId: matchId,
-          yourRole: 'enemy', 
-          wsUrl: `wss://${host}/match/${matchId}`,
-          reconnectRequired: true
-        });
-        
-        // Send to player 1
-        try {
-          player1.ws.send(player1StartMsg);
-          console.log(`[Lobby] Sent GAME_START to player1 (${player1.id})`);
-        } catch (e) {
-          console.error(`[Lobby] Failed to send to player1 (${player1.id}):`, e.message);
-          throw e;
-        }
-        
-        // Send to player 2
-        try {
-          player2.ws.send(player2StartMsg);
-          console.log(`[Lobby] Sent GAME_START to player2 (${player2.id})`);
-        } catch (e) {
-          console.error(`[Lobby] Failed to send to player2 (${player2.id}):`, e.message);
-          throw e;
-        }
-        
-        console.log(`[Lobby] Successfully matched players for game ${matchId}`);
-        
-        // Mark these websockets as "matched"
-        player1.matched = true;
-        player2.matched = true;
-        
-      } catch (error) {
-        console.error('[Lobby] Error matching players:', error);
-        // Put players back in queue if something went wrong
-        this.matchmakingQueue.unshift(player2);
-        this.matchmakingQueue.unshift(player1);
-        break;
-      }
-    }
-    
-    // Update queue positions for remaining players
-    this.matchmakingQueue.forEach((entry, index) => {
-      if (!entry.matched) {
-        try {
-          entry.ws.send(JSON.stringify({
-            type: 'QUEUE_UPDATE',
-            position: index + 1,
-            queueSize: this.matchmakingQueue.length
-          }));
-        } catch (e) {
-          // Player disconnected, will be cleaned up
-        }
-      }
-    });
   }
   
-  generateQuickMatchId() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let id = 'QM';
-    for (let i = 0; i < 6; i++) {
-      id += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return id;
-  }
-  
-  // Handle regular game room connections
   async handleGameRoomConnection(request) {
     try {
-      const webSocketPair = new WebSocketPair();
-      const [client, server] = Object.values(webSocketPair);
+      await this.loadStateFromStorage();
       
-      console.log(`[GameRoom] Creating WebSocket pair for game room`);
+      // Determine role
+      let role = null;
+      let isReconnect = false;
       
-      // Initialize playerSlots if not present
-      if (!this.playerSlots) {
-        this.playerSlots = {
-          player1: null,
-          player2: null
-        };
-      }
-      
-      // Check for reconnecting players using playerSlots (persisted state)
-      // This survives WebSocket close and DO hibernation
-      let disconnectedRole = null;
-      for (const role of ['player1', 'player2']) {
-        const slot = this.playerSlots[role];
+      // Check for reconnection
+      for (const slotRole of ['player1', 'player2']) {
+        const slot = this.playerSlots[slotRole];
         if (slot && !slot.connected) {
-          disconnectedRole = role;
-          console.log(`[GameRoom] Found disconnected player slot: ${role}`);
+          role = slotRole;
+          isReconnect = true;
           break;
         }
       }
       
-      let role;
-      let isReconnect = false;
-      let playerData;
-      
-      if (disconnectedRole) {
-        // Handle reconnection - player is rejoining their slot
-        role = disconnectedRole;
-        isReconnect = true;
-        
-        const slotData = this.playerSlots[role];
-        playerData = {
-          role,
-          connected: true,
-          reconnectedAt: Date.now(),
-          deckSelected: slotData.deckSelected || false,
-          deckData: slotData.deckData || null
-        };
-        
-        // Update the slot to show connected
-        this.playerSlots[role].connected = true;
-        this.playerSlots[role].reconnectedAt = Date.now();
-        
-        console.log(`[GameRoom] Player ${role} reconnected`);
-      } else {
-        // New connection - determine player role from playerSlots
-        // Count how many slots are filled
-        const player1Filled = this.playerSlots.player1 !== null;
-        const player2Filled = this.playerSlots.player2 !== null;
-        
-        console.log(`[GameRoom] New connection. Slots: player1=${player1Filled}, player2=${player2Filled}`);
-        
-        if (!player1Filled) {
+      // Assign new slot if not reconnecting
+      if (!role) {
+        if (!this.playerSlots.player1) {
           role = 'player1';
-        } else if (!player2Filled) {
+          this.playerSlots.player1 = { connected: true, deckSelected: false, deckData: null, joinedAt: Date.now() };
+        } else if (!this.playerSlots.player2) {
           role = 'player2';
-        } else {
-          // Both slots filled - check if any are disconnected (stale state)
-          // This can happen if the previous disconnect wasn't properly recorded
-          const p1Connected = this.playerSlots.player1?.connected;
-          const p2Connected = this.playerSlots.player2?.connected;
-          
-          console.log(`[GameRoom] Both slots filled. P1 connected: ${p1Connected}, P2 connected: ${p2Connected}`);
-          
-          // Check if either player has a stale connection (WebSocket no longer in players map)
-          let staleRole = null;
-          for (const [ws, player] of this.players) {
-            // If we have a WebSocket but it's closed, mark as stale
-            try {
-              if (ws.readyState !== 1) { // 1 = OPEN
-                staleRole = player.role;
-                console.log(`[GameRoom] Found stale WebSocket for ${player.role}`);
-                this.players.delete(ws);
-                if (this.playerSlots[player.role]) {
-                  this.playerSlots[player.role].connected = false;
-                }
-              }
-            } catch (e) {
-              // WebSocket may be in bad state
-              staleRole = player.role;
-              this.players.delete(ws);
-              if (this.playerSlots[player.role]) {
-                this.playerSlots[player.role].connected = false;
-              }
-            }
-          }
-          
-          // If we found a stale connection, allow this player to take that slot
-          if (staleRole) {
-            role = staleRole;
-            console.log(`[GameRoom] Reassigning stale slot ${staleRole} to new connection`);
-          } else if (!p1Connected) {
-            // Slot exists but marked disconnected - allow reconnection
-            role = 'player1';
-            console.log(`[GameRoom] player1 slot exists but disconnected, allowing reconnect`);
-          } else if (!p2Connected) {
-            role = 'player2';
-            console.log(`[GameRoom] player2 slot exists but disconnected, allowing reconnect`);
-          } else {
-            // Truly full - reject without accepting the WebSocket
-            console.log(`[GameRoom] Room is truly full, rejecting connection`);
-            // DON'T accept the WebSocket - just return an error response
-            // The client will see the connection fail
-            server.close(4000, 'Room is full');
-            return new Response(null, {
-              status: 101,
-              webSocket: client,
-            });
-          }
+          this.playerSlots.player2 = { connected: true, deckSelected: false, deckData: null, joinedAt: Date.now() };
+        } else if (!this.playerSlots.player1.connected) {
+          role = 'player1';
+          isReconnect = true;
+        } else if (!this.playerSlots.player2.connected) {
+          role = 'player2';
+          isReconnect = true;
         }
-        
-        playerData = {
-          role,
-          connected: true,
-          joinedAt: Date.now(),
-          deckSelected: false,
-          deckData: null
-        };
-        
-        // Fill the slot
-        this.playerSlots[role] = {
-          connected: true,
-          joinedAt: Date.now(),
-          deckSelected: false,
-          deckData: null
-        };
-        
-        console.log(`[GameRoom] Player joined as ${role}`);
       }
       
-      // Save the updated playerSlots to storage
-      await this.saveStateToStorage();
+      if (!role) {
+        return new Response('Room is full', { status: 403 });
+      }
       
-      // Accept the WebSocket with attachment for hibernation recovery
-      // NOTE: Attachments are limited to 2048 bytes, so don't store deckData here
-      // deckData is stored in playerSlots which is persisted to storage
-      server.serializeAttachment({
-        role: role,
-        deckSelected: playerData.deckSelected
-      });
+      // Create WebSocket pair
+      const webSocketPair = new WebSocketPair();
+      const [client, server] = Object.values(webSocketPair);
+      
       this.state.acceptWebSocket(server);
+      server.serializeAttachment({ role, deckSelected: false });
       
-      // Store player info in memory
-      this.players.set(server, playerData);
-      console.log(`[GameRoom] Total players: ${this.players.size}`);
+      this.playerSlots[role].connected = true;
+      
+      this.players.set(server, {
+        role,
+        connected: true,
+        deckSelected: this.playerSlots[role]?.deckSelected || false,
+        deckData: this.playerSlots[role]?.deckData || null
+      });
+      
+      await this.saveStateToStorage();
       
       const yourRole = role === 'player1' ? 'player' : 'enemy';
       
-      // Send initial message
-      try {
-        // If match already started and this is a reconnect, send game state
-        if (this.matchStarted && isReconnect && this.gameState) {
-          console.log(`[GameRoom] Sending reconnect state to ${role}`);
-          server.send(JSON.stringify({
-            type: 'RECONNECTED',
-            yourRole: yourRole,
-            gameState: this.getStateForPlayer(yourRole),
-            matchStarted: true,
-            isYourTurn: this.gameState.currentTurn === yourRole
-          }));
-          
-          // Notify opponent of reconnection
-          this.broadcastToOthers(server, {
-            type: 'OPPONENT_RECONNECTED'
-          });
-        } else if (isReconnect && !this.matchStarted) {
-          // Reconnecting during deck selection phase
-          console.log(`[GameRoom] Player ${role} reconnecting during deck selection`);
-          
-          // Check if this player had already selected a deck before disconnecting
-          const hadDeckSelected = this.playerSlots[role]?.deckSelected || false;
-          
-          server.send(JSON.stringify({
-            type: 'RECONNECTED',
-            yourRole: yourRole,
-            matchStarted: false,
-            deckSelected: hadDeckSelected,
-            message: hadDeckSelected ? 'Reconnected! Waiting for opponent.' : 'Reconnected! Please select your deck.'
-          }));
-          
-          // Notify opponent of reconnection
-          this.broadcastToOthers(server, {
-            type: 'OPPONENT_RECONNECTED'
-          });
-          
-          // Check if both players are now connected again
-          const bothConnected = this.playerSlots.player1?.connected && this.playerSlots.player2?.connected;
-          if (bothConnected) {
-            console.log('[GameRoom] Both players reconnected during deck selection');
-            
-            // Check if both players had already selected decks - if so, start the match
-            const bothHaveDecks = this.playerSlots.player1?.deckSelected && this.playerSlots.player2?.deckSelected;
-            if (bothHaveDecks) {
-              console.log('[GameRoom] Both players already have decks, starting match!');
-              this.startMatchWithDecks();
-            } else {
-              this.notifyBothPlayersConnected();
-            }
-          }
-        } else {
-          // Send welcome message for new connection
-          server.send(JSON.stringify({
-            type: 'MATCH_JOINED',
-            yourRole: yourRole,
-            playersConnected: this.players.size,
-            waitingForOpponent: this.players.size < 2,
-            matchStarted: this.matchStarted
-          }));
-          
-          // If both players are now connected, notify them (but don't start the game yet - wait for deck selection)
-          const bothConnected = this.playerSlots.player1?.connected && this.playerSlots.player2?.connected;
-          if (bothConnected && !this.matchStarted) {
-            console.log('[GameRoom] Both players connected, notifying...');
+      // Send appropriate message
+      if (isReconnect && this.matchStarted && this.gameContext) {
+        server.send(JSON.stringify({
+          type: 'RECONNECTED',
+          yourRole,
+          gameState: this.getStateForPlayer(yourRole),
+          matchStarted: true,
+          isYourTurn: this.gameContext.gameState.state.currentTurn === yourRole
+        }));
+        this.broadcastToOthers(server, { type: 'OPPONENT_RECONNECTED' });
+      } else if (isReconnect && !this.matchStarted) {
+        const hadDeckSelected = this.playerSlots[role]?.deckSelected || false;
+        server.send(JSON.stringify({
+          type: 'RECONNECTED',
+          yourRole,
+          matchStarted: false,
+          deckSelected: hadDeckSelected
+        }));
+        this.broadcastToOthers(server, { type: 'OPPONENT_RECONNECTED' });
+        
+        const bothConnected = this.playerSlots.player1?.connected && this.playerSlots.player2?.connected;
+        if (bothConnected) {
+          const bothHaveDecks = this.playerSlots.player1?.deckSelected && this.playerSlots.player2?.deckSelected;
+          if (bothHaveDecks) {
+            this.startMatchWithDecks();
+          } else {
             this.notifyBothPlayersConnected();
           }
         }
-      } catch (sendError) {
-        console.error('[GameRoom] Error sending initial message:', sendError);
+      } else {
+        server.send(JSON.stringify({
+          type: 'MATCH_JOINED',
+          yourRole,
+          playersConnected: this.players.size,
+          waitingForOpponent: this.players.size < 2,
+          matchStarted: this.matchStarted
+        }));
+        
+        const bothConnected = this.playerSlots.player1?.connected && this.playerSlots.player2?.connected;
+        if (bothConnected && !this.matchStarted) {
+          this.notifyBothPlayersConnected();
+        }
       }
       
-      console.log(`[GameRoom] Returning WebSocket response`);
-      return new Response(null, {
-        status: 101,
-        webSocket: client,
-      });
+      return new Response(null, { status: 101, webSocket: client });
       
     } catch (error) {
-      console.error('[GameRoom] Error in handleGameRoomConnection:', error);
+      console.error('[GameRoom] Error:', error);
       return new Response(`Error: ${error.message}`, { status: 500 });
     }
   }
   
   notifyBothPlayersConnected() {
-    // Tell both players that they're both in the room
     for (const [ws, player] of this.players) {
       try {
         ws.send(JSON.stringify({
@@ -693,124 +1001,68 @@ export class GameRoom {
   }
   
   handleDeckSelected(ws, player, deckData) {
-    console.log(`[GameRoom] Player ${player.role} selected deck:`, {
-      deckName: deckData?.deckName,
-      cardCount: deckData?.cards?.length || 0,
-      kindlingCount: deckData?.kindling?.length || 0,
-      firstCard: deckData?.cards?.[0] ? {
-        name: deckData.cards[0].name,
-        hp: deckData.cards[0].hp,
-        atk: deckData.cards[0].atk
-      } : 'none'
-    });
+    console.log(`[GameRoom] Player ${player.role} selected deck`);
     
     player.deckSelected = true;
     player.deckData = deckData;
     
-    // Update WebSocket attachment for hibernation recovery
-    // NOTE: Attachments are limited to 2048 bytes, so don't store deckData here
-    // deckData is stored in playerSlots which is persisted to storage
-    ws.serializeAttachment({
-      role: player.role,
-      deckSelected: true
-    });
+    ws.serializeAttachment({ role: player.role, deckSelected: true });
     
-    // Also update playerSlots (persisted state)
-    if (this.playerSlots && this.playerSlots[player.role]) {
+    if (this.playerSlots[player.role]) {
       this.playerSlots[player.role].deckSelected = true;
       this.playerSlots[player.role].deckData = deckData;
-      this.saveStateToStorage(); // Persist the change
+      this.saveStateToStorage();
     }
     
-    // Notify opponent that this player is ready
-    for (const [otherWs, otherPlayer] of this.players) {
-      if (otherWs !== ws) {
-        try {
-          otherWs.send(JSON.stringify({
-            type: 'OPPONENT_DECK_SELECTED',
-            message: 'Opponent has selected their deck!'
-          }));
-        } catch (e) {
-          console.error('[GameRoom] Failed to notify opponent:', e);
-        }
-      }
-    }
+    this.broadcastToOthers(ws, {
+      type: 'OPPONENT_DECK_SELECTED',
+      message: 'Opponent has selected their deck!'
+    });
     
-    // Check if both players have selected decks AND are connected
-    let allReady = false;
-    if (this.playerSlots) {
-      const p1Ready = this.playerSlots.player1?.deckSelected && this.playerSlots.player1?.connected;
-      const p2Ready = this.playerSlots.player2?.deckSelected && this.playerSlots.player2?.connected;
-      allReady = p1Ready && p2Ready;
-    } else {
-      allReady = [...this.players.values()].every(p => p.deckSelected && p.connected);
-    }
+    const p1Ready = this.playerSlots.player1?.deckSelected && this.playerSlots.player1?.connected;
+    const p2Ready = this.playerSlots.player2?.deckSelected && this.playerSlots.player2?.connected;
     
-    if (allReady && !this.matchStarted) {
-      console.log('[GameRoom] Both players have selected decks and are connected, starting match!');
+    if (p1Ready && p2Ready && !this.matchStarted) {
       this.startMatchWithDecks();
     }
   }
   
   startMatchWithDecks() {
-    // Safety check - ensure both players are connected
     const connectedPlayers = [...this.players.values()].filter(p => p.connected);
-    if (connectedPlayers.length < 2) {
-      console.log('[GameRoom] Cannot start match - not all players connected');
-      return;
-    }
+    if (connectedPlayers.length < 2) return;
     
     this.matchStarted = true;
     
-    // Randomly determine who goes first
+    // Create game context using shared modules
+    this.gameContext = CryptidShared.createGameContext({ debug: false });
+    const gs = this.gameContext.gameState.state;
+    
+    // Randomly determine first player
     const firstPlayer = Math.random() < 0.5 ? 'player' : 'enemy';
-    
-    console.log(`[GameRoom] First player: ${firstPlayer}`);
-    
-    // Initialize game state
-    this.gameState = this.createInitialGameState();
-    this.gameState.currentTurn = firstPlayer;
-    this.gameState.turnNumber = 1;
+    gs.currentTurn = firstPlayer;
+    gs.turnNumber = 1;
     
     // Populate decks from player data
-    // Check both player.deckData and playerSlots (playerSlots is the authoritative source)
     for (const [ws, player] of this.players) {
       const role = player.role === 'player1' ? 'player' : 'enemy';
-      // Get deck data from playerSlots first (authoritative), fallback to player object
       const deckData = this.playerSlots[player.role]?.deckData || player.deckData || {};
       
-      console.log(`[GameRoom] ${player.role} deckData:`, {
-        hasCards: !!deckData.cards,
-        cardCount: deckData.cards?.length || 0,
-        hasKindling: !!deckData.kindling,
-        kindlingCount: deckData.kindling?.length || 0
-      });
-      
-      // Filter out any kindling from main deck cards (in case they got mixed in)
       const mainCards = (deckData.cards || []).filter(c => !c.isKindling && c.type !== 'kindling');
-      const kindlingCards = (deckData.kindling || []).map(k => ({ ...k, isKindling: true, type: 'cryptid' }));
+      const kindlingCards = (deckData.kindling || []).map(k => ({ ...k, isKindling: true }));
       
-      console.log(`[GameRoom] ${player.role} filtered: ${mainCards.length} main cards, ${kindlingCards.length} kindling`);
-      
-      // Shuffle and set deck
       const mainDeck = this.shuffleDeck([...mainCards]);
-      const kindlingDeck = [...kindlingCards];
       
       if (role === 'player') {
-        this.gameState.playerDeck = mainDeck;
-        this.gameState.playerKindling = kindlingDeck;
-        // Draw initial hand (5 cards)
-        this.gameState.playerHand = mainDeck.splice(0, 5);
-        // First player starts with 0 pyre, second starts with 1
-        this.gameState.playerPyre = (firstPlayer === 'player') ? 0 : 1;
+        gs.playerDeck = mainDeck;
+        gs.playerKindling = kindlingCards;
+        gs.playerHand = mainDeck.splice(0, 5);
+        gs.playerPyre = (firstPlayer === 'player') ? 0 : 1;
       } else {
-        this.gameState.enemyDeck = mainDeck;
-        this.gameState.enemyKindling = kindlingDeck;
-        this.gameState.enemyHand = mainDeck.splice(0, 5);
-        this.gameState.enemyPyre = (firstPlayer === 'enemy') ? 0 : 1;
+        gs.enemyDeck = mainDeck;
+        gs.enemyKindling = kindlingCards;
+        gs.enemyHand = mainDeck.splice(0, 5);
+        gs.enemyPyre = (firstPlayer === 'enemy') ? 0 : 1;
       }
-      
-      console.log(`[GameRoom] ${role} deck: ${mainDeck.length} cards remaining, hand: ${role === 'player' ? this.gameState.playerHand.length : this.gameState.enemyHand.length}`);
     }
     
     // Send game start to both players
@@ -821,9 +1073,9 @@ export class GameRoom {
       try {
         ws.send(JSON.stringify({
           type: 'BOTH_DECKS_SELECTED',
-          yourRole: yourRole,
-          firstPlayer: firstPlayer,
-          isYourTurn: isYourTurn,
+          yourRole,
+          firstPlayer,
+          isYourTurn,
           initialState: this.getStateForPlayer(yourRole),
           message: 'Both players ready! Starting game...'
         }));
@@ -832,15 +1084,11 @@ export class GameRoom {
       }
     }
     
-    // Save state to storage for hibernation recovery
     this.saveStateToStorage();
-    
-    // Start turn timer for first player
     this.startTurnTimer();
   }
   
   shuffleDeck(deck) {
-    // Fisher-Yates shuffle
     for (let i = deck.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -850,44 +1098,32 @@ export class GameRoom {
   
   // Handle WebSocket messages
   async webSocketMessage(ws, message) {
-    // Load state from storage if waking from hibernation
     await this.loadStateFromStorage();
     
-    // Handle lobby mode messages
     if (this.isLobby) {
       try {
         const data = JSON.parse(message);
         if (data.type === 'PING') {
-          ws.send(JSON.stringify({
-            type: 'PONG',
-            clientTime: data.timestamp,
-            serverTime: Date.now(),
-            queueSize: this.matchmakingQueue.length
-          }));
+          ws.send(JSON.stringify({ type: 'PONG', serverTime: Date.now(), queueSize: this.matchmakingQueue.length }));
         } else if (data.type === 'LEAVE_QUEUE') {
           this.removeFromQueue(ws);
         }
-      } catch (e) {
-        // Ignore parse errors in lobby
-      }
+      } catch (e) {}
       return;
     }
     
     const player = this.players.get(ws);
     if (!player) return;
     
-    // Parse message
     let data;
     try {
       data = JSON.parse(message);
     } catch (e) {
-      console.error('[GameRoom] Failed to parse message:', e);
       return;
     }
     
     try {
       switch (data.type) {
-        // Handle deck selection (before game starts)
         case 'DECK_SELECTED':
           if (!this.matchStarted) {
             this.handleDeckSelected(ws, player, data.deck);
@@ -899,11 +1135,7 @@ export class GameRoom {
           break;
           
         case 'PING':
-          ws.send(JSON.stringify({
-            type: 'PONG',
-            clientTime: data.timestamp,
-            serverTime: Date.now()
-          }));
+          ws.send(JSON.stringify({ type: 'PONG', serverTime: Date.now() }));
           break;
           
         case 'REQUEST_SYNC':
@@ -915,211 +1147,84 @@ export class GameRoom {
           break;
           
         case 'KEEPALIVE':
-          // Just acknowledge keepalive to prevent connection timeout
           ws.send(JSON.stringify({ type: 'KEEPALIVE_ACK' }));
           break;
-          
-        default:
-          console.log('[GameRoom] Unknown message type:', data.type);
       }
     } catch (error) {
       console.error('[GameRoom] Error handling message:', error);
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: error.message
-      }));
+      ws.send(JSON.stringify({ type: 'ERROR', message: error.message }));
     }
   }
   
-  // Handle WebSocket close
   async webSocketClose(ws, code, reason) {
-    // Load state from storage if waking from hibernation
     await this.loadStateFromStorage();
     
-    // Handle lobby mode disconnections
     if (this.isLobby) {
       this.removeFromQueue(ws);
-      console.log(`Player left matchmaking queue. Queue size: ${this.matchmakingQueue.length}`);
       return;
     }
     
     const player = this.players.get(ws);
     if (player) {
-      console.log(`Player ${player.role} disconnected: ${code} ${reason}`);
-      
-      // Mark as disconnected in playerSlots (persisted)
-      if (this.playerSlots && this.playerSlots[player.role]) {
+      if (this.playerSlots[player.role]) {
         this.playerSlots[player.role].connected = false;
         this.playerSlots[player.role].disconnectedAt = Date.now();
-        // Save to storage so reconnection can find this player
         await this.saveStateToStorage();
-        console.log(`[GameRoom] Saved disconnected state for ${player.role}`);
       }
       
-      // Remove from the WebSocket-based players map
       this.players.delete(ws);
+      this.broadcastToOthers(ws, { type: 'OPPONENT_DISCONNECTED', reconnectWindow: 60000 });
       
-      // Notify other player
-      this.broadcastToOthers(ws, {
-        type: 'OPPONENT_DISCONNECTED',
-        reconnectWindow: 60000
-      });
-      
-      // Set timeout to forfeit if no reconnect
-      // Note: This won't survive hibernation, but the client can also timeout
       const disconnectedRole = player.role;
       setTimeout(async () => {
         await this.loadStateFromStorage();
-        // Check if player is still disconnected using playerSlots
-        if (this.playerSlots && this.playerSlots[disconnectedRole] && 
-            !this.playerSlots[disconnectedRole].connected) {
+        if (this.playerSlots?.[disconnectedRole] && !this.playerSlots[disconnectedRole].connected) {
           this.handleForfeit(disconnectedRole);
         }
       }, 60000);
     }
   }
   
-  // Remove a player from the matchmaking queue
   removeFromQueue(ws) {
     const index = this.matchmakingQueue.findIndex(entry => entry.ws === ws);
     if (index !== -1) {
       this.matchmakingQueue.splice(index, 1);
-      // Update positions for remaining players
-      this.matchmakingQueue.forEach((entry, i) => {
-        try {
-          entry.ws.send(JSON.stringify({
-            type: 'QUEUE_UPDATE',
-            position: i + 1,
-            queueSize: this.matchmakingQueue.length
-          }));
-        } catch (e) {
-          // Player already disconnected
-        }
-      });
     }
   }
   
-  // Handle WebSocket error
   async webSocketError(ws, error) {
     console.error('WebSocket error:', error);
   }
   
-  // ==================== GAME LOGIC ====================
+  // ==================== GAME LOGIC (USING SHARED MODULES) ====================
   
-  startMatch() {
-    console.log('Starting match!');
-    this.matchStarted = true;
-    
-    // Initialize game state
-    this.gameState = this.createInitialGameState();
-    
-    // Randomly determine who goes first
-    const firstPlayer = Math.random() < 0.5 ? 'player' : 'enemy';
-    this.gameState.currentTurn = firstPlayer;
-    
-    // Send game start to both players
-    for (const [ws, player] of this.players) {
-      const yourRole = player.role === 'player1' ? 'player' : 'enemy';
-      const isYourTurn = firstPlayer === yourRole;
-      
-      ws.send(JSON.stringify({
-        type: 'GAME_STARTED',
-        yourRole,
-        firstPlayer: isYourTurn ? 'you' : 'opponent',
-        initialState: this.getStateForPlayer(yourRole),
-        turnTimeLimit: this.turnTimeLimit
-      }));
-    }
-    
-    // Broadcast turn start
-    this.broadcast({
-      type: 'TURN_STARTED',
-      owner: firstPlayer,
-      turnNumber: 1
-    });
-    
-    // Start turn timer
-    this.startTurnTimer();
-  }
-  
-  createInitialGameState() {
-    return {
-      // Fields: 2 columns x 3 rows each
-      playerField: [[null, null, null], [null, null, null]],
-      enemyField: [[null, null, null], [null, null, null]],
-      
-      // Hands (will be populated when decks are submitted)
-      playerHand: [],
-      enemyHand: [],
-      
-      // Decks
-      playerDeck: [],
-      enemyDeck: [],
-      
-      // Kindling pools
-      playerKindling: [],
-      enemyKindling: [],
-      
-      // Resources
-      playerPyre: 0,
-      enemyPyre: 0,
-      
-      // Death counters (10 = loss)
-      playerDeaths: 0,
-      enemyDeaths: 0,
-      
-      // Traps (2 slots each)
-      playerTraps: [null, null],
-      enemyTraps: [null, null],
-      
-      // Turn state
-      currentTurn: 'player',
-      phase: 'conjure1',
-      turnNumber: 0,
-      
-      // Per-turn flags
-      playerKindlingPlayedThisTurn: false,
-      enemyKindlingPlayedThisTurn: false,
-      playerPyreBurnUsed: false,
-      enemyPyreBurnUsed: false,
-      playerPyreCardPlayedThisTurn: false,
-      enemyPyreCardPlayedThisTurn: false
-    };
-  }
-  
-  // Handle player action
   handleAction(ws, player, action) {
     const playerRole = player.role === 'player1' ? 'player' : 'enemy';
     
-    // Check if game state exists
-    if (!this.gameState) {
-      console.error('[GameRoom] handleAction called but gameState is null');
+    if (!this.gameContext) {
       return this.rejectAction(ws, action.actionId, 'GAME_NOT_INITIALIZED');
     }
     
-    // Check if game is active
+    const gs = this.gameContext.gameState.state;
+    
     if (!this.matchStarted || this.matchEnded) {
       return this.rejectAction(ws, action.actionId, 'GAME_NOT_ACTIVE');
     }
     
-    // Check if it's this player's turn (for turn-based actions)
-    if (this.requiresTurn(action.actionType) && this.gameState.currentTurn !== playerRole) {
+    if (this.requiresTurn(action.actionType) && gs.currentTurn !== playerRole) {
       return this.rejectAction(ws, action.actionId, 'NOT_YOUR_TURN');
     }
     
-    // Check if action is valid for current phase
-    if (!this.isValidForPhase(action.actionType, this.gameState.phase)) {
+    if (!this.isValidForPhase(action.actionType, gs.phase)) {
       return this.rejectAction(ws, action.actionId, 'WRONG_PHASE');
     }
     
-    // Validate and execute the action
     const result = this.executeAction(playerRole, action);
     
     if (!result.success) {
       return this.rejectAction(ws, action.actionId, result.reason);
     }
     
-    // Record action
     this.actionHistory.push({
       sequence: this.sequence,
       player: playerRole,
@@ -1127,16 +1232,10 @@ export class GameRoom {
       timestamp: Date.now()
     });
     
-    // Broadcast results to both players
     this.broadcastActionResult(action.actionId, playerRole, result.events);
-    
-    // Save state after action
     this.saveStateToStorage();
-    
-    // Check for game over
     this.checkGameOver();
     
-    // Reset turn timer if turn-based action
     if (this.requiresTurn(action.actionType)) {
       this.resetTurnTimer();
     }
@@ -1144,11 +1243,12 @@ export class GameRoom {
   
   executeAction(playerRole, action) {
     const events = [];
-    const gs = this.gameState;
+    const gs = this.gameContext.gameState;
+    const state = gs.state;
     
     const collectEvent = (eventType, data) => {
       events.push({
-        type: eventType,  // Use 'type' for client compatibility
+        type: eventType,
         ...data,
         owner: data.owner || playerRole,
         sequence: this.sequence++
@@ -1170,28 +1270,16 @@ export class GameRoom {
         result = this.executeAttack(playerRole, action.payload, collectEvent);
         break;
         
-      case 'EVOLVE_CRYPTID':
-        result = this.executeEvolution(playerRole, action.payload, collectEvent);
-        break;
-        
-      case 'PLAY_BURST':
-        result = this.executePlayBurst(playerRole, action.payload, collectEvent);
-        break;
-        
-      case 'PLAY_TRAP':
-        result = this.executePlayTrap(playerRole, action.payload, collectEvent);
-        break;
-        
-      case 'USE_ABILITY':
-        result = this.executeUseAbility(playerRole, action.payload, collectEvent);
+      case 'PLAY_PYRE_CARD':
+        result = this.executePlayPyreCard(playerRole, action.payload, collectEvent);
         break;
         
       case 'PYRE_BURN':
         result = this.executePyreBurn(playerRole, collectEvent);
         break;
         
-      case 'PLAY_PYRE_CARD':
-        result = this.executePlayPyreCard(playerRole, action.payload, collectEvent);
+      case 'EVOLVE_CRYPTID':
+        result = this.executeEvolution(playerRole, action.payload, collectEvent);
         break;
         
       case 'END_CONJURE1':
@@ -1214,7 +1302,6 @@ export class GameRoom {
         return { success: false, reason: 'UNKNOWN_ACTION' };
     }
     
-    // Merge the collected events into the result
     if (result.success) {
       result.events = events;
     }
@@ -1225,52 +1312,42 @@ export class GameRoom {
   // ==================== ACTION EXECUTORS ====================
   
   executeSummon(playerRole, payload, collectEvent) {
-    const gs = this.gameState;
-    // Handle both formats: {cardId, col, row} and {cardId, targetSlot: {col, row}}
+    const gs = this.gameContext.gameState;
+    const state = gs.state;
+    
     const cardId = payload.cardId;
     let col = payload.col ?? payload.targetSlot?.col;
     let row = payload.row ?? payload.targetSlot?.row;
     
-    // Get hand and pyre
-    const hand = playerRole === 'player' ? gs.playerHand : gs.enemyHand;
-    const pyre = playerRole === 'player' ? gs.playerPyre : gs.enemyPyre;
-    const field = playerRole === 'player' ? gs.playerField : gs.enemyField;
+    const hand = gs.getHand(playerRole);
+    const pyre = gs.getPyre(playerRole);
+    const field = gs.getField(playerRole);
     
-    // Find card in hand
     let cardIndex = hand.findIndex(c => c.id === cardId);
     
-    // If not found by ID, try matching by card data if provided
     if (cardIndex === -1 && payload.cardData) {
-      // Use the card data from client for initial summon
-      const cardData = payload.cardData;
-      hand.push({ ...cardData, id: cardId });
+      hand.push({ ...payload.cardData, id: cardId });
       cardIndex = hand.length - 1;
     }
     
     if (cardIndex === -1) {
-      console.log('[GameRoom] Card not in hand:', cardId, 'Hand:', hand.map(c => c.id));
       return { success: false, reason: 'CARD_NOT_IN_HAND' };
     }
     
     const card = hand[cardIndex];
     
-    // Check pyre cost
     if ((card.cost || 0) > pyre) {
       return { success: false, reason: 'INSUFFICIENT_PYRE' };
     }
     
-    // Check slot is valid
     if (col < 0 || col > 1 || row < 0 || row > 2) {
       return { success: false, reason: 'INVALID_SLOT' };
     }
     
-    // Check slot is empty (or find valid slot)
-    const combatCol = playerRole === 'player' ? 1 : 0;
-    const supportCol = playerRole === 'player' ? 0 : 1;
+    const combatCol = gs.getCombatCol(playerRole);
+    const supportCol = gs.getSupportCol(playerRole);
     
-    // Auto-place: combat first, then support
     if (field[col][row] !== null) {
-      // Try the other column
       const otherCol = col === combatCol ? supportCol : combatCol;
       if (field[otherCol][row] === null) {
         col = otherCol;
@@ -1279,371 +1356,161 @@ export class GameRoom {
       }
     }
     
-    // Execute summon
+    // Execute summon using shared module
     hand.splice(cardIndex, 1);
+    gs.modifyPyre(playerRole, -(card.cost || 0));
     
-    if (playerRole === 'player') {
-      gs.playerPyre -= card.cost || 0;
-    } else {
-      gs.enemyPyre -= card.cost || 0;
+    const summonResult = gs.summonCryptid(playerRole, col, row, card);
+    if (!summonResult.success) {
+      return { success: false, reason: summonResult.error };
     }
-    
-    // Create field cryptid
-    const summonedCryptid = {
-      ...card,
-      owner: playerRole,
-      col: col,
-      row: row,
-      currentHp: card.hp || 1,
-      currentAtk: card.atk || card.attack || 0,
-      maxHp: card.hp || 1,
-      baseAtk: card.atk || card.attack || 0,
-      tapped: false,
-      canAttack: false, // Summoning sickness
-      justSummoned: true,
-      burnTurns: 0,
-      bleedTurns: 0,
-      paralyzed: false
-    };
-    
-    field[col][row] = summonedCryptid;
-    
-    console.log('[GameRoom] Cryptid summoned:', summonedCryptid.name, 'at', col, row, 'by', playerRole);
     
     collectEvent('PYRE_CHANGED', {
       owner: playerRole,
       amount: -(card.cost || 0),
-      newPyre: playerRole === 'player' ? gs.playerPyre : gs.enemyPyre
+      newPyre: gs.getPyre(playerRole)
     });
     
     collectEvent('CRYPTID_SUMMONED', {
-      cardId: cardId,
-      cardName: summonedCryptid.name,
-      cryptid: this.serializeCryptid(summonedCryptid),
-      col: col,
-      row: row,
-      owner: playerRole,
-      hp: summonedCryptid.currentHp,
-      attack: summonedCryptid.currentAtk
+      cardId,
+      cardName: summonResult.cryptid.name,
+      cryptid: this.serializeCryptid(summonResult.cryptid),
+      col, row,
+      owner: playerRole
     });
     
     return { success: true };
   }
   
   executeSummonKindling(playerRole, payload, collectEvent) {
-    const gs = this.gameState;
-    // Handle both formats
+    const gs = this.gameContext.gameState;
+    const state = gs.state;
+    
     const cardId = payload.cardId;
     const col = payload.col ?? payload.targetSlot?.col;
     const row = payload.row ?? payload.targetSlot?.row;
     
-    // Check if kindling already played this turn
     const playedFlag = playerRole === 'player' ? 'playerKindlingPlayedThisTurn' : 'enemyKindlingPlayedThisTurn';
-    if (gs[playedFlag]) {
+    if (state[playedFlag]) {
       return { success: false, reason: 'KINDLING_ALREADY_PLAYED' };
     }
     
-    // Get kindling pool
-    const kindlingPool = playerRole === 'player' ? gs.playerKindling : gs.enemyKindling;
-    const field = playerRole === 'player' ? gs.playerField : gs.enemyField;
+    const kindlingPool = gs.getKindling(playerRole);
+    const field = gs.getField(playerRole);
     
-    // Find kindling in pool
     let kindlingIndex = kindlingPool.findIndex(c => c.id === cardId);
     
-    // If not found by ID, add from cardData
     if (kindlingIndex === -1 && payload.cardData) {
       kindlingPool.push({ ...payload.cardData, id: cardId });
       kindlingIndex = kindlingPool.length - 1;
     }
     
     if (kindlingIndex === -1) {
-      console.log('[GameRoom] Kindling not found:', cardId, 'Pool:', kindlingPool.map(c => c.id));
       return { success: false, reason: 'CARD_NOT_IN_KINDLING' };
     }
     
     const kindling = kindlingPool[kindlingIndex];
     
-    // Validate slot
     if (field[col]?.[row] !== null) {
       return { success: false, reason: 'SLOT_OCCUPIED' };
     }
     
-    // Execute summon
     kindlingPool.splice(kindlingIndex, 1);
-    gs[playedFlag] = true;
+    state[playedFlag] = true;
     
-    const summonedKindling = {
-      ...kindling,
-      owner: playerRole,
-      col,
-      row,
-      currentHp: kindling.hp || 1,
-      currentAtk: kindling.atk || kindling.attack || 1,
-      maxHp: kindling.hp || 1,
-      baseAtk: kindling.atk || kindling.attack || 1,
-      tapped: false,
-      canAttack: false,
-      justSummoned: true,
-      isKindling: true
-    };
-    
-    field[col][row] = summonedKindling;
-    
-    console.log('[GameRoom] Kindling summoned:', summonedKindling.name, 'at', col, row, 'by', playerRole);
+    const summonResult = gs.summonCryptid(playerRole, col, row, { ...kindling, isKindling: true });
+    if (!summonResult.success) {
+      return { success: false, reason: summonResult.error };
+    }
     
     collectEvent('KINDLING_SUMMONED', {
-      cardId: cardId,
-      cardName: summonedKindling.name,
-      cryptid: this.serializeCryptid(summonedKindling),
-      col: col,
-      row: row,
-      owner: playerRole,
-      hp: summonedKindling.currentHp,
-      attack: summonedKindling.currentAtk
+      cardId,
+      cardName: summonResult.cryptid.name,
+      cryptid: this.serializeCryptid(summonResult.cryptid),
+      col, row,
+      owner: playerRole
     });
     
     return { success: true };
   }
   
   executeAttack(playerRole, payload, collectEvent) {
-    const gs = this.gameState;
+    const gs = this.gameContext.gameState;
+    const combat = this.gameContext.combatEngine;
+    
     const { attackerCol, attackerRow, targetCol, targetRow } = payload;
     
-    const attackerField = playerRole === 'player' ? gs.playerField : gs.enemyField;
-    const targetField = playerRole === 'player' ? gs.enemyField : gs.playerField;
+    const attackerField = gs.getField(playerRole);
     const targetOwner = playerRole === 'player' ? 'enemy' : 'player';
     
-    // Get attacker
     const attacker = attackerField[attackerCol]?.[attackerRow];
     if (!attacker) {
-      console.log('[GameRoom] No attacker at', attackerCol, attackerRow);
       return { success: false, reason: 'NO_ATTACKER' };
     }
     
-    // Check attacker can attack (more lenient for multiplayer sync)
-    if (attacker.tapped) {
-      console.log('[GameRoom] Attacker is tapped');
-      return { success: false, reason: 'ATTACKER_TAPPED' };
+    // Use shared combat engine
+    const attackResult = combat.resolveAttack(attacker, targetOwner, targetCol, targetRow);
+    
+    if (!attackResult.success) {
+      return { success: false, reason: attackResult.error };
     }
-    
-    // Get target
-    const target = targetField[targetCol]?.[targetRow];
-    if (!target) {
-      console.log('[GameRoom] No target at', targetCol, targetRow);
-      return { success: false, reason: 'INVALID_TARGET' };
-    }
-    
-    // Calculate damage
-    let damage = attacker.currentAtk || attacker.attack || 1;
-    
-    // Add support bonus
-    const supportCol = playerRole === 'player' ? 0 : 1;
-    const support = attackerField[supportCol]?.[attackerRow];
-    if (support && attackerCol !== supportCol) {
-      damage += support.currentAtk || support.attack || 0;
-    }
-    
-    // Apply bleed (doubles damage)
-    if (target.bleedTurns > 0) {
-      damage *= 2;
-    }
-    
-    console.log('[GameRoom] Attack:', attacker.name, 'vs', target.name, 'damage:', damage);
     
     collectEvent('ATTACK_DECLARED', {
       attacker: this.serializeCryptid(attacker),
-      attackerCol,
-      attackerRow,
-      targetCol,
-      targetRow,
+      attackerCol, attackerRow,
+      targetCol, targetRow,
       attackerOwner: playerRole,
       targetOwner
     });
     
-    // Apply damage
-    const hpBefore = target.currentHp;
-    target.currentHp -= damage;
+    const target = gs.getFieldCryptid(targetOwner, targetCol, targetRow);
     
     collectEvent('DAMAGE_DEALT', {
-      targetId: target.id,
-      targetName: target.name,
-      target: this.serializeCryptid(target),
-      damage,
-      isCritical: damage >= 5,
-      targetCol,
-      targetRow,
+      targetId: attackResult.target.id,
+      targetName: attackResult.target.name,
+      target: target ? this.serializeCryptid(target) : attackResult.target,
+      damage: attackResult.damage,
+      targetCol, targetRow,
       targetOwner,
-      hpBefore,
-      hpAfter: target.currentHp
+      hpAfter: target?.currentHp ?? 0
     });
     
-    // Tap attacker
-    attacker.tapped = true;
-    attacker.canAttack = false;
-    
-    // Check for death
-    if (target.currentHp <= 0) {
-      this.processDeath(target, targetOwner, targetCol, targetRow, attacker, collectEvent);
-    }
-    
-    return { success: true };
-  }
-  
-  processDeath(cryptid, owner, col, row, killer, collectEvent) {
-    const gs = this.gameState;
-    const field = owner === 'player' ? gs.playerField : gs.enemyField;
-    
-    // Remove from field
-    field[col][row] = null;
-    
-    // Increment death counter
-    if (owner === 'player') {
-      gs.playerDeaths++;
-    } else {
-      gs.enemyDeaths++;
-    }
-    
-    collectEvent('CRYPTID_DIED', {
-      cryptid: this.serializeCryptid(cryptid),
-      slot: { col, row },
-      owner,
-      killedBy: killer ? 'attack' : 'effect',
-      newDeathCount: owner === 'player' ? gs.playerDeaths : gs.enemyDeaths
-    });
-    
-    // Check for support promotion
-    const combatCol = owner === 'player' ? 1 : 0;
-    const supportCol = owner === 'player' ? 0 : 1;
-    
-    if (col === combatCol) {
-      const support = field[supportCol][row];
-      if (support) {
-        // Promote support to combat
-        field[combatCol][row] = support;
-        field[supportCol][row] = null;
-        support.col = combatCol;
-        
+    if (attackResult.targetDied) {
+      collectEvent('CRYPTID_DIED', {
+        cryptid: attackResult.target,
+        slot: { col: targetCol, row: targetRow },
+        owner: targetOwner,
+        killedBy: 'attack',
+        newDeathCount: targetOwner === 'player' ? gs.state.playerDeaths : gs.state.enemyDeaths
+      });
+      
+      // Check for promotion
+      const promoted = gs.promoteSupport(targetOwner, targetRow);
+      if (promoted) {
         collectEvent('CRYPTID_PROMOTED', {
-          cryptid: this.serializeCryptid(support),
-          fromSlot: { col: supportCol, row },
-          toSlot: { col: combatCol, row },
-          owner
+          cryptid: this.serializeCryptid(promoted),
+          fromSlot: { col: gs.getSupportCol(targetOwner), row: targetRow },
+          toSlot: { col: gs.getCombatCol(targetOwner), row: targetRow },
+          owner: targetOwner
         });
       }
     }
-  }
-  
-  executeEvolution(playerRole, payload, collectEvent) {
-    // Simplified evolution - you'd expand based on your card registry
-    return { success: false, reason: 'NOT_IMPLEMENTED' };
-  }
-  
-  executePlayBurst(playerRole, payload, collectEvent) {
-    // Simplified burst playing
-    return { success: false, reason: 'NOT_IMPLEMENTED' };
-  }
-  
-  executePlayTrap(playerRole, payload, collectEvent) {
-    const gs = this.gameState;
-    const { cardId, slotRow } = payload;
-    
-    const hand = playerRole === 'player' ? gs.playerHand : gs.enemyHand;
-    const traps = playerRole === 'player' ? gs.playerTraps : gs.enemyTraps;
-    const pyre = playerRole === 'player' ? gs.playerPyre : gs.enemyPyre;
-    
-    // Find trap in hand
-    const cardIndex = hand.findIndex(c => c.id === cardId && c.type === 'trap');
-    if (cardIndex === -1) {
-      return { success: false, reason: 'CARD_NOT_IN_HAND' };
-    }
-    
-    const trap = hand[cardIndex];
-    
-    // Check pyre
-    if ((trap.cost || 0) > pyre) {
-      return { success: false, reason: 'INSUFFICIENT_PYRE' };
-    }
-    
-    // Check slot
-    if (slotRow < 0 || slotRow > 1 || traps[slotRow] !== null) {
-      return { success: false, reason: 'INVALID_SLOT' };
-    }
-    
-    // Execute
-    hand.splice(cardIndex, 1);
-    if (playerRole === 'player') {
-      gs.playerPyre -= trap.cost || 0;
-    } else {
-      gs.enemyPyre -= trap.cost || 0;
-    }
-    
-    traps[slotRow] = { ...trap, faceDown: true };
-    
-    console.log('[GameRoom] Trap set by', playerRole, 'at slot', slotRow);
-    
-    collectEvent('TRAP_SET', {
-      owner: playerRole,
-      slotRow,
-      // Don't reveal trap identity to opponent
-    });
-    
-    return { success: true };
-  }
-  
-  executeUseAbility(playerRole, payload, collectEvent) {
-    // Simplified ability use
-    return { success: false, reason: 'NOT_IMPLEMENTED' };
-  }
-  
-  executePyreBurn(playerRole, collectEvent) {
-    const gs = this.gameState;
-    
-    const usedFlag = playerRole === 'player' ? 'playerPyreBurnUsed' : 'enemyPyreBurnUsed';
-    if (gs[usedFlag]) {
-      return { success: false, reason: 'PYRE_BURN_ALREADY_USED' };
-    }
-    
-    const deaths = playerRole === 'player' ? gs.playerDeaths : gs.enemyDeaths;
-    if (deaths === 0) {
-      return { success: false, reason: 'NO_DEATHS' };
-    }
-    
-    // Gain pyre equal to deaths
-    if (playerRole === 'player') {
-      gs.playerPyre += deaths;
-    } else {
-      gs.enemyPyre += deaths;
-    }
-    gs[usedFlag] = true;
-    
-    collectEvent('PYRE_BURN_USED', {
-      owner: playerRole,
-      pyreGained: deaths,
-      newTotal: playerRole === 'player' ? gs.playerPyre : gs.enemyPyre
-    });
-    
-    // Draw cards equal to deaths
-    for (let i = 0; i < deaths; i++) {
-      this.drawCard(playerRole, collectEvent);
-    }
-    
-    console.log('[GameRoom] Pyre burn used by', playerRole, 'gained:', deaths, 'pyre');
     
     return { success: true };
   }
   
   executePlayPyreCard(playerRole, payload, collectEvent) {
-    const gs = this.gameState;
-    const cardId = payload.cardId;
+    const gs = this.gameContext.gameState;
+    const state = gs.state;
     
-    // Check if pyre card already played this turn
+    const cardId = payload.cardId;
     const usedFlag = playerRole === 'player' ? 'playerPyreCardPlayedThisTurn' : 'enemyPyreCardPlayedThisTurn';
-    if (gs[usedFlag]) {
+    
+    if (state[usedFlag]) {
       return { success: false, reason: 'PYRE_CARD_ALREADY_PLAYED' };
     }
     
-    // Find the card in hand
-    const hand = playerRole === 'player' ? gs.playerHand : gs.enemyHand;
+    const hand = gs.getHand(playerRole);
     const cardIndex = hand.findIndex(c => c.id === cardId);
     
     if (cardIndex === -1) {
@@ -1655,70 +1522,84 @@ export class GameRoom {
       return { success: false, reason: 'NOT_A_PYRE_CARD' };
     }
     
-    // Remove from hand
     hand.splice(cardIndex, 1);
     
-    // Grant pyre - default 1, but pyre cards can grant more
     let pyreGained = 1;
-    // Some pyre cards grant bonus pyre based on conditions
-    // For simplicity, just grant 1 pyre
-    
-    if (playerRole === 'player') {
-      gs.playerPyre += pyreGained;
-    } else {
-      gs.enemyPyre += pyreGained;
-    }
-    
-    gs[usedFlag] = true;
+    gs.modifyPyre(playerRole, pyreGained);
+    state[usedFlag] = true;
     
     collectEvent('PYRE_CARD_PLAYED', {
       owner: playerRole,
-      cardId: cardId,
-      cardName: card.name || payload.cardName,
-      pyreGained: pyreGained,
-      newTotal: playerRole === 'player' ? gs.playerPyre : gs.enemyPyre
+      cardId,
+      cardName: card.name,
+      pyreGained,
+      newTotal: gs.getPyre(playerRole)
     });
-    
-    console.log('[GameRoom] Pyre card played by', playerRole, 'gained:', pyreGained, 'pyre');
     
     return { success: true };
   }
   
-  executeEndConjure1(playerRole, collectEvent) {
-    const gs = this.gameState;
+  executePyreBurn(playerRole, collectEvent) {
+    const gs = this.gameContext.gameState;
+    const state = gs.state;
     
-    if (gs.phase !== 'conjure1') {
-      return { success: false, reason: 'WRONG_PHASE' };
+    const usedFlag = playerRole === 'player' ? 'playerPyreBurnUsed' : 'enemyPyreBurnUsed';
+    if (state[usedFlag]) {
+      return { success: false, reason: 'PYRE_BURN_ALREADY_USED' };
     }
     
-    gs.phase = 'combat';
+    const deaths = playerRole === 'player' ? state.playerDeaths : state.enemyDeaths;
+    if (deaths === 0) {
+      return { success: false, reason: 'NO_DEATHS' };
+    }
     
-    // Untap and enable attacks for owner's cryptids
-    const field = playerRole === 'player' ? gs.playerField : gs.enemyField;
-    for (let col = 0; col < 2; col++) {
-      for (let row = 0; row < 3; row++) {
-        const cryptid = field[col][row];
-        if (cryptid && !cryptid.justSummoned) {
-          cryptid.canAttack = true;
-        }
-        if (cryptid) {
-          cryptid.justSummoned = false;
-        }
+    gs.modifyPyre(playerRole, deaths);
+    state[usedFlag] = true;
+    
+    collectEvent('PYRE_BURN_USED', {
+      owner: playerRole,
+      pyreGained: deaths,
+      newTotal: gs.getPyre(playerRole)
+    });
+    
+    // Draw cards equal to deaths
+    for (let i = 0; i < deaths; i++) {
+      const card = gs.drawCard(playerRole);
+      if (card) {
+        collectEvent('CARD_DRAWN', { card: this.serializeCryptid(card), owner: playerRole });
       }
     }
     
-    collectEvent('PHASE_CHANGED', {
-      phase: 'combat',
-      owner: playerRole
-    });
+    return { success: true };
+  }
+  
+  executeEvolution(playerRole, payload, collectEvent) {
+    return { success: false, reason: 'NOT_IMPLEMENTED' };
+  }
+  
+  executeEndConjure1(playerRole, collectEvent) {
+    const result = this.gameContext.turnProcessor.advancePhase();
     
-    console.log('[GameRoom] Conjure1 ended by', playerRole, '- moving to combat phase');
+    if (!result.success) {
+      return { success: false, reason: 'PHASE_ERROR' };
+    }
+    
+    // Enable attacks for cryptids
+    const cryptids = this.gameContext.gameState.getAllCryptids(playerRole);
+    for (const cryptid of cryptids) {
+      if (!cryptid.justSummoned) {
+        cryptid.canAttack = true;
+      }
+      cryptid.justSummoned = false;
+    }
+    
+    collectEvent('PHASE_CHANGED', { phase: 'combat', owner: playerRole });
     
     return { success: true };
   }
   
   executeEndCombat(playerRole, collectEvent) {
-    const gs = this.gameState;
+    const gs = this.gameContext.gameState.state;
     
     if (gs.phase !== 'combat') {
       return { success: false, reason: 'WRONG_PHASE' };
@@ -1726,76 +1607,60 @@ export class GameRoom {
     
     gs.phase = 'conjure2';
     
-    collectEvent('PHASE_CHANGED', {
-      phase: 'conjure2',
-      owner: playerRole
-    });
-    
-    console.log('[GameRoom] Combat ended by', playerRole, '- moving to conjure2 phase');
+    collectEvent('PHASE_CHANGED', { phase: 'conjure2', owner: playerRole });
     
     return { success: true };
   }
   
   executeEndTurn(playerRole, collectEvent) {
-    const gs = this.gameState;
+    const tp = this.gameContext.turnProcessor;
+    const gs = this.gameContext.gameState;
+    const state = gs.state;
     
     // Process end of turn effects
-    // (Simplified - you'd process radiance, regen, etc.)
+    const endResult = tp.processEndTurn(playerRole);
     
     // Switch turn
     const nextPlayer = playerRole === 'player' ? 'enemy' : 'player';
-    gs.currentTurn = nextPlayer;
-    gs.phase = 'conjure1';
-    gs.turnNumber++;
+    state.currentTurn = nextPlayer;
+    state.phase = 'conjure1';
+    state.turnNumber++;
     
-    // Reset turn flags
-    gs.playerKindlingPlayedThisTurn = false;
-    gs.enemyKindlingPlayedThisTurn = false;
-    gs.playerPyreBurnUsed = false;
-    gs.enemyPyreBurnUsed = false;
-    gs.playerPyreCardPlayedThisTurn = false;
-    gs.enemyPyreCardPlayedThisTurn = false;
+    // Reset flags
+    state.playerKindlingPlayedThisTurn = false;
+    state.enemyKindlingPlayedThisTurn = false;
+    state.playerPyreBurnUsed = false;
+    state.enemyPyreBurnUsed = false;
+    state.playerPyreCardPlayedThisTurn = false;
+    state.enemyPyreCardPlayedThisTurn = false;
     
     // Give pyre to next player
-    if (nextPlayer === 'player') {
-      gs.playerPyre++;
-    } else {
-      gs.enemyPyre++;
-    }
+    gs.modifyPyre(nextPlayer, 1);
     
-    collectEvent('TURN_ENDED', {
-      owner: playerRole
-    });
+    collectEvent('TURN_ENDED', { owner: playerRole });
     
     collectEvent('PYRE_CHANGED', {
       owner: nextPlayer,
       amount: 1,
-      newTotal: nextPlayer === 'player' ? gs.playerPyre : gs.enemyPyre
+      newTotal: gs.getPyre(nextPlayer)
     });
     
-    // Draw card for next player
-    this.drawCard(nextPlayer, collectEvent);
+    // Draw card
+    const card = gs.drawCard(nextPlayer);
+    if (card) {
+      collectEvent('CARD_DRAWN', { card: this.serializeCryptid(card), owner: nextPlayer });
+    }
     
-    // Untap next player's cryptids
-    const nextField = nextPlayer === 'player' ? gs.playerField : gs.enemyField;
-    for (let col = 0; col < 2; col++) {
-      for (let row = 0; row < 3; row++) {
-        const cryptid = nextField[col][row];
-        if (cryptid) {
-          if (!cryptid.paralyzed) {
-            cryptid.tapped = false;
-            cryptid.canAttack = true;
-          }
-        }
+    // Untap cryptids
+    const cryptids = gs.getAllCryptids(nextPlayer);
+    for (const cryptid of cryptids) {
+      if (!cryptid.paralyzed) {
+        cryptid.tapped = false;
+        cryptid.canAttack = true;
       }
     }
     
-    collectEvent('TURN_STARTED', {
-      owner: nextPlayer,
-      turnNumber: gs.turnNumber
-    });
-    
-    console.log('[GameRoom] Turn ended by', playerRole, '- now', nextPlayer, 'turn', gs.turnNumber);
+    collectEvent('TURN_STARTED', { owner: nextPlayer, turnNumber: state.turnNumber });
     
     return { success: true };
   }
@@ -1803,12 +1668,7 @@ export class GameRoom {
   executeConcede(playerRole, collectEvent) {
     const winner = playerRole === 'player' ? 'enemy' : 'player';
     
-    collectEvent('PLAYER_CONCEDED', {
-      conceded: playerRole,
-      winner: winner
-    });
-    
-    console.log('[GameRoom]', playerRole, 'conceded - winner:', winner);
+    collectEvent('PLAYER_CONCEDED', { conceded: playerRole, winner });
     
     this.endMatch(winner, 'concede');
     return { success: true };
@@ -1816,26 +1676,9 @@ export class GameRoom {
   
   // ==================== HELPERS ====================
   
-  drawCard(playerRole, collectEvent) {
-    const gs = this.gameState;
-    const deck = playerRole === 'player' ? gs.playerDeck : gs.enemyDeck;
-    const hand = playerRole === 'player' ? gs.playerHand : gs.enemyHand;
-    
-    if (deck.length === 0) return;
-    
-    const card = deck.shift();
-    hand.push(card);
-    
-    collectEvent('CARD_DRAWN', {
-      card: this.serializeCryptid(card),
-      owner: playerRole
-    });
-  }
-  
   serializeCryptid(cryptid) {
     if (!cryptid) return null;
     
-    // Handle both summoned cryptids (with currentHp) and cards in hand (without)
     const hp = cryptid.hp || 1;
     const atk = cryptid.atk || cryptid.attack || 0;
     
@@ -1845,9 +1688,8 @@ export class GameRoom {
       name: cryptid.name,
       type: cryptid.type || 'cryptid',
       cost: cryptid.cost || 0,
-      hp: hp,
-      atk: atk,
-      attack: atk, // Include both for client compatibility
+      hp, atk,
+      attack: atk,
       currentHp: cryptid.currentHp ?? hp,
       currentAtk: cryptid.currentAtk ?? atk,
       maxHp: cryptid.maxHp ?? hp,
@@ -1862,7 +1704,6 @@ export class GameRoom {
       paralyzed: cryptid.paralyzed || false,
       rarity: cryptid.rarity,
       element: cryptid.element,
-      abilities: cryptid.abilities || [],
       effects: cryptid.effects || [],
       art: cryptid.art,
       isKindling: cryptid.isKindling || false
@@ -1870,8 +1711,7 @@ export class GameRoom {
   }
   
   requiresTurn(actionType) {
-    const alwaysValid = ['CONCEDE', 'SEND_EMOTE', 'CHAT'];
-    return !alwaysValid.includes(actionType);
+    return !['CONCEDE', 'CHAT'].includes(actionType);
   }
   
   isValidForPhase(actionType, phase) {
@@ -1885,15 +1725,11 @@ export class GameRoom {
   }
   
   rejectAction(ws, actionId, reason) {
-    ws.send(JSON.stringify({
-      type: 'ACTION_REJECTED',
-      actionId,
-      reason
-    }));
+    ws.send(JSON.stringify({ type: 'ACTION_REJECTED', actionId, reason }));
   }
   
   broadcastActionResult(actionId, actor, events) {
-    const message = {
+    this.broadcast({
       type: 'ACTION_RESULT',
       actionId,
       success: true,
@@ -1901,20 +1737,14 @@ export class GameRoom {
       events,
       sequence: this.sequence,
       stateChecksum: this.calculateChecksum()
-    };
-    
-    this.broadcast(message);
+    });
   }
   
   broadcast(message) {
     const msgStr = JSON.stringify(message);
     for (const [ws, player] of this.players) {
       if (player.connected) {
-        try {
-          ws.send(msgStr);
-        } catch (e) {
-          console.error('Failed to send to player:', e);
-        }
+        try { ws.send(msgStr); } catch (e) {}
       }
     }
   }
@@ -1923,11 +1753,7 @@ export class GameRoom {
     const msgStr = JSON.stringify(message);
     for (const [ws, player] of this.players) {
       if (ws !== excludeWs && player.connected) {
-        try {
-          ws.send(msgStr);
-        } catch (e) {
-          console.error('Failed to send to player:', e);
-        }
+        try { ws.send(msgStr); } catch (e) {}
       }
     }
   }
@@ -1936,48 +1762,32 @@ export class GameRoom {
     this.broadcast({
       type: 'CHAT',
       from: player.role,
-      message: message.substring(0, 200) // Limit length
+      message: message.substring(0, 200)
     });
   }
   
   sendStateSync(ws, player) {
     const playerRole = player.role === 'player1' ? 'player' : 'enemy';
     
-    // Check if game state exists
-    if (!this.gameState) {
-      console.warn('[GameRoom] sendStateSync called but game not started');
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Game not started yet'
-      }));
-      return;
-    }
-    
-    const fullState = this.getStateForPlayer(playerRole);
-    if (!fullState) {
-      console.error('[GameRoom] Failed to get state for player');
+    if (!this.gameContext) {
+      ws.send(JSON.stringify({ type: 'ERROR', message: 'Game not started yet' }));
       return;
     }
     
     ws.send(JSON.stringify({
       type: 'STATE_SYNC',
       sequence: this.sequence,
-      fullState: fullState,
+      fullState: this.getStateForPlayer(playerRole),
       matchStarted: this.matchStarted,
-      isYourTurn: this.gameState.currentTurn === playerRole
+      isYourTurn: this.gameContext.gameState.state.currentTurn === playerRole
     }));
   }
   
   getStateForPlayer(playerRole) {
-    const gs = this.gameState;
+    if (!this.gameContext) return null;
     
-    // Return null if game state not initialized
-    if (!gs) {
-      console.error('[GameRoom] getStateForPlayer called but gameState is null');
-      return null;
-    }
+    const gs = this.gameContext.gameState.state;
     
-    // Map perspective - player always sees themselves as 'player'
     if (playerRole === 'player') {
       return {
         playerField: this.serializeField(gs.playerField),
@@ -2000,7 +1810,6 @@ export class GameRoom {
         pyreBurnUsed: gs.playerPyreBurnUsed
       };
     } else {
-      // Flip perspective for enemy
       return {
         playerField: this.serializeField(gs.enemyField),
         enemyField: this.serializeField(gs.playerField),
@@ -2025,32 +1834,23 @@ export class GameRoom {
   }
   
   serializeField(field) {
-    // Return same 2D structure: field[col][row]
-    const result = [
-      [null, null, null],
-      [null, null, null]
-    ];
+    const result = [[null, null, null], [null, null, null]];
     for (let col = 0; col < 2; col++) {
       for (let row = 0; row < 3; row++) {
         const cryptid = field[col]?.[row];
-        if (cryptid) {
-          result[col][row] = this.serializeCryptid(cryptid);
-        }
+        if (cryptid) result[col][row] = this.serializeCryptid(cryptid);
       }
     }
     return result;
   }
   
   calculateChecksum() {
-    const gs = this.gameState;
+    if (!this.gameContext) return '0';
+    const gs = this.gameContext.gameState.state;
     const data = JSON.stringify({
-      pp: gs.playerPyre,
-      ep: gs.enemyPyre,
-      pd: gs.playerDeaths,
-      ed: gs.enemyDeaths,
-      t: gs.currentTurn,
-      p: gs.phase,
-      tn: gs.turnNumber
+      pp: gs.playerPyre, ep: gs.enemyPyre,
+      pd: gs.playerDeaths, ed: gs.enemyDeaths,
+      t: gs.currentTurn, p: gs.phase, tn: gs.turnNumber
     });
     
     let hash = 0;
@@ -2064,12 +1864,12 @@ export class GameRoom {
   // ==================== GAME END ====================
   
   checkGameOver() {
-    const gs = this.gameState;
+    if (!this.gameContext) return;
     
-    if (gs.playerDeaths >= 10) {
-      this.endMatch('enemy', 'deaths');
-    } else if (gs.enemyDeaths >= 10) {
-      this.endMatch('player', 'deaths');
+    const result = this.gameContext.turnProcessor.checkGameOver();
+    
+    if (result.gameOver) {
+      this.endMatch(result.winner, result.reason);
     }
   }
   
@@ -2081,10 +1881,10 @@ export class GameRoom {
       type: 'GAME_ENDED',
       winner,
       reason,
-      finalState: this.gameState ? {
-        playerDeaths: this.gameState.playerDeaths,
-        enemyDeaths: this.gameState.enemyDeaths,
-        turnNumber: this.gameState.turnNumber
+      finalState: this.gameContext ? {
+        playerDeaths: this.gameContext.gameState.state.playerDeaths,
+        enemyDeaths: this.gameContext.gameState.state.enemyDeaths,
+        turnNumber: this.gameContext.gameState.state.turnNumber
       } : null
     });
   }
@@ -2098,10 +1898,7 @@ export class GameRoom {
   
   startTurnTimer() {
     this.clearTurnTimer();
-    
-    this.turnTimerTimeout = setTimeout(() => {
-      this.handleTurnTimeout();
-    }, this.turnTimeLimit);
+    this.turnTimerTimeout = setTimeout(() => this.handleTurnTimeout(), this.turnTimeLimit);
   }
   
   resetTurnTimer() {
@@ -2116,24 +1913,19 @@ export class GameRoom {
   }
   
   handleTurnTimeout() {
-    if (this.matchEnded || !this.gameState) return;
+    if (this.matchEnded || !this.gameContext) return;
     
-    const currentPlayer = this.gameState.currentTurn;
+    const currentPlayer = this.gameContext.gameState.state.currentTurn;
     
-    this.broadcast({
-      type: 'TURN_TIMEOUT',
-      player: currentPlayer
-    });
+    this.broadcast({ type: 'TURN_TIMEOUT', player: currentPlayer });
     
-    // Auto-end turn
-    const collectEvent = (type, data) => {};
+    const collectEvent = () => {};
     this.executeEndTurn(currentPlayer, collectEvent);
     
-    // Broadcast the turn change
     this.broadcast({
       type: 'TURN_STARTED',
-      owner: this.gameState.currentTurn,
-      turnNumber: this.gameState.turnNumber
+      owner: this.gameContext.gameState.state.currentTurn,
+      turnNumber: this.gameContext.gameState.state.turnNumber
     });
     
     this.startTurnTimer();

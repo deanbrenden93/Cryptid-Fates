@@ -35,6 +35,12 @@ window.MultiplayerGameBridge = {
         
         console.log('[MPBridge] Initialized. My role:', this.myRole);
         
+        // Initialize shared module integration if available
+        if (window.SharedGameIntegration) {
+            window.SharedGameIntegration.initMultiplayer(this.myRole);
+            console.log('[MPBridge] Shared module integration initialized');
+        }
+        
         // Set up event handlers for server messages
         this.setupServerEventHandlers();
         
@@ -131,6 +137,16 @@ window.MultiplayerGameBridge = {
             return false;
         }
         
+        // Pre-validate using shared modules if available
+        if (window.SharedGameIntegration) {
+            const validation = window.SharedGameIntegration.validateAction('SUMMON_CRYPTID', { cardId, col, row });
+            if (!validation.valid) {
+                console.warn('[MPBridge] Summon pre-validation failed:', validation.reason);
+                this.showActionRejected(validation.reason);
+                return false;
+            }
+        }
+        
         console.log('[MPBridge] Sending summon action:', cardId, col, row);
         
         // Send to server in expected format
@@ -187,6 +203,18 @@ window.MultiplayerGameBridge = {
         if (!this.isMyTurn) {
             this.showNotYourTurnMessage();
             return false;
+        }
+        
+        // Pre-validate using shared modules if available
+        if (window.SharedGameIntegration) {
+            const validation = window.SharedGameIntegration.validateAction('ATTACK', { 
+                attackerCol, attackerRow, targetCol, targetRow 
+            });
+            if (!validation.valid) {
+                console.warn('[MPBridge] Attack pre-validation failed:', validation.reason);
+                this.showActionRejected(validation.reason);
+                return false;
+            }
         }
         
         console.log('[MPBridge] Sending attack:', attackerCol, attackerRow, '->', targetCol, targetRow);
@@ -330,6 +358,11 @@ window.MultiplayerGameBridge = {
     
     handleServerEvent(event) {
         console.log('[MPBridge] Server event:', event.type, event);
+        
+        // Update shared integration state if available
+        if (window.SharedGameIntegration) {
+            window.SharedGameIntegration.applyServerEvent(event);
+        }
         
         switch (event.type) {
             case 'CRYPTID_SUMMONED':
