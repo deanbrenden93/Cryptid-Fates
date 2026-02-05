@@ -958,28 +958,52 @@ window.HomeScreen = {
         
         // Send deck selection to server - include full card data
         // The server needs the actual cards to build the game state
+        // IMPORTANT: deck.cards contains { cardKey, foil } references, not full card data!
+        // We need to look up the actual card data from the registry
+        const resolvedCards = [];
+        deck.cards.forEach(entry => {
+            // Look up the actual card data using DeckBuilder or CardRegistry
+            let cardData = null;
+            if (typeof DeckBuilder !== 'undefined' && DeckBuilder.getCard) {
+                cardData = DeckBuilder.getCard(entry.cardKey);
+            } else if (typeof CardRegistry !== 'undefined') {
+                // Fallback to CardRegistry directly
+                cardData = CardRegistry.getCryptid(entry.cardKey) || 
+                           CardRegistry.getKindling(entry.cardKey) ||
+                           CardRegistry.getBurst(entry.cardKey) ||
+                           CardRegistry.getTrap(entry.cardKey);
+            }
+            
+            if (cardData) {
+                resolvedCards.push({
+                    id: `${entry.cardKey}_${Math.random().toString(36).substr(2, 9)}`,
+                    key: entry.cardKey,
+                    name: cardData.name,
+                    type: cardData.type || 'cryptid',
+                    cost: cardData.cost || 0,
+                    hp: cardData.hp || 1,
+                    atk: cardData.atk || cardData.attack || 0,
+                    attack: cardData.atk || cardData.attack || 0,
+                    element: cardData.element,
+                    rarity: cardData.rarity,
+                    abilities: cardData.abilities || [],
+                    effects: cardData.effects || [],
+                    art: cardData.art || cardData.sprite,
+                    foil: entry.foil || false,
+                    isKindling: cardData.isKindling || false
+                });
+            } else {
+                console.warn('[Multiplayer] Could not find card data for:', entry.cardKey);
+            }
+        });
+        
         const deckData = {
             deckName: deck.name,
-            cardCount: deck.cards.length,
-            // Send the actual card data for server to build decks
-            cards: deck.cards.map(card => ({
-                id: card.id || `${card.key || card.name}_${Math.random().toString(36).substr(2, 9)}`,
-                key: card.key,
-                name: card.name,
-                type: card.type || 'cryptid',
-                cost: card.cost || 0,
-                hp: card.hp || 1,
-                atk: card.atk || card.attack || 0,
-                attack: card.atk || card.attack || 0,
-                element: card.element,
-                rarity: card.rarity,
-                abilities: card.abilities || [],
-                effects: card.effects || [],
-                art: card.art
-            })),
+            cardCount: resolvedCards.length,
+            cards: resolvedCards,
             // Also send kindling - get from the deck's kindling or build default
-            kindling: (deck.kindling || this.getDefaultKindling()).map(k => ({
-                id: k.id || `kindling_${Math.random().toString(36).substr(2, 9)}`,
+            kindling: this.getDefaultKindling().map(k => ({
+                id: `kindling_${k.key || k.name}_${Math.random().toString(36).substr(2, 9)}`,
                 key: k.key,
                 name: k.name || 'Kindling',
                 type: 'kindling',
@@ -991,6 +1015,7 @@ window.HomeScreen = {
         };
         
         console.log('[Multiplayer] Sending deck with', deckData.cards.length, 'cards and', deckData.kindling.length, 'kindling');
+        console.log('[Multiplayer] First card:', deckData.cards[0]);
         MultiplayerManager.sendDeckSelected(deckData);
     },
     

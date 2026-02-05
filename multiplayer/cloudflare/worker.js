@@ -649,7 +649,16 @@ export class GameRoom {
   }
   
   handleDeckSelected(ws, player, deckData) {
-    console.log(`[GameRoom] Player ${player.role} selected deck:`, deckData);
+    console.log(`[GameRoom] Player ${player.role} selected deck:`, {
+      deckName: deckData?.deckName,
+      cardCount: deckData?.cards?.length || 0,
+      kindlingCount: deckData?.kindling?.length || 0,
+      firstCard: deckData?.cards?.[0] ? {
+        name: deckData.cards[0].name,
+        hp: deckData.cards[0].hp,
+        atk: deckData.cards[0].atk
+      } : 'none'
+    });
     
     player.deckSelected = true;
     player.deckData = deckData;
@@ -720,9 +729,18 @@ export class GameRoom {
     this.gameState.turnNumber = 1;
     
     // Populate decks from player data
+    // Check both player.deckData and playerSlots (playerSlots is the authoritative source)
     for (const [ws, player] of this.players) {
       const role = player.role === 'player1' ? 'player' : 'enemy';
-      const deckData = player.deckData || {};
+      // Get deck data from playerSlots first (authoritative), fallback to player object
+      const deckData = this.playerSlots[player.role]?.deckData || player.deckData || {};
+      
+      console.log(`[GameRoom] ${player.role} deckData:`, {
+        hasCards: !!deckData.cards,
+        cardCount: deckData.cards?.length || 0,
+        hasKindling: !!deckData.kindling,
+        kindlingCount: deckData.kindling?.length || 0
+      });
       
       // Shuffle and set deck
       const mainDeck = this.shuffleDeck([...(deckData.cards || [])]);
@@ -1705,28 +1723,37 @@ export class GameRoom {
   serializeCryptid(cryptid) {
     if (!cryptid) return null;
     
+    // Handle both summoned cryptids (with currentHp) and cards in hand (without)
+    const hp = cryptid.hp || 1;
+    const atk = cryptid.atk || cryptid.attack || 0;
+    
     return {
       id: cryptid.id,
       key: cryptid.key,
       name: cryptid.name,
-      type: cryptid.type,
-      cost: cryptid.cost,
-      hp: cryptid.hp,
-      atk: cryptid.atk,
-      currentHp: cryptid.currentHp,
-      currentAtk: cryptid.currentAtk,
-      maxHp: cryptid.maxHp,
-      baseAtk: cryptid.baseAtk,
+      type: cryptid.type || 'cryptid',
+      cost: cryptid.cost || 0,
+      hp: hp,
+      atk: atk,
+      attack: atk, // Include both for client compatibility
+      currentHp: cryptid.currentHp ?? hp,
+      currentAtk: cryptid.currentAtk ?? atk,
+      maxHp: cryptid.maxHp ?? hp,
+      baseAtk: cryptid.baseAtk ?? atk,
       owner: cryptid.owner,
       col: cryptid.col,
       row: cryptid.row,
-      tapped: cryptid.tapped,
-      canAttack: cryptid.canAttack,
+      tapped: cryptid.tapped || false,
+      canAttack: cryptid.canAttack ?? true,
       burnTurns: cryptid.burnTurns || 0,
       bleedTurns: cryptid.bleedTurns || 0,
       paralyzed: cryptid.paralyzed || false,
       rarity: cryptid.rarity,
-      isKindling: cryptid.isKindling
+      element: cryptid.element,
+      abilities: cryptid.abilities || [],
+      effects: cryptid.effects || [],
+      art: cryptid.art,
+      isKindling: cryptid.isKindling || false
     };
   }
   
