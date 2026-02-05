@@ -1031,7 +1031,9 @@ export class GameRoom {
       playerKindlingPlayedThisTurn: false,
       enemyKindlingPlayedThisTurn: false,
       playerPyreBurnUsed: false,
-      enemyPyreBurnUsed: false
+      enemyPyreBurnUsed: false,
+      playerPyreCardPlayedThisTurn: false,
+      enemyPyreCardPlayedThisTurn: false
     };
   }
   
@@ -1136,6 +1138,10 @@ export class GameRoom {
         
       case 'PYRE_BURN':
         result = this.executePyreBurn(playerRole, collectEvent);
+        break;
+        
+      case 'PLAY_PYRE_CARD':
+        result = this.executePlayPyreCard(playerRole, action.payload, collectEvent);
         break;
         
       case 'END_CONJURE1':
@@ -1576,6 +1582,58 @@ export class GameRoom {
     return { success: true };
   }
   
+  executePlayPyreCard(playerRole, payload, collectEvent) {
+    const gs = this.gameState;
+    const cardId = payload.cardId;
+    
+    // Check if pyre card already played this turn
+    const usedFlag = playerRole === 'player' ? 'playerPyreCardPlayedThisTurn' : 'enemyPyreCardPlayedThisTurn';
+    if (gs[usedFlag]) {
+      return { success: false, reason: 'PYRE_CARD_ALREADY_PLAYED' };
+    }
+    
+    // Find the card in hand
+    const hand = playerRole === 'player' ? gs.playerHand : gs.enemyHand;
+    const cardIndex = hand.findIndex(c => c.id === cardId);
+    
+    if (cardIndex === -1) {
+      return { success: false, reason: 'CARD_NOT_IN_HAND' };
+    }
+    
+    const card = hand[cardIndex];
+    if (card.type !== 'pyre') {
+      return { success: false, reason: 'NOT_A_PYRE_CARD' };
+    }
+    
+    // Remove from hand
+    hand.splice(cardIndex, 1);
+    
+    // Grant pyre - default 1, but pyre cards can grant more
+    let pyreGained = 1;
+    // Some pyre cards grant bonus pyre based on conditions
+    // For simplicity, just grant 1 pyre
+    
+    if (playerRole === 'player') {
+      gs.playerPyre += pyreGained;
+    } else {
+      gs.enemyPyre += pyreGained;
+    }
+    
+    gs[usedFlag] = true;
+    
+    collectEvent('PYRE_CARD_PLAYED', {
+      owner: playerRole,
+      cardId: cardId,
+      cardName: card.name || payload.cardName,
+      pyreGained: pyreGained,
+      newTotal: playerRole === 'player' ? gs.playerPyre : gs.enemyPyre
+    });
+    
+    console.log('[GameRoom] Pyre card played by', playerRole, 'gained:', pyreGained, 'pyre');
+    
+    return { success: true };
+  }
+  
   executeEndConjure1(playerRole, collectEvent) {
     const gs = this.gameState;
     
@@ -1643,6 +1701,10 @@ export class GameRoom {
     // Reset turn flags
     gs.playerKindlingPlayedThisTurn = false;
     gs.enemyKindlingPlayedThisTurn = false;
+    gs.playerPyreBurnUsed = false;
+    gs.enemyPyreBurnUsed = false;
+    gs.playerPyreCardPlayedThisTurn = false;
+    gs.enemyPyreCardPlayedThisTurn = false;
     
     // Give pyre to next player
     if (nextPlayer === 'player') {

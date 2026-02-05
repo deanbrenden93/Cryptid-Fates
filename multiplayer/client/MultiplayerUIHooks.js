@@ -45,31 +45,41 @@ window.MultiplayerUIHooks = {
         this.originalFunctions.attack = game.attack?.bind(game);
         this.originalFunctions.endTurn = game.endTurn?.bind(game);
         this.originalFunctions.pyreBurn = game.pyreBurn?.bind(game);
+        this.originalFunctions.playPyreCard = game.playPyreCard?.bind(game);
         
         // Override with multiplayer versions
+        // IMPORTANT: Match the original function signatures!
+        // game.summonCryptid(owner, col, row, cardData)
+        // game.summonKindling(owner, col, row, kindlingCard)
+        
         if (game.summonCryptid) {
-            game.summonCryptid = (cardId, col, row) => {
-                if (window.isMultiplayer && MultiplayerGameBridge.enabled) {
-                    // Get card data from hand
-                    const card = game.playerHand?.find(c => c.id === cardId);
-                    return MultiplayerGameBridge.summonCryptid(cardId, col, row, card);
+            game.summonCryptid = (owner, col, row, cardData) => {
+                // Only intercept player actions
+                if (owner === 'player' && window.isMultiplayer && MultiplayerGameBridge.enabled) {
+                    const cardId = cardData?.id;
+                    console.log('[MPHooks] Intercepting summonCryptid:', cardId, col, row);
+                    return MultiplayerGameBridge.summonCryptid(cardId, col, row, cardData);
                 }
-                return this.originalFunctions.summonCryptid(cardId, col, row);
+                return this.originalFunctions.summonCryptid(owner, col, row, cardData);
             };
         }
         
         if (game.summonKindling) {
-            game.summonKindling = (cardId, col, row) => {
-                if (window.isMultiplayer && MultiplayerGameBridge.enabled) {
+            game.summonKindling = (owner, col, row, kindlingCard) => {
+                // Only intercept player actions
+                if (owner === 'player' && window.isMultiplayer && MultiplayerGameBridge.enabled) {
+                    const cardId = kindlingCard?.id;
+                    console.log('[MPHooks] Intercepting summonKindling:', cardId, col, row);
                     return MultiplayerGameBridge.summonKindling(cardId, col, row);
                 }
-                return this.originalFunctions.summonKindling(cardId, col, row);
+                return this.originalFunctions.summonKindling(owner, col, row, kindlingCard);
             };
         }
         
         if (game.attack) {
             game.attack = (attackerCol, attackerRow, targetCol, targetRow) => {
                 if (window.isMultiplayer && MultiplayerGameBridge.enabled) {
+                    console.log('[MPHooks] Intercepting attack:', attackerCol, attackerRow, '->', targetCol, targetRow);
                     return MultiplayerGameBridge.attack(attackerCol, attackerRow, targetCol, targetRow);
                 }
                 return this.originalFunctions.attack(attackerCol, attackerRow, targetCol, targetRow);
@@ -79,6 +89,7 @@ window.MultiplayerUIHooks = {
         if (game.endTurn) {
             game.endTurn = () => {
                 if (window.isMultiplayer && MultiplayerGameBridge.enabled) {
+                    console.log('[MPHooks] Intercepting endTurn');
                     return MultiplayerGameBridge.endTurn();
                 }
                 return this.originalFunctions.endTurn();
@@ -88,9 +99,22 @@ window.MultiplayerUIHooks = {
         if (game.pyreBurn) {
             game.pyreBurn = (cardIndex) => {
                 if (window.isMultiplayer && MultiplayerGameBridge.enabled) {
+                    console.log('[MPHooks] Intercepting pyreBurn:', cardIndex);
                     return MultiplayerGameBridge.pyreBurn(cardIndex);
                 }
                 return this.originalFunctions.pyreBurn(cardIndex);
+            };
+        }
+        
+        // Hook playPyreCard for pyre spell cards
+        if (game.playPyreCard) {
+            game.playPyreCard = (owner, card) => {
+                // Only intercept player actions
+                if (owner === 'player' && window.isMultiplayer && MultiplayerGameBridge.enabled) {
+                    console.log('[MPHooks] Intercepting playPyreCard:', card?.id, card?.name);
+                    return MultiplayerGameBridge.playPyreCard(card?.id, card);
+                }
+                return this.originalFunctions.playPyreCard(owner, card);
             };
         }
         

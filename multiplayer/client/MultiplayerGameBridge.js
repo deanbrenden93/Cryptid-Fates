@@ -254,6 +254,47 @@ window.MultiplayerGameBridge = {
         return true;
     },
     
+    /**
+     * Play a pyre spell card (grants pyre resource)
+     */
+    playPyreCard(cardId, cardData = null) {
+        if (!this.enabled) {
+            return this.executeLocalPlayPyreCard(cardId, cardData);
+        }
+        
+        if (!this.isMyTurn) {
+            this.showNotYourTurnMessage();
+            return false;
+        }
+        
+        console.log('[MPBridge] Sending play pyre card:', cardId, cardData?.name);
+        
+        this.client.socket.send(JSON.stringify({
+            type: 'ACTION',
+            actionId: this.generateActionId(),
+            actionType: 'PLAY_PYRE_CARD',
+            payload: {
+                cardId: cardId,
+                cardName: cardData?.name
+            }
+        }));
+        
+        // Return a mock result for the UI (server will confirm)
+        return { pyreGained: 1 };
+    },
+    
+    executeLocalPlayPyreCard(cardId, cardData) {
+        // Find and use the original function if stored
+        if (typeof MultiplayerUIHooks !== 'undefined' && MultiplayerUIHooks.originalFunctions?.playPyreCard) {
+            return MultiplayerUIHooks.originalFunctions.playPyreCard('player', cardData);
+        }
+        // Fallback - shouldn't happen in normal flow
+        if (window.game && typeof window.game.playPyreCard === 'function') {
+            return window.game.playPyreCard('player', cardData);
+        }
+        return false;
+    },
+    
     // ==================== SERVER EVENT HANDLING ====================
     
     handleServerEvent(event) {
@@ -309,6 +350,10 @@ window.MultiplayerGameBridge = {
             case 'PYRE_BURN_USED':
             case 'PYRE_BURNED':
                 this.applyPyreBurn(event);
+                break;
+                
+            case 'PYRE_CARD_PLAYED':
+                this.applyPyreCardPlayed(event);
                 break;
                 
             case 'CARD_DRAWN':
@@ -704,6 +749,49 @@ window.MultiplayerGameBridge = {
         
         if (typeof renderPyre === 'function') renderPyre();
         if (typeof updatePyreDisplay === 'function') updatePyreDisplay();
+    },
+    
+    applyPyreCardPlayed(event) {
+        const game = window.game;
+        if (!game) return;
+        
+        const localOwner = (event.owner === this.myRole) ? 'player' : 'enemy';
+        const newPyre = event.newTotal || event.newPyre;
+        
+        // Update pyre count
+        if (localOwner === 'player') {
+            game.playerPyre = newPyre;
+            game.playerPyreCardPlayedThisTurn = true;
+            // Remove card from hand
+            const idx = game.playerHand.findIndex(c => c.id === event.cardId);
+            if (idx > -1) {
+                const card = game.playerHand.splice(idx, 1)[0];
+                if (card) game.playerDiscardPile = game.playerDiscardPile || [];
+                if (card) game.playerDiscardPile.push(card);
+            }
+        } else {
+            game.enemyPyre = newPyre;
+        }
+        
+        console.log('[MPBridge] Pyre card played by', localOwner, '- new total:', newPyre);
+        
+        // Show message
+        if (typeof showMessage === 'function') {
+            const msg = localOwner === 'player' 
+                ? `${event.cardName || 'Pyre Card'}: +${event.pyreGained} Pyre`
+                : `Opponent played ${event.cardName || 'Pyre Card'}: +${event.pyreGained} Pyre`;
+            showMessage(msg, 1500);
+        }
+        
+        GameEvents.emit('onPyreGained', {
+            owner: localOwner,
+            amount: event.pyreGained,
+            source: 'pyreCard'
+        });
+        
+        if (typeof renderPyre === 'function') renderPyre();
+        if (typeof updatePyreDisplay === 'function') updatePyreDisplay();
+        if (typeof renderHand === 'function') renderHand();
     },
     
     applyGameOver(event) {
