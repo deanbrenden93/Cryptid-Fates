@@ -56,6 +56,9 @@ class MultiplayerClient {
         // Timing
         this.serverTimeOffset = 0; // Difference between server and client time
         this.latency = 0;
+        
+        // Keepalive
+        this.keepaliveInterval = null;
     }
     
     // ==================== CONNECTION ====================
@@ -76,6 +79,10 @@ class MultiplayerClient {
                     this.reconnecting = false;
                     this.reconnectAttempts = 0;
                     this.onConnectionChange?.(true);
+                    
+                    // Start keepalive pings to prevent connection timeout
+                    this.startKeepalive();
+                    
                     resolve();
                 };
                 
@@ -105,11 +112,33 @@ class MultiplayerClient {
     }
     
     disconnect() {
+        this.stopKeepalive();
         if (this.socket) {
             this.socket.close(1000, 'Client disconnect');
             this.socket = null;
         }
         this.connected = false;
+    }
+    
+    startKeepalive() {
+        this.stopKeepalive(); // Clear any existing
+        
+        // Send keepalive every 20 seconds to prevent connection timeout
+        this.keepaliveInterval = setInterval(() => {
+            if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                this.socket.send(JSON.stringify({ 
+                    type: 'KEEPALIVE',
+                    timestamp: Date.now()
+                }));
+            }
+        }, 20000);
+    }
+    
+    stopKeepalive() {
+        if (this.keepaliveInterval) {
+            clearInterval(this.keepaliveInterval);
+            this.keepaliveInterval = null;
+        }
     }
     
     attemptReconnect() {
@@ -234,6 +263,10 @@ class MultiplayerClient {
                 
             case 'PONG':
                 // Handled above for latency
+                break;
+                
+            case 'KEEPALIVE_ACK':
+                // Server acknowledged keepalive, connection is healthy
                 break;
                 
             case 'ERROR':

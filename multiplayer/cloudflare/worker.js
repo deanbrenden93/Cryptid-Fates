@@ -480,7 +480,7 @@ export class GameRoom {
     const player = this.players.get(ws);
     if (!player) return;
     
-    // Parse message first for pre-game messages
+    // Parse message
     let data;
     try {
       data = JSON.parse(message);
@@ -489,16 +489,15 @@ export class GameRoom {
       return;
     }
     
-    // Handle deck selection (before game starts)
-    if (data.type === 'DECK_SELECTED' && !this.matchStarted) {
-      this.handleDeckSelected(ws, player, data.deck);
-      return;
-    }
-    
     try {
-      const data = JSON.parse(message);
-      
       switch (data.type) {
+        // Handle deck selection (before game starts)
+        case 'DECK_SELECTED':
+          if (!this.matchStarted) {
+            this.handleDeckSelected(ws, player, data.deck);
+          }
+          break;
+          
         case 'ACTION':
           this.handleAction(ws, player, data);
           break;
@@ -519,11 +518,16 @@ export class GameRoom {
           this.broadcastChat(player, data.message);
           break;
           
+        case 'KEEPALIVE':
+          // Just acknowledge keepalive to prevent connection timeout
+          ws.send(JSON.stringify({ type: 'KEEPALIVE_ACK' }));
+          break;
+          
         default:
-          console.log('Unknown message type:', data.type);
+          console.log('[GameRoom] Unknown message type:', data.type);
       }
     } catch (error) {
-      console.error('Error handling message:', error);
+      console.error('[GameRoom] Error handling message:', error);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: error.message

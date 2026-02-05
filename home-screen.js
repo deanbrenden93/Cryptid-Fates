@@ -974,6 +974,8 @@ window.HomeScreen = {
     
     startMultiplayerBattle(data) {
         console.log('[Multiplayer] Starting battle!', data);
+        console.log('[Multiplayer] Server says first player is:', data.firstPlayer);
+        console.log('[Multiplayer] Your role is:', window.multiplayerRole);
         
         // Close deck selection
         const deckScreen = document.getElementById('mp-deck-selection-screen');
@@ -985,6 +987,14 @@ window.HomeScreen = {
         // Store game data from server
         window.multiplayerGameData = data;
         window.multiplayerFirstPlayer = data.firstPlayer;
+        
+        // Determine if THIS player goes first
+        // data.firstPlayer is 'player' or 'enemy' from server perspective
+        // window.multiplayerRole is our role ('player' or 'enemy')
+        const iGoFirst = (data.firstPlayer === window.multiplayerRole);
+        window.playerGoesFirst = iGoFirst;
+        
+        console.log('[Multiplayer] Do I go first?', iGoFirst);
         
         // Ensure turn order overlay exists
         if (typeof MainMenu !== 'undefined' && !document.getElementById('turn-order-overlay')) {
@@ -1001,7 +1011,7 @@ window.HomeScreen = {
         }).then(() => {
             // After transition reveals coin flip, start the animation
             if (typeof MainMenu !== 'undefined') {
-                // Force the result based on server's firstPlayer decision
+                // Pass server's firstPlayer decision to the animation
                 MainMenu.showTurnOrderAnimation(() => {
                     // Show game container
                     document.getElementById('game-container').style.display = 'flex';
@@ -1019,7 +1029,7 @@ window.HomeScreen = {
                             this.initMultiplayerGame(data);
                         }, 400);
                     }, 50);
-                }, data.firstPlayer); // Pass server's decision
+                }, data.firstPlayer); // Pass server's firstPlayer ('player' or 'enemy')
             } else {
                 document.getElementById('game-container').style.display = 'flex';
                 this.initMultiplayerGame(data);

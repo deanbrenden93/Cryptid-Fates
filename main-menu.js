@@ -1054,7 +1054,7 @@ window.MainMenu = {
         });
     },
     
-    showTurnOrderAnimation(onComplete) {
+    showTurnOrderAnimation(onComplete, predeterminedResult = null) {
         // Ensure the turn order overlay exists (may not exist if MainMenu.init() was never called)
         let overlay = document.getElementById('turn-order-overlay');
         if (!overlay) {
@@ -1075,8 +1075,21 @@ window.MainMenu = {
         const result = overlay.querySelector('.turn-order-result');
         const winnerName = result.querySelector('.winner-name');
         
-        // Determine who goes first (random)
-        const playerGoesFirst = Math.random() < 0.5;
+        // Determine who goes first
+        // In multiplayer, use the server's decision (predeterminedResult)
+        // predeterminedResult can be: 'player' (you go first), 'enemy' (opponent goes first), or null (random)
+        let playerGoesFirst;
+        if (predeterminedResult !== null) {
+            // Multiplayer mode - use server's decision
+            // If we're "player" role and firstPlayer is "player", we go first
+            // If we're "enemy" role and firstPlayer is "enemy", we go first
+            const myRole = window.multiplayerRole || 'player';
+            playerGoesFirst = (predeterminedResult === myRole);
+            console.log(`[TurnOrder] Multiplayer - myRole: ${myRole}, firstPlayer: ${predeterminedResult}, I go first: ${playerGoesFirst}`);
+        } else {
+            // Single player - random
+            playerGoesFirst = Math.random() < 0.5;
+        }
         window.playerGoesFirst = playerGoesFirst;
         
         // Ensure overlay is active (may already be if called via transition)
