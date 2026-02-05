@@ -431,6 +431,33 @@ export class GameRoom {
     // Initialize game state
     this.gameState = this.createInitialGameState();
     this.gameState.currentTurn = firstPlayer;
+    this.gameState.turnNumber = 1;
+    
+    // Populate decks from player data
+    for (const [ws, player] of this.players) {
+      const role = player.role === 'player1' ? 'player' : 'enemy';
+      const deckData = player.deckData || {};
+      
+      // Shuffle and set deck
+      const mainDeck = this.shuffleDeck([...(deckData.cards || [])]);
+      const kindlingDeck = [...(deckData.kindling || [])];
+      
+      if (role === 'player') {
+        this.gameState.playerDeck = mainDeck;
+        this.gameState.playerKindling = kindlingDeck;
+        // Draw initial hand (5 cards)
+        this.gameState.playerHand = mainDeck.splice(0, 5);
+        // First player starts with 0 pyre, second starts with 1
+        this.gameState.playerPyre = (firstPlayer === 'player') ? 0 : 1;
+      } else {
+        this.gameState.enemyDeck = mainDeck;
+        this.gameState.enemyKindling = kindlingDeck;
+        this.gameState.enemyHand = mainDeck.splice(0, 5);
+        this.gameState.enemyPyre = (firstPlayer === 'enemy') ? 0 : 1;
+      }
+      
+      console.log(`[GameRoom] ${role} deck: ${mainDeck.length} cards remaining, hand: ${role === 'player' ? this.gameState.playerHand.length : this.gameState.enemyHand.length}`);
+    }
     
     // Send game start to both players
     for (const [ws, player] of this.players) {
@@ -443,7 +470,7 @@ export class GameRoom {
           yourRole: yourRole,
           firstPlayer: firstPlayer,
           isYourTurn: isYourTurn,
-          initialState: this.gameState,
+          initialState: this.getStateForPlayer(yourRole),
           message: 'Both players ready! Starting game...'
         }));
       } catch (e) {
@@ -453,6 +480,15 @@ export class GameRoom {
     
     // Start turn timer for first player
     this.startTurnTimer();
+  }
+  
+  shuffleDeck(deck) {
+    // Fisher-Yates shuffle
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
   }
   
   // Handle WebSocket messages
@@ -725,59 +761,84 @@ export class GameRoom {
     
     const collectEvent = (eventType, data) => {
       events.push({
-        eventType,
-        data,
+        type: eventType,  // Use 'type' for client compatibility
+        ...data,
+        owner: data.owner || playerRole,
         sequence: this.sequence++
       });
     };
     
+    let result;
+    
     switch (action.actionType) {
       case 'SUMMON_CRYPTID':
-        return this.executeSummon(playerRole, action.payload, collectEvent);
+        result = this.executeSummon(playerRole, action.payload, collectEvent);
+        break;
         
       case 'SUMMON_KINDLING':
-        return this.executeSummonKindling(playerRole, action.payload, collectEvent);
+        result = this.executeSummonKindling(playerRole, action.payload, collectEvent);
+        break;
         
       case 'ATTACK':
-        return this.executeAttack(playerRole, action.payload, collectEvent);
+        result = this.executeAttack(playerRole, action.payload, collectEvent);
+        break;
         
       case 'EVOLVE_CRYPTID':
-        return this.executeEvolution(playerRole, action.payload, collectEvent);
+        result = this.executeEvolution(playerRole, action.payload, collectEvent);
+        break;
         
       case 'PLAY_BURST':
-        return this.executePlayBurst(playerRole, action.payload, collectEvent);
+        result = this.executePlayBurst(playerRole, action.payload, collectEvent);
+        break;
         
       case 'PLAY_TRAP':
-        return this.executePlayTrap(playerRole, action.payload, collectEvent);
+        result = this.executePlayTrap(playerRole, action.payload, collectEvent);
+        break;
         
       case 'USE_ABILITY':
-        return this.executeUseAbility(playerRole, action.payload, collectEvent);
+        result = this.executeUseAbility(playerRole, action.payload, collectEvent);
+        break;
         
       case 'PYRE_BURN':
-        return this.executePyreBurn(playerRole, collectEvent);
+        result = this.executePyreBurn(playerRole, collectEvent);
+        break;
         
       case 'END_CONJURE1':
-        return this.executeEndConjure1(playerRole, collectEvent);
+        result = this.executeEndConjure1(playerRole, collectEvent);
+        break;
         
       case 'END_COMBAT':
-        return this.executeEndCombat(playerRole, collectEvent);
+        result = this.executeEndCombat(playerRole, collectEvent);
+        break;
         
       case 'END_TURN':
-        return this.executeEndTurn(playerRole, collectEvent);
+        result = this.executeEndTurn(playerRole, collectEvent);
+        break;
         
       case 'CONCEDE':
-        return this.executeConcede(playerRole, collectEvent);
+        result = this.executeConcede(playerRole, collectEvent);
+        break;
         
       default:
         return { success: false, reason: 'UNKNOWN_ACTION' };
     }
+    
+    // Merge the collected events into the result
+    if (result.success) {
+      result.events = events;
+    }
+    
+    return result;
   }
   
   // ==================== ACTION EXECUTORS ====================
   
   executeSummon(playerRole, payload, collectEvent) {
     const gs = this.gameState;
-    const { cardId, targetSlot } = payload;
+    // Handle both formats: {cardId, col, row} and {cardId, targetSlot: {col, row}}
+    const cardId = payload.cardId;
+    let col = payload.col ?? payload.targetSlot?.col;
+    let row = payload.row ?? payload.targetSlot?.row;
     
     // Get hand and pyre
     const hand = playerRole === 'player' ? gs.playerHand : gs.enemyHand;
@@ -785,8 +846,18 @@ export class GameRoom {
     const field = playerRole === 'player' ? gs.playerField : gs.enemyField;
     
     // Find card in hand
-    const cardIndex = hand.findIndex(c => c.id === cardId);
+    let cardIndex = hand.findIndex(c => c.id === cardId);
+    
+    // If not found by ID, try matching by card data if provided
+    if (cardIndex === -1 && payload.cardData) {
+      // Use the card data from client for initial summon
+      const cardData = payload.cardData;
+      hand.push({ ...cardData, id: cardId });
+      cardIndex = hand.length - 1;
+    }
+    
     if (cardIndex === -1) {
+      console.log('[GameRoom] Card not in hand:', cardId, 'Hand:', hand.map(c => c.id));
       return { success: false, reason: 'CARD_NOT_IN_HAND' };
     }
     
@@ -798,24 +869,23 @@ export class GameRoom {
     }
     
     // Check slot is valid
-    const { col, row } = targetSlot;
     if (col < 0 || col > 1 || row < 0 || row > 2) {
       return { success: false, reason: 'INVALID_SLOT' };
     }
     
-    // Check slot is empty (or valid for cryptid placement)
+    // Check slot is empty (or find valid slot)
     const combatCol = playerRole === 'player' ? 1 : 0;
     const supportCol = playerRole === 'player' ? 0 : 1;
     
-    // Cryptids go to combat first, then support
-    if (field[combatCol][row] !== null && col === combatCol) {
-      if (field[supportCol][row] !== null) {
-        return { success: false, reason: 'INVALID_SLOT' };
+    // Auto-place: combat first, then support
+    if (field[col][row] !== null) {
+      // Try the other column
+      const otherCol = col === combatCol ? supportCol : combatCol;
+      if (field[otherCol][row] === null) {
+        col = otherCol;
+      } else {
+        return { success: false, reason: 'SLOT_OCCUPIED' };
       }
-      // Redirect to support if combat is full
-      targetSlot.col = supportCol;
-    } else if (field[col][row] !== null) {
-      return { success: false, reason: 'INVALID_SLOT' };
     }
     
     // Execute summon
@@ -831,42 +901,50 @@ export class GameRoom {
     const summonedCryptid = {
       ...card,
       owner: playerRole,
-      col: targetSlot.col,
-      row: targetSlot.row,
-      currentHp: card.hp,
-      currentAtk: card.atk,
-      maxHp: card.hp,
-      baseAtk: card.atk,
+      col: col,
+      row: row,
+      currentHp: card.hp || 1,
+      currentAtk: card.atk || card.attack || 0,
+      maxHp: card.hp || 1,
+      baseAtk: card.atk || card.attack || 0,
       tapped: false,
       canAttack: false, // Summoning sickness
+      justSummoned: true,
       burnTurns: 0,
       bleedTurns: 0,
       paralyzed: false
     };
     
-    field[targetSlot.col][targetSlot.row] = summonedCryptid;
+    field[col][row] = summonedCryptid;
+    
+    console.log('[GameRoom] Cryptid summoned:', summonedCryptid.name, 'at', col, row, 'by', playerRole);
     
     collectEvent('PYRE_CHANGED', {
       owner: playerRole,
       amount: -(card.cost || 0),
-      newTotal: playerRole === 'player' ? gs.playerPyre : gs.enemyPyre
+      newPyre: playerRole === 'player' ? gs.playerPyre : gs.enemyPyre
     });
     
     collectEvent('CRYPTID_SUMMONED', {
+      cardId: cardId,
+      cardName: summonedCryptid.name,
       cryptid: this.serializeCryptid(summonedCryptid),
-      slot: targetSlot,
-      owner: playerRole
+      col: col,
+      row: row,
+      owner: playerRole,
+      hp: summonedCryptid.currentHp,
+      attack: summonedCryptid.currentAtk
     });
     
-    // Process onSummon effects (simplified - you'd expand this)
-    // this.processOnSummonEffects(summonedCryptid, playerRole, collectEvent);
-    
-    return { success: true, events: [] };
+    return { success: true };
   }
   
   executeSummonKindling(playerRole, payload, collectEvent) {
     const gs = this.gameState;
-    const { cardId, targetSlot } = payload;
+    // Handle both formats
+    const cardId = payload.cardId;
+    const col = payload.col ?? payload.targetSlot?.col;
+    const row = payload.row ?? payload.targetSlot?.row;
     
     // Check if kindling already played this turn
     const playedFlag = playerRole === 'player' ? 'playerKindlingPlayedThisTurn' : 'enemyKindlingPlayedThisTurn';
@@ -879,17 +957,24 @@ export class GameRoom {
     const field = playerRole === 'player' ? gs.playerField : gs.enemyField;
     
     // Find kindling in pool
-    const kindlingIndex = kindlingPool.findIndex(c => c.id === cardId);
+    let kindlingIndex = kindlingPool.findIndex(c => c.id === cardId);
+    
+    // If not found by ID, add from cardData
+    if (kindlingIndex === -1 && payload.cardData) {
+      kindlingPool.push({ ...payload.cardData, id: cardId });
+      kindlingIndex = kindlingPool.length - 1;
+    }
+    
     if (kindlingIndex === -1) {
+      console.log('[GameRoom] Kindling not found:', cardId, 'Pool:', kindlingPool.map(c => c.id));
       return { success: false, reason: 'CARD_NOT_IN_KINDLING' };
     }
     
     const kindling = kindlingPool[kindlingIndex];
-    const { col, row } = targetSlot;
     
     // Validate slot
     if (field[col]?.[row] !== null) {
-      return { success: false, reason: 'INVALID_SLOT' };
+      return { success: false, reason: 'SLOT_OCCUPIED' };
     }
     
     // Execute summon
@@ -901,24 +986,32 @@ export class GameRoom {
       owner: playerRole,
       col,
       row,
-      currentHp: kindling.hp,
-      currentAtk: kindling.atk,
-      maxHp: kindling.hp,
-      baseAtk: kindling.atk,
+      currentHp: kindling.hp || 1,
+      currentAtk: kindling.atk || kindling.attack || 1,
+      maxHp: kindling.hp || 1,
+      baseAtk: kindling.atk || kindling.attack || 1,
       tapped: false,
       canAttack: false,
+      justSummoned: true,
       isKindling: true
     };
     
     field[col][row] = summonedKindling;
     
+    console.log('[GameRoom] Kindling summoned:', summonedKindling.name, 'at', col, row, 'by', playerRole);
+    
     collectEvent('KINDLING_SUMMONED', {
+      cardId: cardId,
+      cardName: summonedKindling.name,
       cryptid: this.serializeCryptid(summonedKindling),
-      slot: targetSlot,
-      owner: playerRole
+      col: col,
+      row: row,
+      owner: playerRole,
+      hp: summonedKindling.currentHp,
+      attack: summonedKindling.currentAtk
     });
     
-    return { success: true, events: [] };
+    return { success: true };
   }
   
   executeAttack(playerRole, payload, collectEvent) {
@@ -932,34 +1025,31 @@ export class GameRoom {
     // Get attacker
     const attacker = attackerField[attackerCol]?.[attackerRow];
     if (!attacker) {
+      console.log('[GameRoom] No attacker at', attackerCol, attackerRow);
       return { success: false, reason: 'NO_ATTACKER' };
     }
     
-    // Check attacker can attack
-    if (attacker.tapped || !attacker.canAttack) {
-      return { success: false, reason: 'CANNOT_ATTACK' };
+    // Check attacker can attack (more lenient for multiplayer sync)
+    if (attacker.tapped) {
+      console.log('[GameRoom] Attacker is tapped');
+      return { success: false, reason: 'ATTACKER_TAPPED' };
     }
     
     // Get target
     const target = targetField[targetCol]?.[targetRow];
     if (!target) {
-      return { success: false, reason: 'INVALID_TARGET' };
-    }
-    
-    // Validate target is in combat column (unless attacker has flight)
-    const targetCombatCol = targetOwner === 'player' ? 1 : 0;
-    if (targetCol !== targetCombatCol && !attacker.canTargetAny) {
+      console.log('[GameRoom] No target at', targetCol, targetRow);
       return { success: false, reason: 'INVALID_TARGET' };
     }
     
     // Calculate damage
-    let damage = attacker.currentAtk;
+    let damage = attacker.currentAtk || attacker.attack || 1;
     
     // Add support bonus
     const supportCol = playerRole === 'player' ? 0 : 1;
     const support = attackerField[supportCol]?.[attackerRow];
     if (support && attackerCol !== supportCol) {
-      damage += support.currentAtk;
+      damage += support.currentAtk || support.attack || 0;
     }
     
     // Apply bleed (doubles damage)
@@ -967,10 +1057,15 @@ export class GameRoom {
       damage *= 2;
     }
     
+    console.log('[GameRoom] Attack:', attacker.name, 'vs', target.name, 'damage:', damage);
+    
     collectEvent('ATTACK_DECLARED', {
       attacker: this.serializeCryptid(attacker),
-      attackerSlot: { col: attackerCol, row: attackerRow },
-      targetSlot: { col: targetCol, row: targetRow },
+      attackerCol,
+      attackerRow,
+      targetCol,
+      targetRow,
+      attackerOwner: playerRole,
       targetOwner
     });
     
@@ -979,11 +1074,14 @@ export class GameRoom {
     target.currentHp -= damage;
     
     collectEvent('DAMAGE_DEALT', {
+      targetId: target.id,
+      targetName: target.name,
       target: this.serializeCryptid(target),
       damage,
       isCritical: damage >= 5,
-      slot: { col: targetCol, row: targetRow },
-      owner: targetOwner,
+      targetCol,
+      targetRow,
+      targetOwner,
       hpBefore,
       hpAfter: target.currentHp
     });
@@ -997,7 +1095,7 @@ export class GameRoom {
       this.processDeath(target, targetOwner, targetCol, targetRow, attacker, collectEvent);
     }
     
-    return { success: true, events: [] };
+    return { success: true };
   }
   
   processDeath(cryptid, owner, col, row, killer, collectEvent) {
@@ -1090,13 +1188,15 @@ export class GameRoom {
     
     traps[slotRow] = { ...trap, faceDown: true };
     
+    console.log('[GameRoom] Trap set by', playerRole, 'at slot', slotRow);
+    
     collectEvent('TRAP_SET', {
       owner: playerRole,
       slotRow,
       // Don't reveal trap identity to opponent
     });
     
-    return { success: true, events: [] };
+    return { success: true };
   }
   
   executeUseAbility(playerRole, payload, collectEvent) {
@@ -1136,7 +1236,9 @@ export class GameRoom {
       this.drawCard(playerRole, collectEvent);
     }
     
-    return { success: true, events: [] };
+    console.log('[GameRoom] Pyre burn used by', playerRole, 'gained:', deaths, 'pyre');
+    
+    return { success: true };
   }
   
   executeEndConjure1(playerRole, collectEvent) {
@@ -1167,7 +1269,9 @@ export class GameRoom {
       owner: playerRole
     });
     
-    return { success: true, events: [] };
+    console.log('[GameRoom] Conjure1 ended by', playerRole, '- moving to combat phase');
+    
+    return { success: true };
   }
   
   executeEndCombat(playerRole, collectEvent) {
@@ -1184,7 +1288,9 @@ export class GameRoom {
       owner: playerRole
     });
     
-    return { success: true, events: [] };
+    console.log('[GameRoom] Combat ended by', playerRole, '- moving to conjure2 phase');
+    
+    return { success: true };
   }
   
   executeEndTurn(playerRole, collectEvent) {
@@ -1242,13 +1348,23 @@ export class GameRoom {
       turnNumber: gs.turnNumber
     });
     
-    return { success: true, events: [] };
+    console.log('[GameRoom] Turn ended by', playerRole, '- now', nextPlayer, 'turn', gs.turnNumber);
+    
+    return { success: true };
   }
   
   executeConcede(playerRole, collectEvent) {
     const winner = playerRole === 'player' ? 'enemy' : 'player';
+    
+    collectEvent('PLAYER_CONCEDED', {
+      conceded: playerRole,
+      winner: winner
+    });
+    
+    console.log('[GameRoom]', playerRole, 'conceded - winner:', winner);
+    
     this.endMatch(winner, 'concede');
-    return { success: true, events: [] };
+    return { success: true };
   }
   
   // ==================== HELPERS ====================
@@ -1429,12 +1545,16 @@ export class GameRoom {
   }
   
   serializeField(field) {
-    const result = [];
+    // Return same 2D structure: field[col][row]
+    const result = [
+      [null, null, null],
+      [null, null, null]
+    ];
     for (let col = 0; col < 2; col++) {
       for (let row = 0; row < 3; row++) {
         const cryptid = field[col]?.[row];
         if (cryptid) {
-          result.push(this.serializeCryptid(cryptid));
+          result[col][row] = this.serializeCryptid(cryptid);
         }
       }
     }

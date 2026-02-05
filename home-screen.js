@@ -1039,15 +1039,115 @@ window.HomeScreen = {
     
     initMultiplayerGame(data) {
         console.log('[Multiplayer] Initializing game with server state');
+        console.log('[Multiplayer] Initial state:', data.initialState);
         
         // Call the regular initGame but in multiplayer mode
         if (typeof initGame === 'function') {
             initGame();
         }
         
-        // The game is now running - actions will be sent through MultiplayerManager
+        // Apply server's initial state to the game object
+        setTimeout(() => {
+            this.applyServerState(data.initialState);
+        }, 50);
+        
+        // Initialize the multiplayer bridge and UI hooks AFTER the game is created
+        setTimeout(() => {
+            if (typeof MultiplayerGameBridge !== 'undefined') {
+                MultiplayerGameBridge.init();
+                console.log('[Multiplayer] Game bridge initialized');
+                
+                // Initialize UI hooks after bridge
+                setTimeout(() => {
+                    if (typeof MultiplayerUIHooks !== 'undefined') {
+                        MultiplayerUIHooks.init();
+                        console.log('[Multiplayer] UI hooks initialized');
+                    }
+                    
+                    // Render with server state
+                    if (typeof renderHand === 'function') renderHand();
+                    if (typeof renderField === 'function') renderField();
+                    if (typeof updatePyreDisplay === 'function') updatePyreDisplay();
+                }, 100);
+            } else {
+                console.warn('[Multiplayer] MultiplayerGameBridge not found!');
+            }
+        }, 100);
+        
+        // The game is now running - actions will be sent through MultiplayerGameBridge
         console.log('[Multiplayer] Game initialized. You are:', window.multiplayerRole);
         console.log('[Multiplayer] First player:', data.firstPlayer);
+    },
+    
+    applyServerState(serverState) {
+        if (!serverState) {
+            console.warn('[Multiplayer] No server state to apply');
+            return;
+        }
+        
+        const game = window.game;
+        if (!game) {
+            console.warn('[Multiplayer] Game object not ready');
+            return;
+        }
+        
+        console.log('[Multiplayer] Applying server state to game');
+        
+        // The server sends state from our perspective:
+        // - yourHand: our hand
+        // - opponentHandCount: number of cards opponent has
+        // - playerField/enemyField: field state
+        // - playerPyre/enemyPyre: pyre amounts
+        
+        // Apply hand
+        if (serverState.yourHand) {
+            game.playerHand = serverState.yourHand;
+            console.log('[Multiplayer] Set player hand:', game.playerHand.length, 'cards');
+        }
+        
+        // Apply fields
+        if (serverState.playerField) {
+            game.playerField = serverState.playerField;
+        }
+        if (serverState.enemyField) {
+            game.enemyField = serverState.enemyField;
+        }
+        
+        // Apply pyre
+        if (serverState.playerPyre !== undefined) {
+            game.playerPyre = serverState.playerPyre;
+        }
+        if (serverState.enemyPyre !== undefined) {
+            game.enemyPyre = serverState.enemyPyre;
+        }
+        
+        // Apply deaths
+        if (serverState.playerDeaths !== undefined) {
+            game.playerDeaths = serverState.playerDeaths;
+        }
+        if (serverState.enemyDeaths !== undefined) {
+            game.enemyDeaths = serverState.enemyDeaths;
+        }
+        
+        // Apply turn info
+        if (serverState.currentTurn) {
+            // Map server perspective to local: if server says 'player' and we're 'player', it's our turn
+            const isMyTurn = (serverState.currentTurn === window.multiplayerRole);
+            game.currentTurn = isMyTurn ? 'player' : 'enemy';
+        }
+        if (serverState.phase) {
+            game.phase = serverState.phase;
+        }
+        if (serverState.turnNumber !== undefined) {
+            game.turnNumber = serverState.turnNumber;
+        }
+        
+        // Apply kindling if available
+        if (serverState.yourKindling) {
+            game.playerKindling = serverState.yourKindling;
+        }
+        
+        console.log('[Multiplayer] State applied - Hand:', game.playerHand?.length, 'Pyre:', game.playerPyre);
     },
     
     cancelMatchmaking() {

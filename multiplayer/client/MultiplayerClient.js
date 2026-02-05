@@ -227,6 +227,17 @@ class MultiplayerClient {
                 
             case 'ACTION_RESULT':
                 this.handleActionResult(message);
+                // Also notify the game bridge
+                if (typeof MultiplayerGameBridge !== 'undefined' && MultiplayerGameBridge.enabled) {
+                    MultiplayerGameBridge.handleActionResult(message);
+                }
+                break;
+                
+            case 'GAME_EVENT':
+                // Server is broadcasting a game event (from opponent's action)
+                if (typeof MultiplayerGameBridge !== 'undefined' && MultiplayerGameBridge.enabled) {
+                    MultiplayerGameBridge.handleServerEvent(message.event);
+                }
                 break;
                 
             case 'ACTION_REJECTED':
