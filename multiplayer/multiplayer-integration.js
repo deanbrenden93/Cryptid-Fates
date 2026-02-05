@@ -49,9 +49,9 @@ window.MultiplayerManager = {
     this.searchAborted = false;
     
     try {
-      // Generate a queue match ID - the server will handle matchmaking
-      // Using 'QUEUE' prefix to indicate this is a matchmaking request
-      const queueId = 'QUEUE_' + Date.now();
+      // IMPORTANT: All players must connect to the SAME lobby to be matched
+      // Using a fixed 'QUEUE_LOBBY' ID so all players join the same Durable Object
+      const queueId = 'QUEUE_LOBBY';
       
       // Connect to the matchmaking queue
       await this.client.connect(queueId, 'player-token');
@@ -62,19 +62,26 @@ window.MultiplayerManager = {
       // Wait for match to be found (handled by server)
       // The server will pair players and send GAME_START event
       return new Promise((resolve, reject) => {
+        let abortCheckInterval = null;
+        
         // Set up match found handler
         const originalGameStart = this.client.onGameStart;
         this.client.onGameStart = (data) => {
+          console.log('[Matchmaking] Game start received:', data);
           this.isSearching = false;
-          this.matchId = data.matchId || queueId;
+          this.matchId = data.matchId;
+          
+          // Clear abort checker
+          if (abortCheckInterval) clearInterval(abortCheckInterval);
           
           // Restore original handler
           this.client.onGameStart = originalGameStart;
           
           resolve({
             success: true,
-            matchId: this.matchId,
-            role: data.yourRole
+            matchId: data.matchId,
+            role: data.yourRole || data.role,
+            yourRole: data.yourRole || data.role
           });
           
           // Also call original handler
@@ -83,16 +90,18 @@ window.MultiplayerManager = {
         
         // Set up error/abort handling
         this.client.onError = (error) => {
+          console.error('[Matchmaking] Error:', error);
           if (!this.searchAborted) {
             this.isSearching = false;
+            if (abortCheckInterval) clearInterval(abortCheckInterval);
             reject(new Error(error.message || 'Connection error'));
           }
         };
         
         // Check for abort periodically
-        const abortCheck = setInterval(() => {
+        abortCheckInterval = setInterval(() => {
           if (this.searchAborted) {
-            clearInterval(abortCheck);
+            clearInterval(abortCheckInterval);
             this.isSearching = false;
             reject(new Error('Search cancelled'));
           }
@@ -101,7 +110,7 @@ window.MultiplayerManager = {
         // Timeout after 5 minutes
         setTimeout(() => {
           if (this.isSearching && !this.searchAborted) {
-            clearInterval(abortCheck);
+            if (abortCheckInterval) clearInterval(abortCheckInterval);
             this.isSearching = false;
             this.client.disconnect();
             reject(new Error('Matchmaking timed out. Please try again.'));

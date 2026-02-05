@@ -769,11 +769,20 @@ window.HomeScreen = {
     
     startMultiplayerGame(matchData) {
         console.log('[Multiplayer] Starting game with match data:', matchData);
+        console.log('[Multiplayer] Your role:', matchData.role);
+        console.log('[Multiplayer] Match ID:', matchData.matchId);
         
         // Start the game in multiplayer mode
         window.isMultiplayer = true;
         window.multiplayerMatchId = matchData.matchId;
-        window.multiplayerRole = matchData.role;
+        window.multiplayerRole = matchData.role || matchData.yourRole;
+        
+        // Store multiplayer manager reference
+        window.multiplayerManager = MultiplayerManager;
+        
+        // Show which role the player has
+        const roleText = window.multiplayerRole === 'player' ? 'Player 1 (goes first)' : 'Player 2';
+        console.log(`[Multiplayer] You are: ${roleText}`);
         
         this.startGame();
     },

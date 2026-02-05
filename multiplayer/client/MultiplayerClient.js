@@ -166,7 +166,13 @@ class MultiplayerClient {
                 this.handleRedirectToMatch(message);
                 break;
                 
+            case 'GAME_START':
+                // From matchmaking lobby - match found, reconnect to game room
+                this.handleGameStartFromLobby(message);
+                break;
+                
             case 'GAME_STARTED':
+                // From game room - both players connected, game begins
                 this.handleGameStarted(message);
                 break;
                 
@@ -272,15 +278,61 @@ class MultiplayerClient {
         }, 600);
     }
     
+    handleGameStartFromLobby(message) {
+        // This is sent from the matchmaking lobby when a match is found
+        // We need to: 1) store the match info, 2) notify the UI, 3) reconnect to game room
+        console.log('[MP Client] Game start from lobby:', message);
+        
+        this.playerRole = message.yourRole;
+        this.matchId = message.matchId;
+        
+        // Store for reconnection
+        const matchId = message.matchId;
+        const role = message.yourRole;
+        
+        // Immediately notify that match was found (so UI updates)
+        // The onGameStart callback will resolve the findMatch promise
+        this.onGameStart?.({
+            yourRole: role,
+            matchId: matchId,
+            role: role,
+            fromLobby: true
+        });
+        
+        // If reconnect is required, do it after a short delay to let UI update
+        if (message.reconnectRequired) {
+            setTimeout(() => {
+                console.log('[MP Client] Reconnecting to game room:', matchId);
+                
+                // Close lobby connection
+                if (this.socket) {
+                    this.socket.close(1000, 'Joining game room');
+                }
+                
+                // Connect to game room after socket closes
+                setTimeout(async () => {
+                    try {
+                        await this.connect(matchId, this.authToken);
+                        console.log('[MP Client] Connected to game room:', matchId);
+                    } catch (error) {
+                        console.error('[MP Client] Failed to connect to game room:', error);
+                        this.onError?.(error);
+                    }
+                }, 300);
+            }, 100);
+        }
+    }
+    
     handleGameStarted(message) {
-        console.log('[MP Client] Game started:', message);
+        // This is from the game room when both players are connected
+        console.log('[MP Client] Game started (from room):', message);
         
         this.playerRole = message.yourRole;
         
         // Initialize game with the provided state
         this.initializeGame(message.initialState);
         
-        // Notify listeners
+        // Notify listeners - this handles the case where we connected directly to a room
         this.onGameStart?.({
             yourRole: message.yourRole,
             initialState: message.initialState,

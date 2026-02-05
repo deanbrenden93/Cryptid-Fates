@@ -193,21 +193,29 @@ export class GameRoom {
     // Add to matchmaking queue
     const queueEntry = {
       ws: server,
-      joinedAt: Date.now()
+      joinedAt: Date.now(),
+      id: Math.random().toString(36).substring(2, 8) // For debugging
     };
     this.matchmakingQueue.push(queueEntry);
     
-    console.log(`Player joined matchmaking queue. Queue size: ${this.matchmakingQueue.length}`);
+    console.log(`[Lobby] Player ${queueEntry.id} joined queue. Queue size: ${this.matchmakingQueue.length}`);
     
-    // Send queue status
-    server.send(JSON.stringify({
-      type: 'QUEUE_JOINED',
-      position: this.matchmakingQueue.length,
-      queueSize: this.matchmakingQueue.length
-    }));
+    // Send queue status after a small delay to ensure socket is ready
+    try {
+      server.send(JSON.stringify({
+        type: 'QUEUE_JOINED',
+        position: this.matchmakingQueue.length,
+        queueSize: this.matchmakingQueue.length,
+        playerId: queueEntry.id
+      }));
+    } catch (e) {
+      console.error('[Lobby] Failed to send QUEUE_JOINED:', e);
+    }
     
-    // Try to match players
-    this.tryMatchPlayers();
+    // Try to match players (with small delay to ensure both sockets are ready)
+    setTimeout(() => {
+      this.tryMatchPlayers();
+    }, 100);
     
     return new Response(null, {
       status: 101,
@@ -217,51 +225,72 @@ export class GameRoom {
   
   // Try to pair players in the queue
   tryMatchPlayers() {
+    console.log(`[Lobby] tryMatchPlayers called. Queue size: ${this.matchmakingQueue.length}`);
+    
     // Need at least 2 players
+    if (this.matchmakingQueue.length < 2) {
+      console.log('[Lobby] Not enough players to match');
+      return;
+    }
+    
     while (this.matchmakingQueue.length >= 2) {
       const player1 = this.matchmakingQueue.shift();
       const player2 = this.matchmakingQueue.shift();
       
-      // Check both are still connected
+      console.log(`[Lobby] Attempting to match players: ${player1.id} vs ${player2.id}`);
+      
       try {
         // Generate a new match ID
         const matchId = this.generateQuickMatchId();
         
-        console.log(`Matching players into room: ${matchId}`);
+        console.log(`[Lobby] Generated match ID: ${matchId}`);
         
-        // Send match found to both players
-        const matchFoundMsg = JSON.stringify({
-          type: 'MATCH_FOUND',
+        // Send GAME_START directly to both players with all needed info
+        const host = this.env.WORKER_HOST || 'cryptid-new.brenden-6ce.workers.dev';
+        
+        // Player 1 is "player" (goes first), Player 2 is "enemy"
+        const player1StartMsg = JSON.stringify({
+          type: 'GAME_START',
           matchId: matchId,
-          message: 'Match found! Connecting to game...'
+          yourRole: 'player',
+          wsUrl: `wss://${host}/match/${matchId}`,
+          reconnectRequired: true
         });
         
-        player1.ws.send(matchFoundMsg);
-        player2.ws.send(matchFoundMsg);
-        
-        // Create the game room and add both players
-        // We'll tell clients to reconnect to the new room
-        const gameRoomId = this.env.GAME_ROOMS.idFromName(matchId);
-        const gameRoom = this.env.GAME_ROOMS.get(gameRoomId);
-        
-        // Send redirect to both players (they'll reconnect to the actual game room)
-        const redirectMsg = JSON.stringify({
-          type: 'REDIRECT_TO_MATCH',
+        const player2StartMsg = JSON.stringify({
+          type: 'GAME_START',
           matchId: matchId,
-          wsUrl: `wss://${this.env.WORKER_HOST || 'cryptid-new.brenden-6ce.workers.dev'}/match/${matchId}`
+          yourRole: 'enemy', 
+          wsUrl: `wss://${host}/match/${matchId}`,
+          reconnectRequired: true
         });
         
-        player1.ws.send(redirectMsg);
-        player2.ws.send(redirectMsg);
+        // Send to player 1
+        try {
+          player1.ws.send(player1StartMsg);
+          console.log(`[Lobby] Sent GAME_START to player1 (${player1.id})`);
+        } catch (e) {
+          console.error(`[Lobby] Failed to send to player1 (${player1.id}):`, e.message);
+          throw e;
+        }
         
-        // Close lobby connections (players will reconnect to game room)
-        setTimeout(() => {
-          try { player1.ws.close(1000, 'Match found - reconnecting'); } catch(e) {}
-          try { player2.ws.close(1000, 'Match found - reconnecting'); } catch(e) {}
-        }, 500);
+        // Send to player 2
+        try {
+          player2.ws.send(player2StartMsg);
+          console.log(`[Lobby] Sent GAME_START to player2 (${player2.id})`);
+        } catch (e) {
+          console.error(`[Lobby] Failed to send to player2 (${player2.id}):`, e.message);
+          throw e;
+        }
+        
+        console.log(`[Lobby] Successfully matched players for game ${matchId}`);
+        
+        // Mark these websockets as "matched"
+        player1.matched = true;
+        player2.matched = true;
         
       } catch (error) {
-        console.error('Error matching players:', error);
+        console.error('[Lobby] Error matching players:', error);
         // Put players back in queue if something went wrong
         this.matchmakingQueue.unshift(player2);
         this.matchmakingQueue.unshift(player1);
@@ -271,14 +300,16 @@ export class GameRoom {
     
     // Update queue positions for remaining players
     this.matchmakingQueue.forEach((entry, index) => {
-      try {
-        entry.ws.send(JSON.stringify({
-          type: 'QUEUE_UPDATE',
-          position: index + 1,
-          queueSize: this.matchmakingQueue.length
-        }));
-      } catch (e) {
-        // Player disconnected, will be cleaned up
+      if (!entry.matched) {
+        try {
+          entry.ws.send(JSON.stringify({
+            type: 'QUEUE_UPDATE',
+            position: index + 1,
+            queueSize: this.matchmakingQueue.length
+          }));
+        } catch (e) {
+          // Player disconnected, will be cleaned up
+        }
       }
     });
   }
