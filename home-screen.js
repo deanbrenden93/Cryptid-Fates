@@ -1020,33 +1020,34 @@ window.HomeScreen = {
     },
     
     getDefaultKindling() {
-        // Build a default kindling pool if deck doesn't have one
-        const kindlingTypes = [];
-        
-        // Try to get kindling from card sources
-        if (typeof CityOfFleshCards !== 'undefined' && CityOfFleshCards.kindling) {
-            kindlingTypes.push(...CityOfFleshCards.kindling);
-        }
-        if (typeof ForestsOfFearCards !== 'undefined' && ForestsOfFearCards.kindling) {
-            kindlingTypes.push(...ForestsOfFearCards.kindling);
-        }
-        if (typeof PutridSwampCards !== 'undefined' && PutridSwampCards.kindling) {
-            kindlingTypes.push(...PutridSwampCards.kindling);
-        }
-        
-        // Build pool with 2 of each type
+        // Build a default kindling pool from CardRegistry
         const pool = [];
-        kindlingTypes.forEach(k => {
-            for (let i = 0; i < 2; i++) {
-                pool.push({
-                    ...k,
-                    id: `kindling_${k.key || k.name}_${i}_${Date.now()}`
-                });
-            }
-        });
+        
+        if (typeof CardRegistry !== 'undefined' && CardRegistry.getAllKindlingKeys) {
+            const kindlingKeys = CardRegistry.getAllKindlingKeys();
+            console.log('[Multiplayer] Found kindling keys:', kindlingKeys);
+            
+            // Add 2 of each kindling type
+            kindlingKeys.forEach(key => {
+                const kindling = CardRegistry.getKindling(key);
+                if (kindling) {
+                    for (let i = 0; i < 2; i++) {
+                        pool.push({
+                            ...kindling,
+                            key: key,
+                            id: `kindling_${key}_${i}_${Date.now()}`,
+                            type: 'cryptid',
+                            isKindling: true
+                        });
+                    }
+                }
+            });
+        }
+        
+        console.log('[Multiplayer] Built kindling pool with', pool.length, 'kindling');
         
         return pool.length > 0 ? pool : [
-            { name: 'Basic Kindling', hp: 1, atk: 1, type: 'kindling', isKindling: true }
+            { key: 'basicKindling', name: 'Basic Kindling', hp: 1, atk: 1, type: 'cryptid', isKindling: true }
         ];
     },
     
@@ -1127,6 +1128,7 @@ window.HomeScreen = {
     initMultiplayerGame(data) {
         console.log('[Multiplayer] Initializing game with server state');
         console.log('[Multiplayer] Initial state:', data.initialState);
+        console.log('[Multiplayer] isYourTurn:', data.isYourTurn);
         
         // Call the regular initGame but in multiplayer mode
         if (typeof initGame === 'function') {
@@ -1142,7 +1144,11 @@ window.HomeScreen = {
         setTimeout(() => {
             if (typeof MultiplayerGameBridge !== 'undefined') {
                 MultiplayerGameBridge.init();
-                console.log('[Multiplayer] Game bridge initialized');
+                
+                // IMPORTANT: Explicitly set turn state from server data
+                MultiplayerGameBridge.isMyTurn = data.isYourTurn === true;
+                MultiplayerGameBridge.updateTurnUI();
+                console.log('[Multiplayer] Game bridge initialized, isMyTurn:', MultiplayerGameBridge.isMyTurn);
                 
                 // Initialize UI hooks after bridge
                 setTimeout(() => {
@@ -1216,11 +1222,13 @@ window.HomeScreen = {
             game.enemyDeaths = serverState.enemyDeaths;
         }
         
-        // Apply turn info
-        if (serverState.currentTurn) {
-            // Map server perspective to local: if server says 'player' and we're 'player', it's our turn
-            const isMyTurn = (serverState.currentTurn === window.multiplayerRole);
-            game.currentTurn = isMyTurn ? 'player' : 'enemy';
+        // Apply turn info - use isYourTurn boolean if available (more reliable)
+        // The server already handles perspective mapping
+        if (serverState.currentTurn !== undefined) {
+            // Server sends currentTurn already perspective-mapped:
+            // 'player' means it's OUR turn, 'enemy' means it's opponent's turn
+            game.currentTurn = serverState.currentTurn;
+            console.log('[Multiplayer] Set currentTurn:', game.currentTurn);
         }
         if (serverState.phase) {
             game.phase = serverState.phase;
@@ -1232,9 +1240,13 @@ window.HomeScreen = {
         // Apply kindling if available
         if (serverState.yourKindling) {
             game.playerKindling = serverState.yourKindling;
+            console.log('[Multiplayer] Set kindling pool:', game.playerKindling.length, 'kindling');
+            if (game.playerKindling.length > 0) {
+                console.log('[Multiplayer] First kindling:', game.playerKindling[0]);
+            }
         }
         
-        console.log('[Multiplayer] State applied - Hand:', game.playerHand?.length, 'Pyre:', game.playerPyre);
+        console.log('[Multiplayer] State applied - Hand:', game.playerHand?.length, 'Pyre:', game.playerPyre, 'Kindling:', game.playerKindling?.length);
     },
     
     cancelMatchmaking() {
