@@ -294,16 +294,29 @@ const CryptidShared = (function() {
             return support;
         }
 
+        // Serialize a card for storage - only include JSON-safe primitive/object data
+        function serializeCard(c) {
+            if (!c) return null;
+            const card = {};
+            for (const key of Object.keys(c)) {
+                const val = c[key];
+                // Skip functions and symbols - they can't be stored
+                if (typeof val === 'function' || typeof val === 'symbol') continue;
+                card[key] = val;
+            }
+            return card;
+        }
+        
         function exportState() {
             return {
-                playerField: state.playerField.map(col => col.map(c => c ? { ...c } : null)),
-                enemyField: state.enemyField.map(col => col.map(c => c ? { ...c } : null)),
-                playerHand: state.playerHand.map(c => ({ ...c })),
-                enemyHand: state.enemyHand.map(c => ({ ...c })),
-                playerDeck: state.playerDeck.map(c => ({ ...c })),
-                enemyDeck: state.enemyDeck.map(c => ({ ...c })),
-                playerKindling: state.playerKindling.map(c => ({ ...c })),
-                enemyKindling: state.enemyKindling.map(c => ({ ...c })),
+                playerField: state.playerField.map(col => col.map(c => serializeCard(c))),
+                enemyField: state.enemyField.map(col => col.map(c => serializeCard(c))),
+                playerHand: state.playerHand.map(c => serializeCard(c)),
+                enemyHand: state.enemyHand.map(c => serializeCard(c)),
+                playerDeck: state.playerDeck.map(c => serializeCard(c)),
+                enemyDeck: state.enemyDeck.map(c => serializeCard(c)),
+                playerKindling: state.playerKindling.map(c => serializeCard(c)),
+                enemyKindling: state.enemyKindling.map(c => serializeCard(c)),
                 playerPyre: state.playerPyre,
                 enemyPyre: state.enemyPyre,
                 playerDeaths: state.playerDeaths,
@@ -313,8 +326,8 @@ const CryptidShared = (function() {
                 turnNumber: state.turnNumber,
                 gameOver: state.gameOver,
                 winner: state.winner,
-                playerTraps: state.playerTraps.map(t => t ? { ...t } : null),
-                enemyTraps: state.enemyTraps.map(t => t ? { ...t } : null),
+                playerTraps: state.playerTraps.map(t => t ? serializeCard(t) : null),
+                enemyTraps: state.enemyTraps.map(t => t ? serializeCard(t) : null),
                 playerKindlingPlayedThisTurn: state.playerKindlingPlayedThisTurn,
                 enemyKindlingPlayedThisTurn: state.enemyKindlingPlayedThisTurn,
                 playerPyreCardPlayedThisTurn: state.playerPyreCardPlayedThisTurn,
@@ -729,7 +742,8 @@ export class GameRoom {
   }
   
   async loadStateFromStorage() {
-    if (this._stateLoaded) return;
+    // Allow reload if players map is empty (suggests DO was hibernated/restarted)
+    if (this._stateLoaded && this.players.size > 0) return;
     this._stateLoaded = true;
     
     try {
@@ -738,11 +752,16 @@ export class GameRoom {
       ]);
       
       if (stored && stored.get) {
-        if (stored.get('gameState')) {
+        if (stored.get('gameState') && !this.gameContext) {
           // Restore game context with saved state
-          this.gameContext = CryptidShared.createGameContext({ debug: false });
-          this.gameContext.importState(stored.get('gameState'));
-          console.log('[GameRoom] Restored gameState from storage');
+          try {
+            this.gameContext = CryptidShared.createGameContext({ debug: false });
+            this.gameContext.importState(stored.get('gameState'));
+            console.log('[GameRoom] Restored gameState from storage');
+          } catch (importError) {
+            console.error('[GameRoom] Error importing game state:', importError);
+            this.gameContext = null;
+          }
         }
         if (stored.get('matchStarted') !== undefined) {
           this.matchStarted = stored.get('matchStarted');
@@ -762,19 +781,18 @@ export class GameRoom {
         this.playerSlots = { player1: null, player2: null };
       }
       
-      // Restore WebSocket connections
+      // Restore WebSocket connections from hibernated state
       try {
         const webSockets = this.state.getWebSockets();
         for (const ws of webSockets) {
           try {
             const attachment = ws.deserializeAttachment();
-            if (attachment && attachment.role) {
+            if (attachment && attachment.role && !this.players.has(ws)) {
               const slotData = this.playerSlots?.[attachment.role];
               this.players.set(ws, {
                 role: attachment.role,
                 connected: true,
-                deckSelected: attachment.deckSelected || slotData?.deckSelected || false,
-                deckData: slotData?.deckData || null
+                deckSelected: attachment.deckSelected || slotData?.deckSelected || false
               });
               if (this.playerSlots[attachment.role]) {
                 this.playerSlots[attachment.role].connected = true;
@@ -795,12 +813,33 @@ export class GameRoom {
   
   async saveStateToStorage() {
     try {
+      // Build a clean playerSlots WITHOUT deckData (too large for storage)
+      const cleanSlots = {};
+      for (const key of ['player1', 'player2']) {
+        if (this.playerSlots[key]) {
+          const { deckData, ...rest } = this.playerSlots[key];
+          cleanSlots[key] = rest;
+        } else {
+          cleanSlots[key] = null;
+        }
+      }
+      
+      // Export game state (if game is running)
+      let gameState = null;
+      if (this.gameContext) {
+        try {
+          gameState = this.gameContext.exportState();
+        } catch (exportError) {
+          console.error('[GameRoom] Error exporting state:', exportError);
+        }
+      }
+      
       await this.state.storage.put({
-        gameState: this.gameContext ? this.gameContext.exportState() : null,
+        gameState,
         matchStarted: this.matchStarted,
         matchEnded: this.matchEnded,
         sequence: this.sequence,
-        playerSlots: this.playerSlots
+        playerSlots: cleanSlots
       });
     } catch (error) {
       console.error('[GameRoom] Error saving state:', error);
@@ -959,8 +998,14 @@ export class GameRoom {
         const bothConnected = this.playerSlots.player1?.connected && this.playerSlots.player2?.connected;
         if (bothConnected) {
           const bothHaveDecks = this.playerSlots.player1?.deckSelected && this.playerSlots.player2?.deckSelected;
-          if (bothHaveDecks) {
-            this.startMatchWithDecks();
+          // Only start match if we actually have deck data (in-memory)
+          const haveDeckData = [...this.players.values()].every(p => p.deckData);
+          if (bothHaveDecks && haveDeckData) {
+            await this.startMatchWithDecks();
+          } else if (bothHaveDecks && !haveDeckData) {
+            // Deck data was lost (DO restarted) - ask players to re-select
+            console.warn('[GameRoom] Deck data lost after restart, asking re-select');
+            this.notifyBothPlayersConnected();
           } else {
             this.notifyBothPlayersConnected();
           }
@@ -1002,7 +1047,7 @@ export class GameRoom {
     }
   }
   
-  handleDeckSelected(ws, player, deckData) {
+  async handleDeckSelected(ws, player, deckData) {
     console.log(`[GameRoom] Player ${player.role} selected deck`);
     
     player.deckSelected = true;
@@ -1012,8 +1057,9 @@ export class GameRoom {
     
     if (this.playerSlots[player.role]) {
       this.playerSlots[player.role].deckSelected = true;
-      this.playerSlots[player.role].deckData = deckData;
-      this.saveStateToStorage();
+      // Store only a lightweight reference - NOT the full deck data
+      // Full deck data stays in player.deckData (in-memory only)
+      this.playerSlots[player.role].deckReady = true;
     }
     
     this.broadcastToOthers(ws, {
@@ -1025,69 +1071,104 @@ export class GameRoom {
     const p2Ready = this.playerSlots.player2?.deckSelected && this.playerSlots.player2?.connected;
     
     if (p1Ready && p2Ready && !this.matchStarted) {
-      this.startMatchWithDecks();
+      await this.startMatchWithDecks();
     }
   }
   
-  startMatchWithDecks() {
+  async startMatchWithDecks() {
     const connectedPlayers = [...this.players.values()].filter(p => p.connected);
     if (connectedPlayers.length < 2) return;
     
     this.matchStarted = true;
     
-    // Create game context using shared modules
-    this.gameContext = CryptidShared.createGameContext({ debug: false });
-    const gs = this.gameContext.gameState.state;
-    
-    // Randomly determine first player
-    const firstPlayer = Math.random() < 0.5 ? 'player' : 'enemy';
-    gs.currentTurn = firstPlayer;
-    gs.turnNumber = 1;
-    
-    // Populate decks from player data
-    for (const [ws, player] of this.players) {
-      const role = player.role === 'player1' ? 'player' : 'enemy';
-      const deckData = this.playerSlots[player.role]?.deckData || player.deckData || {};
+    try {
+      // Create game context using shared modules
+      this.gameContext = CryptidShared.createGameContext({ debug: false });
+      const gs = this.gameContext.gameState.state;
       
-      const mainCards = (deckData.cards || []).filter(c => !c.isKindling && c.type !== 'kindling');
-      const kindlingCards = (deckData.kindling || []).map(k => ({ ...k, isKindling: true }));
+      // Randomly determine first player
+      const firstPlayer = Math.random() < 0.5 ? 'player' : 'enemy';
+      gs.currentTurn = firstPlayer;
+      gs.turnNumber = 1;
+      gs.phase = 'conjure1';
       
-      const mainDeck = this.shuffleDeck([...mainCards]);
+      // Populate decks from player data
+      for (const [ws, player] of this.players) {
+        const role = player.role === 'player1' ? 'player' : 'enemy';
+        const deckData = player.deckData || {};
+        
+        const mainCards = (deckData.cards || []).filter(c => !c.isKindling && c.type !== 'kindling');
+        const kindlingCards = (deckData.kindling || []).map(k => ({ ...k, isKindling: true }));
+        
+        const mainDeck = this.shuffleDeck([...mainCards]);
+        
+        if (role === 'player') {
+          gs.playerDeck = mainDeck;
+          gs.playerKindling = kindlingCards;
+          gs.playerHand = mainDeck.splice(0, 5);
+          gs.playerPyre = (firstPlayer === 'player') ? 0 : 1;
+        } else {
+          gs.enemyDeck = mainDeck;
+          gs.enemyKindling = kindlingCards;
+          gs.enemyHand = mainDeck.splice(0, 5);
+          gs.enemyPyre = (firstPlayer === 'enemy') ? 0 : 1;
+        }
+      }
       
-      if (role === 'player') {
-        gs.playerDeck = mainDeck;
-        gs.playerKindling = kindlingCards;
-        gs.playerHand = mainDeck.splice(0, 5);
-        gs.playerPyre = (firstPlayer === 'player') ? 0 : 1;
-      } else {
-        gs.enemyDeck = mainDeck;
-        gs.enemyKindling = kindlingCards;
-        gs.enemyHand = mainDeck.splice(0, 5);
-        gs.enemyPyre = (firstPlayer === 'enemy') ? 0 : 1;
+      console.log('[GameRoom] Game state created. First player:', firstPlayer);
+      console.log('[GameRoom] Player hand:', gs.playerHand.length, 'Enemy hand:', gs.enemyHand.length);
+      console.log('[GameRoom] Player deck:', gs.playerDeck.length, 'Enemy deck:', gs.enemyDeck.length);
+      
+      // Clear deckData from playerSlots to reduce storage size
+      // The card data is now in the game state
+      if (this.playerSlots.player1) {
+        delete this.playerSlots.player1.deckData;
+      }
+      if (this.playerSlots.player2) {
+        delete this.playerSlots.player2.deckData;
+      }
+      // Also clear from player objects
+      for (const [ws, player] of this.players) {
+        delete player.deckData;
+      }
+      
+      // Save state BEFORE sending messages to clients
+      // This ensures state persists even if DO hibernates after sending
+      await this.saveStateToStorage();
+      console.log('[GameRoom] State saved successfully');
+      
+      // Send game start to both players
+      for (const [ws, player] of this.players) {
+        const yourRole = player.role === 'player1' ? 'player' : 'enemy';
+        const isYourTurn = firstPlayer === yourRole;
+        
+        try {
+          ws.send(JSON.stringify({
+            type: 'BOTH_DECKS_SELECTED',
+            yourRole,
+            firstPlayer,
+            isYourTurn,
+            initialState: this.getStateForPlayer(yourRole),
+            message: 'Both players ready! Starting game...'
+          }));
+          console.log('[GameRoom] Sent game start to', player.role, '(', yourRole, ')');
+        } catch (e) {
+          console.error('[GameRoom] Failed to send game start:', e);
+        }
+      }
+      
+      this.startTurnTimer();
+      console.log('[GameRoom] Match started successfully');
+      
+    } catch (error) {
+      console.error('[GameRoom] CRITICAL: startMatchWithDecks failed:', error);
+      // Try to notify players of the error
+      for (const [ws, player] of this.players) {
+        try {
+          ws.send(JSON.stringify({ type: 'ERROR', message: 'Failed to start match: ' + error.message }));
+        } catch (e) {}
       }
     }
-    
-    // Send game start to both players
-    for (const [ws, player] of this.players) {
-      const yourRole = player.role === 'player1' ? 'player' : 'enemy';
-      const isYourTurn = firstPlayer === yourRole;
-      
-      try {
-        ws.send(JSON.stringify({
-          type: 'BOTH_DECKS_SELECTED',
-          yourRole,
-          firstPlayer,
-          isYourTurn,
-          initialState: this.getStateForPlayer(yourRole),
-          message: 'Both players ready! Starting game...'
-        }));
-      } catch (e) {
-        console.error('[GameRoom] Failed to send game start:', e);
-      }
-    }
-    
-    this.saveStateToStorage();
-    this.startTurnTimer();
   }
   
   shuffleDeck(deck) {
@@ -1128,12 +1209,12 @@ export class GameRoom {
       switch (data.type) {
         case 'DECK_SELECTED':
           if (!this.matchStarted) {
-            this.handleDeckSelected(ws, player, data.deck);
+            await this.handleDeckSelected(ws, player, data.deck);
           }
           break;
           
         case 'ACTION':
-          this.handleAction(ws, player, data);
+          await this.handleAction(ws, player, data);
           break;
           
         case 'PING':
@@ -1200,7 +1281,7 @@ export class GameRoom {
   
   // ==================== GAME LOGIC (USING SHARED MODULES) ====================
   
-  handleAction(ws, player, action) {
+  async handleAction(ws, player, action) {
     const playerRole = player.role === 'player1' ? 'player' : 'enemy';
     
     if (!this.gameContext) {
@@ -1235,7 +1316,7 @@ export class GameRoom {
     });
     
     this.broadcastActionResult(action.actionId, playerRole, result.events);
-    this.saveStateToStorage();
+    await this.saveStateToStorage();
     this.checkGameOver();
     
     if (this.requiresTurn(action.actionType)) {
